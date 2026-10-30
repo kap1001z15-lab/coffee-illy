@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Дашборд Управляющего — Coffee ERP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 font-sans">
+
+  <div class="max-w-6xl mx-auto space-y-6">
+    <!-- Шапка -->
+    <div class="flex flex-wrap justify-between items-center bg-slate-900 border border-slate-800 p-5 rounded-2xl gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-amber-400">☕ Панель Управления Кофейней</h1>
+        <p class="text-sm text-slate-400">Операционный контроль смен, кассы и инцидентов в реальном времени</p>
+      </div>
+      <button onclick="loadDashboard()" class="px-4 py-2 bg-amber-400 text-slate-950 font-bold rounded-xl text-sm hover:bg-amber-300 transition shadow-lg">
+        🔄 Обновить данные
+      </button>
+    </div>
+
+    <!-- Карточки KPI -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+        <p class="text-xs text-slate-400 uppercase tracking-wider">Выручка (последняя смена)</p>
+        <p id="kpiRevenue" class="text-3xl font-extrabold text-emerald-400 mt-1">— ₽</p>
+        <p id="kpiPlan" class="text-xs text-slate-400 mt-1">План: 45 000 ₽</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+        <p class="text-xs text-slate-400 uppercase tracking-wider">Средний чек / Чеков</p>
+        <p id="kpiAvgCheck" class="text-3xl font-extrabold text-amber-400 mt-1">— ₽</p>
+        <p id="kpiChecks" class="text-xs text-slate-400 mt-1">Транзакций: —</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+        <p class="text-xs text-slate-400 uppercase tracking-wider">Списания за смену</p>
+        <p id="kpiWriteOffs" class="text-3xl font-extrabold text-rose-400 mt-1">— ₽</p>
+        <p class="text-xs text-slate-400 mt-1">Норма до 500 ₽</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+        <p class="text-xs text-slate-400 uppercase tracking-wider">Открытые инциденты</p>
+        <p id="kpiIncidents" class="text-3xl font-extrabold text-rose-500 mt-1">0</p>
+        <p class="text-xs text-slate-400 mt-1">Требуют внимания</p>
+      </div>
+    </div>
+
+    <!-- График и Дисциплина смен -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+        <h2 class="text-base font-bold mb-4">📈 Динамика выручки за последние смены</h2>
+        <canvas id="revenueChart" height="110"></canvas>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+        <h2 class="text-base font-bold mb-4">📋 Последние пройденные чек-листы</h2>
+        <div id="logsContainer" class="space-y-3 text-sm max-h-72 overflow-y-auto pr-1">
+          <p class="text-slate-500">Загрузка логов...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Таблица инцидентов и поломок -->
+    <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+      <h2 class="text-base font-bold mb-4">🚨 Бортовой журнал инцидентов и отклонений</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs text-slate-400 uppercase border-b border-slate-800">
+            <tr>
+              <th class="py-3 px-2">ID / Время</th>
+              <th class="py-3 px-2">Сотрудник</th>
+              <th class="py-3 px-2">Задача</th>
+              <th class="py-3 px-2">Описание поломки</th>
+              <th class="py-3 px-2">Ответственный</th>
+              <th class="py-3 px-2">Фото</th>
+            </tr>
+          </thead>
+          <tbody id="incidentsTable" class="divide-y divide-slate-800/60"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ВСТАВЬТЕ СЮДА URL СВОЕГО GOOGLE APPS SCRIPT
+    https://script.google.com/macros/s/AKfycbzHD8gE2XQrktIMs2NJLsjEhlvcQBpWaZsXC9EVdVbef9_1SnhoZMhcBGJ0AqPClZ-Tjw/exec
+    let chartInstance = null;
+
+    async function loadDashboard() {
+      if (!API_URL.includes("ВАШ_ID_СКРИПТА")) {
+        try {
+          const res = await fetch(`${API_URL}?action=get_dashboard`);
+          const data = await res.json();
+          renderDashboard(data);
+          return;
+        } catch (e) {
+          console.error("Ошибка загрузки данных из Apps Script:", e);
+        }
+      }
+
+      // Демо-данные для визуализации
+      renderDashboard({
+        plan: 45000,
+        cashHistory: [
+          { date: "26.10", total: 41200, checks: 150, avgCheck: 274, writeOffs: 300 },
+          { date: "27.10", total: 46800, checks: 165, avgCheck: 283, writeOffs: 150 },
+          { date: "28.10", total: 39500, checks: 140, avgCheck: 282, writeOffs: 600 },
+          { date: "29.10", total: 48900, checks: 172, avgCheck: 284, writeOffs: 200 },
+          { date: "30.10", total: 52700, checks: 185, avgCheck: 285, writeOffs: 450 }
+        ],
+        incidents: [
+          { id: "#4091", date: "30.10 08:21", user: "Даниил", task: "Выкладка витрины", comment: "Мигает подсветка на нижней полке витрины", responsible: "Техник", photo: "" }
+        ],
+        recentLogs: [
+          { date: "30.10 08:21", user: "Даниил", block: "Открытие", total: 5, incidents: 1 },
+          { date: "29.10 22:50", user: "Максим", block: "Закрытие", total: 4, incidents: 0 }
+        ]
+      });
+    }
+
+    function renderDashboard(data) {
+      const history = data.cashHistory || [];
+      const last = history[history.length - 1] || { total: 0, avgCheck: 0, checks: 0, writeOffs: 0 };
+      const planPct = Math.round((last.total / (data.plan || 45000)) * 100);
+
+      document.getElementById("kpiRevenue").innerText = `${last.total.toLocaleString()} ₽`;
+      document.getElementById("kpiPlan").innerText = `Выполнение плана: ${planPct}% (План: ${(data.plan || 45000).toLocaleString()} ₽)`;
+      document.getElementById("kpiAvgCheck").innerText = `${last.avgCheck} ₽`;
+      document.getElementById("kpiChecks").innerText = `Транзакций за день: ${last.checks}`;
+      document.getElementById("kpiWriteOffs").innerText = `${last.writeOffs} ₽`;
+      document.getElementById("kpiIncidents").innerText = (data.incidents || []).length;
+
+      const ctx = document.getElementById("revenueChart").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: history.map(h => h.date),
+          datasets: [{
+            label: "Выручка (₽)",
+            data: history.map(h => h.total),
+            borderColor: "#fbbf24",
+            backgroundColor: "rgba(251, 191, 36, 0.15)",
+            borderWidth: 3,
+            fill: true,
+            tension: 0.35
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: "#1e293b" }, ticks: { color: "#94a3b8" } },
+            x: { grid: { display: false }, ticks: { color: "#94a3b8" } }
+          }
+        }
+      });
+
+      const logsHtml = (data.recentLogs || []).map(l => `
+        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <div>
+            <p class="font-semibold text-amber-300">${l.block} — ${l.user}</p>
+            <p class="text-xs text-slate-400">${l.date} | Шагов: ${l.total}</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${l.incidents > 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}">
+            ${l.incidents > 0 ? '⚠️ ' + l.incidents + ' пробл.' : '✅ Норма'}
+          </span>
+        </div>
+      `).join("");
+      document.getElementById("logsContainer").innerHTML = logsHtml || "<p class='text-slate-500'>Пока нет записей</p>";
+
+      const incHtml = (data.incidents || []).map(inc => `
+        <tr>
+          <td class="py-3 px-2 font-mono text-xs text-rose-400">${inc.id}<br><span class="text-slate-500">${inc.date}</span></td>
+          <td class="py-3 px-2 font-medium">${inc.user}</td>
+          <td class="py-3 px-2 text-slate-300">${inc.task}</td>
+          <td class="py-3 px-2 text-amber-200">${inc.comment}</td>
+          <td class="py-3 px-2"><span class="bg-slate-800 px-2 py-1 rounded text-xs">${inc.responsible}</span></td>
+          <td class="py-3 px-2">
+            ${inc.photo ? `<a href="${inc.photo}" target="_blank" class="text-amber-400 underline text-xs">Открыть фото</a>` : '—'}
+          </td>
+        </tr>
+      `).join("");
+      document.getElementById("incidentsTable").innerHTML = incHtml || "<tr><td colspan='6' class='py-4 text-center text-slate-500'>Инцидентов нет</td></tr>";
+    }
+
+    window.onload = loadDashboard;
+  </script>
+</body>
+</html>
