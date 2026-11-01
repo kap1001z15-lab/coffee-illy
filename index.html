@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2e1b11">
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<title>Coffee_illy — терминал бариста</title>
+<title>Кофейня — терминал бариста</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -47,8 +47,8 @@
   .brand h1 svg { width:26px; height:26px; }
   header .sub { color:rgba(246,236,226,.68); font-size:13px; }
   .who { text-align:right; line-height:1.3; }
-  .tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:14px; }
-  .tabs button { border:0; background:transparent; color:rgba(246,236,226,.8); font:inherit; font-weight:600; font-size:14px; min-height:44px; border-radius:12px; cursor:pointer; transition:background .15s,color .15s; }
+  .tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:14px; }
+  .tabs button { border:0; background:transparent; color:rgba(246,236,226,.8); font:inherit; font-weight:600; font-size:13px; min-height:44px; border-radius:12px; cursor:pointer; transition:background .15s,color .15s; }
   .tabs button[aria-selected=true] { background:var(--cream); color:var(--espresso); }
   .steps { display:flex; gap:5px; margin-top:12px; }
   .steps i { flex:1; height:5px; border-radius:99px; background:rgba(255,255,255,.2); transition:background .2s; }
@@ -107,6 +107,16 @@
   .notice button { border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:6px 12px; font-weight:600; cursor:pointer; }
   .cup { width:170px; margin:0 auto 8px; display:block; }
   @media (prefers-reduced-motion: no-preference) { .fill { animation:fill 1.4s cubic-bezier(.2,.8,.2,1); } }
+  .cam { position:fixed; inset:0; z-index:30; background:#000; display:flex; flex-direction:column; }
+  .cam video { flex:1; min-height:0; width:100%; object-fit:cover; }
+  .cam .bar { display:flex; align-items:center; justify-content:space-between; padding:16px 24px calc(16px + env(safe-area-inset-bottom,0px)); background:#000; color:#fff; }
+  .cam .x { color:#fff; background:none; border:0; font-size:16px; min-width:84px; min-height:48px; cursor:pointer; text-align:left; }
+  .shutter { width:74px; height:74px; border-radius:50%; border:5px solid #fff; background:rgba(255,255,255,.25); cursor:pointer; }
+  .shutter:active { background:#fff; }
+  .pstate { font-size:14px; margin:10px 0 0; min-height:21px; }
+  .pstate.bad { color:var(--bad); } .pstate.good { color:var(--good); }
+  .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); width:max-content; max-width:92vw; background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:16px; font-size:14px; z-index:40; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); }
+  .tabs button.locked { opacity:.45; }
   @keyframes fill { from { transform:translateY(120px); } to { transform:translateY(0); } }
 </style>
 </head>
@@ -116,7 +126,7 @@
   <div class="wrap">
     <div class="brand">
       <div>
-        <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Coffee_illy</h1>
+        <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1>
         <span class="sub" id="today"></span>
       </div>
       <div class="who" style="display:flex;gap:10px;align-items:center">
@@ -126,6 +136,7 @@
     </div>
     <div class="tabs" role="tablist" aria-label="Раздел">
       <button role="tab" data-b="Открытие" data-l="Открытие" aria-selected="true">Открытие</button>
+      <button role="tab" data-b="День" data-l="День" aria-selected="false">День</button>
       <button role="tab" data-b="Закрытие" data-l="Закрытие" aria-selected="false">Закрытие</button>
       <button role="tab" data-b="КАССА" data-l="Касса" aria-selected="false">Касса</button>
     </div>
@@ -133,6 +144,11 @@
   </div>
 </header>
 
+<div class="cam" id="cam" hidden role="dialog" aria-label="Камера">
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Сделать снимок"></button><span style="min-width:84px"></span></div>
+</div>
+<div class="toast" id="toast" hidden></div>
 <main>
   <div id="queueNote" class="notice" hidden><span id="queueText"></span><button id="queueBtn">Отправить</button></div>
   <div id="cacheNote" class="notice" hidden><span>Нет связи с сервером — показан сохранённый чек-лист.</span></div>
@@ -147,7 +163,7 @@
 
   <div id="emptyView" class="panel center" hidden>
     <h2>Для этого блока нет задач</h2>
-    <p class="muted">Добавьте шаги на лист <b>Coffee_illy_Checklists</b> в Google Таблице.</p>
+    <p class="muted">Добавьте шаги в закрытую таблицу задач (лист <b>Задачи</b>).</p>
   </div>
 
   <section id="checklistView" class="stack" hidden>
@@ -157,13 +173,14 @@
       <p class="instr" id="taskInstruction"></p>
 
       <div class="field" id="photoBlock">
-        <span class="label">Обязательное фото</span>
-        <label class="drop" id="drop">
+        <span class="label">Фото — только с камеры, из галереи нельзя</span>
+        <div class="drop" id="drop" role="button" tabindex="0" aria-label="Открыть камеру">
           <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-          <span id="photoPrompt">Нажмите, чтобы открыть камеру</span>
+          <span id="photoPrompt">Открыть камеру</span>
           <img id="photoPreview" alt="Превью фото" hidden>
-          <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
-        </label>
+        </div>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+        <p class="pstate" id="photoState" aria-live="polite"></p>
       </div>
 
       <div class="field">
@@ -223,6 +240,7 @@
       <span class="num total" id="cTotal">0 ₽</span>
       <div class="meter" aria-hidden="true"><i id="cMeter" style="width:0"></i></div>
       <span class="muted" id="cPlan"></span>
+      <p class="muted" id="cCheck" style="margin:8px 0 0"></p>
       <div class="grid2" style="margin-top:16px">
         <div class="stat"><span class="muted">💵 Наличные</span><span class="num" id="cCash">—</span></div>
         <div class="stat"><span class="muted">💳 Терминал</span><span class="num" id="cCard">—</span></div>
@@ -263,8 +281,8 @@
 
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec";
-const LOCATION = "Кофейня №1";
-const PLAN = 2500;
+let LOCATION = "Кофейня №1";
+let PLAN = 45000;   // реальные значения приходят из таблицы настроек
 
 const $ = (id) => document.getElementById(id);
 const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " ₽";
@@ -282,6 +300,11 @@ $("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long
 
 let tasks = [], cur = [], idx = 0, answers = [];
 let block = "Открытие", photo = "", incident = false, priority = "Терпит";
+let photoUrl = "", photoBusy = false, stream = null;
+const PHOTO_MAX_AGE = 3 * 60 * 1000;   // запасной режим: фото старше 3 минут не принимаем
+const ADDON = /молоко|сироп|мёд|маршмеллоу|топпинг|открытка|десерт от бариста/i;   // добавки не попадают в «хиты дня»
+function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3200); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 let trans = null, sales = null;
 let reportDate = isoToday();
 const shiftIso = (s, n) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
@@ -307,6 +330,7 @@ function drawTabs() {
   document.querySelectorAll(".tabs button").forEach((x) => {
     x.setAttribute("aria-selected", x.dataset.b === block);
     x.textContent = x.dataset.l + (isDone(x.dataset.b) ? " ✓" : "");
+    x.classList.toggle("locked", x.dataset.b !== block && inProgress());
   });
 }
 
@@ -317,6 +341,8 @@ async function loadTasks() {
     const d = await (await fetch(API_URL + "?action=get_checklists")).json();
     if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
     tasks = d.tasks;
+    if (d.plan > 0) PLAN = d.plan;
+    if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
     try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
   } catch (e) {
     try { tasks = JSON.parse(localStorage.getItem("coffee_illy_tasks") || "[]"); } catch (_) { tasks = []; }
@@ -346,8 +372,9 @@ function renderStep() {
   $("taskTitle").textContent = t.title || "";
   $("taskInstruction").textContent = t.instruction || "";
   $("taskInstruction").hidden = !t.instruction;
-  $("photoBlock").hidden = !t.mediaRequired;
-  photo = a.photo_base64 || ""; $("cameraInput").value = ""; setPhotoUI();
+  $("photoBlock").hidden = !t.mediaRequired;   // обязательность фото задаёт таблица
+  photo = a.preview || ""; photoUrl = a.photo_url || ""; photoBusy = false; $("cameraInput").value = ""; setPhotoUI();
+  photoMsg(photoUrl ? "✓ Фото сохранено на Google Диске" : photo ? "Фото отправится вместе с отчётом" : "", photoUrl ? "good" : "");
   $("incidentComment").value = a.comment || "";
   setPriority(a.priority || "Терпит");
   setStatus(!!a.isIncident);
@@ -361,7 +388,8 @@ function setPhotoUI() {
   if (photo) $("photoPreview").src = photo;
   $("camIco").style.display = photo ? "none" : "";
   $("drop").classList.toggle("has", !!photo);
-  $("photoPrompt").textContent = photo ? "Фото прикреплено — нажмите, чтобы переснять" : "Нажмите, чтобы открыть камеру";
+  $("photoPrompt").textContent = photo ? "Переснять" : "Открыть камеру";
+  $("backBtn").disabled = photoBusy;
 }
 
 function setStatus(isInc) {
@@ -378,22 +406,58 @@ function setPriority(p) {
 }
 function validate() {
   const t = cur[idx]; if (!t) return;
-  $("nextBtn").disabled = !((!t.mediaRequired || !!photo) && (!incident || $("incidentComment").value.trim().length > 2));
+  $("nextBtn").disabled = !((!t.mediaRequired || !!photo) && !photoBusy && (!incident || $("incidentComment").value.trim().length > 2));
+  $("backBtn").disabled = photoBusy;
 }
 
-$("cameraInput").addEventListener("change", (e) => {
-  const file = e.target.files[0]; if (!file) return;
-  const url = URL.createObjectURL(file), img = new Image();
+/* ---------- камера: только живой снимок ---------- */
+function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
+function openCamera() {
+  if (photoBusy) return;
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
+    .then((s) => { stream = s; $("camVideo").srcObject = s; $("cam").hidden = false; })
+    .catch(() => { $("cameraInput").click(); });       // нет доступа к камере в браузере — системная камера
+}
+function closeCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; $("cam").hidden = true; }
+$("drop").onclick = openCamera;
+$("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
+$("camCancel").onclick = closeCamera;
+$("camShot").onclick = () => {
+  const v = $("camVideo"); if (!v.videoWidth) return;
+  const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
+  c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  closeCamera(); gotPhoto(c);
+};
+$("cameraInput").addEventListener("change", (e) => {   // запасной путь: снимок должен быть свежим
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (f.lastModified && Date.now() - f.lastModified > PHOTO_MAX_AGE) { photoMsg("Это старое фото. Сделайте новый снимок камерой.", "bad"); return; }
+  const url = URL.createObjectURL(f), img = new Image();
   img.onload = () => {
-    const scale = img.width > 800 ? 800 / img.width : 1, c = document.createElement("canvas");
-    c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    photo = c.toDataURL("image/jpeg", 0.6); URL.revokeObjectURL(url);
-    setPhotoUI(); validate();
+    const k = Math.min(1, 1280 / img.width), c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); gotPhoto(c);
   };
-  img.onerror = () => URL.revokeObjectURL(url);
+  img.onerror = () => { URL.revokeObjectURL(url); photoMsg("Не удалось прочитать фото — снимите ещё раз", "bad"); };
   img.src = url;
 });
+function gotPhoto(c) {      // штамп времени на снимке и мгновенная отправка на Google Диск
+  const x = c.getContext("2d"), h = Math.max(16, Math.round(c.width / 45));
+  x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
+  x.fillStyle = "#fff"; x.font = "600 " + h + "px system-ui,sans-serif";
+  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION + " · " + (cur[idx] ? cur[idx].title : ""), h * .6, c.height - h * .6);
+  photo = c.toDataURL("image/jpeg", 0.72); photoUrl = ""; setPhotoUI(); uploadNow();
+}
+async function uploadNow() {
+  const my = photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
+  photoBusy = true; photoMsg("Отправляем на Google Диск…"); setPhotoUI(); validate();
+  try {
+    const d = await api({ action: "upload_photo", block, step, photo: my });
+    photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good");
+  } catch (e) { photoMsg("Нет связи — фото отправится вместе с отчётом", "bad"); }
+  photoBusy = false; setPhotoUI(); validate();
+}
 $("btnOk").onclick = () => { tap(); setStatus(false); };
 $("btnInc").onclick = () => { tap(); setStatus(true); };
 $("prLow").onclick = () => setPriority("Терпит");
@@ -406,7 +470,7 @@ function saveAnswer() {
     id: t.id, title: t.title, isIncident: incident,
     comment: incident ? $("incidentComment").value.trim() : "",
     priority: incident ? priority : "",
-    photo_base64: photo, responsible: t.responsible
+    photo_url: photoUrl, preview: photo, responsible: t.responsible
   };
 }
 $("backBtn").onclick = () => { saveAnswer(); idx--; renderStep(); };
@@ -414,8 +478,9 @@ $("nextBtn").onclick = async () => {
   tap(); saveAnswer();
   if (idx < cur.length - 1) { idx++; renderStep(); return; }
   $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
-  const ok = await post({ action: "submit_checklist", location: LOCATION, userName, block, items: answers });
-  markDone(block); drawTabs();
+  const items = answers.map((a) => Object.assign({}, a, { preview: undefined, photo_base64: a.photo_url ? "" : a.preview }));
+  const ok = await post({ action: "submit_checklist", sid: uid(), location: LOCATION, userName, block, items });
+  if (ok) { markDone(block); drawTabs(); }
   const n = answers.filter((a) => a && a.isIncident).length;
   finish(ok, n ? "Передано проблем: " + n : "Все пункты в норме");
 };
@@ -423,7 +488,11 @@ $("nextBtn").onclick = async () => {
 /* ---------- отправка с очередью на случай offline ---------- */
 function getQ() { try { return JSON.parse(localStorage.getItem("coffee_illy_queue") || "[]"); } catch (e) { return []; } }
 function setQ(q) { try { localStorage.setItem("coffee_illy_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
-async function sendRaw(p) { await fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(p) }); }
+async function api(p) {
+  const r = await fetch(API_URL, { method: "POST", body: JSON.stringify(p) });
+  const d = await r.json(); if (!d || d.ok === false) throw new Error((d && d.error) || "ошибка сервера"); return d;
+}
+const sendRaw = api;
 async function post(p) {
   try { await sendRaw(p); return true; }
   catch (e) {
@@ -479,6 +548,11 @@ function parseCsv(text) {
 }
 const num = (s) => parseFloat(String(s || "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
+function fileDate(rows) {   // самая частая дата в файле — в эту строку таблицы и попадёт отчёт
+  const c = {};
+  for (let i = 1; i < rows.length; i++) { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(rows[i][0] || ""); if (m) { const k = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); c[k] = (c[k] || 0) + 1; } }
+  const k = Object.keys(c).sort((a, b) => c[b] - c[a])[0]; return k || "";
+}
 function calcTrans(rows) {
   let cash = 0, card = 0, checks = 0;
   for (let i = 1; i < rows.length; i++) {
@@ -489,16 +563,17 @@ function calcTrans(rows) {
     if (amt > 0) checks++;
   }
   if (!checks && !cash && !card) throw new Error("empty");
-  return { cash: Math.round(cash), card: Math.round(card), checks };
+  return { cash: Math.round(cash), card: Math.round(card), checks, date: fileDate(rows) };
 }
 function calcSales(rows) {
   const head = rows[0] || [];
   const qtyCol = head.findIndex((h) => /кол/i.test(h));
   let sumCol = head.findIndex((h) => /сумм|выруч/i.test(h)); if (sumCol < 0) sumCol = 8;
-  const map = {};
+  const map = {}; let total = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i], name = (r[0] || "").trim();
-    if (!name || name === "nan") continue;
+    if (!name && num(r[sumCol]) > 0) total = num(r[sumCol]);   // итоговая строка файла — для сверки
+    if (!name || name === "nan" || ADDON.test(name)) continue;
     const sum = num(r[sumCol]), qty = qtyCol >= 0 ? num(r[qtyCol]) : 1;
     if (sum <= 0 && qty <= 0) continue;
     const m = map[name] || (map[name] = { name, qty: 0, sum: 0 });
@@ -507,7 +582,7 @@ function calcSales(rows) {
   const list = Object.values(map).map((x) => ({ name: x.name, qty: Math.round(x.qty), sum: Math.round(x.sum) }));
   if (!list.length) throw new Error("empty");
   list.sort((a, b) => qtyCol >= 0 ? b.qty - a.qty : b.sum - a.sum);
-  return list.slice(0, 8);
+  const top = list.slice(0, 8); top.total = total; return top;
 }
 
 document.querySelectorAll(".file input").forEach((inp) => inp.addEventListener("change", async () => {
@@ -517,6 +592,10 @@ document.querySelectorAll(".file input").forEach((inp) => inp.addEventListener("
     const rows = parseCsv(await readText(f));
     if (type === "trans") trans = calcTrans(rows); else sales = calcSales(rows);
     box.classList.add("ok"); st.textContent = "✓ " + f.name;
+    if (type === "trans" && trans.date) {
+      if (trans.date > isoToday()) { st.textContent = "В файле дата " + trans.date.split("-").reverse().join(".") + " — это будущее, проверьте выгрузку"; trans = null; box.classList.remove("ok"); }
+      else { if (trans.date !== reportDate) toast("Дата отчёта выставлена по файлу: " + trans.date.split("-").reverse().join(".")); setReportDate(trans.date); st.textContent += " · за " + trans.date.split("-").reverse().join("."); }
+    }
   } catch (e) {
     if (type === "trans") trans = null; else sales = null;
     box.classList.remove("ok"); st.textContent = "Не удалось прочитать файл — проверьте выгрузку";
@@ -538,6 +617,9 @@ function renderCash() {
   const m = top.length ? (top[0].qty || 1) : 1;
   $("topList").innerHTML = top.map((x) => '<div class="bar"><b></b><span>' + x.qty + " шт." + (x.sum ? " · " + rub(x.sum) : "") + '</span><div class="t"><i style="width:' + (x.qty / m * 100) + '%"></i></div></div>').join("");
   $("topList").querySelectorAll("b").forEach((b, i) => b.textContent = top[i].name);
+  const sum = sales && sales.total, diff = t && sum ? Math.abs(sum - total) : 0;
+  $("cCheck").textContent = t && sum ? (diff <= 1 ? "✓ Сверка: «Продажи» совпадают с кассой" : "⚠️ «Продажи» на " + rub(sum) + ", касса на " + rub(total) + " — проверьте, те ли файлы за один день") : "";
+  $("cCheck").style.color = diff > 1 ? "var(--bad)" : "";
   $("submitCashBtn").disabled = !t;
   $("submitCashBtn").textContent = t ? "Отправить кассовый отчёт" : "Загрузите «Транзакции.csv»";
 }
@@ -548,7 +630,7 @@ $("submitCashBtn").onclick = async () => {
   $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
   const top = sales || [];
   const ok = await post({
-    action: "submit_cash", location: LOCATION, userName, date: reportDate,
+    action: "submit_cash", sid: uid(), location: LOCATION, userName, date: reportDate,
     cash: trans.cash, card: trans.card, checks: trans.checks,
     writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
     topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
@@ -560,7 +642,12 @@ $("submitCashBtn").onclick = async () => {
 };
 
 /* ---------- старт ---------- */
-document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => { tap(); if (tasks.length || b.dataset.b === "КАССА") selectBlock(b.dataset.b); });
+const inProgress = () => block !== "КАССА" && !$("checklistView").hidden && (idx > 0 || !!photo || answers.some(Boolean));
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  tap();
+  if (b.dataset.b !== block && inProgress()) { toast("Сначала завершите «" + block + "»: на каждом шаге нужно новое фото"); return; }
+  if (tasks.length || b.dataset.b === "КАССА") selectBlock(b.dataset.b);
+});
 $("retryBtn").onclick = loadTasks;
 (function () {
   const qp = new URLSearchParams(location.search), qd = qp.get("date");
