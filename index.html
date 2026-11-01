@@ -1,266 +1,512 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Терминал Бариста — Coffee ERP</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coffee ERP — терминал бариста</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg:#e6ecee; --surface:#f7f9fa; --ink:#172326; --muted:#5b6d72; --line:#d3dde0;
+    --brew:#5a3a29; --crema:#c98b4f; --good:#1b8a57; --bad:#c23b22; --warn:#b7791f;
+    --font-d:"Bricolage Grotesque",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
+      --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--ink); min-height:100vh;
+    font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  h1,h2,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; }
+  .muted { color:var(--muted); font-size:14px; }
+
+  header { position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--line);
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px; }
+  .wrap { max-width:480px; margin:0 auto; }
+  .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  h1 { font-size:20px; }
+  .who { text-align:right; }
+  .tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; background:var(--bg); padding:4px; border-radius:14px; margin-top:12px; }
+  .tabs button { border:0; background:transparent; color:var(--muted); font:inherit; font-weight:600; font-size:14px;
+    padding:10px 4px; min-height:44px; border-radius:10px; cursor:pointer; }
+  .tabs button[aria-selected=true] { background:var(--brew); color:var(--surface); }
+  .steps { display:flex; gap:4px; margin-top:12px; }
+  .steps i { flex:1; height:5px; border-radius:99px; background:var(--line); transition:background .2s; }
+  .steps i.done { background:var(--crema); } .steps i.now { background:var(--brew); }
+
+  main { max-width:480px; margin:0 auto; padding:16px 16px calc(40px + env(safe-area-inset-bottom,0px)); }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:20px; }
+  .stack > * + * { margin-top:16px; }
+  .center { text-align:center; padding:48px 16px; }
+  .spin { width:40px; height:40px; border:4px solid var(--line); border-top-color:var(--crema); border-radius:50%; margin:0 auto 14px; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration:3s; } }
+
+  button, input, textarea { font:inherit; color:var(--ink); }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-within { outline:3px solid var(--crema); outline-offset:2px; }
+  .btn { width:100%; min-height:52px; border-radius:14px; border:0; font-weight:700; background:var(--brew); color:var(--surface); cursor:pointer; padding:0 16px; }
+  .btn:disabled { background:var(--line); color:var(--muted); cursor:not-allowed; }
+  .btn.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  .navrow { display:grid; grid-template-columns:auto 1fr; gap:10px; }
+  .navrow .btn.ghost { padding:0 20px; }
+
+  .label { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:8px; }
+  .task h2 { font-size:22px; line-height:1.25; margin-bottom:12px; }
+  .instr { background:var(--bg); border-radius:12px; padding:12px 14px; font-size:15px; margin:0 0 18px; }
+  .drop { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-height:120px; border:2px dashed var(--crema);
+    border-radius:14px; padding:14px; cursor:pointer; text-align:center; background:var(--bg); }
+  .drop img { max-height:200px; max-width:100%; border-radius:10px; object-fit:cover; }
+  .drop svg { width:28px; height:28px; stroke:var(--brew); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .drop.has { border-style:solid; border-color:var(--good); }
+  .seg { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .seg button { min-height:48px; border-radius:12px; border:1px solid var(--line); background:var(--bg); font-weight:600; cursor:pointer; }
+  .seg button.ok { border-color:var(--good); background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good); }
+  .seg button.bad { border-color:var(--bad); background:color-mix(in srgb, var(--bad) 16%, transparent); color:var(--bad); }
+  .seg button.warn { border-color:var(--warn); background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); }
+  textarea, input[type=number] { width:100%; padding:12px; border-radius:12px; border:1px solid var(--line); background:var(--bg); }
+  textarea { resize:vertical; min-height:80px; }
+  .field + .field { margin-top:18px; }
+
+  .file { display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; padding:14px; border:1px dashed var(--crema); border-radius:14px; background:var(--bg); cursor:pointer; }
+  .file + .file { margin-top:10px; }
+  .file.ok { border-style:solid; border-color:var(--good); }
+  .file input { display:none; }
+  .file .ico { font-size:26px; }
+  .file b { display:block; font-size:15px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .stat { background:var(--bg); border-radius:14px; padding:12px 14px; }
+  .stat .num { font-size:24px; font-weight:700; display:block; }
+  .total { font-size:clamp(34px,10vw,48px); font-weight:700; line-height:1.05; display:block; }
+  .meter { height:10px; border-radius:99px; background:var(--line); overflow:hidden; margin:8px 0 4px; }
+  .meter i { display:block; height:100%; background:var(--brew); border-radius:99px; transition:width .5s; }
+  .bar { display:grid; grid-template-columns:1fr auto; gap:2px 12px; margin-bottom:10px; font-size:14px; }
+  .bar .t { grid-column:1/-1; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
+  .bar .t i { display:block; height:100%; background:var(--brew); }
+  .notice { border:1px dashed var(--warn); border-radius:12px; padding:10px 14px; margin-bottom:16px; font-size:14px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  .notice button { border:1px solid var(--line); background:var(--surface); border-radius:10px; padding:6px 12px; font-weight:600; cursor:pointer; }
+  .err { color:var(--bad); font-weight:600; }
+  .cup { width:160px; margin:0 auto 8px; display:block; }
+  @media (prefers-reduced-motion: no-preference) { .fill { animation:fill 1.4s cubic-bezier(.2,.8,.2,1); } }
+  @keyframes fill { from { transform:translateY(120px); } to { transform:translateY(0); } }
+</style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-10">
+<body>
 
-  <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-10">
-    <div class="flex justify-between items-center mb-3">
-      <div>
-        <h1 class="text-lg font-bold text-amber-400">☕ Coffee ERP</h1>
-        <p id="userInfo" class="text-xs text-slate-400">Точка: Центральная | Бариста</p>
-      </div>
-      <select id="blockSelector" onchange="selectBlock(this.value)" class="bg-slate-700 text-sm rounded-lg px-3 py-1.5 border border-slate-600 focus:outline-none">
-        <option value="Открытие">🌅 Открытие</option>
-        <option value="Закрытие">🌙 Закрытие</option>
-        <option value="КАССА">💰 Авто-Касса</option>
-      </select>
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <div><h1>☕ Coffee ERP</h1><span class="muted">Терминал бариста</span></div>
+      <div class="who"><span class="muted" id="loc"></span><br><b id="who"></b></div>
     </div>
-    <div id="progressBarContainer" class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
-      <div id="progressBar" class="bg-amber-400 h-full transition-all duration-300" style="width: 0%"></div>
+    <div class="tabs" role="tablist" aria-label="Раздел">
+      <button role="tab" data-b="Открытие" aria-selected="true">Открытие</button>
+      <button role="tab" data-b="Закрытие" aria-selected="false">Закрытие</button>
+      <button role="tab" data-b="КАССА" aria-selected="false">Касса</button>
     </div>
-  </header>
+    <div class="steps" id="steps" aria-hidden="true"></div>
+  </div>
+</header>
 
-  <main class="p-4 max-w-md mx-auto">
-    <div id="loader" class="text-center py-16">
-      <div class="animate-spin h-10 w-10 border-4 border-amber-400 border-t-transparent rounded-full mx-auto mb-4"></div>
-      <p class="text-slate-400 text-sm">Синхронизация...</p>
-    </div>
+<main>
+  <div id="queueNote" class="notice" hidden>
+    <span id="queueText"></span><button id="queueBtn">Отправить</button>
+  </div>
+  <div id="cacheNote" class="notice" hidden><span>Нет связи с сервером — показан сохранённый чек-лист.</span></div>
 
-    <!-- ЭКРАН 1: ЧЕК-ЛИСТ -->
-    <div id="checklistView" class="hidden space-y-4">
-      <div class="flex justify-between items-center text-xs text-slate-400">
-        <span id="stepCounter">Шаг 1 из 5</span>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-lg space-y-4">
-        <h2 id="taskTitle" class="text-xl font-bold leading-snug">Название</h2>
-        <p id="taskInstruction" class="text-sm text-slate-300 bg-slate-900/60 p-3 rounded-xl border border-slate-700/60"></p>
+  <div id="loader" class="center"><div class="spin"></div><p class="muted" id="loaderText">Синхронизация…</p></div>
 
-        <div id="photoBlock" class="space-y-2">
-          <label class="block text-xs font-semibold uppercase text-amber-400">📸 Обязательное фото:</label>
-          <label class="flex flex-col items-center justify-center border-2 border-dashed border-slate-600 rounded-xl p-4 cursor-pointer bg-slate-900/40">
-            <span id="photoPrompt" class="text-sm text-slate-300">Нажми, чтобы открыть камеру</span>
-            <img id="photoPreview" class="hidden max-h-48 rounded-lg mt-2 object-cover" />
-            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handlePhoto(event)">
-          </label>
-        </div>
+  <div id="errorView" class="panel center" hidden>
+    <h2>Не удалось загрузить чек-листы</h2>
+    <p class="muted">Проверьте интернет и попробуйте ещё раз.</p>
+    <button class="btn" id="retryBtn" style="margin-top:12px">Повторить</button>
+  </div>
 
-        <div class="pt-2 space-y-2">
-          <label class="block text-xs text-slate-400">Результат проверки:</label>
-          <div class="grid grid-cols-2 gap-2">
-            <button type="button" id="btnOk" onclick="setStepStatus(false)" class="py-2.5 rounded-xl text-sm border border-emerald-500 bg-emerald-500/20 text-emerald-300">✅ В норме</button>
-            <button type="button" id="btnIncident" onclick="setStepStatus(true)" class="py-2.5 rounded-xl text-sm border border-slate-600 bg-slate-700/40 text-slate-300">⚠️ Поломка</button>
-          </div>
-        </div>
-        <div id="incidentBox" class="hidden space-y-2 pt-2">
-          <label class="text-xs text-rose-400">Опиши проблему:</label>
-          <textarea id="incidentComment" oninput="validateStep()" rows="2" class="w-full bg-slate-900 border border-rose-500/50 rounded-xl p-3 text-sm"></textarea>
-        </div>
-      </div>
-      <button id="nextBtn" onclick="nextStep()" disabled class="w-full py-4 rounded-2xl font-bold text-slate-900 bg-amber-400 disabled:bg-slate-700 transition">Далее ➔</button>
-    </div>
+  <div id="emptyView" class="panel center" hidden>
+    <h2>Для этого блока нет задач</h2>
+    <p class="muted">Добавьте шаги в таблицу чек-листов.</p>
+  </div>
 
-    <!-- ЭКРАН 2: АВТО-КАССА ИЗ CSV -->
-    <div id="cashView" class="hidden bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4">
-      <h2 class="text-xl font-bold text-amber-400">💰 Авто-закрытие смены</h2>
-      
-      <div class="bg-slate-900/50 p-4 rounded-xl border border-dashed border-amber-500/50 space-y-3">
-        <p class="text-xs text-amber-300 uppercase">1. Загрузите файлы из кассы:</p>
-        <label class="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-600 cursor-pointer">
-          <span class="text-2xl">📄</span>
-          <div class="flex-1">
-            <p class="text-sm font-bold text-slate-200" id="transFileName">Транзакции.csv</p>
-            <p class="text-xs text-slate-400">Считает нал, безнал и чеки</p>
-          </div>
-          <input type="file" accept=".csv" class="hidden" onchange="parseCSV(this, 'trans')">
-        </label>
-        <label class="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-600 cursor-pointer">
-          <span class="text-2xl">📈</span>
-          <div class="flex-1">
-            <p class="text-sm font-bold text-slate-200" id="salesFileName">Продажи.csv</p>
-            <p class="text-xs text-slate-400">Ищет Топ-3 хита дня</p>
-          </div>
-          <input type="file" accept=".csv" class="hidden" onchange="parseCSV(this, 'sales')">
+  <!-- ЧЕК-ЛИСТ -->
+  <section id="checklistView" class="stack" hidden>
+    <div class="panel task">
+      <span class="muted" id="stepCounter"></span>
+      <h2 id="taskTitle"></h2>
+      <p class="instr" id="taskInstruction"></p>
+
+      <div class="field" id="photoBlock">
+        <span class="label">Обязательное фото</span>
+        <label class="drop" id="drop">
+          <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          <span id="photoPrompt">Нажмите, чтобы открыть камеру</span>
+          <img id="photoPreview" alt="Превью фото" hidden>
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
         </label>
       </div>
 
-      <div class="space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-slate-400">💵 Наличные (₽):</label><input type="number" id="cashInput" class="w-full mt-1 bg-slate-900 p-3 rounded-xl font-bold text-emerald-400" readonly></div>
-          <div><label class="text-xs text-slate-400">💳 Терминал (₽):</label><input type="number" id="cardInput" class="w-full mt-1 bg-slate-900 p-3 rounded-xl font-bold text-emerald-400" readonly></div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-slate-400">🧾 Чеков:</label><input type="number" id="checksInput" class="w-full mt-1 bg-slate-900 p-3 rounded-xl font-bold" readonly></div>
-          <div><label class="text-xs text-slate-400">🗑 Списания (₽):</label><input type="number" id="writeOffsInput" placeholder="0" class="w-full mt-1 bg-slate-900 p-3 border border-slate-700 rounded-xl font-bold"></div>
+      <div class="field">
+        <span class="label">Результат проверки</span>
+        <div class="seg">
+          <button type="button" id="btnOk">✅ В норме</button>
+          <button type="button" id="btnInc">⚠️ Поломка</button>
         </div>
       </div>
-      <div class="bg-slate-900 p-3 rounded-xl flex justify-between text-sm shadow-inner">
-        <div><p class="text-xs text-slate-400">Итого выручка:</p><p id="totalDisplay" class="text-xl font-bold text-amber-400">0 ₽</p></div>
-        <div class="text-right"><p class="text-xs text-slate-400">Средний чек:</p><p id="avgDisplay" class="text-lg font-bold text-emerald-400">0 ₽</p></div>
+
+      <div id="incidentBox" hidden>
+        <div class="field">
+          <span class="label" style="color:var(--bad)">Что случилось</span>
+          <textarea id="incidentComment" placeholder="Опишите проблему коротко"></textarea>
+        </div>
+        <div class="field">
+          <span class="label">Срочность</span>
+          <div class="seg">
+            <button type="button" id="prLow">Терпит</button>
+            <button type="button" id="prHigh">Критично</button>
+          </div>
+        </div>
       </div>
-      <button id="submitCashBtn" onclick="submitCash()" class="w-full py-4 rounded-2xl font-bold text-slate-900 bg-emerald-400 hover:bg-emerald-300">✅ Отправить кассовый отчет</button>
+    </div>
+    <div class="navrow">
+      <button class="btn ghost" id="backBtn" type="button" hidden>Назад</button>
+      <button class="btn" id="nextBtn" type="button" disabled style="grid-column:2">Далее</button>
+    </div>
+  </section>
+
+  <!-- КАССА -->
+  <section id="cashView" class="stack" hidden>
+    <div class="panel">
+      <span class="label">1. Файлы из кассы</span>
+      <label class="file" id="fTrans">
+        <span class="ico">📄</span>
+        <span><b>Транзакции.csv</b><span class="muted" id="transState">Считает нал, безнал и чеки</span></span>
+        <input type="file" accept=".csv,text/csv" data-t="trans">
+      </label>
+      <label class="file" id="fSales">
+        <span class="ico">📈</span>
+        <span><b>Продажи.csv</b><span class="muted" id="salesState">Ищет хиты дня (необязательно)</span></span>
+        <input type="file" accept=".csv,text/csv" data-t="sales">
+      </label>
     </div>
 
-    <!-- ЭКРАН 3: УСПЕХ -->
-    <div id="doneView" class="hidden text-center py-12 space-y-4">
-      <div class="text-6xl">🎉</div>
-      <h2 class="text-2xl font-bold text-emerald-400">Отправлено!</h2>
-      <button onclick="location.reload()" class="px-6 py-3 bg-slate-800 rounded-xl text-sm">Вернуться на главную</button>
+    <div class="panel">
+      <span class="muted">Итого выручка</span>
+      <span class="num total" id="cTotal">0 ₽</span>
+      <div class="meter" aria-hidden="true"><i id="cMeter" style="width:0"></i></div>
+      <span class="muted" id="cPlan">План 45 000 ₽</span>
+      <div class="grid2" style="margin-top:16px">
+        <div class="stat"><span class="muted">💵 Наличные</span><span class="num" id="cCash">—</span></div>
+        <div class="stat"><span class="muted">💳 Терминал</span><span class="num" id="cCard">—</span></div>
+        <div class="stat"><span class="muted">🧾 Чеков</span><span class="num" id="cChecks">—</span></div>
+        <div class="stat"><span class="muted">Средний чек</span><span class="num" id="cAvg">—</span></div>
+      </div>
+      <div class="field" style="margin-top:16px">
+        <label class="label" for="writeOffs">🗑 Списания за смену, ₽</label>
+        <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0">
+      </div>
     </div>
-  </main>
 
-  <script>
-    // ВАША РАБОЧАЯ ССЫЛКА НА GOOGLE APPS SCRIPT:
-    const API_URL = "https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec";
+    <div class="panel" id="topPanel" hidden>
+      <span class="label">Хиты дня</span>
+      <div id="topList"></div>
+    </div>
 
-    const tg = window.Telegram?.WebApp;
-    if (tg) tg.expand();
-    const userName = tg?.initDataUnsafe?.user?.first_name || "Бариста";
-    document.getElementById("userInfo").innerText = `📍 Кофейня №1 | 👤 ${userName}`;
+    <button class="btn" id="submitCashBtn" type="button" disabled>Загрузите «Транзакции.csv»</button>
+  </section>
 
-    let allTasks = [], currentTasks = [], currentIndex = 0, answers = [];
-    let currentPhotoBase64 = "", isCurrentIncident = false, topItemsData = "";
+  <!-- ГОТОВО -->
+  <section id="doneView" class="center" hidden>
+    <svg class="cup" viewBox="0 0 200 190" aria-hidden="true">
+      <defs><clipPath id="inside2"><path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z"/></clipPath></defs>
+      <path d="M150 62h14c18 0 18 40 0 40h-16" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/>
+      <g clip-path="url(#inside2)">
+        <rect width="200" height="190" fill="var(--bg)"/>
+        <g class="fill"><rect x="0" y="40" width="200" height="200" fill="var(--brew)"/><rect x="0" y="40" width="200" height="9" fill="var(--crema)"/></g>
+      </g>
+      <path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M20 176h140" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <h2 id="doneTitle">Отправлено!</h2>
+    <p class="muted" id="doneText"></p>
+    <button class="btn ghost" onclick="location.reload()" style="max-width:260px;margin-top:12px">На главную</button>
+  </section>
+</main>
 
-    window.onload = async () => {
-      try {
-        const res = await fetch(`${API_URL}?action=get_checklists`);
-        const data = await res.json();
-        allTasks = data.tasks || [];
-      } catch (e) { allTasks = []; }
-      selectBlock("Открытие");
-    };
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec";
+const LOCATION = "Кофейня №1";
+const PLAN = 45000;
 
-    function selectBlock(blockName) {
-      document.getElementById("loader").classList.add("hidden");
-      document.getElementById("doneView").classList.add("hidden");
-      if (blockName === "КАССА") {
-        document.getElementById("checklistView").classList.add("hidden");
-        document.getElementById("progressBarContainer").classList.add("hidden");
-        document.getElementById("cashView").classList.remove("hidden");
-        return;
-      }
-      document.getElementById("cashView").classList.add("hidden");
-      document.getElementById("progressBarContainer").classList.remove("hidden");
-      currentTasks = allTasks.filter(t => t.block === blockName);
-      currentIndex = 0; answers = [];
-      if(currentTasks.length > 0) renderStep();
+const $ = (id) => document.getElementById(id);
+const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " ₽";
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+const userName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || "Бариста";
+const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {} };
+$("loc").textContent = LOCATION; $("who").textContent = userName;
+
+let tasks = [], cur = [], idx = 0, answers = [];
+let block = "Открытие", photo = "", incident = false, priority = "Терпит";
+let trans = null, sales = null;
+
+const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "cashView", "doneView"];
+function show(v) { VIEWS.forEach((x) => $(x).hidden = x !== v); }
+
+/* ---------- загрузка чек-листов ---------- */
+async function loadTasks() {
+  show("loader"); $("cacheNote").hidden = true;
+  try {
+    const d = await (await fetch(API_URL + "?action=get_checklists")).json();
+    tasks = d.tasks || [];
+    try { localStorage.setItem("erp_tasks", JSON.stringify(tasks)); } catch (e) {}
+  } catch (e) {
+    try { tasks = JSON.parse(localStorage.getItem("erp_tasks") || "[]"); } catch (_) { tasks = []; }
+    if (!tasks.length) { show("errorView"); return; }
+    $("cacheNote").hidden = false;
+  }
+  selectBlock(block);
+}
+
+function selectBlock(b) {
+  block = b;
+  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x.dataset.b === b));
+  if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
+  cur = tasks.filter((t) => t.block === b); idx = 0; answers = [];
+  if (!cur.length) { $("steps").hidden = true; show("emptyView"); return; }
+  $("steps").hidden = false; renderStep();
+}
+
+/* ---------- шаги чек-листа ---------- */
+function drawSteps() {
+  $("steps").innerHTML = cur.map((_, i) => '<i class="' + (i < idx ? "done" : i === idx ? "now" : "") + '"></i>').join("");
+}
+
+function renderStep() {
+  show("checklistView");
+  const t = cur[idx], a = answers[idx] || {};
+  $("stepCounter").textContent = "Шаг " + (idx + 1) + " из " + cur.length;
+  $("taskTitle").textContent = t.title || "";
+  $("taskInstruction").textContent = t.instruction || "";
+  $("taskInstruction").hidden = !t.instruction;
+  $("photoBlock").hidden = !t.mediaRequired;
+  photo = a.photo_base64 || ""; $("cameraInput").value = ""; setPhotoUI();
+  $("incidentComment").value = a.comment || "";
+  setPriority(a.priority || "Терпит");
+  setStatus(!!a.isIncident);
+  $("backBtn").hidden = idx === 0;
+  $("nextBtn").textContent = idx === cur.length - 1 ? "Отправить" : "Далее";
+  drawSteps(); window.scrollTo(0, 0);
+}
+
+function setPhotoUI() {
+  $("photoPreview").hidden = !photo;
+  if (photo) $("photoPreview").src = photo;
+  $("camIco").style.display = photo ? "none" : "";
+  $("drop").classList.toggle("has", !!photo);
+  $("photoPrompt").textContent = photo ? "Фото прикреплено — нажмите, чтобы переснять" : "Нажмите, чтобы открыть камеру";
+}
+
+function setStatus(isInc) {
+  incident = isInc;
+  $("incidentBox").hidden = !isInc;
+  $("btnOk").className = !isInc ? "ok" : "";
+  $("btnInc").className = isInc ? "bad" : "";
+  validate();
+}
+function setPriority(p) {
+  priority = p;
+  $("prLow").className = p === "Терпит" ? "warn" : "";
+  $("prHigh").className = p === "Критично" ? "bad" : "";
+}
+
+function validate() {
+  const t = cur[idx]; if (!t) return;
+  const photoOk = !t.mediaRequired || !!photo;
+  const textOk = !incident || $("incidentComment").value.trim().length > 2;
+  $("nextBtn").disabled = !(photoOk && textOk);
+}
+
+$("cameraInput").addEventListener("change", (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {
+    const scale = img.width > 800 ? 800 / img.width : 1, c = document.createElement("canvas");
+    c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    photo = c.toDataURL("image/jpeg", 0.6); URL.revokeObjectURL(url);
+    setPhotoUI(); validate();
+  };
+  img.onerror = () => URL.revokeObjectURL(url);
+  img.src = url;
+});
+$("btnOk").onclick = () => { tap(); setStatus(false); };
+$("btnInc").onclick = () => { tap(); setStatus(true); };
+$("prLow").onclick = () => setPriority("Терпит");
+$("prHigh").onclick = () => setPriority("Критично");
+$("incidentComment").addEventListener("input", validate);
+
+function saveAnswer() {
+  const t = cur[idx];
+  answers[idx] = {
+    id: t.id, title: t.title, isIncident: incident,
+    comment: incident ? $("incidentComment").value.trim() : "",
+    priority: incident ? priority : "",
+    photo_base64: photo, responsible: t.responsible
+  };
+}
+$("backBtn").onclick = () => { saveAnswer(); idx--; renderStep(); };
+$("nextBtn").onclick = async () => {
+  tap(); saveAnswer();
+  if (idx < cur.length - 1) { idx++; renderStep(); return; }
+  $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
+  const ok = await post({ action: "submit_checklist", location: LOCATION, userName, block, items: answers });
+  const n = answers.filter((a) => a && a.isIncident).length;
+  finish(ok, n ? "Передано проблем: " + n : "Все пункты в норме");
+};
+
+/* ---------- отправка с очередью на случай offline ---------- */
+function getQ() { try { return JSON.parse(localStorage.getItem("erp_queue") || "[]"); } catch (e) { return []; } }
+function setQ(q) { try { localStorage.setItem("erp_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
+async function sendRaw(p) { await fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(p) }); }
+async function post(p) {
+  try { await sendRaw(p); return true; }
+  catch (e) {
+    const q = getQ(); q.push(p);
+    if (!setQ(q)) { // нет места — сохраняем без фото
+      q.pop(); const light = JSON.parse(JSON.stringify(p));
+      if (light.items) light.items.forEach((i) => i.photo_base64 = "");
+      q.push(light); setQ(q);
     }
+    queueUI(); return false;
+  }
+}
+async function flush() {
+  const q = getQ(); if (!q.length) return;
+  const rest = [];
+  for (const p of q) { try { await sendRaw(p); } catch (e) { rest.push(p); } }
+  setQ(rest); queueUI();
+}
+function queueUI() {
+  const n = getQ().length;
+  $("queueNote").hidden = !n;
+  $("queueText").textContent = "Не отправлено отчётов: " + n;
+}
+$("queueBtn").onclick = flush;
+window.addEventListener("online", flush);
 
-    function renderStep() {
-      document.getElementById("checklistView").classList.remove("hidden");
-      const task = currentTasks[currentIndex];
-      document.getElementById("stepCounter").innerText = `Шаг ${currentIndex + 1} из ${currentTasks.length}`;
-      document.getElementById("progressBar").style.width = `${(currentIndex / currentTasks.length) * 100}%`;
-      document.getElementById("taskTitle").innerText = task.title;
-      document.getElementById("taskInstruction").innerText = task.instruction;
-      document.getElementById("photoBlock").classList.toggle("hidden", !task.mediaRequired);
-      
-      currentPhotoBase64 = ""; document.getElementById("incidentComment").value = "";
-      document.getElementById("photoPreview").classList.add("hidden");
-      document.getElementById("photoPrompt").innerText = "Открыть камеру";
-      setStepStatus(false);
-      document.getElementById("nextBtn").innerText = (currentIndex === currentTasks.length - 1) ? "✅ Отправить" : "Далее ➔";
+function finish(ok, text) {
+  $("steps").hidden = true; show("doneView");
+  $("doneTitle").textContent = ok ? "Отправлено!" : "Сохранено на телефоне";
+  $("doneText").textContent = ok ? text : "Нет связи — отчёт уйдёт автоматически, когда появится интернет.";
+}
+
+/* ---------- касса: CSV ---------- */
+async function readText(file) {
+  const buf = await file.arrayBuffer();
+  let s;
+  try { s = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+  catch (e) { s = new TextDecoder("windows-1251").decode(buf); }
+  return s.replace(/^\uFEFF/, "");
+}
+function parseCsv(text) {
+  const first = text.split("\n")[0] || "";
+  const d = first.split(";").length >= first.split(",").length ? ";" : ",";
+  return text.split(/\r?\n/).filter((l) => l.trim()).map((l) => {
+    const out = []; let c = "", q = false;
+    for (const ch of l) {
+      if (ch === '"') q = !q;
+      else if (ch === d && !q) { out.push(c); c = ""; }
+      else c += ch;
     }
+    out.push(c); return out.map((s) => s.trim());
+  });
+}
+const num = (s) => parseFloat(String(s || "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
-    function setStepStatus(isInc) {
-      isCurrentIncident = isInc;
-      document.getElementById("incidentBox").classList.toggle("hidden", !isInc);
-      document.getElementById("btnOk").className = !isInc ? "py-2.5 rounded-xl border border-emerald-500 bg-emerald-500/20 text-emerald-300" : "py-2.5 rounded-xl border border-slate-600 bg-slate-700/40 text-slate-300";
-      document.getElementById("btnIncident").className = isInc ? "py-2.5 rounded-xl border border-rose-500 bg-rose-500/20 text-rose-300" : "py-2.5 rounded-xl border border-slate-600 bg-slate-700/40 text-slate-300";
-      validateStep();
-    }
+function calcTrans(rows) {
+  let cash = 0, card = 0, checks = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i]; if (r.length < 4) continue;
+    const method = r[2] || "", amt = num(r[3]);
+    if (/налич/i.test(method)) cash += amt;
+    else if (/мобил|карт|безнал/i.test(method)) card += amt;
+    if (amt > 0) checks++;
+  }
+  if (!checks && !cash && !card) throw new Error("empty");
+  return { cash: Math.round(cash), card: Math.round(card), checks };
+}
+function calcSales(rows) {
+  const head = rows[0] || [];
+  const qtyCol = head.findIndex((h) => /кол/i.test(h));
+  let sumCol = head.findIndex((h) => /сумм|выруч/i.test(h)); if (sumCol < 0) sumCol = 8;
+  const map = {};
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i], name = (r[0] || "").trim();
+    if (!name || name === "nan") continue;
+    const sum = num(r[sumCol]), qty = qtyCol >= 0 ? num(r[qtyCol]) : 1;
+    if (sum <= 0 && qty <= 0) continue;
+    const m = map[name] || (map[name] = { name, qty: 0, sum: 0 });
+    m.qty += qty; m.sum += sum;
+  }
+  const list = Object.values(map).map((x) => ({ name: x.name, qty: Math.round(x.qty), sum: Math.round(x.sum) }));
+  if (!list.length) throw new Error("empty");
+  list.sort((a, b) => qtyCol >= 0 ? b.qty - a.qty : b.sum - a.sum);
+  return list.slice(0, 8);
+}
 
-    function handlePhoto(e) {
-      const file = e.target.files[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        const img = new Image();
-        img.onload = function() {
-          const cvs = document.createElement("canvas");
-          const scale = img.width > 800 ? 800 / img.width : 1;
-          cvs.width = Math.round(img.width * scale); cvs.height = Math.round(img.height * scale);
-          cvs.getContext("2d").drawImage(img, 0, 0, cvs.width, cvs.height);
-          currentPhotoBase64 = cvs.toDataURL("image/jpeg", 0.6);
-          document.getElementById("photoPreview").src = currentPhotoBase64;
-          document.getElementById("photoPreview").classList.remove("hidden");
-          document.getElementById("photoPrompt").innerText = "Фото прикреплено";
-          validateStep();
-        }; img.src = evt.target.result;
-      }; reader.readAsDataURL(file);
-    }
+document.querySelectorAll('.file input').forEach((inp) => inp.addEventListener("change", async () => {
+  const f = inp.files[0]; if (!f) return;
+  const type = inp.dataset.t, box = $(type === "trans" ? "fTrans" : "fSales"), st = $(type === "trans" ? "transState" : "salesState");
+  try {
+    const rows = parseCsv(await readText(f));
+    if (type === "trans") trans = calcTrans(rows); else sales = calcSales(rows);
+    box.classList.add("ok"); st.textContent = "✓ " + f.name;
+  } catch (e) {
+    if (type === "trans") trans = null; else sales = null;
+    box.classList.remove("ok"); st.textContent = "Не удалось прочитать файл — проверьте выгрузку";
+  }
+  renderCash();
+}));
 
-    function validateStep() {
-      const t = currentTasks[currentIndex];
-      document.getElementById("nextBtn").disabled = !((!t.mediaRequired || currentPhotoBase64) && (!isCurrentIncident || document.getElementById("incidentComment").value.length > 2));
-    }
+function renderCash() {
+  const t = trans, total = t ? t.cash + t.card : 0, pct = Math.round(total / PLAN * 100);
+  $("cTotal").textContent = rub(total);
+  $("cMeter").style.width = Math.min(pct, 100) + "%";
+  $("cPlan").textContent = t ? "План " + rub(PLAN) + " · выполнено " + pct + "%" : "План " + rub(PLAN);
+  $("cCash").textContent = t ? rub(t.cash) : "—";
+  $("cCard").textContent = t ? rub(t.card) : "—";
+  $("cChecks").textContent = t ? t.checks : "—";
+  $("cAvg").textContent = t && t.checks ? rub(Math.round(total / t.checks)) : "—";
+  const top = sales ? sales.slice(0, 3) : [];
+  $("topPanel").hidden = !top.length;
+  const m = top.length ? (top[0].qty || 1) : 1;
+  $("topList").innerHTML = top.map((x) => '<div class="bar"><b></b><span>' + x.qty + ' шт.' + (x.sum ? ' · ' + rub(x.sum) : '') + '</span><div class="t"><i style="width:' + (x.qty / m * 100) + '%"></i></div></div>').join("");
+  $("topList").querySelectorAll("b").forEach((b, i) => b.textContent = top[i].name);
+  $("submitCashBtn").disabled = !t;
+  $("submitCashBtn").textContent = t ? "Отправить кассовый отчёт" : "Загрузите «Транзакции.csv»";
+}
 
-    async function nextStep() {
-      answers.push({ id: currentTasks[currentIndex].id, title: currentTasks[currentIndex].title, isIncident: isCurrentIncident, comment: document.getElementById("incidentComment").value, photo_base64: currentPhotoBase64, responsible: currentTasks[currentIndex].responsible });
-      if (currentIndex < currentTasks.length - 1) { currentIndex++; renderStep(); } 
-      else {
-        document.getElementById("checklistView").classList.add("hidden"); document.getElementById("loader").classList.remove("hidden");
-        fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ action: "submit_checklist", location: "Кофейня №1", userName: userName, block: document.getElementById("blockSelector").value, items: answers }) });
-        document.getElementById("progressBar").style.width = "100%";
-        document.getElementById("loader").classList.add("hidden"); document.getElementById("doneView").classList.remove("hidden");
-      }
-    }
+$("submitCashBtn").onclick = async () => {
+  if (!trans) return;
+  tap();
+  $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
+  const top = sales || [];
+  const ok = await post({
+    action: "submit_cash", location: LOCATION, userName,
+    cash: trans.cash, card: trans.card, checks: trans.checks,
+    writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
+    topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
+    products: top
+  });
+  finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks);
+};
 
-    // --- ЛОГИКА CSV ---
-    function parseCSV(input, type) {
-      const file = input.files[0]; if (!file) return;
-      if (type === 'trans') document.getElementById('transFileName').innerText = '✅ Транзакции.csv (Готово)';
-      if (type === 'sales') document.getElementById('salesFileName').innerText = '✅ Продажи.csv (Готово)';
-
-      const reader = new FileReader();
-      reader.readAsText(file, 'windows-1251'); 
-      reader.onload = function(e) {
-        const rows = e.target.result.split('\n').map(r => r.split(';'));
-        if (type === 'trans') {
-          let cash = 0, card = 0, checks = 0;
-          for (let i = 1; i < rows.length; i++) {
-            if (rows[i].length < 4) continue;
-            let method = rows[i][2] || "", amt = parseFloat((rows[i][3] || "0").replace(',', '.'));
-            if (method.includes("Наличный")) cash += amt; else if (method.includes("Мобильный")||method.includes("Карта")||method.includes("Безнал")) card += amt;
-            if (amt > 0) checks++;
-          }
-          document.getElementById("cashInput").value = Math.round(cash);
-          document.getElementById("cardInput").value = Math.round(card);
-          document.getElementById("checksInput").value = checks;
-          const total = cash + card;
-          document.getElementById("totalDisplay").innerText = `${total} ₽`;
-          document.getElementById("avgDisplay").innerText = `${checks > 0 ? Math.round(total/checks) : 0} ₽`;
-        }
-        if (type === 'sales') {
-          let salesMap = {};
-          for (let i = 1; i < rows.length; i++) {
-            if (rows[i].length < 8) continue;
-            let item = (rows[i][0] || "").trim(), amt = parseFloat((rows[i][8] || "0").replace(',', '.'));
-            if (item && amt > 0 && item !== "nan") salesMap[item] = (salesMap[item] || 0) + amt;
-          }
-          topItemsData = Object.entries(salesMap).sort((a,b)=>b[1]-a[1]).slice(0,3).map((v,i)=>`${i+1}. ${v[0]} (${Math.round(v[1])} ₽)`).join('\n');
-        }
-      };
-    }
-
-    async function submitCash() {
-      document.getElementById("submitCashBtn").disabled = true;
-      document.getElementById("submitCashBtn").innerText = "Анализ и отправка...";
-      fetch(API_URL, {
-        method: "POST", mode: "no-cors",
-        body: JSON.stringify({
-          action: "submit_cash", location: "Кофейня №1", userName: userName,
-          cash: document.getElementById("cashInput").value, card: document.getElementById("cardInput").value,
-          checks: document.getElementById("checksInput").value, writeOffs: document.getElementById("writeOffsInput").value,
-          topItems: topItemsData
-        })
-      });
-      document.getElementById("cashView").classList.add("hidden"); document.getElementById("doneView").classList.remove("hidden");
-    }
-  </script>
+/* ---------- старт ---------- */
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => { tap(); if (tasks.length || b.dataset.b === "КАССА") selectBlock(b.dataset.b); });
+$("retryBtn").onclick = loadTasks;
+queueUI(); flush(); loadTasks();
+</script>
 </body>
 </html>
