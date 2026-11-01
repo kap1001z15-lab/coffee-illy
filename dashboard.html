@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Coffee ERP — дашборд руководителя</title>
-<script>try{var t=localStorage.getItem('erp_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<title>Coffee_illy — дашборд руководителя</title>
+<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <style>
@@ -142,7 +142,7 @@
 <header class="nav"><div class="in">
   <div class="logo">
     <svg viewBox="0 0 32 32" fill="none" stroke="var(--brew)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>
-    <div><b>Coffee ERP</b><span class="muted">Кофейня №1</span></div>
+    <div><b>Coffee_illy</b><span class="muted">Кофейня №1</span></div>
   </div>
   <nav class="pills" aria-label="Разделы"><a class="on" href="dashboard.html" aria-current="page">Дашборд</a><a href="report.html">Отчёты</a><a href="index.html">Терминал</a></nav>
   <div class="dp">
@@ -403,7 +403,7 @@ function paintTheme() { const d = curTheme() === 'dark'; $('theme').textContent 
 $('theme').onclick = () => {
   const n = curTheme() === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', n);
-  try { localStorage.setItem('erp_theme', n); } catch (e) {}
+  try { localStorage.setItem('coffee_illy_theme', n); } catch (e) {}
   paintTheme();
 };
 paintTheme();
