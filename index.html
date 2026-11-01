@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2e1b11">
-<script>try{var t=localStorage.getItem('erp_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<title>Coffee ERP — терминал бариста</title>
+<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<title>Coffee_illy — терминал бариста</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -116,7 +116,7 @@
   <div class="wrap">
     <div class="brand">
       <div>
-        <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Coffee ERP</h1>
+        <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Coffee_illy</h1>
         <span class="sub" id="today"></span>
       </div>
       <div class="who" style="display:flex;gap:10px;align-items:center">
@@ -147,7 +147,7 @@
 
   <div id="emptyView" class="panel center" hidden>
     <h2>Для этого блока нет задач</h2>
-    <p class="muted">Добавьте шаги на лист <b>ERP_Checklists</b> в Google Таблице.</p>
+    <p class="muted">Добавьте шаги на лист <b>Coffee_illy_Checklists</b> в Google Таблице.</p>
   </div>
 
   <section id="checklistView" class="stack" hidden>
@@ -264,7 +264,7 @@
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec";
 const LOCATION = "Кофейня №1";
-const PLAN = 45000;
+const PLAN = 2500;
 
 const $ = (id) => document.getElementById(id);
 const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " ₽";
@@ -276,7 +276,7 @@ const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e)
 $("loc").textContent = LOCATION; $("who").textContent = userName;
 const curTheme = () => document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 function paintTheme() { const d = curTheme() === "dark"; $("theme").textContent = d ? "☀️" : "🌙"; $("theme").setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема"); }
-$("theme").onclick = () => { const n = curTheme() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("erp_theme", n); } catch (e) {} paintTheme(); };
+$("theme").onclick = () => { const n = curTheme() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {} paintTheme(); };
 paintTheme();
 $("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
 
@@ -300,7 +300,7 @@ const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "cashView", 
 function show(v) { VIEWS.forEach((x) => $(x).hidden = x !== v); }
 
 /* отметки «сегодня уже сдано» */
-const doneKey = (b) => "erp_done_" + isoToday() + "_" + b;
+const doneKey = (b) => "coffee_illy_done_" + isoToday() + "_" + b;
 const isDone = (b) => { try { return !!localStorage.getItem(doneKey(b)); } catch (e) { return false; } };
 const markDone = (b) => { try { localStorage.setItem(doneKey(b), "1"); } catch (e) {} };
 function drawTabs() {
@@ -317,9 +317,9 @@ async function loadTasks() {
     const d = await (await fetch(API_URL + "?action=get_checklists")).json();
     if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
     tasks = d.tasks;
-    try { localStorage.setItem("erp_tasks", JSON.stringify(tasks)); } catch (e) {}
+    try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
   } catch (e) {
-    try { tasks = JSON.parse(localStorage.getItem("erp_tasks") || "[]"); } catch (_) { tasks = []; }
+    try { tasks = JSON.parse(localStorage.getItem("coffee_illy_tasks") || "[]"); } catch (_) { tasks = []; }
     if (!tasks.length && block !== "КАССА") { show("errorView"); return; }
     if (tasks.length) $("cacheNote").hidden = false;
   }
@@ -421,8 +421,8 @@ $("nextBtn").onclick = async () => {
 };
 
 /* ---------- отправка с очередью на случай offline ---------- */
-function getQ() { try { return JSON.parse(localStorage.getItem("erp_queue") || "[]"); } catch (e) { return []; } }
-function setQ(q) { try { localStorage.setItem("erp_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
+function getQ() { try { return JSON.parse(localStorage.getItem("coffee_illy_queue") || "[]"); } catch (e) { return []; } }
+function setQ(q) { try { localStorage.setItem("coffee_illy_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
 async function sendRaw(p) { await fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(p) }); }
 async function post(p) {
   try { await sendRaw(p); return true; }
