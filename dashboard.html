@@ -1,436 +1,109 @@
 <!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Coffee_illy — дашборд руководителя</title>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Кофейня — дашборд</title>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#e6ecee; --surface:#f7f9fa; --ink:#172326; --muted:#5b6d72; --line:#d3dde0;
-    --brew:#5a3a29; --crema:#c98b4f; --good:#1b8a57; --bad:#c23b22; --warn:#b7791f;
-    --espresso:#2e1b11; --cream:#f6ece2;
-    --shadow:0 1px 2px rgba(23,35,38,.05), 0 16px 32px -20px rgba(23,35,38,.4);
-    --font-d:"Bricolage Grotesque",system-ui,sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
-      --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d;
-      --shadow:0 1px 0 rgba(255,255,255,.03), 0 16px 32px -20px rgba(0,0,0,.75); }
-  }
-  :root { color-scheme:light; }
-  :root[data-theme="dark"] { color-scheme:dark; --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
-    --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d;
-    --shadow:0 1px 0 rgba(255,255,255,.03), 0 16px 32px -20px rgba(0,0,0,.75); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme:dark; } }
-  .imp { display:inline-flex; align-items:center; height:40px; text-decoration:none; color:var(--ink); white-space:nowrap; }
-  .srow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:10px 0; border-top:1px solid var(--line); font-size:14px; }
-  .hint a { color:#f6d7ad; }
-  code { background:var(--bg); padding:1px 6px; border-radius:6px; font-size:13px; }
-  * { box-sizing:border-box; }
-  [hidden] { display:none !important; }
-  body { margin:0; color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:radial-gradient(1100px 420px at 50% -160px, color-mix(in srgb, var(--crema) 20%, transparent), transparent), var(--bg);
-    padding-bottom:env(safe-area-inset-bottom,0); }
-  h1,h2,h3,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
-  h2 { font-size:18px; margin-bottom:14px; }
-  .muted { color:var(--muted); font-size:14px; }
-  a { color:var(--brew); font-weight:600; }
-  button, input { font:inherit; color:var(--ink); }
-  button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline:3px solid var(--crema); outline-offset:2px; }
-
-  .nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top,0);
-    background:color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
-  .nav .in { max-width:1120px; margin:0 auto; padding:10px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:space-between; }
-  .logo { display:flex; align-items:center; gap:10px; }
-  .logo svg { width:30px; height:30px; }
-  .logo b { font-family:var(--font-d); font-size:18px; display:block; line-height:1.1; }
-  .pills { display:flex; gap:4px; background:var(--bg); padding:4px; border-radius:14px; }
-  .pills a { text-decoration:none; color:var(--muted); font-size:14px; padding:7px 14px; border-radius:10px; }
-  .pills a.on { background:var(--brew); color:var(--surface); }
-  .dp { display:flex; gap:6px; align-items:center; }
-  .dp button, .dp input { height:40px; border-radius:12px; border:1px solid var(--line); background:var(--surface); padding:0 12px; font-weight:600; cursor:pointer; }
-  .dp button { min-width:40px; }
-
-  main { max-width:1120px; margin:0 auto; padding:20px 16px 48px; transition:opacity .2s; }
-  main.loading { opacity:.55; }
-  .alert { border:1px solid var(--bad); background:color-mix(in srgb, var(--bad) 10%, var(--surface)); border-radius:16px; padding:14px 16px; margin-bottom:16px; }
-  .alert code { background:var(--bg); padding:1px 6px; border-radius:6px; }
-  .panel { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:22px; box-shadow:var(--shadow); }
-  .grid { display:grid; gap:16px; margin-top:16px; }
-  .g4 { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
-  .g21 { grid-template-columns:minmax(0,2fr) minmax(0,1fr); } .g11 { grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); }
-  @media (max-width:820px) { .g21 { grid-template-columns:1fr; } }
-
-  .hero { color:var(--cream); border:0; position:relative; overflow:hidden;
-    background:radial-gradient(600px 300px at 90% -20%, rgba(224,167,106,.35), transparent), linear-gradient(135deg,#2e1b11,#5a3a29 65%,#7a4e32);
-    display:grid; grid-template-columns:minmax(170px,240px) 1fr; gap:28px; align-items:center; }
-  @media (max-width:640px) { .hero { grid-template-columns:1fr; justify-items:center; text-align:center; } .hero > div:last-child { width:100%; } }
-  .hero .muted { color:rgba(246,236,226,.7); }
-  .cup { width:100%; max-width:230px; }
-  .big { font-size:clamp(40px,8vw,68px); font-weight:700; line-height:1.02; display:block; margin:2px 0 8px; }
-  .chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
-  @media (max-width:640px) { .chips { justify-content:center; } }
-  .chip { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:4px 10px; border-radius:99px; background:rgba(255,255,255,.14); }
-  .chip.up { background:rgba(76,195,138,.22); color:#7fe0ac; } .chip.down { background:rgba(255,122,95,.22); color:#ffae9b; }
-  .plan { height:10px; border-radius:99px; background:rgba(255,255,255,.16); overflow:hidden; }
-  .plan i { display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#e0a76a,#f6d7ad); transition:width 1.2s cubic-bezier(.2,.8,.2,1); }
-  .plan-l { display:flex; justify-content:space-between; font-size:13px; margin-top:6px; color:rgba(246,236,226,.75); }
-  .hint { margin-top:14px; font-size:14px; color:rgba(246,236,226,.8); }
-
-  .kpi .num { font-size:30px; font-weight:700; display:block; margin:2px 0; }
-  .kpi .sub { font-size:13px; color:var(--muted); }
-  .tag { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:99px; }
-  .tag.ok { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); }
-  .tag.no { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
-  .tag.mid { background:color-mix(in srgb, var(--warn) 20%, transparent); color:var(--warn); }
-
-  #chart svg { width:100%; height:auto; display:block; }
-  #chart text { fill:var(--muted); font-size:11px; font-family:system-ui,sans-serif; }
-  #chart .b { fill:var(--line); cursor:pointer; transition:fill .15s; }
-  #chart .b.met { fill:color-mix(in srgb, var(--good) 55%, var(--line)); }
-  #chart .b.sel { fill:var(--brew); }
-  #chart .b:hover, #chart .b:focus { opacity:.75; outline:none; }
-  .readout { min-height:24px; margin-top:8px; font-weight:600; }
-  .empty { padding:28px 8px; text-align:center; color:var(--muted); }
-  .empty b { display:block; color:var(--ink); font-family:var(--font-d); font-size:18px; margin-bottom:4px; }
-
-  .donut { display:grid; grid-template-columns:130px 1fr; gap:18px; align-items:center; }
-  .donut svg { width:130px; height:130px; transform:rotate(-90deg); }
-  .leg div { display:flex; align-items:center; gap:8px; font-size:14px; margin:6px 0; }
-  .leg i { width:12px; height:12px; border-radius:4px; display:inline-block; }
-
-  .rank { display:grid; grid-template-columns:28px 1fr auto; gap:2px 12px; margin-bottom:14px; align-items:center; }
-  .rank .n { width:28px; height:28px; border-radius:9px; background:var(--bg); display:grid; place-items:center; font-weight:700; font-size:13px; }
-  .rank .t { grid-column:2/-1; height:8px; border-radius:99px; background:var(--line); overflow:hidden; }
-  .rank .t i { display:block; height:100%; background:linear-gradient(90deg,var(--crema),var(--brew)); border-radius:99px; }
-
-  .wk { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:18px; }
-  .wk .num { font-size:26px; font-weight:700; display:block; }
-  .dchip { font-size:12px; font-weight:700; padding:2px 8px; border-radius:99px; margin-left:4px; }
-  .dchip.up { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); }
-  .dchip.down { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
-
-  .scrollx { overflow-x:auto; }
-  .tbl { width:100%; border-collapse:collapse; font-size:14px; white-space:nowrap; font-variant-numeric:tabular-nums; }
-  .tbl th, .tbl td { text-align:right; padding:10px 12px; border-bottom:1px solid var(--line); }
-  .tbl th:first-child, .tbl td:first-child { text-align:left; }
-  .tbl th { color:var(--muted); font-weight:600; }
-  .tbl tbody tr { cursor:pointer; } .tbl tbody tr:hover { background:var(--bg); }
-  .tbl tr.sel td:first-child { box-shadow:inset 3px 0 var(--brew); }
-
-  .ih { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
-  .seg { display:flex; gap:4px; background:var(--bg); padding:4px; border-radius:12px; }
-  .seg button { border:0; background:transparent; padding:6px 14px; border-radius:9px; font-weight:600; font-size:14px; cursor:pointer; color:var(--muted); }
-  .seg button.on { background:var(--surface); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.15); }
-  .inc { display:grid; grid-template-columns:5px 1fr auto; gap:14px; padding:14px 0; border-top:1px solid var(--line); align-items:start; }
-  .inc:first-child { border-top:0; }
-  .inc .rail { align-self:stretch; border-radius:99px; background:var(--warn); }
-  .inc .rail.hi { background:var(--bad); } .inc .rail.res { background:var(--good); }
-  .inc .meta { font-size:13px; color:var(--muted); margin-top:2px; }
-  .inc .act { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
-  .btn-s { border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:6px 12px; font-weight:600; font-size:13px; cursor:pointer; }
-  .btn-s:hover { border-color:var(--good); color:var(--good); }
-
-  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:99px; font-size:14px; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); z-index:50; }
-  @media (prefers-reduced-motion: no-preference) { #liquid { transition:transform 1.4s cubic-bezier(.2,.8,.2,1); } }
-</style>
-</head>
-<body>
-<header class="nav"><div class="in">
-  <div class="logo">
-    <svg viewBox="0 0 32 32" fill="none" stroke="var(--brew)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>
-    <div><b>Coffee_illy</b><span class="muted">Кофейня №1</span></div>
-  </div>
-  <nav class="pills" aria-label="Разделы"><a class="on" href="dashboard.html" aria-current="page">Дашборд</a><a href="report.html">Отчёты</a><a href="index.html">Терминал</a></nav>
-  <div class="dp">
-    <button id="prev" aria-label="Предыдущий день">‹</button>
-    <input type="date" id="pick" aria-label="Дата">
-    <button id="next" aria-label="Следующий день">›</button>
-    <button id="reload" aria-label="Обновить">↻</button>
-    <a class="btn-s imp" id="imp" href="index.html?tab=cash">＋ Загрузить отчёт</a>
-    <button id="theme" type="button" aria-label="Сменить тему">🌙</button>
-  </div>
-</div></header>
-
+:root{--bg:#f1ece6;--sf:#fff;--ink:#222;--mu:#7a6f66;--ln:#e4dcd3;--br:#5a3a29;--cr:#c98b4f;--ok:#1b8a57;--no:#c23b22;color-scheme:light}
+:root[data-theme=dark]{--bg:#161211;--sf:#201a18;--ink:#eee6df;--mu:#a2958b;--ln:#33292a;--br:#c98b4f;--cr:#e0a76a;--ok:#4cc38a;--no:#ff7a5f;color-scheme:dark}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#161211;--sf:#201a18;--ink:#eee6df;--mu:#a2958b;--ln:#33292a;--br:#c98b4f;--cr:#e0a76a;--ok:#4cc38a;--no:#ff7a5f;color-scheme:dark}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom,0)}
+.nav{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;max-width:760px;margin:0 auto;padding:calc(12px + env(safe-area-inset-top,0)) 16px 8px}
+.nav b{display:flex;align-items:center;gap:8px;font-size:18px}.nav svg{width:26px;height:26px}
+.pills a{color:var(--mu);text-decoration:none;font-size:14px;padding:6px 10px;border-radius:9px}.pills a.on{background:var(--br);color:var(--sf)}
+button,input{font:inherit;color:var(--ink)}
+.dp{display:flex;gap:6px;max-width:760px;margin:0 auto;padding:0 16px}
+.dp button,.dp input{height:38px;border:1px solid var(--ln);background:var(--sf);border-radius:10px;padding:0 12px;cursor:pointer}
+.dp input{flex:1}
+main{max-width:760px;margin:0 auto;padding:14px 16px 40px;transition:opacity .2s}main.ld{opacity:.5}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:18px;padding:18px;margin-top:12px}
+.mu{color:var(--mu);font-size:14px}
+.big{font-size:clamp(38px,11vw,56px);font-weight:700;line-height:1.05;display:block;margin:4px 0 10px;font-variant-numeric:tabular-nums}
+.bar{height:10px;border-radius:99px;background:var(--ln);overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--cr);transition:width .8s}.bar i.done{background:var(--ok)}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-top:6px;color:var(--mu)}
+.k{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}.k .card{margin:0}
+.k b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+.t{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px}.t.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 16%,transparent)}.t.no{color:var(--no);background:color-mix(in srgb,var(--no) 16%,transparent)}
+#chart svg{width:100%;height:auto;display:block}#chart text{fill:var(--mu);font-size:10px}
+h2{font-size:16px;margin:0 0 10px}.inc{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--ln);font-size:14px}.inc:first-of-type{border-top:0}
+.inc button{border:1px solid var(--ln);background:var(--bg);border-radius:9px;padding:5px 10px;cursor:pointer}
+.al{border:1px solid var(--no);border-radius:14px;padding:12px 14px;margin-top:12px}
+</style></head><body>
+<header class="nav"><b><svg viewBox="0 0 32 32" fill="none" stroke="var(--br)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg> Кофейня</b>
+<nav class="pills"><a class="on" href="dashboard.html">Дашборд</a><a href="report.html">Отчёты</a><a href="index.html">Терминал</a></nav></header>
+<div class="dp"><button id="prev" aria-label="Предыдущий день">‹</button><input type="date" id="pick" aria-label="Дата"><button id="next" aria-label="Следующий день">›</button><button id="reload" aria-label="Обновить">↻</button><button id="theme" aria-label="Сменить тему">🌙</button></div>
 <main id="main">
-  <div id="err" class="alert" role="alert" hidden></div>
-
-  <section class="panel hero" aria-label="Итог дня">
-    <svg class="cup" viewBox="0 0 200 210" role="img" aria-label="Чашка заполнена по проценту плана выручки">
-      <defs><clipPath id="inside"><path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z"/></clipPath></defs>
-      <path d="M150 62h14c18 0 18 40 0 40h-16" fill="none" stroke="#f6ece2" stroke-width="7" stroke-linecap="round"/>
-      <g clip-path="url(#inside)">
-        <rect width="200" height="210" fill="rgba(255,255,255,.08)"/>
-        <g id="liquid" style="transform:translateY(120px)"><rect x="0" y="40" width="200" height="200" fill="#c98b4f"/><rect x="0" y="40" width="200" height="9" fill="#f6d7ad"/></g>
-      </g>
-      <path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z" fill="none" stroke="#f6ece2" stroke-width="7" stroke-linejoin="round"/>
-      <path d="M20 176h140" stroke="#f6ece2" stroke-width="7" stroke-linecap="round"/>
-      <text id="cupPct" x="90" y="112" text-anchor="middle" style="font:700 28px var(--font-d);fill:#fff;stroke:#3b2417;stroke-width:5px;paint-order:stroke">—</text>
-    </svg>
-    <div>
-      <span class="muted" id="date">…</span>
-      <span class="num big" id="rev">—</span>
-      <div class="chips" id="chips"></div>
-      <div class="plan" aria-hidden="true"><i id="planBar"></i></div>
-      <div class="plan-l"><span id="planL">План</span><span id="planR"></span></div>
-      <p class="hint" id="hint" hidden></p>
-    </div>
-  </section>
-
-  <div class="grid g4">
-    <div class="panel kpi"><span class="muted">Чеков</span><span class="num" id="checks">—</span><span class="sub" id="checksSub">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Средний чек</span><span class="num" id="avg">—</span><span class="sub" id="avgSub">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Списания</span><span class="num" id="wo">—</span><span class="sub" id="woSub">Норма до 500 ₽</span></div>
-    <div class="panel kpi"><span class="muted">Открытие смены</span><span class="num" id="open">—</span><span class="sub" id="openNote">&nbsp;</span></div>
-  </div>
-
-  <div class="grid g21">
-    <section class="panel"><h2>Выручка за 14 дней</h2><div id="chart"></div><div class="readout" id="readout"></div></section>
-    <section class="panel"><h2>Оплата</h2><div id="pay"></div></section>
-  </div>
-
-  <section class="panel" style="margin-top:16px" aria-label="Неделя">
-    <h2>Неделя — 7 дней по выбранную дату</h2>
-    <div class="wk">
-      <div><span class="muted">Выручка</span><span class="num" id="wRev">—</span><span class="muted" id="wDelta"></span></div>
-      <div><span class="muted">Средний чек</span><span class="num" id="wAvg">—</span></div>
-      <div><span class="muted">Чеков</span><span class="num" id="wChecks">—</span></div>
-      <div><span class="muted">Лучший день</span><span class="num" id="wBest">—</span><span class="muted" id="wBestD"></span></div>
-    </div>
-  </section>
-
-  <div class="grid g11">
-    <section class="panel"><h2>Хиты недели</h2><div id="top"></div></section>
-    <section class="panel">
-      <div class="ih"><h2 style="margin:0" id="incTitle">Инциденты</h2>
-        <div class="seg" role="group" aria-label="Фильтр"><button data-f="open" class="on">Открытые</button><button data-f="all">Все</button></div></div>
-      <div id="inc"></div>
-    </section>
-  </div>
-
-  <section class="panel" style="margin-top:16px"><h2>Разбивка по дням</h2>
-    <div class="scrollx"><table class="tbl"><thead><tr><th>Дата</th><th>Выручка</th><th>% плана</th><th>Чеков</th><th>Ср. чек</th><th>Нал</th><th>Безнал</th><th>Списания</th></tr></thead><tbody id="tbl"></tbody></table></div>
-  </section>
-
-  <section class="panel" style="margin-top:16px">
-    <div class="ih"><h2 style="margin:0">Источники данных</h2><button class="btn-s" id="srcBtn" type="button">Проверить подключение</button></div>
-    <div id="src" class="muted">Проверяем…</div>
-    <p class="muted" style="margin:12px 0 0">Таблицы и названия столбцов задаются в <code>CONFIG.SOURCES</code> и <code>FIELDS</code> внутри <code>Code.gs</code>. Отчёт за день записывается в строку с этой датой автоматически.</p>
-  </section>
+<div id="err" class="al" hidden></div>
+<section class="card"><span class="mu" id="date">…</span><span class="big" id="rev">—</span>
+<div class="bar"><i id="bar"></i></div><div class="row"><span id="planL">План</span><span id="planR"></span></div></section>
+<div class="k">
+<div class="card"><span class="mu">Чеков</span><b id="checks">—</b><span class="mu" id="chk2">&nbsp;</span></div>
+<div class="card"><span class="mu">Средний чек</span><b id="avg">—</b><span class="mu">&nbsp;</span></div>
+<div class="card"><span class="mu">Списания</span><b id="wo">—</b><span id="woS">&nbsp;</span></div>
+<div class="card"><span class="mu">Открытие смены</span><b id="open">—</b><span id="openS">&nbsp;</span></div></div>
+<section class="card"><h2>Выручка за 14 дней</h2><div id="chart"></div></section>
+<section class="card"><h2 id="incT">Открытые проблемы</h2><div id="inc"></div></section>
+<p class="mu" style="text-align:center;margin-top:18px">Подробности — прибыль, позиции, задачи персонала — в разделе <a href="report.html" style="color:var(--br)">Отчёты</a></p>
 </main>
-<div class="toast" id="toast" hidden></div>
-
 <script>
 const API_URL = 'https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec';
-const WO_NORM = 500;
-
-const $ = (id) => document.getElementById(id);
-const rub = (n) => Number(n || 0).toLocaleString('ru-RU') + ' ₽';
-const dm = (s) => s.slice(8) + '.' + s.slice(5, 7);
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-const shiftDate = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
-
-let D = null, incFilter = 'open';
-
-function verdictFor(p) {
-  if (p >= 100) return { icon: '🚀', text: 'План перевыполнен', cls: 'up' };
-  if (p >= 90) return { icon: '✅', text: 'План почти выполнен', cls: 'up' };
-  if (p >= 70) return { icon: '⚠️', text: 'Отставание от плана', cls: 'down' };
-  return { icon: '🔻', text: 'Сильное отставание', cls: 'down' };
+const PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
+const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
+const rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' ₽';
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const iso=(d)=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const shift=(s,n)=>{const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)};
+let D=null;
+async function load(silent){
+  if(!silent)$('main').classList.add('ld');$('err').hidden=true;
+  try{
+    const r=await(await fetch(API_URL+'?action=dashboard&date='+$('pick').value+'&pin='+encodeURIComponent(getPin()))).json();
+    if(r&&r.ok===false&&/PIN_REQUIRED/.test(r.error||'')){const e=new Error('Введите код доступа администратора');e.pin=true;throw e}
+    if(!r||r.ok===false||!r.days)throw new Error((r&&r.error)||'сервер вернул неожиданный ответ');
+    D=r;render(r);
+  }catch(e){
+    $('err').hidden=false;
+    $('err').innerHTML=e.pin?'<b>'+esc(e.message)+'</b><div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" placeholder="Код" style="height:38px;border:1px solid var(--ln);border-radius:10px;padding:0 10px;background:var(--bg)"><button id="pinOk" style="height:38px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);padding:0 14px;cursor:pointer">Войти</button></div>':'<b>Не удалось загрузить данные.</b> '+esc(e.message);
+  }finally{$('main').classList.remove('ld')}
 }
-function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
-
-async function load(silent) {
-  if (!silent) $('main').classList.add('loading');
-  $('err').hidden = true;
-  try {
-    const d = await (await fetch(API_URL + '?action=dashboard&date=' + $('pick').value)).json();
-    if (!d || d.ok === false || !d.days) throw new Error((d && d.error) || 'сервер вернул неожиданный ответ');
-    D = d; render(d);
-  } catch (e) {
-    $('err').hidden = false;
-    $('err').innerHTML = '<b>Не удалось загрузить данные.</b> ' + esc(e.message) + '<br><span class="muted">Проверьте, что в Apps Script развёрнута актуальная версия <code>Code.gs</code> и у веб-приложения доступ «Все».</span>';
-  } finally { $('main').classList.remove('loading'); }
+$('err').addEventListener('click',(e)=>{if(e.target.id!=='pinOk')return;try{localStorage.setItem(PIN_KEY,$('pinIn').value.trim())}catch(x){}load()});
+function render(d){
+  const has=!!d.hasData,pct=has?Math.round(d.revenue/d.plan*100):0,today=iso(new Date());
+  $('pick').value=d.date;$('pick').max=today;$('next').disabled=d.date>=today;
+  $('date').textContent=new Date(d.date+'T12:00:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})+(d.isToday?' · сегодня':'');
+  $('rev').textContent=has?rub(d.revenue):'—';
+  $('bar').style.width=Math.min(pct,100)+'%';$('bar').className=pct>=100?'done':'';
+  $('planL').textContent='Цель на день '+rub(d.plan);$('planR').textContent=has?pct+'%':'данных нет';
+  $('checks').textContent=has?d.checks:'—';$('avg').textContent=has?rub(d.avg):'—';$('wo').textContent=has?rub(d.writeoff):'—';
+  const wn=d.woNorm||500;
+  $('woS').innerHTML=has?'<span class="t '+(d.writeoff<=wn?'ok':'no')+'">'+(d.writeoff<=wn?'в норме':'выше нормы')+'</span>':'&nbsp;';
+  const dl=d.deadline||'08:30';
+  $('open').textContent=d.openedAt||'—';
+  $('openS').innerHTML=d.openedAt?'<span class="t '+(d.openedAt<=dl?'ok':'no')+'">'+(d.openedAt<=dl?'вовремя':'с опозданием')+'</span>':'<span class="mu">нет отметки</span>';
+  chart(d);incs(d);
 }
-
-function render(d) {
-  d.incidents = d.incidents || [];
-  const has = !!d.hasData, plan = d.plan, pct = has ? Math.round(d.revenue / plan * 100) : 0;
-  $('pick').value = d.date; $('pick').max = iso(new Date());
-  $('imp').href = 'index.html?tab=cash&date=' + d.date;
-  $('next').disabled = d.date >= iso(new Date());
-  $('date').textContent = new Date(d.date + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }) + (d.isToday ? ' · сегодня' : '');
-
-  $('rev').textContent = has ? rub(d.revenue) : '—';
-  $('cupPct').textContent = has ? pct + '%' : '—';
-  $('liquid').style.transform = 'translateY(' + (120 - Math.min(pct, 120) / 120 * 110) + 'px)';
-  $('planBar').style.width = Math.min(pct, 100) + '%';
-  $('planL').textContent = 'План ' + rub(plan);
-  $('planR').textContent = has ? pct + '%' : '';
-
-  const chips = [];
-  if (has) { const v = verdictFor(pct); chips.push('<span class="chip ' + v.cls + '">' + v.icon + ' ' + v.text + '</span>'); }
-  const k = d.days.findIndex((x) => x.date === d.date), prev = k > 0 ? d.days[k - 1] : null;
-  if (has && prev && prev.revenue > 0) {
-    const dl = Math.round((d.revenue - prev.revenue) / prev.revenue * 100);
-    chips.push('<span class="chip ' + (dl >= 0 ? 'up' : 'down') + '">' + (dl >= 0 ? '▲ +' : '▼ ') + dl + '% ко вчера</span>');
-  }
-  $('chips').innerHTML = chips.join('');
-  $('hint').hidden = has;
-  if (!has) $('hint').textContent = 'За этот день данных пока нет. Бариста отправляет кассовый отчёт в терминале при закрытии смены.';
-
-  $('checks').textContent = has ? d.checks : '—';
-  $('avg').textContent = has ? rub(d.avg) : '—';
-  $('wo').textContent = has ? rub(d.writeoff) : '—';
-  $('woSub').innerHTML = has ? '<span class="tag ' + (d.writeoff <= WO_NORM ? 'ok' : 'no') + '">' + (d.writeoff <= WO_NORM ? 'в норме' : 'выше нормы') + '</span> норма до ' + rub(WO_NORM) : 'Норма до ' + rub(WO_NORM);
-  const dl = d.deadline || '08:30';
-  $('open').textContent = d.openedAt || '—';
-  $('openNote').innerHTML = d.openedAt ? '<span class="tag ' + (d.openedAt <= dl ? 'ok' : 'no') + '">' + (d.openedAt <= dl ? 'вовремя' : 'с опозданием') + '</span> дедлайн ' + dl : 'нет отметки · дедлайн ' + dl;
-
-  const w = d.week;
-  $('wRev').textContent = w ? rub(w.revenue) : '—';
-  $('wDelta').innerHTML = w && w.delta != null ? '<span class="dchip ' + (w.delta >= 0 ? 'up' : 'down') + '">' + (w.delta >= 0 ? '+' : '') + w.delta + '%</span> к прошлым 7 дням' : '';
-  $('wAvg').textContent = w && w.avg ? rub(w.avg) : '—';
-  $('wChecks').textContent = w ? w.checks : '—';
-  $('wBest').textContent = w && w.best ? rub(w.best.revenue) : '—';
-  $('wBestD').textContent = w && w.best ? dm(w.best.date) : '';
-
-  drawChart(d); drawPay(d); drawTop(d); drawTable(d); drawIncidents();
+function chart(d){
+  const days=d.days,W=640,H=190,p=16,base=H-22,max=Math.max(d.plan*1.15,...days.map((x)=>x.revenue)),bw=(W-p*2)/days.length,y=(v)=>base-v/max*(base-10);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Выручка по дням">';
+  days.forEach((x,i)=>{const h=Math.max(base-y(x.revenue),x.revenue?2:0);
+    s+='<rect x="'+(p+i*bw+bw*.15)+'" y="'+(base-h)+'" width="'+bw*.7+'" height="'+h+'" rx="3" fill="'+(x.date===d.date?'var(--br)':x.revenue>=d.plan?'var(--ok)':'var(--ln)')+'"><title>'+x.date.slice(8)+'.'+x.date.slice(5,7)+': '+rub(x.revenue)+'</title></rect>';
+    if(i%2===0||days.length<8)s+='<text x="'+(p+i*bw+bw/2)+'" y="'+(H-6)+'" text-anchor="middle">'+x.date.slice(8)+'</text>'});
+  s+='<line x1="'+p+'" x2="'+(W-p)+'" y1="'+y(d.plan)+'" y2="'+y(d.plan)+'" stroke="var(--cr)" stroke-dasharray="5 4"/></svg>';
+  $('chart').innerHTML=s;
 }
-
-function drawChart(d) {
-  const days = d.days;
-  if (!days.some((x) => x.revenue)) {
-    $('chart').innerHTML = '<div class="empty"><b>Пока нет данных о выручке</b>Они появятся после первого кассового отчёта из терминала.</div>';
-    $('readout').textContent = ''; return;
-  }
-  const W = 640, H = 250, pad = 26, base = H - 30, max = Math.max(d.plan * 1.15, ...days.map((x) => x.revenue));
-  const bw = (W - pad * 2) / days.length, y = (v) => base - v / max * (base - 16);
-  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Выручка по дням">';
-  s += '<line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + y(d.plan) + '" y2="' + y(d.plan) + '" stroke="var(--crema)" stroke-width="2" stroke-dasharray="6 5"/>';
-  s += '<text x="' + (W - pad) + '" y="' + (y(d.plan) - 6) + '" text-anchor="end">план ' + Math.round(d.plan / 1000) + ' тыс.</text>';
-  days.forEach((x, i) => {
-    const cx = pad + i * bw + bw / 2, h = x.revenue ? Math.max(base - y(x.revenue), 3) : 3;
-    const cls = 'b' + (x.date === d.date ? ' sel' : x.pct >= 100 ? ' met' : '');
-    s += '<rect class="' + cls + '" data-i="' + i + '" tabindex="0" x="' + (cx - bw * .33) + '" y="' + (base - h) + '" width="' + bw * .66 + '" height="' + h + '" rx="5" role="button" aria-label="' + dm(x.date) + ': ' + rub(x.revenue) + '"' + (x.revenue ? '' : ' opacity=".5"') + '/>';
-    if (x.revenue) s += '<text x="' + cx + '" y="' + (base - h - 5) + '" text-anchor="middle" style="font-size:10px">' + Math.round(x.revenue / 1000) + '</text>';
-    if (i % 2 === (days.length - 1) % 2) s += '<text x="' + cx + '" y="' + (H - 9) + '" text-anchor="middle" style="font-size:10px">' + dm(x.date) + '</text>';
-  });
-  $('chart').innerHTML = s + '</svg>';
-  info(days.findIndex((x) => x.date === d.date));
+function incs(d){
+  const open=(d.incidents||[]).filter((i)=>i.status==='Open');
+  $('incT').textContent='Открытые проблемы'+(open.length?' · '+open.length:'');
+  $('inc').innerHTML=open.length?open.slice(0,6).map((i)=>'<div class="inc"><div><b>'+esc(i.step||'Проблема')+'</b>'+(i.priority==='Критично'?' <span class="t no">критично</span>':'')+'<div class="mu">'+esc(i.text)+' · '+esc(i.date.slice(8)+'.'+i.date.slice(5,7))+'</div></div><button data-r="'+esc(i.id)+'">Решено</button></div>').join('')+(open.length>6?'<p class="mu">и ещё '+(open.length-6)+' — в отчётах</p>':''):'<p class="mu" style="margin:0">Всё в порядке — открытых проблем нет</p>';
 }
-function info(i) {
-  const x = D && D.days[i]; if (!x) return;
-  $('readout').textContent = x.revenue ? dm(x.date) + ' · ' + rub(x.revenue) + ' · ' + x.pct + '% плана · ' + x.checks + ' чеков' : dm(x.date) + ' · нет данных';
-}
-$('chart').addEventListener('mouseover', (e) => { const r = e.target.closest('.b'); if (r) info(+r.dataset.i); });
-$('chart').addEventListener('focusin', (e) => { const r = e.target.closest('.b'); if (r) info(+r.dataset.i); });
-$('chart').addEventListener('click', (e) => { const r = e.target.closest('.b'); if (r) selectDay(D.days[+r.dataset.i].date); });
-$('chart').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const r = e.target.closest('.b'); if (r) selectDay(D.days[+r.dataset.i].date); } });
-$('chart').addEventListener('mouseleave', () => info(D.days.findIndex((x) => x.date === D.date)));
-
-function drawPay(d) {
-  const tot = d.cash + d.card;
-  if (!tot) { $('pay').innerHTML = '<div class="empty">Нет данных об оплате за этот день.</div>'; return; }
-  const C = 2 * Math.PI * 42, cardShare = d.card / tot;
-  $('pay').innerHTML = '<div class="donut"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--crema)" stroke-width="14"/>' +
-    '<circle cx="50" cy="50" r="42" fill="none" stroke="var(--brew)" stroke-width="14" stroke-dasharray="' + (cardShare * C) + ' ' + C + '"/></svg>' +
-    '<div class="leg"><div><i style="background:var(--brew)"></i><span>Безнал <b>' + Math.round(cardShare * 100) + '%</b><br><span class="muted">' + rub(d.card) + '</span></span></div>' +
-    '<div><i style="background:var(--crema)"></i><span>Наличные <b>' + Math.round(100 - cardShare * 100) + '%</b><br><span class="muted">' + rub(d.cash) + '</span></span></div></div></div>';
-}
-
-function drawTop(d) {
-  let items = d.products && d.products.length ? d.products
-    : String(d.top3 || '').split(', ').map((x) => { const m = x.match(/^(.*) ×(\d+)$/); return m ? { name: m[1], qty: +m[2], sum: 0 } : null; }).filter(Boolean);
-  if (!items.length) { $('top').innerHTML = '<div class="empty"><b>Хитов пока нет</b>Загрузите «Продажи.csv» в терминале при закрытии кассы.</div>'; return; }
-  const m = items[0].qty || 1;
-  $('top').innerHTML = items.map((x, i) => '<div class="rank"><span class="n">' + (i + 1) + '</span><b>' + esc(x.name) + '</b><span>' + x.qty + ' шт.' + (x.sum ? ' · ' + rub(x.sum) : '') + '</span><div class="t"><i style="width:' + x.qty / m * 100 + '%"></i></div></div>').join('');
-}
-
-function drawTable(d) {
-  $('tbl').innerHTML = d.days.slice().reverse().map((x) => {
-    const sel = x.date === d.date ? ' class="sel"' : '';
-    if (!x.revenue) return '<tr' + sel + ' data-d="' + x.date + '" style="color:var(--muted)"><td>' + dm(x.date) + '</td><td colspan="7" style="text-align:left">нет данных</td></tr>';
-    const cls = x.pct >= 100 ? 'ok' : x.pct >= 90 ? 'mid' : 'no';
-    return '<tr' + sel + ' data-d="' + x.date + '"><td>' + dm(x.date) + '</td><td><b>' + rub(x.revenue) + '</b></td><td><span class="tag ' + cls + '">' + x.pct + '%</span></td><td>' + x.checks +
-      '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td>' + rub(x.writeoff) + '</td></tr>';
-  }).join('');
-}
-$('tbl').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-d]'); if (tr) selectDay(tr.dataset.d); });
-
-function drawIncidents() {
-  const all = D.incidents, open = all.filter((i) => i.status === 'Open');
-  $('incTitle').textContent = 'Инциденты' + (open.length ? ' · ' + open.length + ' откр.' : '');
-  const list = incFilter === 'open' ? open : all;
-  $('inc').innerHTML = list.length ? list.map((i) => {
-    const isOpen = i.status === 'Open', cls = !isOpen ? 'res' : (i.priority === 'Критично' ? 'hi' : '');
-    const link = /^https:\/\//.test(i.photo || '') ? ' · <a href="' + esc(i.photo) + '" target="_blank" rel="noopener">фото</a>' : '';
-    const meta = [i.id, dm(i.date) + (i.time ? ' ' + i.time : ''), i.who].filter(Boolean).map(esc).join(' · ');
-    return '<div class="inc"><span class="rail ' + cls + '"></span><div><b>' + esc(i.step) + '</b>: ' + esc(i.text) +
-      '<div class="meta">' + meta + ' · ответственный: ' + esc(i.owner) + link + '</div></div>' +
-      '<div class="act"><span class="tag ' + (isOpen ? (i.priority === 'Критично' ? 'no' : 'mid') : 'ok') + '">' + (isOpen ? (i.priority === 'Критично' ? 'Критично' : 'Открыт') : 'Решён') + '</span>' +
-      (isOpen ? '<button class="btn-s" data-res="' + esc(i.id) + '">Решено</button>' : '') + '</div></div>';
-  }).join('') : '<div class="empty"><b>' + (incFilter === 'open' ? 'Открытых инцидентов нет' : 'Инцидентов нет') + '</b>Всё в порядке.</div>';
-}
-document.querySelectorAll('.seg button').forEach((b) => b.onclick = () => {
-  incFilter = b.dataset.f;
-  document.querySelectorAll('.seg button').forEach((x) => x.classList.toggle('on', x === b));
-  drawIncidents();
-});
-$('inc').addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-res]'); if (!b) return;
-  const id = b.dataset.res; b.disabled = true;
-  try {
-    await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'resolve_incident', id }) });
-    const it = D.incidents.find((x) => x.id === id); if (it) it.status = 'Resolved';
-    drawIncidents(); toast('Инцидент ' + id + ' закрыт');
-  } catch (err) { b.disabled = false; toast('Не удалось отправить — проверьте связь'); }
-});
-
-function selectDay(s) { $('pick').value = s; load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-$('prev').onclick = () => { $('pick').value = shiftDate($('pick').value, -1); load(); };
-$('next').onclick = () => { const n = shiftDate($('pick').value, 1); if (n <= iso(new Date())) { $('pick').value = n; load(); } };
-$('reload').onclick = () => load();
-$('pick').onchange = () => load();
-
-/* ---------- тема ---------- */
-const curTheme = () => document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-function paintTheme() { const d = curTheme() === 'dark'; $('theme').textContent = d ? '☀️' : '🌙'; $('theme').setAttribute('aria-label', d ? 'Светлая тема' : 'Тёмная тема'); }
-$('theme').onclick = () => {
-  const n = curTheme() === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', n);
-  try { localStorage.setItem('coffee_illy_theme', n); } catch (e) {}
-  paintTheme();
-};
-paintTheme();
-
-/* ---------- источники данных ---------- */
-async function checkSources() {
-  $('src').textContent = 'Проверяем…';
-  try {
-    const d = await (await fetch(API_URL + '?action=status')).json();
-    if (!d || !d.sources) throw new Error((d && d.error) || 'нет ответа. Обновите Code.gs и разверните новую версию');
-    const names = { checklists: 'Чек-листы', logs: 'Журнал смен', incidents: 'Инциденты', cash: 'Касса (выручка)' };
-    $('src').innerHTML = d.sources.map((s) => '<div class="srow"><span class="tag ' + (s.ok ? 'ok' : 'no') + '">' + (s.ok ? 'подключено' : 'ошибка') + '</span><b>' + esc(names[s.key] || s.key) + '</b>' +
-      (s.ok ? '<span class="muted">' + esc(s.spreadsheet) + ' → лист «' + esc(s.sheet) + '» · строк: ' + s.rows + (s.added && s.added.length ? ' · добавлены столбцы: ' + esc(s.added.join(', ')) : '') + '</span>'
-            : '<span class="muted">' + esc(s.error) + '</span>') + '</div>').join('');
-  } catch (e) {
-    $('src').innerHTML = '<span class="tag no">нет связи</span> ' + esc(e.message);
-  }
-}
-$('srcBtn').onclick = checkSources;
-
-/* ---------- старт ---------- */
-(function () {
-  const qd = new URLSearchParams(location.search).get('date');
-  $('pick').value = qd && /^\d{4}-\d{2}-\d{2}$/.test(qd) && qd <= iso(new Date()) ? qd : iso(new Date());
-})();
-load(); checkSources();
-setInterval(() => load(true), 60000);
-</script>
-</body>
-</html>
+$('inc').addEventListener('click',async(e)=>{const b=e.target.closest('[data-r]');if(!b)return;b.disabled=true;
+  try{const r=await(await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'resolve_incident',id:b.dataset.r,pin:getPin()})})).json();if(!r.ok)throw new Error(r.error);load(true)}catch(x){b.disabled=false;alert('Не удалось закрыть: '+x.message)}});
+$('prev').onclick=()=>{$('pick').value=shift($('pick').value,-1);load()};
+$('next').onclick=()=>{$('pick').value=shift($('pick').value,1);load()};
+$('pick').onchange=()=>load();$('reload').onclick=()=>load();
+const cur=()=>document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
+$('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
+paint();$('pick').value=new URLSearchParams(location.search).get('date')||iso(new Date());load();
+setInterval(()=>{if(!document.hidden&&D&&D.isToday)load(true)},120000);
+</script></body></html>
