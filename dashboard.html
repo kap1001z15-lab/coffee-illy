@@ -1,164 +1,329 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Дашборд Управляющего — Coffee ERP</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coffee ERP — дашборд руководителя</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#e6ecee; --surface:#f7f9fa; --ink:#172326; --muted:#5b6d72; --line:#d3dde0;
+    --brew:#5a3a29; --crema:#c98b4f; --good:#1b8a57; --bad:#c23b22; --warn:#b7791f;
+    --font-d:"Bricolage Grotesque",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
+      --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d; }
+  }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0); }
+  main { max-width:1080px; margin:0 auto; padding:20px 16px 40px; transition:opacity .2s; }
+  main.loading { opacity:.55; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+  h1,h2,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; }
+  h1 { font-size:24px; } h2 { font-size:18px; margin-bottom:12px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .ctl { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=date], button { font:inherit; padding:9px 14px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink); }
+  button { font-weight:600; cursor:pointer; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline:3px solid var(--crema); outline-offset:2px; }
+  .wk { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:16px; }
+  .wk .num { font-size:24px; font-weight:700; display:block; }
+  .chip { display:inline-block; font-size:13px; font-weight:700; padding:2px 8px; border-radius:99px; margin-left:6px; }
+  .chip.up { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); }
+  .chip.down { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
+  .tbl { width:100%; border-collapse:collapse; font-size:14px; white-space:nowrap; }
+  .tbl th, .tbl td { text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .tbl th:first-child, .tbl td:first-child { text-align:left; }
+  .tbl th { color:var(--muted); font-weight:600; }
+  .scrollx { overflow-x:auto; }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:20px; }
+  .hero { display:grid; grid-template-columns:minmax(180px,260px) 1fr; gap:24px; align-items:center; }
+  @media (max-width:640px) { .hero { grid-template-columns:1fr; justify-items:center; text-align:center; } .hero > div:last-child { width:100%; } }
+  .cup { width:100%; max-width:240px; }
+  .big { font-size:clamp(36px,7vw,60px); font-weight:700; line-height:1.05; }
+  .verdict { font-family:var(--font-d); font-size:20px; margin:6px 0 16px; }
+  .split { height:12px; border-radius:99px; background:var(--crema); overflow:hidden; display:flex; margin:6px 0; }
+  .split i { display:block; background:var(--brew); }
+  .legend { display:flex; justify-content:space-between; gap:8px; font-size:14px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-top:16px; }
+  .facts { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+  .fact .num { font-size:24px; font-weight:700; display:block; }
+  .bar { display:grid; grid-template-columns:1fr auto; gap:4px 12px; margin-bottom:12px; }
+  .bar .track { grid-column:1 / -1; height:10px; background:var(--line); border-radius:99px; overflow:hidden; }
+  .bar .track i { display:block; height:100%; background:var(--brew); border-radius:99px; }
+  .inc { display:grid; grid-template-columns:auto 1fr auto; gap:4px 12px; padding:12px 0; border-top:1px solid var(--line); }
+  .inc:first-of-type { border-top:0; }
+  .dot { width:12px; height:12px; border-radius:50%; margin-top:6px; background:var(--warn); }
+  .dot.hi { background:var(--bad); } .dot.res { background:var(--good); }
+  .tag { font-size:13px; color:var(--muted); }
+  a { color:var(--brew); font-weight:600; }
+  svg text { fill:var(--muted); font-size:12px; font-family:system-ui,sans-serif; }
+  #err { color:var(--bad); font-weight:600; margin:0 0 12px; }
+  .demo { border:1px dashed var(--crema); border-radius:12px; padding:8px 12px; margin-bottom:14px; font-size:14px; }
+  @media (prefers-reduced-motion: no-preference) { #liquid { transition:transform 1.4s cubic-bezier(.2,.8,.2,1); } }
+</style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 font-sans">
-
-  <div class="max-w-6xl mx-auto space-y-6">
-    <div class="flex flex-wrap justify-between items-center bg-slate-900 border border-slate-800 p-5 rounded-2xl gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-amber-400">☕ Панель Управления Кофейней</h1>
-        <p class="text-sm text-slate-400">Операционный контроль смен, кассы и инцидентов в реальном времени</p>
-      </div>
-      <button onclick="loadDashboard()" class="px-4 py-2 bg-amber-400 text-slate-950 font-bold rounded-xl text-sm hover:bg-amber-300 transition shadow-lg">
-        🔄 Обновить данные
-      </button>
+<body>
+<main id="main">
+  <div class="top">
+    <div>
+      <h1>☕ Кофейня №1<span class="chip down" id="openInc" hidden></span></h1>
+      <span class="muted" id="date"></span> <span class="muted" id="upd"></span>
     </div>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <p class="text-xs text-slate-400 uppercase tracking-wider">Выручка (последняя смена)</p>
-        <p id="kpiRevenue" class="text-3xl font-extrabold text-emerald-400 mt-1">— ₽</p>
-        <p id="kpiPlan" class="text-xs text-slate-400 mt-1">План: 45 000 ₽</p>
-      </div>
-      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <p class="text-xs text-slate-400 uppercase tracking-wider">Средний чек / Чеков</p>
-        <p id="kpiAvgCheck" class="text-3xl font-extrabold text-amber-400 mt-1">— ₽</p>
-        <p id="kpiChecks" class="text-xs text-slate-400 mt-1">Транзакций: —</p>
-      </div>
-      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <p class="text-xs text-slate-400 uppercase tracking-wider">Списания за смену</p>
-        <p id="kpiWriteOffs" class="text-3xl font-extrabold text-rose-400 mt-1">— ₽</p>
-        <p class="text-xs text-slate-400 mt-1">Норма до 500 ₽</p>
-      </div>
-      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <p class="text-xs text-slate-400 uppercase tracking-wider">Открытые инциденты</p>
-        <p id="kpiIncidents" class="text-3xl font-extrabold text-rose-500 mt-1">0</p>
-        <p class="text-xs text-slate-400 mt-1">Требуют внимания</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <h2 class="text-base font-bold mb-4">📈 Динамика выручки за последние смены</h2>
-        <canvas id="revenueChart" height="110"></canvas>
-      </div>
-      <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-        <h2 class="text-base font-bold mb-4">📋 Последние пройденные чек-листы</h2>
-        <div id="logsContainer" class="space-y-3 text-sm max-h-72 overflow-y-auto pr-1">
-          <p class="text-slate-500">Загрузка логов...</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-      <h2 class="text-base font-bold mb-4">🚨 Бортовой журнал инцидентов и отклонений</h2>
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-sm">
-          <thead class="text-xs text-slate-400 uppercase border-b border-slate-800">
-            <tr>
-              <th class="py-3 px-2">ID / Время</th>
-              <th class="py-3 px-2">Сотрудник</th>
-              <th class="py-3 px-2">Задача</th>
-              <th class="py-3 px-2">Описание поломки</th>
-              <th class="py-3 px-2">Ответственный</th>
-              <th class="py-3 px-2">Фото</th>
-            </tr>
-          </thead>
-          <tbody id="incidentsTable" class="divide-y divide-slate-800/60"></tbody>
-        </table>
-      </div>
+    <div class="ctl">
+      <a href="index.html">Терминал</a><a href="report.html">Отчёты</a>
+      <input type="date" id="pick" aria-label="Дата"><button id="reload">Обновить</button>
     </div>
   </div>
+  <p id="err"></p>
+  <div id="demo" class="demo" hidden>🧪 Демо: показаны примерные данные (открыто с ?demo).</div>
 
-  <script>
-    // ВСТАВЛЕНА ВАША РАБОЧАЯ ССЫЛКА НА GOOGLE APPS SCRIPT:
-    const API_URL = "https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec";
-    
-    let chartInstance = null;
+  <section class="panel hero" aria-label="Итог дня">
+    <svg class="cup" viewBox="0 0 200 210" role="img" aria-label="Чашка заполнена по проценту плана выручки">
+      <defs><clipPath id="inside"><path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z"/></clipPath></defs>
+      <path d="M150 62h14c18 0 18 40 0 40h-16" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/>
+      <g clip-path="url(#inside)">
+        <rect width="200" height="210" fill="var(--bg)"/>
+        <g id="liquid" style="transform:translateY(120px)"><rect x="0" y="40" width="200" height="200" fill="var(--brew)"/><rect x="0" y="40" width="200" height="9" fill="var(--crema)"/></g>
+      </g>
+      <path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M20 176h140" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/>
+      <text id="cupPct" x="90" y="112" text-anchor="middle" style="font:700 28px var(--font-d);fill:#fff;stroke:var(--brew);stroke-width:5px;paint-order:stroke">—</text>
+    </svg>
+    <div>
+      <span class="muted">Выручка за день</span><span id="dayDelta"></span>
+      <div class="num big" id="rev">—</div>
+      <div class="verdict" id="verd"></div>
+      <div class="split" id="splitBar" aria-hidden="true"><i id="cashBar"></i></div>
+      <div class="legend"><span id="cashL"></span><span id="cardL"></span></div>
+      <div class="facts">
+        <div class="fact"><span class="muted">Чеков</span><span class="num" id="checks">—</span></div>
+        <div class="fact"><span class="muted">Средний чек</span><span class="num" id="avg">—</span></div>
+        <div class="fact"><span class="muted">Списания</span><span class="num" id="wo">—</span></div>
+      </div>
+    </div>
+  </section>
 
-    async function loadDashboard() {
-      try {
-        const res = await fetch(`${API_URL}?action=get_dashboard`);
-        const data = await res.json();
-        renderDashboard(data);
-      } catch (e) {
-        console.error("Ошибка загрузки данных из Apps Script:", e);
-      }
+  <section class="panel" style="margin-top:16px" aria-label="Неделя">
+    <h2>Неделя (7 дней по выбранную дату)</h2>
+    <div class="wk">
+      <div><span class="muted">Выручка</span><span class="num" id="wRev">—</span><span class="muted" id="wDelta"></span></div>
+      <div><span class="muted">Средний чек</span><span class="num" id="wAvg">—</span></div>
+      <div><span class="muted">Чеков</span><span class="num" id="wChecks">—</span></div>
+      <div><span class="muted">Лучший день</span><span class="num" id="wBest">—</span><span class="muted" id="wBestD"></span></div>
+    </div>
+  </section>
+
+  <div class="row">
+    <section class="panel"><h2>Выручка за 14 дней</h2><div id="chart"></div></section>
+    <section class="panel">
+      <h2>Дисциплина и хиты</h2>
+      <p style="margin:0 0 16px"><span class="muted">Открытие смены</span><br><b class="num" style="font-size:22px" id="open">—</b> <span class="muted" id="openNote"></span></p>
+      <div class="muted" style="margin-bottom:8px">Топ товаров за 7 дней</div>
+      <div id="top3"></div>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:16px"><h2>Разбивка по дням</h2>
+    <div class="scrollx"><table class="tbl"><thead><tr><th>Дата</th><th>Выручка</th><th>% плана</th><th>Чеков</th><th>Ср. чек</th><th>Нал</th><th>Безнал</th><th>Списания</th></tr></thead><tbody id="tbl"></tbody></table></div>
+  </section>
+
+  <section class="panel" style="margin-top:16px"><h2>Инциденты</h2><div id="inc"></div></section>
+</main>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec';
+const demo = location.search.indexOf('demo') >= 0;
+
+const $ = (id) => document.getElementById(id);
+const rub = (n) => Number(n || 0).toLocaleString('ru-RU') + ' ₽';
+const dm = (s) => s.slice(8) + '.' + s.slice(5, 7);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+/* ---------- демо ---------- */
+function demoData() {
+  const rev = [35100, 39800, 34200, 43500, 46900, 51200, 47800, 38200, 41500, 36800, 47900, 52300, 58100, 52700];
+  const days = rev.map((r, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (13 - i));
+    const checks = Math.round(r / 285), card = Math.round(r * 0.73);
+    return { date: iso(d), revenue: r, checks, avg: Math.round(r / checks), cash: r - card, card, writeoff: 200 + (i * 37) % 400, pct: Math.round(r / 45000 * 100) };
+  });
+  const t = days[13];
+  return {
+    ok: true, date: t.date, isToday: true, hasData: true, plan: 45000, deadline: '08:30', openedAt: '08:21',
+    revenue: t.revenue, checks: t.checks, avg: t.avg, cash: t.cash, card: t.card, writeoff: t.writeoff,
+    verdict: verdictFor(t.pct), top3: '', days, week: weekStats(days),
+    products: [{ name: 'Капучино', qty: 412, sum: 98800 }, { name: 'Латте', qty: 336, sum: 87400 }, { name: 'Круассан', qty: 241, sum: 43400 }, { name: 'Фильтр-кофе', qty: 188, sum: 28200 }, { name: 'Чизкейк', qty: 142, sum: 42600 }],
+    incidents: [
+      { id: '#42', date: t.date, time: '08:21', who: 'Даниил', step: 'Витрина', text: 'Не работает подсветка на нижней полке', priority: 'Критично', owner: 'Техник', status: 'Open', photo: '' },
+      { id: '#41', date: days[12].date, time: '22:45', who: 'Максим', step: 'Закрытие', text: 'Закончились крышки 80 мм', priority: 'Терпит', owner: 'Закупщик', status: 'Resolved', photo: '' }
+    ]
+  };
+}
+
+/* ---------- вспомогательное ---------- */
+function verdictFor(p) {
+  if (p >= 100) return { p, icon: '🚀', text: 'перевыполнение плана' };
+  if (p >= 90) return { p, icon: '✅', text: 'план почти выполнен' };
+  if (p >= 70) return { p, icon: '⚠️', text: 'отставание от плана' };
+  return { p, icon: '🔻', text: 'сильное отставание от плана' };
+}
+function weekStats(days) {
+  const w = days.slice(-7), pw = days.slice(-14, -7);
+  const sum = (a, k) => a.reduce((s, x) => s + (x[k] || 0), 0);
+  const rev = sum(w, 'revenue'), prev = sum(pw, 'revenue'), checks = sum(w, 'checks');
+  const best = w.filter((x) => x.revenue).sort((a, b) => b.revenue - a.revenue)[0];
+  return { revenue: rev, prevRevenue: prev, delta: prev ? Math.round((rev - prev) / prev * 100) : null, avg: checks ? Math.round(rev / checks) : 0, checks, best: best ? { date: best.date, revenue: best.revenue } : null };
+}
+function normDate(x) {
+  const s = String(x || '');
+  let m = s.match(/^(\d{4}-\d{2}-\d{2})/); if (m) return m[1];
+  m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/); if (m) return m[3] + '-' + m[2] + '-' + m[1];
+  const d = new Date(s); return isNaN(d) ? iso(new Date()) : iso(d);
+}
+// Поддержка старого формата ответа (action=get_dashboard)
+function fromLegacy(o) {
+  const plan = o.plan || 45000;
+  const days = (o.cashHistory || []).map((x) => {
+    const r = +x.total || 0;
+    return { date: normDate(x.date), revenue: r, checks: +x.checks || 0, avg: +x.avgCheck || 0, cash: 0, card: 0, writeoff: +x.writeOffs || 0, pct: Math.round(r / plan * 100) };
+  });
+  const t = days[days.length - 1] || { date: iso(new Date()), revenue: 0, checks: 0, avg: 0, cash: 0, card: 0, writeoff: 0, pct: 0 };
+  return {
+    ok: true, date: t.date, isToday: t.date === iso(new Date()), hasData: t.revenue > 0, plan, deadline: '08:30', openedAt: '',
+    revenue: t.revenue, checks: t.checks, avg: t.avg, cash: 0, card: 0, writeoff: t.writeoff,
+    verdict: t.revenue ? verdictFor(t.pct) : null, top3: '', days, week: weekStats(days), products: [],
+    incidents: (o.incidents || []).map((i) => ({ id: i.id, date: normDate(i.date), time: '', who: i.user, step: i.task, text: i.comment, priority: '', owner: i.responsible, status: 'Open', photo: i.photo }))
+  };
+}
+
+$('demo').hidden = !demo;
+$('pick').value = iso(new Date());
+
+async function getJson(url) { return (await fetch(url)).json(); }
+
+async function load() {
+  $('err').textContent = '';
+  $('main').classList.add('loading');
+  try {
+    if (demo) { render(demoData()); return; }
+    let d = await getJson(API_URL + '?action=dashboard&date=' + $('pick').value);
+    if (!d || d.ok === false || !d.days) {
+      const old = await getJson(API_URL + '?action=get_dashboard');
+      if (old && old.cashHistory) d = fromLegacy(old);
+      else throw new Error((d && d.error) || 'неожиданный ответ сервера');
     }
+    render(d);
+  } catch (e) {
+    $('err').textContent = 'Не удалось загрузить данные: ' + e.message + '. Проверьте API_URL и доступ «для всех» у веб-приложения.';
+  } finally {
+    $('main').classList.remove('loading');
+  }
+}
 
-    function renderDashboard(data) {
-      const history = data.cashHistory || [];
-      const last = history[history.length - 1] || { total: 0, avgCheck: 0, checks: 0, writeOffs: 0 };
-      const planPct = Math.round((last.total / (data.plan || 45000)) * 100);
+/* ---------- отрисовка ---------- */
+function render(d) {
+  d.days = d.days || []; d.incidents = d.incidents || [];
+  const has = !!d.hasData, plan = d.plan || 45000, pct = has ? Math.round(d.revenue / plan * 100) : 0;
+  $('date').textContent = new Date(d.date + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }) + (d.isToday ? ' · сегодня' : '');
+  $('upd').textContent = '· обновлено ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  $('pick').value = d.date;
 
-      document.getElementById("kpiRevenue").innerText = `${last.total.toLocaleString()} ₽`;
-      document.getElementById("kpiPlan").innerText = `Выполнение плана: ${planPct}% (План: ${(data.plan || 45000).toLocaleString()} ₽)`;
-      document.getElementById("kpiAvgCheck").innerText = `${last.avgCheck} ₽`;
-      document.getElementById("kpiChecks").innerText = `Транзакций за день: ${last.checks}`;
-      document.getElementById("kpiWriteOffs").innerText = `${last.writeOffs} ₽`;
-      document.getElementById("kpiIncidents").innerText = (data.incidents || []).length;
+  const open = d.incidents.filter((i) => i.status === 'Open').length;
+  $('openInc').hidden = !open; $('openInc').textContent = open + ' откр. инц.';
 
-      const ctx = document.getElementById("revenueChart").getContext("2d");
-      if (chartInstance) chartInstance.destroy();
-      chartInstance = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: history.map(h => h.date),
-          datasets: [{
-            label: "Выручка (₽)",
-            data: history.map(h => h.total),
-            borderColor: "#fbbf24",
-            backgroundColor: "rgba(251, 191, 36, 0.15)",
-            borderWidth: 3,
-            fill: true,
-            tension: 0.35
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: { grid: { color: "#1e293b" }, ticks: { color: "#94a3b8" } },
-            x: { grid: { display: false }, ticks: { color: "#94a3b8" } }
-          }
-        }
-      });
+  $('rev').textContent = has ? rub(d.revenue) : '—';
+  const k = d.days.findIndex((x) => x.date === d.date), prev = k > 0 ? d.days[k - 1] : null;
+  if (has && prev && prev.revenue > 0) {
+    const dl = Math.round((d.revenue - prev.revenue) / prev.revenue * 100);
+    $('dayDelta').innerHTML = '<span class="chip ' + (dl >= 0 ? 'up' : 'down') + '">' + (dl >= 0 ? '+' : '') + dl + '%</span><span class="muted"> ко вчера</span>';
+  } else $('dayDelta').textContent = '';
 
-      const logsHtml = (data.recentLogs || []).map(l => `
-        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
-          <div>
-            <p class="font-semibold text-amber-300">${l.block} — ${l.user}</p>
-            <p class="text-xs text-slate-400">${l.date} | Шагов: ${l.total}</p>
-          </div>
-          <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${l.incidents > 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}">
-            ${l.incidents > 0 ? '⚠️ ' + l.incidents + ' пробл.' : '✅ Норма'}
-          </span>
-        </div>
-      `).join("");
-      document.getElementById("logsContainer").innerHTML = logsHtml || "<p class='text-slate-500'>Пока нет записей</p>";
+  $('cupPct').textContent = has ? pct + '%' : '—';
+  $('liquid').style.transform = 'translateY(' + (120 - Math.min(pct, 120) / 120 * 110) + 'px)';
+  $('verd').textContent = d.verdict ? d.verdict.icon + ' ' + d.verdict.text.charAt(0).toUpperCase() + d.verdict.text.slice(1) + ' · план ' + rub(plan) : 'За этот день данных нет';
+  $('verd').style.color = d.verdict ? (d.verdict.p >= 90 ? 'var(--good)' : 'var(--bad)') : 'var(--muted)';
 
-      const incHtml = (data.incidents || []).map(inc => `
-        <tr>
-          <td class="py-3 px-2 font-mono text-xs text-rose-400">${inc.id}<br><span class="text-slate-500">${inc.date}</span></td>
-          <td class="py-3 px-2 font-medium">${inc.user}</td>
-          <td class="py-3 px-2 text-slate-300">${inc.task}</td>
-          <td class="py-3 px-2 text-amber-200">${inc.comment}</td>
-          <td class="py-3 px-2"><span class="bg-slate-800 px-2 py-1 rounded text-xs">${inc.responsible}</span></td>
-          <td class="py-3 px-2">
-            ${inc.photo && inc.photo.includes('http') ? `<a href="${inc.photo}" target="_blank" class="text-amber-400 underline text-xs">Открыть фото</a>` : '—'}
-          </td>
-        </tr>
-      `).join("");
-      document.getElementById("incidentsTable").innerHTML = incHtml || "<tr><td colspan='6' class='py-4 text-center text-slate-500'>Инцидентов нет</td></tr>";
+  const tot = (d.cash + d.card) || 0;
+  $('splitBar').hidden = !tot; $('cashL').textContent = ''; $('cardL').textContent = '';
+  if (tot) {
+    $('cashBar').style.width = (d.cash / tot * 100) + '%';
+    $('cashL').textContent = 'Наличные ' + rub(d.cash) + ' · ' + Math.round(d.cash / tot * 100) + '%';
+    $('cardL').textContent = 'Безнал ' + rub(d.card) + ' · ' + Math.round(d.card / tot * 100) + '%';
+  }
+  $('checks').textContent = has ? d.checks : '—';
+  $('avg').textContent = has ? rub(d.avg) : '—';
+  $('wo').textContent = has ? rub(d.writeoff) : '—';
+  const dl = d.deadline || '08:30';
+  $('open').textContent = d.openedAt || 'Нет данных';
+  $('openNote').textContent = d.openedAt ? (d.openedAt <= dl ? 'вовремя (дедлайн ' + dl + ')' : 'с опозданием (дедлайн ' + dl + ')') : 'дедлайн ' + dl;
+
+  const w = d.week || weekStats(d.days);
+  $('wRev').textContent = rub(w.revenue);
+  $('wDelta').innerHTML = w.delta == null ? '' : '<span class="chip ' + (w.delta >= 0 ? 'up' : 'down') + '">' + (w.delta >= 0 ? '+' : '') + w.delta + '%</span> к прошлым 7 дням';
+  $('wAvg').textContent = rub(w.avg);
+  $('wChecks').textContent = w.checks;
+  $('wBest').textContent = w.best ? rub(w.best.revenue) : '—';
+  $('wBestD').textContent = w.best ? dm(w.best.date) : '';
+
+  drawChart(d, plan); drawTop(d); drawTable(d.days); drawIncidents(d.incidents);
+}
+
+function drawChart(d, plan) {
+  if (!d.days.length) { $('chart').innerHTML = '<span class="muted">Нет данных.</span>'; return; }
+  const W = 560, H = 230, pad = 24, base = H - 28, max = Math.max(plan * 1.15, ...d.days.map((x) => x.revenue));
+  const bw = (W - pad * 2) / d.days.length, y = (v) => base - v / max * (base - 14);
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Выручка по дням">';
+  s += '<line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + y(plan) + '" y2="' + y(plan) + '" stroke="var(--crema)" stroke-width="2" stroke-dasharray="6 5"/>';
+  s += '<text x="' + (W - pad) + '" y="' + (y(plan) - 6) + '" text-anchor="end">план ' + Math.round(plan / 1000) + ' тыс.</text>';
+  d.days.forEach((x, i) => {
+    const cx = pad + i * bw + bw / 2, cur = x.date === d.date;
+    if (x.revenue) {
+      s += '<rect x="' + (cx - bw * .32) + '" y="' + y(x.revenue) + '" width="' + bw * .64 + '" height="' + (base - y(x.revenue)) + '" rx="4" fill="' + (cur ? 'var(--brew)' : 'var(--line)') + '"><title>' + dm(x.date) + ': ' + rub(x.revenue) + '</title></rect>';
+      s += '<text x="' + cx + '" y="' + (y(x.revenue) - 4) + '" text-anchor="middle" style="font-size:10px">' + Math.round(x.revenue / 1000) + '</text>';
     }
+    if (i % 2 === (d.days.length - 1) % 2) s += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" style="font-size:10px">' + dm(x.date) + '</text>';
+  });
+  $('chart').innerHTML = s + '</svg><div class="muted">Значения в тысячах ₽</div>';
+}
 
-    window.onload = loadDashboard;
-  </script>
+function drawTop(d) {
+  const items = d.products && d.products.length ? d.products
+    : String(d.top3 || '').split(', ').map((x) => { const m = x.match(/^(.*) ×(\d+)$/); return m ? { name: m[1], qty: +m[2], sum: 0 } : null; }).filter(Boolean);
+  if (!items.length) { $('top3').innerHTML = '<span class="muted">Нет данных. Загрузите «Продажи.csv» в терминале бариста.</span>'; return; }
+  const m = items[0].qty || 1;
+  $('top3').innerHTML = items.map((x) => '<div class="bar"><b>' + esc(x.name) + '</b><span>' + x.qty + ' шт.' + (x.sum ? ' · ' + rub(x.sum) : '') + '</span><div class="track"><i style="width:' + x.qty / m * 100 + '%"></i></div></div>').join('');
+}
+
+function drawTable(days) {
+  $('tbl').innerHTML = days.slice().reverse().map((x) => {
+    if (!x.revenue) return '<tr class="muted"><td>' + dm(x.date) + '</td><td colspan="7" style="text-align:left">нет данных</td></tr>';
+    const c = x.pct >= 90 ? 'var(--good)' : 'var(--bad)';
+    return '<tr><td>' + dm(x.date) + '</td><td><b>' + rub(x.revenue) + '</b></td><td style="color:' + c + ';font-weight:700">' + x.pct + '%</td><td>' + x.checks +
+      '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td>' + rub(x.writeoff) + '</td></tr>';
+  }).join('');
+}
+
+function drawIncidents(list) {
+  $('inc').innerHTML = list.length ? list.map((i) => {
+    const cls = i.status !== 'Open' ? 'res' : (i.priority === 'Критично' ? 'hi' : '');
+    const link = /^https:\/\//.test(i.photo || '') ? ' · <a href="' + esc(i.photo) + '" target="_blank" rel="noopener">фото</a>' : '';
+    const meta = [i.id, i.who, i.time].filter(Boolean).map(esc).join(' · ');
+    return '<div class="inc"><span class="dot ' + cls + '"></span><div><b>' + esc(i.step) + '</b>: ' + esc(i.text) +
+      '<div class="tag">' + meta + ' · ответственный: ' + esc(i.owner) + link + '</div></div>' +
+      '<span class="tag">' + (i.status === 'Open' ? 'Открыт' : 'Решён') + '</span></div>';
+  }).join('') : '<span class="muted">Инцидентов нет.</span>';
+}
+
+$('reload').onclick = load;
+$('pick').onchange = load;
+load();
+if (!demo) setInterval(load, 60000);
+</script>
 </body>
 </html>
