@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2e1b11">
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<title>Кофейня — терминал бариста</title>
+<title>Кофейня — терминал бариста</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -33,14 +33,14 @@
   a.btn { display:flex; align-items:center; justify-content:center; text-decoration:none; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
-  body { margin:0; min-height:100vh; color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  body { margin:0; min-height:100vh;min-height:100dvh; color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background:radial-gradient(900px 400px at 50% -120px, color-mix(in srgb, var(--crema) 22%, transparent), transparent), var(--bg); }
   h1,h2,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
   .muted { color:var(--muted); font-size:14px; }
 
   header { position:sticky; top:0; z-index:5; color:var(--cream);
     background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
-    padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 14px; }
+    padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
   .wrap { max-width:480px; margin:0 auto; }
   .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
   .brand h1 { font-size:20px; display:flex; align-items:center; gap:8px; }
@@ -118,6 +118,21 @@
   .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); width:max-content; max-width:92vw; background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:16px; font-size:14px; z-index:40; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); }
   .tabs button.locked { opacity:.45; }
   @keyframes fill { from { transform:translateY(120px); } to { transform:translateY(0); } }
+  /* --- адаптация под телефон и Telegram Mini App --- */
+  html { -webkit-text-size-adjust:100%; overscroll-behavior-y:contain; }
+  * { -webkit-tap-highlight-color:transparent; }
+  button, .drop, .file, .tabs { touch-action:manipulation; -webkit-user-select:none; user-select:none; }
+  .tabs button { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #checklistView .navrow { position:sticky; bottom:calc(env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px) + 6px); z-index:4; padding-top:14px; background:linear-gradient(to top,var(--bg) 72%,transparent); }
+  #submitCashBtn { position:sticky; bottom:calc(env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px) + 8px); z-index:4; box-shadow:0 -10px 18px var(--bg); }
+  .toast { bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px)); }
+  main { padding-bottom:calc(24px + env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px)); }
+  .tabs .ck { font-size:10px; margin-left:2px; vertical-align:super; }
+  @media (max-width:340px) { .tabs { grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:400px) { .tabs button { font-size:12px; padding:0 2px; } }
+  .seg input[type=date] { min-width:0; box-sizing:border-box; }
+  @media (max-width:380px) { .seg.three { grid-template-columns:1fr 1fr; } .seg.three input[type=date] { grid-column:1 / -1; } }
+  @media (max-width:360px) { .tabs { gap:2px; padding:3px; } .tabs button { font-size:11.5px; padding:0 2px; } main { padding-left:12px; padding-right:12px; } .btn { font-size:16px; } header h1 { font-size:19px; } }
 </style>
 </head>
 <body>
@@ -289,13 +304,34 @@ const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " ₽";
 const isoToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
-const userName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || "Бариста";
+const tgu = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
+const userName = tgu && tgu.first_name ? tgu.first_name + (tgu.last_name ? " " + tgu.last_name.charAt(0) + "." : "") : "Бариста";
 const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {} };
+const tgt = (f) => { try { return f(); } catch (e) {} };
 $("loc").textContent = LOCATION; $("who").textContent = userName;
 const curTheme = () => document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 function paintTheme() { const d = curTheme() === "dark"; $("theme").textContent = d ? "☀️" : "🌙"; $("theme").setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема"); }
 $("theme").onclick = () => { const n = curTheme() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {} paintTheme(); };
 paintTheme();
+/* ---------- Telegram Mini App ---------- */
+if (tg) {
+  tgt(() => tg.ready()); tgt(() => tg.expand()); tgt(() => tg.disableVerticalSwipes());     // не закрывается случайным свайпом вниз
+  const hasTheme = () => { try { return !!localStorage.getItem("coffee_illy_theme"); } catch (e) { return false; } };
+  const tgTheme = () => { if (!hasTheme() && tg.colorScheme) { document.documentElement.setAttribute("data-theme", tg.colorScheme === "dark" ? "dark" : "light"); paintTheme(); } };
+  tgTheme(); tgt(() => tg.onEvent("themeChanged", tgTheme));
+  tgt(() => tg.setHeaderColor("#5a3a29"));
+  tgt(() => tg.setBackgroundColor(curTheme() === "dark" ? "#161211" : "#f6ece2"));
+  tgt(() => tg.BackButton.onClick(() => { const b = $("backBtn"); if (!b.hidden && !b.disabled) b.click(); }));   // системная «назад» = предыдущий шаг
+  setInterval(() => {        // подтверждение закрытия, пока есть несохранённая работа; кнопка «назад» на шагах 2+
+    const work = (typeof inProgress === "function" && inProgress()) || photoBusy || (!$("cashView").hidden && !!trans);
+    tgt(() => work ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation());
+    const back = block !== "КАССА" && !$("checklistView").hidden && idx > 0;
+    tgt(() => back ? tg.BackButton.show() : tg.BackButton.hide());
+  }, 700);
+}
+document.addEventListener("focusin", (e) => {     // клавиатура не перекрывает поле ввода
+  if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName)) setTimeout(() => { try { e.target.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (x) {} }, 320);
+});
 $("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
 
 let tasks = [], cur = [], idx = 0, answers = [];
@@ -329,7 +365,7 @@ const markDone = (b) => { try { localStorage.setItem(doneKey(b), "1"); } catch (
 function drawTabs() {
   document.querySelectorAll(".tabs button").forEach((x) => {
     x.setAttribute("aria-selected", x.dataset.b === block);
-    x.textContent = x.dataset.l + (isDone(x.dataset.b) ? " ✓" : "");
+    x.textContent = x.dataset.l; if (isDone(x.dataset.b)) { const c = document.createElement("span"); c.className = "ck"; c.textContent = "✓"; x.appendChild(c); }
     x.classList.toggle("locked", x.dataset.b !== block && inProgress());
   });
 }
@@ -449,15 +485,21 @@ function gotPhoto(c) {      // штамп времени на снимке и м
   x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION + " · " + (cur[idx] ? cur[idx].title : ""), h * .6, c.height - h * .6);
   photo = c.toDataURL("image/jpeg", 0.72); photoUrl = ""; setPhotoUI(); uploadNow();
 }
-async function uploadNow() {
+async function uploadNow() {      // фото сразу уходит на Google Диск; при сбое — 3 попытки, затем повтор по нажатию или при появлении сети
   const my = photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
-  photoBusy = true; photoMsg("Отправляем на Google Диск…"); setPhotoUI(); validate();
-  try {
-    const d = await api({ action: "upload_photo", block, step, photo: my });
-    photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good");
-  } catch (e) { photoMsg("Нет связи — фото отправится вместе с отчётом", "bad"); }
-  photoBusy = false; setPhotoUI(); validate();
+  photoBusy = true; setPhotoUI(); validate();
+  for (let k = 0; k < 3; k++) {
+    photoMsg(k ? "Повторная отправка (" + (k + 1) + "/3)…" : "Отправляем на Google Диск…");
+    try {
+      const d = await api({ action: "upload_photo", block, step, photo: my });
+      if (photo !== my) return;
+      photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good"); photoBusy = false; setPhotoUI(); validate(); return;
+    } catch (e) { await new Promise((r) => setTimeout(r, 1500 * (k + 1))); if (photo !== my) return; }
+  }
+  photoMsg("Нет связи. Нажмите сюда, чтобы отправить снова (фото также уйдёт с отчётом)", "bad"); photoBusy = false; setPhotoUI(); validate();
 }
+$("photoState").onclick = () => { if ($("photoState").classList.contains("bad") && photo && !photoUrl && !photoBusy) uploadNow(); };
+window.addEventListener("online", () => { if (photo && !photoUrl && !photoBusy && !$("checklistView").hidden) uploadNow(); });
 $("btnOk").onclick = () => { tap(); setStatus(false); };
 $("btnInc").onclick = () => { tap(); setStatus(true); };
 $("prLow").onclick = () => setPriority("Терпит");
@@ -520,6 +562,7 @@ $("queueBtn").onclick = flush;
 window.addEventListener("online", flush);
 
 function finish(ok, text) {
+  tgt(() => tg.HapticFeedback.notificationOccurred(ok ? "success" : "warning"));
   $("steps").hidden = true; show("doneView");
   $("doneTitle").textContent = ok ? "Отправлено!" : "Сохранено на телефоне";
   $("doneText").textContent = ok ? text : "Нет связи — отчёт уйдёт автоматически, когда появится интернет.";
@@ -657,5 +700,6 @@ $("retryBtn").onclick = loadTasks;
 })();
 queueUI(); flush(); loadTasks();
 </script>
+<script src="app.js" defer></script>
 </body>
 </html>
