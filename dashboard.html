@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Кофейня — дашборд</title>
+<title>Кофейня — дашборд</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <style>
 :root{--bg:#f1ece6;--sf:#fff;--ink:#222;--mu:#7a6f66;--ln:#e4dcd3;--br:#5a3a29;--cr:#c98b4f;--ok:#1b8a57;--no:#c23b22;color-scheme:light}
@@ -43,6 +43,7 @@ h2{font-size:16px;margin:0 0 10px}.inc{display:flex;justify-content:space-betwee
 <div class="card"><span class="mu">Открытие смены</span><b id="open">—</b><span id="openS">&nbsp;</span></div></div>
 <section class="card"><h2>Выручка за 14 дней</h2><div id="chart"></div></section>
 <section class="card"><h2 id="incT">Открытые проблемы</h2><div id="inc"></div></section>
+<section class="card" id="phC" hidden><h2>Фотоотчёт</h2><div id="ph"></div></section>
 <p class="mu" style="text-align:center;margin-top:18px">Подробности — прибыль, позиции, задачи персонала — в разделе <a href="report.html" style="color:var(--br)">Отчёты</a></p>
 </main>
 <script>
@@ -80,7 +81,7 @@ function render(d){
   const dl=d.deadline||'08:30';
   $('open').textContent=d.openedAt||'—';
   $('openS').innerHTML=d.openedAt?'<span class="t '+(d.openedAt<=dl?'ok':'no')+'">'+(d.openedAt<=dl?'вовремя':'с опозданием')+'</span>':'<span class="mu">нет отметки</span>';
-  chart(d);incs(d);
+  chart(d);incs(d);photos(d);
 }
 function chart(d){
   const days=d.days,W=640,H=190,p=16,base=H-22,max=Math.max(d.plan*1.15,...days.map((x)=>x.revenue)),bw=(W-p*2)/days.length,y=(v)=>base-v/max*(base-10);
@@ -90,6 +91,11 @@ function chart(d){
     if(i%2===0||days.length<8)s+='<text x="'+(p+i*bw+bw/2)+'" y="'+(H-6)+'" text-anchor="middle">'+x.date.slice(8)+'</text>'});
   s+='<line x1="'+p+'" x2="'+(W-p)+'" y1="'+y(d.plan)+'" y2="'+y(d.plan)+'" stroke="var(--cr)" stroke-dasharray="5 4"/></svg>';
   $('chart').innerHTML=s;
+}
+function photos(d){
+  const ord={'Открытие':0,'День':1,'Закрытие':2},r=(d.photoReports||[]).slice().sort((a,b)=>(ord[a.block]??9)-(ord[b.block]??9)||a.time.localeCompare(b.time));
+  $('phC').hidden=!r.length;
+  $('ph').innerHTML=r.map((x)=>'<div class="inc"><div><b>'+esc(x.block)+'</b> <span class="mu">'+esc(x.time)+(x.who?' · '+esc(x.who):'')+'</span></div><div>'+x.photos.filter((p)=>/^https:\/\//.test(p.url)).map((p,i)=>'<a href="'+esc(p.url)+'" target="_blank" rel="noopener" title="'+esc(p.step)+'" style="display:inline-block;min-width:30px;text-align:center;margin-left:6px;padding:5px 8px;border:1px solid var(--ln);border-radius:9px;color:var(--br);text-decoration:none">'+(i+1)+'</a>').join('')+'</div></div>').join('');
 }
 function incs(d){
   const open=(d.incidents||[]).filter((i)=>i.status==='Open');
@@ -106,4 +112,5 @@ const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
 $('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
 paint();$('pick').value=new URLSearchParams(location.search).get('date')||iso(new Date());load();
 setInterval(()=>{if(!document.hidden&&D&&D.isToday)load(true)},120000);
-</script></body></html>
+</script><script src="app.js" defer></script>
+</body></html>
