@@ -153,19 +153,32 @@
   .xrow { display:grid; grid-template-columns:1fr auto auto; gap:12px; padding:10px 0; border-top:1px solid var(--line); align-items:center; font-size:14px; }
   .xrow:first-child { border-top:0; }
   .tbl tbody tr { cursor:default; }
-  @media print { .nav, .noprint, .toast { display:none !important; } body { background:#fff; } .panel { box-shadow:none; } }
+  @media print { .nav, .app-header, .noprint, .toast { display:none !important; } body { background:#fff; } .panel { box-shadow:none; } }
   .okc{color:var(--good);font-weight:700}.miss{color:var(--muted)}.miss.bad{color:var(--bad);font-weight:700}
   .tbl:has(#tasks) th,.tbl:has(#whoB) th{text-align:left}#tasks td,#whoB td{vertical-align:top}#tasks td:not(:first-child){text-align:left;white-space:normal;min-width:130px}
+
+  /* --- единая шапка: как в приложении сотрудников --- */
+  .app-header { position:sticky; top:0; z-index:20; color:var(--cream); background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
+    padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
+  .app-header .wrap { max-width:var(--w,1120px); margin:0 auto; }
+  .app-header .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .app-header h1 { font-size:20px; display:flex; align-items:center; gap:8px; color:var(--cream); }
+  .app-header h1 svg { width:26px; height:26px; }
+  .app-header .sub { color:rgba(246,236,226,.68); font-size:13px; }
+  .app-header .theme-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); border-radius:12px; width:42px; height:42px; font-size:18px; cursor:pointer; }
+  .app-header .tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:14px; max-width:480px; }
+  .app-header .tabs a { display:flex; align-items:center; justify-content:center; min-height:44px; border-radius:12px; color:rgba(246,236,226,.8); font-weight:600; font-size:14px; text-decoration:none; }
+  .app-header .tabs a.on { background:var(--cream); color:var(--espresso); }
+  .app-header .dp { display:flex; gap:6px; margin-top:12px; max-width:480px; }
+  .app-header .dp button, .app-header .dp input { height:42px; border-radius:12px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); padding:0 12px; font-weight:600; cursor:pointer; color-scheme:dark; }
+  .app-header .dp input { flex:1; min-width:0; }
+  .app-header .dp button { min-width:42px; }
 </style>
 </head>
 <body>
-<header class="nav"><div class="in">
-  <div class="logo">
-    <svg viewBox="0 0 32 32" fill="none" stroke="var(--brew)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>
-    <div><b>Кофейня</b><span class="muted">Кофейня №1</span></div>
-  </div>
-  <nav class="pills" aria-label="Разделы"><a href="dashboard.html">Дашборд</a><a class="on" href="report.html" aria-current="page">Отчёты</a><a href="index.html">Терминал</a></nav>
-  <div class="dp"><button id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
+<header class="app-header"><div class="wrap">
+  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Отчёты владельца</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
+  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html">Дашборд</a><a href="report.html" class="on" aria-current="page">Отчёты</a><a href="index.html">Терминал</a></nav>
 </div></header>
 <main id="main">
   <div id="err" class="alert" role="alert" hidden></div>
