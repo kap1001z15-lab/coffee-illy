@@ -455,14 +455,22 @@ function validate() {
 
 /* ---------- камера: только живой снимок ---------- */
 function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
+const inTelegram = !!(tg && tg.initData);     // в Telegram встроенный предпросмотр камеры часто чёрный — берём системную камеру телефона
+function systemCamera() { closeCamera(); $("cameraInput").click(); }
 function openCamera() {
   if (photoBusy) return;
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
+  if (inTelegram || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
   navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
-    .then((s) => { stream = s; $("camVideo").srcObject = s; $("cam").hidden = false; })
+    .then((s) => {
+      stream = s; const v = $("camVideo"); v.srcObject = s; v.muted = true; v.setAttribute("playsinline", "");
+      $("cam").hidden = false;
+      const p = v.play(); if (p && p.catch) p.catch(() => {});
+      clearTimeout(openCamera.t);                       // если через 2,5 с кадров нет (чёрный экран) — системная камера
+      openCamera.t = setTimeout(() => { if (!$("cam").hidden && !v.videoWidth) { photoMsg("Предпросмотр не запустился — открываю системную камеру.", "bad"); systemCamera(); } }, 2500);
+    })
     .catch((err) => {
       const n = err && err.name;
-      if (n === "NotAllowedError" || n === "SecurityError") photoMsg("Доступ к камере запрещён. Разрешите камеру для этого приложения в настройках телефона (или значок замка в адресной строке) — открываю системную камеру.", "bad");
+      if (n === "NotAllowedError" || n === "SecurityError") photoMsg("Доступ к камере запрещён. Разрешите камеру для этого приложения в настройках телефона — открываю системную камеру.", "bad");
       $("cameraInput").click();                        // нет доступа к камере в браузере — системная камера
     });
 }
@@ -471,7 +479,7 @@ $("drop").onclick = openCamera;
 $("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
 $("camCancel").onclick = closeCamera;
 $("camShot").onclick = () => {
-  const v = $("camVideo"); if (!v.videoWidth) return;
+  const v = $("camVideo"); if (!v.videoWidth) { systemCamera(); return; }
   const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
   c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
   c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
