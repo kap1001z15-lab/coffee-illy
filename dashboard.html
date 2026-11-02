@@ -127,6 +127,7 @@ const cur=()=>document.documentElement.getAttribute('data-theme')||(matchMedia('
 const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
 $('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
 paint();$('pick').value=new URLSearchParams(location.search).get('date')||iso(new Date());load();
-setInterval(()=>{if(!document.hidden&&D&&D.isToday)load(true)},120000);
+setInterval(()=>{if(!document.hidden&&D)load(true)},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&D)load(true)});   // план, дедлайн и норма из листа «Настройки» подтягиваются сами
 </script><script src="app.js" defer></script>
 </body></html>
