@@ -178,7 +178,7 @@
 
   <div id="emptyView" class="panel center" hidden>
     <h2>Для этого блока нет задач</h2>
-    <p class="muted">Добавьте шаги в закрытую таблицу задач (лист <b>Задачи</b>).</p>
+    <p class="muted" id="emptyText">Добавьте шаги в закрытую таблицу задач (лист <b>Задачи</b>).</p>
   </div>
 
   <section id="checklistView" class="stack" hidden>
@@ -334,7 +334,7 @@ document.addEventListener("focusin", (e) => {     // клавиатура не �
 });
 $("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
 
-let tasks = [], cur = [], idx = 0, answers = [];
+let tasks = [], cur = [], idx = 0, answers = [], META = {};
 let block = "Открытие", photo = "", incident = false, priority = "Терпит";
 let photoUrl = "", photoBusy = false, stream = null;
 const PHOTO_MAX_AGE = 3 * 60 * 1000;   // запасной режим: фото старше 3 минут не принимаем
@@ -376,7 +376,7 @@ async function loadTasks() {
   try {
     const d = await (await fetch(API_URL + "?action=get_checklists")).json();
     if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
-    tasks = d.tasks;
+    tasks = d.tasks; META = d;
     if (d.plan > 0) PLAN = d.plan;
     if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
     try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
@@ -388,11 +388,18 @@ async function loadTasks() {
   selectBlock(block);
 }
 
+function emptyHint(b) {      // почему пусто: подсказка администратору
+  const m = META || {}; let t;
+  if (!m.v) t = "Скрипт на сервере устарел. Администратору: Apps Script → «Развернуть» → «Управление развёртываниями» → ✏️ → Версия «Новая версия» → «Развернуть».";
+  else if (!m.rows) t = "Лист «" + (m.sheet || "Задачи") + "» пуст. Загрузите задачи в закрытую таблицу.";
+  else t = "В блоке «" + b + "» нет активных задач. В листе «" + m.sheet + "» строк: " + m.rows + ". Блок берётся из столбца «Блок» (Открытие / День / Закрытие), включение — столбец «Активна» = да.";
+  $("emptyText").textContent = t;
+}
 function selectBlock(b) {
   block = b; drawTabs();
   if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
   cur = tasks.filter((t) => t.block === b); idx = 0; answers = [];
-  if (!cur.length) { $("steps").hidden = true; show("emptyView"); return; }
+  if (!cur.length) { $("steps").hidden = true; emptyHint(b); show("emptyView"); return; }
   $("steps").hidden = false; renderStep();
 }
 
@@ -689,7 +696,9 @@ const inProgress = () => block !== "КАССА" && !$("checklistView").hidden &&
 document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
   tap();
   if (b.dataset.b !== block && inProgress()) { toast("Сначала завершите «" + block + "»: на каждом шаге нужно новое фото"); return; }
-  if (tasks.length || b.dataset.b === "КАССА") selectBlock(b.dataset.b);
+  if (!$("loader").hidden) return;
+  if (!$("errorView").hidden && b.dataset.b !== "КАССА") return;
+  selectBlock(b.dataset.b);
 });
 $("retryBtn").onclick = loadTasks;
 (function () {
