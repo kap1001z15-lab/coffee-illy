@@ -460,7 +460,11 @@ function openCamera() {
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
   navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
     .then((s) => { stream = s; $("camVideo").srcObject = s; $("cam").hidden = false; })
-    .catch(() => { $("cameraInput").click(); });       // нет доступа к камере в браузере — системная камера
+    .catch((err) => {
+      const n = err && err.name;
+      if (n === "NotAllowedError" || n === "SecurityError") photoMsg("Доступ к камере запрещён. Разрешите камеру для этого приложения в настройках телефона (или значок замка в адресной строке) — открываю системную камеру.", "bad");
+      $("cameraInput").click();                        // нет доступа к камере в браузере — системная камера
+    });
 }
 function closeCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; $("cam").hidden = true; }
 $("drop").onclick = openCamera;
@@ -498,7 +502,7 @@ async function uploadNow() {      // фото сразу уходит на Googl
   for (let k = 0; k < 3; k++) {
     photoMsg(k ? "Повторная отправка (" + (k + 1) + "/3)…" : "Отправляем на Google Диск…");
     try {
-      const d = await api({ action: "upload_photo", block, step, photo: my });
+      const d = await api({ action: "upload_photo", block, step, photo: my, userName, location: LOCATION });
       if (photo !== my) return;
       photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good"); photoBusy = false; setPhotoUI(); validate(); return;
     } catch (e) { await new Promise((r) => setTimeout(r, 1500 * (k + 1))); if (photo !== my) return; }
