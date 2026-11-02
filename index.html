@@ -455,24 +455,36 @@ function validate() {
 
 /* ---------- камера: только живой снимок ---------- */
 function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
-const inTelegram = !!(tg && tg.initData);     // в Telegram встроенный предпросмотр камеры часто чёрный — берём системную камеру телефона
-function systemCamera() { closeCamera(); $("cameraInput").click(); }
-function openCamera() {
-  if (photoBusy) return;
-  if (inTelegram || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
-    .then((s) => {
-      stream = s; const v = $("camVideo"); v.srcObject = s; v.muted = true; v.setAttribute("playsinline", "");
-      $("cam").hidden = false;
-      const p = v.play(); if (p && p.catch) p.catch(() => {});
-      clearTimeout(openCamera.t);                       // если через 2,5 с кадров нет (чёрный экран) — системная камера
-      openCamera.t = setTimeout(() => { if (!$("cam").hidden && !v.videoWidth) { photoMsg("Предпросмотр не запустился — открываю системную камеру.", "bad"); systemCamera(); } }, 2500);
-    })
-    .catch((err) => {
-      const n = err && err.name;
-      if (n === "NotAllowedError" || n === "SecurityError") photoMsg("Доступ к камере запрещён. Разрешите камеру для этого приложения в настройках телефона — открываю системную камеру.", "bad");
-      $("cameraInput").click();                        // нет доступа к камере в браузере — системная камера
+function systemCamera() { closeCamera(); photoMsg("Снимите фото камерой телефона. Из галереи принимаются только свежие снимки (до 3 минут).", ""); $("cameraInput").click(); }
+const camLive = (v) => v.videoWidth > 0 && v.readyState >= 2;
+function startStream(constraints, v) {
+  return navigator.mediaDevices.getUserMedia(constraints).then((s) => {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = s; v.srcObject = s; v.muted = true; v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
+    $("cam").hidden = false;
+    const play = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+    v.onloadedmetadata = play; play();
+    return new Promise((res) => {                       // ждём реальные кадры до 3 секунд
+      const t0 = Date.now(), iv = setInterval(() => {
+        if (camLive(v)) { clearInterval(iv); res(true); } else if (Date.now() - t0 > 3000) { clearInterval(iv); res(false); }
+      }, 150);
     });
+  });
+}
+async function openCamera() {
+  if (photoBusy) return;
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { systemCamera(); return; }
+  const v = $("camVideo");
+  try {
+    let ok = await startStream({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false }, v);
+    if (!ok) ok = await startStream({ video: true, audio: false }, v);     // упрощённые настройки для капризных WebView
+    if (!ok) { systemCamera(); }
+  } catch (err) {
+    const n = err && err.name;
+    closeCamera();
+    if (n === "NotAllowedError" || n === "SecurityError") photoMsg("Доступ к камере запрещён. Разрешите камеру для Telegram в настройках телефона (Приложения → Telegram → Разрешения → Камера).", "bad");
+    else systemCamera();
+  }
 }
 function closeCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; $("cam").hidden = true; }
 $("drop").onclick = openCamera;
