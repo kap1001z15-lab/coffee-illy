@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Кофейня — отчёты</title>
+<title>Кофейня — отчёты</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
@@ -155,7 +155,7 @@
   .tbl tbody tr { cursor:default; }
   @media print { .nav, .noprint, .toast { display:none !important; } body { background:#fff; } .panel { box-shadow:none; } }
   .okc{color:var(--good);font-weight:700}.miss{color:var(--muted)}.miss.bad{color:var(--bad);font-weight:700}
-  #tasks td,#whoB td{vertical-align:top}#tasks td:not(:first-child){text-align:left;white-space:normal;min-width:130px}
+  .tbl:has(#tasks) th,.tbl:has(#whoB) th{text-align:left}#tasks td,#whoB td{vertical-align:top}#tasks td:not(:first-child){text-align:left;white-space:normal;min-width:130px}
 </style>
 </head>
 <body>
@@ -431,5 +431,6 @@ paintTheme();
 })();
 $('xCat').addEventListener('focus', () => { if (R && R.categories) { const cur = $('xCat').value; $('xCat').innerHTML = R.categories.map((c) => '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>').join(''); } }, { once: true });
 </script>
+<script src="app.js" defer></script>
 </body>
 </html>
