@@ -296,8 +296,8 @@ $('apply').onclick = () => {
   load();
 };
 
-async function load() {
-  $('err').hidden = true; $('main').classList.add('loading');
+async function load(silent) {
+  $('err').hidden = true; if (!silent) $('main').classList.add('loading');
   try {
     const d = await apiGet('action=report&from=' + $('from').value + '&to=' + $('to').value);
     if (!d || d.ok === false || !d.finance) throw new Error((d && d.error) || 'сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
@@ -433,6 +433,11 @@ const curTheme = () => document.documentElement.getAttribute('data-theme') || (m
 function paintTheme() { const k = curTheme() === 'dark'; $('theme').textContent = k ? '☀️' : '🌙'; $('theme').setAttribute('aria-label', k ? 'Светлая тема' : 'Тёмная тема'); }
 $('theme').onclick = () => { const n = curTheme() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('coffee_illy_theme', n); } catch (e) {} paintTheme(); };
 paintTheme();
+
+/* ---------- автообновление: настройки из листа «Настройки» подтягиваются сами ---------- */
+const autoReload = () => { const a = document.activeElement; if (document.hidden || !R || (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))) return; load(true); };
+setInterval(autoReload, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) autoReload(); });
 
 /* ---------- старт ---------- */
 (function () {
