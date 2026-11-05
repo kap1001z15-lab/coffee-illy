@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кофейня — отчёты</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
+<script src="config.js"></script>
+<script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
@@ -247,7 +249,7 @@
 <div class="toast" id="toast" hidden></div>
 
 <script>
-const API_URL = 'https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec';
+const API_URL = window.COFFEE.API_URL;
 const PIN_KEY = 'coffee_illy_pin';
 const $ = (id) => document.getElementById(id);
 const rub = (n) => Math.round(Number(n || 0)).toLocaleString('ru-RU') + ' ₽';
@@ -262,12 +264,12 @@ let R = null;
 
 function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2800); }
 async function apiGet(q) {
-  const d = await (await fetch(API_URL + '?' + q + '&pin=' + encodeURIComponent(getPin()))).json();
+  const d = await coffeeFetch(API_URL + '?' + q + '&pin=' + encodeURIComponent(getPin()));
   if (d && d.ok === false && /PIN_REQUIRED/.test(d.error || '')) { const e = new Error('Введите код доступа администратора'); e.pin = true; throw e; }
   return d;
 }
 async function apiPost(p) {
-  const d = await (await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ pin: getPin() }, p)) })).json();
+  const d = await coffeeFetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ pin: getPin() }, p)) }, 30000);
   if (!d || d.ok === false) throw new Error((d && d.error) || 'ошибка сервера');
   return d;
 }
@@ -293,17 +295,20 @@ $('apply').onclick = () => {
   if (b > t) { b = t; $('to').value = t; }
   if (new Date(b) - new Date(a) > 399 * 864e5) { toast('Период не больше 13 месяцев'); return; }
   document.querySelectorAll('#presets button').forEach((x) => x.classList.remove('on'));
-  load();
+  load(true);
 };
 
-async function load(silent) {
-  $('err').hidden = true; if (!silent) $('main').classList.add('loading');
+async function load(fresh) {
+  const from = $('from').value, to = $('to').value, ck = 'rep:' + from + ':' + to, saved = coffeeCache.get(ck);
+  $('err').hidden = true;
+  if (saved && saved.finance) { R = saved; render(saved); } else $('main').classList.add('loading');
   try {
-    const d = await apiGet('action=report&from=' + $('from').value + '&to=' + $('to').value);
+    const d = await apiGet('action=report&from=' + from + '&to=' + to + (fresh ? '&nocache=1' : ''));
     if (!d || d.ok === false || !d.finance) throw new Error((d && d.error) || 'сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
-    R = d; render(d);
+    coffeeCache.set(ck, d); R = d; render(d);
   } catch (e) {
     $('err').hidden = false;
+    if (!e.pin && saved && saved.finance) { $('err').innerHTML = '<b>Нет связи.</b> Показаны сохранённые данные.'; return; }
     $('err').innerHTML = e.pin
       ? '<b>' + esc(e.message) + '</b><div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" autocomplete="current-password" placeholder="Код" style="height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);padding:0 12px"><button class="btn-s" id="pinOk" type="button">Войти</button></div>'
       : '<b>Не удалось загрузить отчёт.</b> ' + esc(e.message);
@@ -433,11 +438,6 @@ const curTheme = () => document.documentElement.getAttribute('data-theme') || (m
 function paintTheme() { const k = curTheme() === 'dark'; $('theme').textContent = k ? '☀️' : '🌙'; $('theme').setAttribute('aria-label', k ? 'Светлая тема' : 'Тёмная тема'); }
 $('theme').onclick = () => { const n = curTheme() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('coffee_illy_theme', n); } catch (e) {} paintTheme(); };
 paintTheme();
-
-/* ---------- автообновление: настройки из листа «Настройки» подтягиваются сами ---------- */
-const autoReload = () => { const a = document.activeElement; if (document.hidden || !R || (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))) return; load(true); };
-setInterval(autoReload, 60000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) autoReload(); });
 
 /* ---------- старт ---------- */
 (function () {
