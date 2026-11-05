@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Кофейня — управление</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
+<script src="config.js"></script>
+<style>html.gate body>*:not(#gate){visibility:hidden}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1")document.documentElement.classList.add("gate")}catch(e){}</script>
+<script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
+<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<style>
+:root{--bg:#e6ecee;--surface:#f7f9fa;--ink:#172326;--muted:#5b6d72;--line:#d3dde0;--brew:#5a3a29;--crema:#c98b4f;--good:#1b8a57;--bad:#c23b22;--warn:#b7791f;--espresso:#2e1b11;--cream:#f6ece2;
+--shadow:0 1px 2px rgba(23,35,38,.05),0 14px 30px -18px rgba(23,35,38,.35);--font-d:"Bricolage Grotesque",system-ui,sans-serif;--w:860px;color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark;--bg:#12191b;--surface:#1b2528;--ink:#e8eff0;--muted:#8fa3a8;--line:#2c3a3e;--brew:#b98a64;--crema:#e0a76a;--good:#4cc38a;--bad:#ff7a5f;--warn:#e5b04d;--shadow:0 1px 0 rgba(255,255,255,.03),0 14px 30px -18px rgba(0,0,0,.7)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#12191b;--surface:#1b2528;--ink:#e8eff0;--muted:#8fa3a8;--line:#2c3a3e;--brew:#b98a64;--crema:#e0a76a;--good:#4cc38a;--bad:#ff7a5f;--warn:#e5b04d;--shadow:0 1px 0 rgba(255,255,255,.03),0 14px 30px -18px rgba(0,0,0,.7)}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}[hidden]{display:none!important}
+body{margin:0;min-height:100vh;min-height:100dvh;color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:radial-gradient(900px 400px at 50% -120px,color-mix(in srgb,var(--crema) 22%,transparent),transparent),var(--bg);padding-bottom:env(safe-area-inset-bottom,0)}
+h1,h2,h3{font-family:var(--font-d);letter-spacing:-.02em;margin:0}
+button,input,select,textarea{font:inherit;color:var(--ink)}
+main{max-width:var(--w);margin:0 auto;padding:18px 16px 48px}
+.mu{color:var(--muted);font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:var(--shadow);margin-top:14px}
+h3{font-size:16px;margin:18px 0 6px}h3:first-child{margin-top:0}
+.al{border:1px solid var(--bad);background:color-mix(in srgb,var(--bad) 10%,var(--surface));border-radius:16px;padding:14px 16px;margin-top:14px}
+:focus-visible{outline:3px solid var(--crema);outline-offset:2px}
+.seg{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);padding:4px;border-radius:14px;overflow-x:auto}
+.seg button{flex:1;white-space:nowrap;border:0;background:transparent;padding:9px 12px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;color:var(--muted);min-height:40px}
+.seg button.on{background:var(--brew);color:var(--surface)}
+.row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row .t{font-weight:600;overflow-wrap:anywhere}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.b{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;min-height:38px}
+.b:hover{border-color:var(--crema)}.b.del:hover{border-color:var(--bad);color:var(--bad)}.b.ok:hover{border-color:var(--good);color:var(--good)}
+.p{border:0;background:var(--brew);color:var(--surface);border-radius:12px;padding:0 18px;min-height:44px;font-weight:700;cursor:pointer}
+.p:disabled{opacity:.5;cursor:wait}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:99px;margin-left:6px;background:var(--bg);color:var(--muted)}
+.tag.no{color:var(--bad);background:color-mix(in srgb,var(--bad) 16%,transparent)}.tag.ok{color:var(--good);background:color-mix(in srgb,var(--good) 16%,transparent)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.tbl th,.tbl td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--line)}.tbl th:first-child,.tbl td:first-child{text-align:left}.tbl th{color:var(--muted);font-weight:600}
+.sx{overflow-x:auto}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.fld{margin-top:12px}.fld label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.fld input,.fld select,.fld textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
+.set{padding:14px 0;border-top:1px solid var(--line)}.set:first-of-type{border-top:0}
+.set .line{display:flex;gap:8px;margin-top:8px}.set input{flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
+dialog{border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:20px;width:min(480px,94vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.6)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.derr{color:var(--bad);font-size:14px;margin-top:10px;min-height:20px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--espresso);color:var(--cream);padding:10px 18px;border-radius:16px;font-size:14px;z-index:60;max-width:92vw}
+.app-header{position:sticky;top:0;z-index:20;color:var(--cream);background:linear-gradient(160deg,#2e1b11,#5a3a29);border-radius:0 0 24px 24px;box-shadow:0 10px 30px -14px rgba(0,0,0,.55);padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px}
+.app-header .wrap{max-width:var(--w);margin:0 auto}
+.app-header .brand{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.app-header h1{font-size:20px;display:flex;align-items:center;gap:8px;color:var(--cream)}.app-header h1 svg{width:26px;height:26px}
+.app-header .sub{color:rgba(246,236,226,.68);font-size:13px}
+.app-header .theme-btn{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:var(--cream);border-radius:12px;width:42px;height:42px;font-size:18px;cursor:pointer}
+.app-header .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:rgba(255,255,255,.1);padding:4px;border-radius:16px;margin-top:14px;max-width:480px}
+.app-header .tabs a{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size:13px;text-decoration:none}
+.app-header .tabs a.on{background:var(--cream);color:var(--espresso)}
+@media(max-width:400px){.app-header .tabs a{font-size:12px}}
+</style></head><body>
+<header class="app-header"><div class="wrap">
+  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Управление</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
+  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html">Дашборд</a><a href="report.html">Отчёты</a><a href="admin.html" class="on" aria-current="page">Управление</a><a href="index.html">Терминал</a></nav>
+</div></header>
+<main>
+  <div id="err" class="al" hidden></div>
+  <div id="content" hidden>
+    <div class="seg" id="tabs" role="tablist" aria-label="Что редактировать">
+      <button data-t="tasks">Задачи</button><button data-t="cash">Выручка</button><button data-t="exp">Расходы</button><button data-t="inc">Поломки</button><button data-t="set">Настройки</button>
+    </div>
+    <section class="card" id="panel"></section>
+  </div>
+</main>
+<dialog id="dlg"><form id="dform" method="dialog"><h2 id="dtitle" style="font-size:20px"></h2><div id="dfields"></div><div class="derr" id="derr" role="alert"></div>
+  <div class="acts" style="margin-top:12px"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" type="submit" id="dsave">Сохранить</button></div></form></dialog>
+<div class="toast" id="toast" hidden></div>
+<script>
+const API_URL=window.COFFEE.API_URL,PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
+const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
+const setPin=(v)=>{try{localStorage.setItem(PIN_KEY,v)}catch(e){}};
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' ₽';
+const dmy=(s)=>s?s.slice(8)+'.'+s.slice(5,7)+'.'+s.slice(0,4):'';
+let D=null,tab='tasks';
+try{tab=new URLSearchParams(location.search).get('tab')||localStorage.getItem('adm_tab')||'tasks'}catch(e){}
+
+function toast(t){const el=$('toast');el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3000)}
+function errText(e){const m=String((e&&e.message)||e||'');
+  if(/PIN_NOT_SET/.test(m))return 'Код доступа не задан. Откройте таблицу «Кофейня — Задачи и настройки», лист «Настройки», впишите «Код доступа к дашборду и отчётам» и обновите страницу.';
+  if(/PIN_REQUIRED/.test(m))return 'Введите код доступа администратора';
+  return m.replace(/^Error:\s*/,'')||'неизвестная ошибка'}
+
+async function call(action,data){
+  const d=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify(Object.assign({action,pin:getPin()},data||{}))},40000);
+  if(!d||d.ok===false)throw new Error((d&&d.error)||'ошибка сервера');return d}
+async function load(){
+  $('err').hidden=true;
+  try{
+    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&pin='+encodeURIComponent(getPin()));
+    if(d&&d.ok===false)throw new Error(d.error||'');
+    if(!d||!d.tasks)throw new Error('сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
+    coffeeCache.set('admin',d);D=d;$('content').hidden=false;if(d.location)$('sub').textContent='Управление · '+d.location;render();
+  }catch(e){
+    $('content').hidden=true;$('err').hidden=false;const pin=/PIN_REQUIRED/.test(e.message||'');
+    $('err').innerHTML='<b>'+esc(errText(e))+'</b>'+(pin?'<div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" autocomplete="current-password" placeholder="Код" style="height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)"><button class="b" id="pinOk" type="button">Войти</button></div>':'');
+  }}
+$('err').addEventListener('click',(e)=>{if(e.target.id==='pinOk'){setPin($('pinIn').value.trim());load()}});
+$('err').addEventListener('keydown',(e)=>{if(e.key==='Enter'&&e.target.id==='pinIn')$('pinOk').click()});
+
+/* ----- форма в окне ----- */
+function field(f,v){const id='f_'+f.k,val=v==null?'':v;let i;
+  if(f.type==='select')i='<select id="'+id+'">'+f.opts.map((o)=>'<option'+(String(o)===String(val)?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
+  else if(f.type==='area')i='<textarea id="'+id+'" rows="3">'+esc(val)+'</textarea>';
+  else i='<input id="'+id+'" type="'+(f.type||'text')+'" value="'+esc(val)+'"'+(f.type==='number'?' step="any" inputmode="decimal" min="0"':'')+(f.max?' max="'+f.max+'"':'')+(f.ro?' readonly':'')+(f.ph?' placeholder="'+esc(f.ph)+'"':'')+'>';
+  return '<div class="fld"><label for="'+id+'">'+esc(f.label)+'</label>'+i+'</div>'}
+function openForm(title,fields,vals,onSave){
+  $('dtitle').textContent=title;$('dfields').innerHTML=fields.map((f)=>field(f,vals[f.k])).join('');$('derr').textContent='';
+  $('dform').onsubmit=async(e)=>{e.preventDefault();const o={};fields.forEach((f)=>o[f.k]=$('f_'+f.k).value);
+    $('dsave').disabled=true;
+    try{await onSave(o);$('dlg').close();toast('Сохранено');await load()}catch(x){$('derr').textContent='Не удалось сохранить: '+errText(x)}
+    $('dsave').disabled=false};
+  $('dlg').showModal()}
+$('dcancel').onclick=()=>$('dlg').close();
+async function act(action,data,ok){try{await call(action,data);toast(ok||'Готово');await load()}catch(e){toast('Ошибка: '+errText(e))}}
+
+/* ----- отрисовка ----- */
+const YN=['да','нет'];
+function render(){
+  document.querySelectorAll('#tabs button').forEach((b)=>b.classList.toggle('on',b.dataset.t===tab));
+  const f={tasks:rTasks,cash:rCash,exp:rExp,inc:rInc,set:rSet}[tab]||rTasks;$('panel').innerHTML=f()}
+$('tabs').addEventListener('click',(e)=>{const b=e.target.closest('[data-t]');if(!b||!D)return;tab=b.dataset.t;try{localStorage.setItem('adm_tab',tab)}catch(x){}render()});
+
+let taskFlt='all';
+function rTasks(){
+  const defList=(window.COFFEE&&window.COFFEE.DEFAULT_TASKS)||[];
+  if((!D.tasks||D.tasks.length<defList.length)&&defList.length){D.tasks=defList.slice();}
+  const grps=[
+    {k:'all',l:'Все ('+D.tasks.length+')'},
+    {k:'o',l:'Открытие o01–o08 (8)'},
+    {k:'pa',l:'Приёмка pa01–pa21 (21)'},
+    {k:'d',l:'День d01–d06 (6)'},
+    {k:'q',l:'Чистка До/После q01–q09 (9)'},
+    {k:'c',l:'Закрытие c01–c14 (14)'},
+    {k:'pe',l:'Сдача pe01–pe26 (26)'},
+    {k:'u',l:'Уборка u01–u07 (7)'}
+  ];
+  const fltList=taskFlt==='all'?D.tasks:D.tasks.filter((t)=>(t.group||String(t.id||'').replace(/\d+$/,''))===taskFlt);
+  let h='<div class="top"><h2 style="font-size:18px">Задачи для сотрудников ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv (91 шаг)</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div><p class="mu" style="margin:0 0 10px">Прописаны все 91 инструкция: Открытие (o01–o08, pa01–pa21), День (d01–d06, q01–q09), Закрытие (c01–c14, pe01–pe26, u01–u07).</p><div class="seg" style="margin-bottom:12px">'+grps.map((g)=>'<button type="button" data-a="task-flt" data-g="'+g.k+'" class="'+(taskFlt===g.k?'on':'')+'">'+esc(g.l)+'</button>').join('')+'</div>';
+  D.blocks.forEach((b)=>{const l=fltList.filter((t)=>t.block===b);if(!l.length)return;
+    h+='<h3>'+esc(b)+' · '+l.length+'</h3>'+(l.length?l.map((t)=>'<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">'+esc(t.id||('#'+t.row))+'</span><span class="t">'+esc(t.title)+'</span>'+(t.photo==='да'?'<span class="tag">📷 фото</span>':'')+(t.active==='нет'?'<span class="tag no">выключена</span>':'')+(t.instruction?'<div class="mu">'+esc(t.instruction)+'</div>':'')+(t.responsible?'<div class="mu">Ответственный: '+esc(t.responsible)+'</div>':'')+'</div><div class="acts"><button class="b" data-a="task-edit" data-i="'+D.tasks.indexOf(t)+'">Изменить</button><button class="b del" data-a="task-del" data-i="'+D.tasks.indexOf(t)+'">Удалить</button></div></div>').join(''):'<p class="mu">Задач нет</p>')});
+  return h}
+function taskForm(t){
+  const isNew=!t;t=t||{block:D.blocks[0],title:'',instruction:'',photo:'нет',responsible:'',active:'да'};
+  openForm(isNew?'Новая задача':'Изменить задачу',[
+    {k:'block',label:'Блок',type:'select',opts:D.blocks},{k:'title',label:'Название',ph:'Например: Проверить кофемашину'},
+    {k:'instruction',label:'Инструкция',type:'area'},{k:'mediaRequired',label:'Нужно фото',type:'select',opts:YN},
+    {k:'responsible',label:'Ответственный',ph:'Техник, Закупщик…'},{k:'active',label:'Показывать сотрудникам',type:'select',opts:YN}],
+    {block:t.block,title:t.title,instruction:t.instruction,mediaRequired:t.photo,responsible:t.responsible,active:t.active},
+    (o)=>call('save_task',Object.assign(o,isNew?{}:{row:t.row,expect:t.title})))}
+
+function rCash(){
+  let h='<div class="top"><h2 style="font-size:18px">Выручка по дням</h2><button class="p" data-a="cash-new">+ Добавить / исправить день</button></div><p class="mu" style="margin:0 0 8px">Обычно данные приходят из терминала (вкладка «Касса»). Здесь можно внести или поправить день вручную.</p>';
+  if(!D.cash.length)return h+'<p class="mu">Данных пока нет</p>';
+  return h+'<div class="sx"><table class="tbl"><thead><tr><th>Дата</th><th>Наличные</th><th>Безнал</th><th>Итого</th><th>Чеков</th><th>Списания</th><th></th></tr></thead><tbody>'+D.cash.map((r,i)=>'<tr><td><a href="dashboard.html?date='+r.date+'" title="Открыть день на Дашборде">'+dmy(r.date)+'</a></td><td>'+rub(r.cash)+'</td><td>'+rub(r.card)+'</td><td><b>'+rub(r.cash+r.card)+'</b></td><td>'+r.checks+'</td><td>'+rub(r.writeoff)+'</td><td><div class="acts"><button class="b" data-a="cash-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="cash-del" data-i="'+i+'">Удалить</button></div></td></tr>').join('')+'</tbody></table></div>'}
+function cashForm(r){
+  const isNew=!r;r=r||{date:D.today,cash:'',card:'',checks:'',writeoff:''};
+  openForm(isNew?'Выручка за день':'Изменить день '+dmy(r.date),[
+    {k:'date',label:'Дата',type:'date',max:D.today,ro:!isNew},{k:'cash',label:'Наличные, ₽',type:'number'},{k:'card',label:'Безнал (терминал), ₽',type:'number'},
+    {k:'checks',label:'Количество чеков',type:'number'},{k:'writeoff',label:'Списания, ₽',type:'number'}],r,
+    (o)=>call('admin_cash',o))}
+
+function rExp(){
+  let h='<div class="top"><h2 style="font-size:18px">Расходы</h2><button class="p" data-a="exp-new">+ Добавить расход</button></div>';
+  if(!D.expenses.length)return h+'<p class="mu">Расходов пока нет</p>';
+  return h+D.expenses.map((x,i)=>'<div class="row"><div><span class="t">'+esc(x.category)+' · '+rub(x.amount)+'</span><div class="mu">'+dmy(x.date)+(x.comment?' · '+esc(x.comment):'')+' · '+esc(x.id)+'</div></div><div class="acts"><button class="b" data-a="exp-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="exp-del" data-i="'+i+'">Удалить</button></div></div>').join('')}
+function expForm(x){
+  const isNew=!x;x=x||{date:D.today,category:D.categories[0],amount:'',comment:''};
+  const cats=D.categories.indexOf(x.category)<0?D.categories.concat(x.category):D.categories;
+  openForm(isNew?'Новый расход':'Изменить расход '+x.id,[
+    {k:'date',label:'Дата',type:'date',max:D.today},{k:'category',label:'Статья',type:'select',opts:cats},
+    {k:'amount',label:'Сумма, ₽',type:'number'},{k:'comment',label:'Комментарий',ph:'Необязательно'}],x,
+    (o)=>call(isNew?'add_expense':'update_expense',Object.assign(o,isNew?{}:{id:x.id})))}
+
+function rInc(){
+  const l=D.incidents;let h='<h2 style="font-size:18px;margin-bottom:6px">Поломки и проблемы</h2><p class="mu" style="margin:0 0 8px">Присылаются сотрудниками из терминала. Здесь их можно закрыть, открыть заново, поправить или удалить.</p>';
+  if(!l.length)return h+'<p class="mu">Поломок нет</p>';
+  const isOpen=(s)=>s==='Open'||s==='Открыта';const o=l.filter((x)=>isOpen(x.status)),r=l.filter((x)=>!isOpen(x.status));
+  const item=(x)=>'<div class="row"><div><span class="t">'+esc(x.step||'Проблема')+'</span>'+(x.priority==='Критично'?'<span class="tag no">критично</span>':'')+'<span class="tag '+(isOpen(x.status)?'no':'ok')+'">'+(isOpen(x.status)?'открыта':'решена')+'</span><div>'+esc(x.text)+'</div><div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(x.time)+(x.who?' · '+esc(x.who):'')+(x.owner&&x.owner!=='—'?' · ответственный: '+esc(x.owner):'')+(/^https:\/\//.test(x.photo)?' · <a href="'+esc(x.photo)+'" target="_blank" rel="noopener">фото</a>':'')+'</div></div><div class="acts">'+(isOpen(x.status)?'<button class="b ok" data-a="inc-res" data-i="'+l.indexOf(x)+'">Решено</button>':'<button class="b" data-a="inc-open" data-i="'+l.indexOf(x)+'">Открыть снова</button>')+'<button class="b" data-a="inc-edit" data-i="'+l.indexOf(x)+'">Изменить</button><button class="b del" data-a="inc-del" data-i="'+l.indexOf(x)+'">Удалить</button></div></div>';
+  return h+'<h3>Открытые · '+o.length+'</h3>'+(o.map(item).join('')||'<p class="mu">Открытых нет — всё в порядке</p>')+'<h3>Решённые · '+r.length+'</h3>'+(r.map(item).join('')||'<p class="mu">Нет</p>')}
+function incForm(x){
+  openForm('Изменить поломку '+x.id,[{k:'comment',label:'Описание',type:'area'},{k:'priority',label:'Срочность',type:'select',opts:['Терпит','Критично']},{k:'responsible',label:'Ответственный'}],
+    {comment:x.text,priority:x.priority,responsible:x.owner==='—'?'':x.owner},(o)=>call('update_incident',Object.assign(o,{id:x.id})))}
+
+function rSet(){
+  return '<h2 style="font-size:18px;margin-bottom:6px">Настройки</h2><p class="mu" style="margin:0 0 8px">Те же параметры, что в листе «Настройки» таблицы. Изменения действуют сразу.</p>'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b><div class="mu">'+esc(s.hint)+'</div><div class="line"><input id="s_'+i+'" type="'+(s.secret?'password':'text')+'" autocomplete="off" value="'+esc(s.value)+'" placeholder="'+(s.secret?(s.set?'••••••  задано — введите новое значение, чтобы заменить':'не задано'):'')+'"><button class="b" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')}
+
+/* ----- действия ----- */
+$('panel').addEventListener('click',(e)=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=+b.dataset.i;
+  if(a==='task-flt'){taskFlt=b.dataset.g||'all';render();return;}
+  if(a==='task-new')return taskForm();
+  if(a==='task-csv'){const q=(v)=>"\""+String(v==null?'':v).replace(/"/g,'""')+"\"";const rows=[['Код','Блок','Подгруппа','Название','Инструкция','Нужно фото','Ответственный','Активна'].map(q).join(',')].concat(D.tasks.map((t)=>[t.id||'',t.block,t.groupName||'',t.title,t.instruction,t.photo,t.responsible,t.active].map(q).join(',')));const el=document.createElement('a');el.href=URL.createObjectURL(new Blob(['\uFEFF'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'}));el.download='Задачи_91_инструкции.csv';document.body.appendChild(el);el.click();el.remove();return;}
+  if(a==='task-edit')return taskForm(D.tasks[i]);
+  if(a==='task-del'){const t=D.tasks[i];if(window.coffeeConfirm?false:confirm('Удалить задачу «'+t.title+'»? Она исчезнет из терминала.'))act('delete_task',{row:t.row,expect:t.title},'Задача удалена');return}
+  if(a==='cash-new')return cashForm();
+  if(a==='cash-edit')return cashForm(D.cash[i]);
+  if(a==='cash-del'){const r=D.cash[i];if(window.coffeeConfirm?false:confirm('Удалить данные за '+dmy(r.date)+'?'))act('delete_cash',{date:r.date},'День удалён');return}
+  if(a==='exp-new')return expForm();
+  if(a==='exp-edit')return expForm(D.expenses[i]);
+  if(a==='exp-del'){const x=D.expenses[i];if(window.coffeeConfirm?false:confirm('Удалить расход '+x.id+' ('+rub(x.amount)+')?'))act('delete_expense',{id:x.id},'Расход удалён');return}
+  if(a==='inc-res')return act('update_incident',{id:D.incidents[i].id,status:'Решена'},'Отмечено как решённое');
+  if(a==='inc-open')return act('update_incident',{id:D.incidents[i].id,status:'Открыта'},'Поломка открыта снова');
+  if(a==='inc-edit')return incForm(D.incidents[i]);
+  if(a==='inc-del'){const x=D.incidents[i];if(window.coffeeConfirm?false:confirm('Удалить поломку '+x.id+'?'))act('delete_incident',{id:x.id},'Поломка удалена');return}
+  if(a==='set-save'){const s=D.settings[i],v=$('s_'+i).value.trim();
+    call('save_setting',{id:s.id,value:v}).then(()=>{if(s.id==='ADMIN_PIN')setPin(v);toast('Сохранено');return load()}).catch((x)=>toast('Ошибка: '+errText(x)))}
+});
+
+/* ----- тема ----- */
+const cur=()=>document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
+$('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
+paint();load();
+</script><script src="app.js" defer></script>
+</body></html>
