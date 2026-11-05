@@ -1,0 +1,10 @@
+{
+  "name": "Кофейня — Единая система управления",
+  "short_name": "Кофейня",
+  "description": "Терминал бариста, дашборд владельца, отчёты и управление кофейней",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#e6ecee",
+  "theme_color": "#5a3a29",
+  "lang": "ru"
+}
