@@ -4,13 +4,20 @@ window.COFFEE = {
 };
 
 /* Запрос с таймаутом: чтение повторяется один раз, запись — нет (чтобы не задвоить). Возвращает разобранный JSON. */
+/* Понятные русские тексты вместо английских сообщений браузера. */
+window.coffeeRuErr = function (e) {
+  const m = String((e && e.message) || e || '');
+  if (/Failed to fetch|NetworkError|Load failed|network/i.test(m)) return new Error('нет связи с сервером');
+  if (/JSON|Unexpected|not valid/i.test(m)) return new Error('сервер вернул неожиданный ответ');
+  return e;
+};
 window.coffeeFetch = async function (url, opt, ms, tries) {
   opt = opt || {}; ms = ms || 25000; tries = tries || (opt.method === 'POST' ? 1 : 2);
   let last;
   for (let i = 0; i < tries; i++) {
     const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
     try { const r = await fetch(url, Object.assign({}, opt, { signal: ac.signal })); clearTimeout(t); return await r.json(); }
-    catch (e) { clearTimeout(t); last = e.name === 'AbortError' ? new Error('сервер долго отвечает') : e; if (i < tries - 1) await new Promise((r) => setTimeout(r, 700)); }
+    catch (e) { clearTimeout(t); last = e.name === 'AbortError' ? new Error('сервер долго отвечает') : window.coffeeRuErr(e); if (i < tries - 1) await new Promise((r) => setTimeout(r, 700)); }
   }
   throw last;
 };
