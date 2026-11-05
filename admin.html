@@ -127,23 +127,11 @@ function render(){
   const f={tasks:rTasks,cash:rCash,exp:rExp,inc:rInc,set:rSet}[tab]||rTasks;$('panel').innerHTML=f()}
 $('tabs').addEventListener('click',(e)=>{const b=e.target.closest('[data-t]');if(!b||!D)return;tab=b.dataset.t;try{localStorage.setItem('adm_tab',tab)}catch(x){}render()});
 
-let taskFlt='all';
 function rTasks(){
   const defList=(window.COFFEE&&window.COFFEE.DEFAULT_TASKS)||[];
   if((!D.tasks||D.tasks.length<defList.length)&&defList.length){D.tasks=defList.slice();}
-  const grps=[
-    {k:'all',l:'Все ('+D.tasks.length+')'},
-    {k:'o',l:'Открытие o01–o08 (8)'},
-    {k:'pa',l:'Приёмка pa01–pa21 (21)'},
-    {k:'d',l:'День d01–d06 (6)'},
-    {k:'q',l:'Чистка До/После q01–q09 (9)'},
-    {k:'c',l:'Закрытие c01–c14 (14)'},
-    {k:'pe',l:'Сдача pe01–pe26 (26)'},
-    {k:'u',l:'Уборка u01–u07 (7)'}
-  ];
-  const fltList=taskFlt==='all'?D.tasks:D.tasks.filter((t)=>(t.group||String(t.id||'').replace(/\d+$/,''))===taskFlt);
-  let h='<div class="top"><h2 style="font-size:18px">Задачи для сотрудников ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv (91 шаг)</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div><p class="mu" style="margin:0 0 10px">Прописаны все 91 инструкция: Открытие (o01–o08, pa01–pa21), День (d01–d06, q01–q09), Закрытие (c01–c14, pe01–pe26, u01–u07).</p><div class="seg" style="margin-bottom:12px">'+grps.map((g)=>'<button type="button" data-a="task-flt" data-g="'+g.k+'" class="'+(taskFlt===g.k?'on':'')+'">'+esc(g.l)+'</button>').join('')+'</div>';
-  D.blocks.forEach((b)=>{const l=fltList.filter((t)=>t.block===b);if(!l.length)return;
+  let h='<div class="top"><h2 style="font-size:18px">Задачи для сотрудников ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv (91 шаг)</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div><p class="mu" style="margin:0 0 8px">Изменения сразу попадают в таблицу и появляются в терминале у бариста.</p>';
+  D.blocks.forEach((b)=>{const l=D.tasks.filter((t)=>t.block===b);
     h+='<h3>'+esc(b)+' · '+l.length+'</h3>'+(l.length?l.map((t)=>'<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">'+esc(t.id||('#'+t.row))+'</span><span class="t">'+esc(t.title)+'</span>'+(t.photo==='да'?'<span class="tag">📷 фото</span>':'')+(t.active==='нет'?'<span class="tag no">выключена</span>':'')+(t.instruction?'<div class="mu">'+esc(t.instruction)+'</div>':'')+(t.responsible?'<div class="mu">Ответственный: '+esc(t.responsible)+'</div>':'')+'</div><div class="acts"><button class="b" data-a="task-edit" data-i="'+D.tasks.indexOf(t)+'">Изменить</button><button class="b del" data-a="task-del" data-i="'+D.tasks.indexOf(t)+'">Удалить</button></div></div>').join(''):'<p class="mu">Задач нет</p>')});
   return h}
 function taskForm(t){
