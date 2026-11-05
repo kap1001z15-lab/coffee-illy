@@ -1,140 +1,192 @@
-<!DOCTYPE html>
-<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Кофейня — дашборд</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
-<script src="config.js"></script>
-<style>html.gate body>*:not(#gate){visibility:hidden}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1")document.documentElement.classList.add("gate")}catch(e){}</script>
-<script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
-<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<style>
-:root{--bg:#e6ecee;--surface:#f7f9fa;--ink:#172326;--muted:#5b6d72;--line:#d3dde0;--brew:#5a3a29;--crema:#c98b4f;--good:#1b8a57;--bad:#c23b22;--warn:#b7791f;--espresso:#2e1b11;--cream:#f6ece2;
---shadow:0 1px 2px rgba(23,35,38,.05),0 14px 30px -18px rgba(23,35,38,.35);--font-d:"Bricolage Grotesque",system-ui,sans-serif;--w:760px;color-scheme:light}
-:root[data-theme=dark]{color-scheme:dark;--bg:#12191b;--surface:#1b2528;--ink:#e8eff0;--muted:#8fa3a8;--line:#2c3a3e;--brew:#b98a64;--crema:#e0a76a;--good:#4cc38a;--bad:#ff7a5f;--warn:#e5b04d;--shadow:0 1px 0 rgba(255,255,255,.03),0 14px 30px -18px rgba(0,0,0,.7)}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#12191b;--surface:#1b2528;--ink:#e8eff0;--muted:#8fa3a8;--line:#2c3a3e;--brew:#b98a64;--crema:#e0a76a;--good:#4cc38a;--bad:#ff7a5f;--warn:#e5b04d;--shadow:0 1px 0 rgba(255,255,255,.03),0 14px 30px -18px rgba(0,0,0,.7)}}
-:root{--sf:var(--surface);--mu:var(--muted);--ln:var(--line);--br:var(--brew);--cr:var(--crema);--ok:var(--good);--no:var(--bad)}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}[hidden]{display:none!important}
-body{margin:0;min-height:100vh;min-height:100dvh;color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:radial-gradient(900px 400px at 50% -120px,color-mix(in srgb,var(--crema) 22%,transparent),transparent),var(--bg);padding-bottom:env(safe-area-inset-bottom,0)}
-h1,h2,.big,.k b{font-family:var(--font-d);letter-spacing:-.02em;margin:0;font-variant-numeric:tabular-nums}
-button,input{font:inherit;color:var(--ink)}a{color:var(--brew);font-weight:600}
-main{max-width:var(--w);margin:0 auto;padding:18px 16px 40px;transition:opacity .2s}main.ld{opacity:.5}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:var(--shadow);margin-top:14px}
-.mu{color:var(--muted);font-size:14px}
-.big{font-size:clamp(38px,11vw,56px);font-weight:700;line-height:1.05;display:block;margin:4px 0 12px}
-.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--crema);transition:width .8s}.bar i.done{background:var(--good)}
-.row{display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-top:8px;color:var(--muted)}
-.k{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:14px}.k .card{margin:0}.k b{display:block;font-size:26px}
-.t{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px}.t.ok{color:var(--good);background:color-mix(in srgb,var(--good) 16%,transparent)}.t.no{color:var(--bad);background:color-mix(in srgb,var(--bad) 16%,transparent)}
-#chart svg{width:100%;height:auto;display:block}#chart text{fill:var(--muted);font-size:10px}
-h2{font-size:18px;margin-bottom:12px}.inc{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);font-size:14px}.inc:first-of-type{border-top:0}
-.inc button{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:8px 12px;cursor:pointer;min-height:40px}
-.al{border:1px solid var(--bad);background:color-mix(in srgb,var(--bad) 10%,var(--surface));border-radius:16px;padding:14px 16px;margin-top:14px}
-:focus-visible{outline:3px solid var(--crema);outline-offset:2px}
+/* Единое ядро приложения «Кофейня»: сквозная навигация, общая дата, бейджи поломок,
+   доступ владельца, неблокирующие диалоги и синхронизация вкладок. Подключается на всех страницах. */
+(function () {
+  'use strict';
+  const API = window.COFFEE && window.COFFEE.API_URL;
+  const PIN = 'coffee_illy_pin', OK = 'coffee_admin_ok', SHARED_DATE = 'coffee_shared_date';
+  const page = (location.pathname.split('/').pop() || 'index.html').replace('.html', '') || 'index';
+  const ls = {
+    get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  const isAdmin = () => ls.get(OK) === '1' && !!ls.get(PIN);
 
-  /* --- единая шапка: как в приложении сотрудников --- */
-  .app-header { position:sticky; top:0; z-index:20; color:var(--cream); background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
-    padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
-  .app-header .wrap { max-width:var(--w,1120px); margin:0 auto; }
-  .app-header .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-  .app-header h1 { font-size:20px; display:flex; align-items:center; gap:8px; color:var(--cream); }
-  .app-header h1 svg { width:26px; height:26px; }
-  .app-header .sub { color:rgba(246,236,226,.68); font-size:13px; }
-  .app-header .theme-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); border-radius:12px; width:42px; height:42px; font-size:18px; cursor:pointer; }
-  .app-header .tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:14px; max-width:480px; }
-  .app-header .tabs a { display:flex; align-items:center; justify-content:center; min-height:44px; border-radius:12px; color:rgba(246,236,226,.8); font-weight:600; font-size:14px; text-decoration:none; }
-  .app-header .tabs a.on { background:var(--cream); color:var(--espresso); }
-  .app-header .dp { display:flex; gap:6px; margin-top:12px; max-width:480px; }
-  .app-header .dp button, .app-header .dp input { height:42px; border-radius:12px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); padding:0 12px; font-weight:600; cursor:pointer; color-scheme:dark; }
-  .app-header .dp input { flex:1; min-width:0; }
-  .app-header .dp button { min-width:42px; }
-  .app-header .tabs a { font-size:13px; } @media (max-width:400px) { .app-header .tabs a { font-size:12px; } }
-</style></head><body>
-<header class="app-header"><div class="wrap">
-  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Панель владельца</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
-  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html" class="on" aria-current="page">Дашборд</a><a href="report.html">Отчёты</a><a href="admin.html">Управление</a><a href="index.html">Терминал</a></nav>
-  <div class="dp"><button id="prev" type="button" aria-label="Предыдущий день">‹</button><input type="date" id="pick" aria-label="Дата"><button id="next" type="button" aria-label="Следующий день">›</button><button id="reload" type="button" aria-label="Обновить">↻</button></div>
-</div></header>
-<main id="main">
-<div id="err" class="al" hidden></div>
-<section class="card"><span class="mu" id="date">…</span><span class="big" id="rev">—</span>
-<div class="bar"><i id="bar"></i></div><div class="row"><span id="planL">План</span><span id="planR"></span></div></section>
-<div class="k">
-<div class="card"><span class="mu">Чеков</span><b id="checks">—</b><span class="mu" id="chk2">&nbsp;</span></div>
-<div class="card"><span class="mu">Средний чек</span><b id="avg">—</b><span class="mu">&nbsp;</span></div>
-<div class="card"><span class="mu">Списания</span><b id="wo">—</b><span id="woS">&nbsp;</span></div>
-<div class="card"><span class="mu">Открытие смены</span><b id="open">—</b><span id="openS">&nbsp;</span></div></div>
-<section class="card"><h2>Выручка за 14 дней</h2><div id="chart"></div></section>
-<section class="card"><h2 id="incT">Открытые проблемы</h2><div id="inc"></div></section>
-<section class="card" id="phC" hidden><h2>Фотоотчёт</h2><div id="ph"></div></section>
-<p class="mu" style="text-align:center;margin-top:18px">Подробности — в разделе <a href="report.html">Отчёты</a> · <a href="admin.html?tab=cash">Управление выручкой</a> · <a href="index.html?tab=cash">Касса терминала</a></p>
-</main>
-<script>
-const API_URL = window.COFFEE.API_URL;
-const PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
-const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
-const rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' ₽';
-const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const iso=(d)=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-const shift=(s,n)=>{const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)};
-let D=null;
-async function load(silent,fresh){
-  const day=$('pick').value,ck='dash:'+day,saved=coffeeCache.get(ck);
-  $('err').hidden=true;
-  if(!silent){if(saved&&saved.days){D=saved;render(saved)}else $('main').classList.add('ld')}
-  try{
-    const r=await coffeeFetch(API_URL+'?action=dashboard&date='+day+'&pin='+encodeURIComponent(getPin())+(fresh?'&nocache=1':''));
-    if(r&&r.ok===false&&/PIN_REQUIRED/.test(r.error||'')){const e=new Error('Введите код доступа администратора');e.pin=true;throw e}
-    if(!r||r.ok===false||!r.days)throw new Error((r&&r.error)||'сервер вернул неожиданный ответ');
-    coffeeCache.set(ck,r);D=r;render(r);if(r.location)$('sub').textContent=r.location;
-  }catch(e){
-    $('err').hidden=false;
-    if(!e.pin&&saved&&saved.days){$('err').innerHTML='<b>Нет связи.</b> Показаны сохранённые данные.';return}
-    $('err').innerHTML=e.pin?'<b>'+esc(e.message)+'</b><div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" placeholder="Код" style="height:38px;border:1px solid var(--ln);border-radius:10px;padding:0 10px;background:var(--bg)"><button id="pinOk" style="height:38px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);padding:0 14px;cursor:pointer">Войти</button></div>':'<b>Не удалось загрузить данные.</b> '+esc(e.message);
-  }finally{$('main').classList.remove('ld')}
-}
-$('err').addEventListener('click',(e)=>{if(e.target.id!=='pinOk')return;try{localStorage.setItem(PIN_KEY,$('pinIn').value.trim())}catch(x){}load()});
-function render(d){
-  const has=!!d.hasData,pct=has?Math.round(d.revenue/d.plan*100):0,today=iso(new Date());
-  $('pick').value=d.date;$('pick').max=today;$('next').disabled=d.date>=today;
-  $('date').textContent=new Date(d.date+'T12:00:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})+(d.isToday?' · сегодня':'');
-  $('rev').textContent=has?rub(d.revenue):'—';
-  $('bar').style.width=Math.min(pct,100)+'%';$('bar').className=pct>=100?'done':'';
-  $('planL').textContent='Цель на день '+rub(d.plan);$('planR').textContent=has?pct+'%':'данных нет';
-  $('checks').textContent=has?d.checks:'—';$('avg').textContent=has?rub(d.avg):'—';$('wo').textContent=has?rub(d.writeoff):'—';
-  const wn=d.woNorm||500;
-  $('woS').innerHTML=has?'<span class="t '+(d.writeoff<=wn?'ok':'no')+'">'+(d.writeoff<=wn?'в норме':'выше нормы')+'</span>':'&nbsp;';
-  const dl=d.deadline||'08:30';
-  $('open').textContent=d.openedAt||'—';
-  $('openS').innerHTML=d.openedAt?'<span class="t '+(d.openedAt<=dl?'ok':'no')+'">'+(d.openedAt<=dl?'вовремя':'с опозданием')+'</span>':'<span class="mu">нет отметки</span>';
-  chart(d);incs(d);photos(d);
-}
-function chart(d){
-  const days=d.days,W=640,H=190,p=16,base=H-22,max=Math.max(d.plan*1.15,...days.map((x)=>x.revenue)),bw=(W-p*2)/days.length,y=(v)=>base-v/max*(base-10);
-  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Выручка по дням">';
-  days.forEach((x,i)=>{const h=Math.max(base-y(x.revenue),x.revenue?2:0);
-    s+='<rect data-d="'+x.date+'" style="cursor:pointer" x="'+(p+i*bw+bw*.15)+'" y="'+(base-h)+'" width="'+bw*.7+'" height="'+h+'" rx="3" fill="'+(x.date===d.date?'var(--br)':x.revenue>=d.plan?'var(--ok)':'var(--ln)')+'"><title>'+x.date.slice(8)+'.'+x.date.slice(5,7)+': '+rub(x.revenue)+'</title></rect>';
-    if(i%2===0||days.length<8)s+='<text x="'+(p+i*bw+bw/2)+'" y="'+(H-6)+'" text-anchor="middle">'+x.date.slice(8)+'</text>'});
-  s+='<line x1="'+p+'" x2="'+(W-p)+'" y1="'+y(d.plan)+'" y2="'+y(d.plan)+'" stroke="var(--cr)" stroke-dasharray="5 4"/></svg>';
-  $('chart').innerHTML=s;
-}
-$('chart').addEventListener('click',(e)=>{const r=e.target.closest('[data-d]');if(r){$('pick').value=r.dataset.d;load()}});
-function photos(d){
-  const ord={'Открытие':0,'День':1,'Закрытие':2},r=(d.photoReports||[]).slice().sort((a,b)=>(ord[a.block]??9)-(ord[b.block]??9)||a.time.localeCompare(b.time));
-  $('phC').hidden=!r.length;
-  $('ph').innerHTML=r.map((x)=>'<div class="inc"><div><b>'+esc(x.block)+'</b> <span class="mu">'+esc(x.time)+(x.who?' · '+esc(x.who):'')+'</span></div><div>'+x.photos.filter((p)=>/^https:\/\//.test(p.url)).map((p,i)=>'<a href="'+esc(p.url)+'" target="_blank" rel="noopener" title="'+esc(p.step)+'" style="display:inline-block;min-width:30px;text-align:center;margin-left:6px;padding:5px 8px;border:1px solid var(--ln);border-radius:9px;color:var(--br);text-decoration:none">'+(i+1)+'</a>').join('')+'</div></div>').join('');
-}
-function incs(d){
-  const open=(d.incidents||[]).filter((i)=>i.status==='Open');
-  $('incT').textContent='Открытые проблемы'+(open.length?' · '+open.length:'');
-  $('inc').innerHTML=open.length?open.slice(0,6).map((i)=>'<div class="inc"><div><b>'+esc(i.step||'Проблема')+'</b>'+(i.priority==='Критично'?' <span class="t no">критично</span>':'')+'<div class="mu">'+esc(i.text)+' · '+esc(i.date.slice(8)+'.'+i.date.slice(5,7))+'</div></div><button data-r="'+esc(i.id)+'">Решено</button></div>').join('')+(open.length>6?'<p class="mu">и ещё '+(open.length-6)+' — в отчётах</p>':''):'<p class="mu" style="margin:0">Всё в порядке — открытых проблем нет</p>';
-}
-$('inc').addEventListener('click',async(e)=>{const b=e.target.closest('[data-r]');if(!b)return;b.disabled=true;
-  try{const r=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify({action:'resolve_incident',id:b.dataset.r,pin:getPin()})},30000);if(!r.ok)throw new Error(r.error);load(true,true)}catch(x){b.disabled=false;alert('Не удалось закрыть: '+x.message)}});
-$('prev').onclick=()=>{$('pick').value=shift($('pick').value,-1);load()};
-$('next').onclick=()=>{$('pick').value=shift($('pick').value,1);load()};
-$('pick').onchange=()=>load();$('reload').onclick=()=>load(false,true);
-const cur=()=>document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
-$('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
-paint();$('pick').value=new URLSearchParams(location.search).get('date')||iso(new Date());load();
-setInterval(()=>{if(!document.hidden&&D&&D.isToday)load(true)},120000);
-</script><script src="app.js" defer></script>
-</body></html>
+  /* Неблокирующее диалоговое окно подтверждения (работает и в обычном браузере, и в песочнице/Telegram) */
+  window.coffeeConfirm = function (message, onConfirm) {
+    let dlg = document.getElementById('coffeeConfirmDlg');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'coffeeConfirmDlg';
+      dlg.style.cssText = 'border:1px solid var(--line,#d3dde0);border-radius:22px;background:var(--surface,#fff);color:var(--ink,#172326);padding:20px;width:min(420px,92vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.6)';
+      dlg.innerHTML = '<h3 style="margin:0 0 8px;font-family:var(--font-d,sans-serif)">Подтверждение</h3><p id="ccMsg" style="margin:0 0 16px;color:var(--muted,#5b6d72);font-size:14px"></p><div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="ccNo" style="border:1px solid var(--line,#d3dde0);background:var(--bg,#e6ecee);border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer">Отмена</button><button type="button" id="ccYes" style="border:0;background:var(--bad,#c23b22);color:#fff;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer">Подтвердить</button></div>';
+      document.body.appendChild(dlg);
+    }
+    dlg.querySelector('#ccMsg').textContent = message;
+    dlg.querySelector('#ccNo').onclick = () => dlg.close();
+    dlg.querySelector('#ccYes').onclick = () => { dlg.close(); if (onConfirm) onConfirm(); };
+    dlg.showModal();
+  };
+
+  async function verify(pin) {
+    const d = await coffeeFetch(API + '?action=dashboard&nocache=1&pin=' + encodeURIComponent(pin), {}, 20000);
+    if (d && d.ok !== false && d.days) return '';
+    const e = String((d && d.error) || '');
+    if (/PIN_NOT_SET/.test(e)) return 'Код доступа не задан в таблице (лист «Настройки»)';
+    return /PIN/.test(e) ? 'Неверный код' : (e || 'Не удалось проверить код');
+  }
+
+  function logout() {
+    ls.del(OK);
+    ls.del(PIN);
+    if (window.coffeeBus) window.coffeeBus.emit('auth', { ok: false });
+    location.href = 'index.html';
+  }
+  window.coffeeLogout = logout;
+
+  /* Вход по коду: окно поверх страницы */
+  function gate(onOk) {
+    let g = document.getElementById('gate');
+    if (g) return;
+    g = document.createElement('div');
+    g.id = 'gate';
+    g.style.cssText = 'position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg,#e6ecee)';
+    g.innerHTML = '<form style="width:min(360px,100%);background:var(--surface,#fff);border:1px solid var(--line,#ddd);border-radius:22px;padding:24px;box-shadow:var(--shadow)"><h2 style="margin:0 0 6px;font-family:var(--font-d)">Вход для владельца</h2><p style="margin:0 0 14px;color:var(--muted);font-size:14px">Дашборд, отчёты и управление доступны только по коду администратора.</p><input id="gPin" type="password" autocomplete="current-password" placeholder="Код доступа" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line,#ddd);background:var(--bg);padding:0 14px;font:inherit;color:var(--ink)"><div id="gErr" style="color:var(--bad,#c23b22);font-size:14px;min-height:20px;margin:8px 0" role="alert"></div><button id="gGo" style="width:100%;min-height:50px;border:0;border-radius:14px;background:#5a3a29;color:#f6ece2;font:inherit;font-weight:700;cursor:pointer">Войти</button><a href="index.html" style="display:block;text-align:center;margin-top:12px;color:var(--muted);font-size:14px">← В терминал</a></form>';
+    document.body.appendChild(g);
+    const f = g.querySelector('form'), inp = g.querySelector('#gPin');
+    inp.focus();
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const v = inp.value.trim();
+      if (!v) return;
+      const b = g.querySelector('#gGo');
+      b.disabled = true;
+      b.textContent = 'Проверяем…';
+      try {
+        const err = await verify(v);
+        if (err) throw new Error(err);
+        ls.set(PIN, v);
+        ls.set(OK, '1');
+        if (window.coffeeBus) window.coffeeBus.emit('auth', { ok: true });
+        g.remove();
+        document.documentElement.classList.remove('gate');
+        if (onOk) onOk();
+      } catch (x) {
+        g.querySelector('#gErr').textContent = x.message;
+        b.disabled = false;
+        b.textContent = 'Войти';
+      }
+    };
+  }
+
+  /* Синхронизация выбранной даты между Дашбордом, Отчётами, Управлением и Терминалом */
+  function syncNavLinks() {
+    const pick = document.getElementById('pick') || document.getElementById('rdPick');
+    if (pick && pick.value) ls.set(SHARED_DATE, pick.value);
+    const sharedDate = new URLSearchParams(location.search).get('date') || ls.get(SHARED_DATE);
+    const openInc = parseInt(ls.get('coffee_meta_open_inc') || '0', 10);
+
+    document.querySelectorAll('nav.tabs a').forEach((a) => {
+      const href = a.getAttribute('href').split('?')[0];
+      if (sharedDate && (href === 'dashboard.html' || href === 'index.html')) {
+        a.setAttribute('href', href + '?date=' + encodeURIComponent(sharedDate));
+      }
+      /* Бейдж открытых поломок на вкладках Дашборд и Управление */
+      if ((href === 'dashboard.html' || href === 'admin.html') && openInc > 0) {
+        if (!a.querySelector('.inc-pill')) {
+          const pill = document.createElement('span');
+          pill.className = 'inc-pill';
+          pill.style.cssText = 'margin-left:5px;padding:1px 6px;border-radius:99px;background:#c23b22;color:#fff;font-size:11px;font-weight:700';
+          a.appendChild(pill);
+        }
+        a.querySelector('.inc-pill').textContent = openInc;
+      } else {
+        const old = a.querySelector('.inc-pill');
+        if (old) old.remove();
+      }
+    });
+  }
+
+  function init() {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+    /* В Терминале (index.html) добавляем сквозную панель навигации для владельца */
+    if (page === 'index') {
+      const th = document.getElementById('theme');
+      if (th) {
+        const b = document.createElement('button');
+        b.className = 'theme-btn';
+        b.type = 'button';
+        const paint = () => {
+          b.textContent = isAdmin() ? '📊' : '🔒';
+          b.title = isAdmin() ? 'Панель владельца' : 'Вход для владельца';
+          b.setAttribute('aria-label', b.title);
+        };
+        paint();
+        b.onclick = () => isAdmin() ? (location.href = 'dashboard.html') : gate(() => { paint(); location.href = 'dashboard.html'; });
+        th.parentNode.insertBefore(b, th);
+      }
+      if (isAdmin()) {
+        const hdrWrap = document.querySelector('header .wrap');
+        if (hdrWrap && !hdrWrap.querySelector('.owner-nav')) {
+          const nav = document.createElement('nav');
+          nav.className = 'tabs owner-nav';
+          nav.setAttribute('aria-label', 'Разделы системы');
+          nav.style.marginBottom = '6px';
+          nav.innerHTML = '<a href="dashboard.html" style="display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size:13px;text-decoration:none">Дашборд</a>' +
+            '<a href="report.html" style="display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size:13px;text-decoration:none">Отчёты</a>' +
+            '<a href="admin.html" style="display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size:13px;text-decoration:none">Управление</a>' +
+            '<a href="index.html" style="display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:12px;background:var(--cream);color:var(--espresso);font-weight:600;font-size:13px;text-decoration:none">Терминал</a>';
+          const brand = hdrWrap.querySelector('.brand');
+          if (brand && brand.nextSibling) hdrWrap.insertBefore(nav, brand.nextSibling);
+        }
+      }
+      syncNavLinks();
+    } else {
+      /* Дашборд / Отчёты / Управление — только владелец */
+      if (isAdmin()) {
+        document.documentElement.classList.remove('gate');
+        const t = document.getElementById('theme');
+        if (t) {
+          const x = document.createElement('button');
+          x.className = 'theme-btn';
+          x.type = 'button';
+          x.textContent = '⎋';
+          x.title = 'Выйти из режима владельца';
+          x.setAttribute('aria-label', 'Выйти');
+          x.style.marginLeft = '6px';
+          x.onclick = logout;
+          t.parentNode.style.display = 'flex';
+          t.parentNode.appendChild(x);
+        }
+        verify(ls.get(PIN)).then((err) => {
+          if (err && /Неверный|не задан/.test(err)) { ls.del(OK); location.reload(); }
+        }).catch(() => {});
+      } else {
+        gate(() => location.reload());
+      }
+    }
+
+    const pick = document.getElementById('pick') || document.getElementById('rdPick');
+    if (pick) pick.addEventListener('change', syncNavLinks);
+    setInterval(syncNavLinks, 1500);
+
+    /* Реактивное обновление открытых страниц при изменениях в соседних вкладках */
+    if (window.coffeeBus) {
+      window.coffeeBus.on((msg) => {
+        if (msg.type === 'auth') location.reload();
+        if (msg.type === 'mutation') {
+          if (typeof window.load === 'function') {
+            try { window.load(true, true); } catch (_) {}
+          } else if (typeof window.loadTasks === 'function') {
+            try { window.loadTasks(); } catch (_) {}
+          }
+          syncNavLinks();
+        }
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
