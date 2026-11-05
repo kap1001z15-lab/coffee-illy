@@ -115,6 +115,10 @@
   .cam .x { color:#fff; background:none; border:0; font-size:16px; min-width:84px; min-height:48px; cursor:pointer; text-align:left; }
   .shutter { width:74px; height:74px; border-radius:50%; border:5px solid #fff; background:rgba(255,255,255,.25); cursor:pointer; }
   .shutter:active { background:#fff; }
+  .cm { border:0; border-radius:99px; padding:8px 18px; background:rgba(255,255,255,.15); color:#fff; font-weight:600; cursor:pointer; }
+  .cm.on { background:#fff; color:#000; }
+  .shutter:disabled { opacity:.4; }
+  .shutter.rec { background:#e5322d; border-color:#fff; border-radius:18px; }
   .pstate { font-size:14px; margin:10px 0 0; min-height:21px; }
   .pstate.bad { color:var(--bad); } .pstate.good { color:var(--good); }
   .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); width:max-content; max-width:92vw; background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:16px; font-size:14px; z-index:40; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); }
@@ -133,31 +137,6 @@
   @media (max-width:340px) { .tabs { grid-template-columns:repeat(2,1fr); } }
   @media (max-width:400px) { .tabs button { font-size:12px; padding:0 2px; } }
   .seg input[type=date] { min-width:0; box-sizing:border-box; }
-  /* --- касса: автораспознавание --- */
-  .drop.big { min-height:150px; border-color:var(--crema); }
-  .drop.big .ico { font-size:38px; }
-  .drop.big input { display:none; }
-  .drop.big b { font-size:18px; }
-  .reclist { margin-top:12px; display:grid; gap:8px; }
-  .rec { display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; background:var(--bg); border:1px solid var(--line); font-size:14px; }
-  .rec b { display:block; overflow-wrap:anywhere; } .rec .muted { overflow-wrap:anywhere; }
-  .rec .ri { font-weight:700; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:13px; }
-  .rec.ok { border-color:var(--good); } .rec.ok .ri { background:var(--good); color:#fff; }
-  .rec.bad { border-color:var(--bad); } .rec.bad .ri { background:var(--bad); color:#fff; }
-  .row2 { display:grid; grid-template-columns:1fr auto; gap:10px; margin-top:10px; }
-  .btn.sm { min-height:48px; font-size:15px; }
-  #shiftText { min-height:120px; font-size:16px; }
-  .shcard { margin-top:12px; padding:14px; border-radius:16px; background:var(--bg); border:1px solid var(--line); }
-  .shcard > b { font-size:17px; }
-  .shgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
-  .shgrid label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); display:block; }
-  .shgrid input { margin-top:5px; width:100%; min-width:0; padding:12px 8px; font-size:17px; font-weight:600; border-radius:12px; border:1px solid var(--line); background:var(--surface); box-sizing:border-box; }
-  .warnline { color:var(--bad); font-size:14px; margin:8px 0 0; }
-  .more { margin-top:14px; } .more summary { cursor:pointer; color:var(--muted); font-size:14px; min-height:44px; display:flex; align-items:center; }
-  .more input { margin-top:8px; width:100%; padding:13px; border-radius:14px; border:1px solid var(--line); background:var(--bg); box-sizing:border-box; }
-  .linkbtn { display:flex; align-items:center; justify-content:center; text-decoration:none; box-sizing:border-box; }
-  #submitCashBtn { font-size:15px; line-height:1.25; padding:10px 14px; }
-  @media (max-width:360px) { .shgrid { grid-template-columns:1fr 1fr; } }
   @media (max-width:380px) { .seg.three { grid-template-columns:1fr 1fr; } .seg.three input[type=date] { grid-column:1 / -1; } }
   @media (max-width:360px) { .tabs { gap:2px; padding:3px; } .tabs button { font-size:11.5px; padding:0 2px; } main { padding-left:12px; padding-right:12px; } .btn { font-size:16px; } header h1 { font-size:19px; } }
 </style>
@@ -188,7 +167,10 @@
 
 <div class="cam" id="cam" hidden role="dialog" aria-label="Камера">
   <video id="camVideo" autoplay playsinline muted></video>
-  <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Сделать снимок"></button><span style="min-width:84px"></span></div>
+  <div id="camCount" hidden style="position:absolute;top:42%;left:0;right:0;text-align:center;font:700 96px var(--font-d);color:#fff;text-shadow:0 2px 20px #000;pointer-events:none"></div>
+  <div id="camRec" hidden style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:0;right:0;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 8px #000">● <span id="camTime">0:00</span></div>
+  <div id="camMode" style="display:flex;justify-content:center;gap:8px;padding:8px;background:#000"><button class="cm on" id="mPhoto" type="button">Фото</button><button class="cm" id="mVideo" type="button">Видео</button></div>
+  <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Снять" disabled></button><button class="x" id="camFlip" type="button" style="text-align:right" aria-label="Сменить камеру">🔄 Камера</button></div>
 </div>
 <div class="toast" id="toast" hidden></div>
 <main>
@@ -215,14 +197,14 @@
       <p class="instr" id="taskInstruction"></p>
 
       <div class="field" id="photoBlock">
-        <span class="label">Фото — только с камеры, из галереи нельзя</span>
+        <span class="label">Фото или видео — только с камеры, из галереи нельзя</span>
         <div class="drop" id="drop" role="button" tabindex="0" aria-label="Открыть камеру">
           <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
           <span id="photoPrompt">Открыть камеру</span>
           <img id="photoPreview" alt="Превью фото" hidden>
+          <video id="vidPreview" autoplay loop muted playsinline hidden style="max-height:220px;max-width:100%;border-radius:12px"></video>
         </div>
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
-        <p class="pstate" id="photoState" aria-live="polite"></p>
+                <p class="pstate" id="photoState" aria-live="polite"></p>
       </div>
 
       <div class="field">
@@ -255,28 +237,6 @@
 
   <section id="cashView" class="stack" hidden>
     <div class="panel">
-      <span class="label">1. Отчёты из кассы</span>
-      <label class="drop big" id="dropZone">
-        <span class="ico" aria-hidden="true">📥</span>
-        <b>Выбрать файлы отчётов</b>
-        <span class="muted">Транзакции и Продажи — можно сразу оба. Тип файла (csv, Excel) определится сам</span>
-        <input type="file" id="fileAll" accept=".csv,.xlsx,.xls,.txt,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple>
-      </label>
-      <div id="recList" class="reclist"></div>
-    </div>
-
-    <div class="panel">
-      <span class="label">2. Сообщение со сменой</span>
-      <textarea id="shiftText" rows="5" placeholder="Вставьте сообщение целиком:&#10;вторник 3.11.2026 Соня Алина&#10;Алина&#10;счетчик 648&#10;списано 3&#10;наличные 1019&#10;…"></textarea>
-      <div class="row2">
-        <button type="button" class="btn ghost sm" id="pasteBtn">📋 Вставить из буфера</button>
-        <button type="button" class="btn ghost sm" id="clearShift">Очистить</button>
-      </div>
-      <p class="muted" id="shiftNote" style="margin:10px 0 0"></p>
-      <div id="shiftCards"></div>
-    </div>
-
-    <div class="panel">
       <span class="label">Дата отчёта</span>
       <div class="seg three">
         <button type="button" id="rdToday">Сегодня</button>
@@ -284,7 +244,19 @@
         <input type="date" id="rdPick" aria-label="Другая дата">
       </div>
       <p class="muted" id="rdLabel" style="margin:10px 0 0"></p>
-      <p class="warnline" id="dateWarn" hidden></p>
+    </div>
+    <div class="panel">
+      <span class="label">1. Файлы из кассы</span>
+      <label class="file" id="fTrans">
+        <span class="ico">📄</span>
+        <span><b>Транзакции.csv</b><span class="muted" id="transState">Считает нал, безнал и чеки</span></span>
+        <input type="file" accept=".csv,text/csv" data-t="trans">
+      </label>
+      <label class="file" id="fSales">
+        <span class="ico">📈</span>
+        <span><b>Продажи.csv</b><span class="muted" id="salesState">Ищет хиты дня (необязательно)</span></span>
+        <input type="file" accept=".csv,text/csv" data-t="sales">
+      </label>
     </div>
 
     <div class="panel">
@@ -293,17 +265,16 @@
       <div class="meter" aria-hidden="true"><i id="cMeter" style="width:0"></i></div>
       <span class="muted" id="cPlan"></span>
       <p class="muted" id="cCheck" style="margin:8px 0 0"></p>
-      <p class="muted" id="cCashCheck" style="margin:8px 0 0"></p>
       <div class="grid2" style="margin-top:16px">
         <div class="stat"><span class="muted">💵 Наличные</span><span class="num" id="cCash">—</span></div>
         <div class="stat"><span class="muted">💳 Терминал</span><span class="num" id="cCard">—</span></div>
         <div class="stat"><span class="muted">🧾 Чеков</span><span class="num" id="cChecks">—</span></div>
         <div class="stat"><span class="muted">Средний чек</span><span class="num" id="cAvg">—</span></div>
       </div>
-      <details class="more">
-        <summary>Списания в рублях (необязательно)</summary>
-        <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0" aria-label="Списания за смену, ₽">
-      </details>
+      <div class="field" style="margin-top:16px">
+        <label class="label" for="writeOffs">🗑 Списания за смену, ₽</label>
+        <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0">
+      </div>
     </div>
 
     <div class="panel" id="topPanel" hidden>
@@ -311,8 +282,7 @@
       <div id="topList"></div>
     </div>
 
-    <a class="btn ghost linkbtn" id="toDash2" href="dashboard.html" hidden>Открыть дашборд</a>
-    <button class="btn" id="submitCashBtn" type="button" disabled>Загрузите отчёты</button>
+    <button class="btn" id="submitCashBtn" type="button" disabled>Загрузите «Транзакции.csv»</button>
   </section>
 
   <section id="doneView" class="center" hidden>
@@ -362,7 +332,7 @@ if (tg) {
   tgt(() => tg.setBackgroundColor(curTheme() === "dark" ? "#161211" : "#f6ece2"));
   tgt(() => tg.BackButton.onClick(() => { const b = $("backBtn"); if (!b.hidden && !b.disabled) b.click(); }));   // системная «назад» = предыдущий шаг
   setInterval(() => {        // подтверждение закрытия, пока есть несохранённая работа; кнопка «назад» на шагах 2+
-    const work = (typeof inProgress === "function" && inProgress()) || photoBusy || (!$("cashView").hidden && cashDirty);
+    const work = (typeof inProgress === "function" && inProgress()) || photoBusy || (!$("cashView").hidden && !!trans);
     tgt(() => work ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation());
     const back = block !== "КАССА" && !$("checklistView").hidden && idx > 0;
     tgt(() => back ? tg.BackButton.show() : tg.BackButton.hide());
@@ -458,7 +428,7 @@ function renderStep() {
   $("taskInstruction").textContent = t.instruction || "";
   $("taskInstruction").hidden = !t.instruction;
   $("photoBlock").hidden = !t.mediaRequired;   // обязательность фото задаёт таблица
-  photo = a.preview || ""; photoUrl = a.photo_url || ""; photoBusy = false; $("cameraInput").value = ""; setPhotoUI();
+  photo = a.preview || ""; photoUrl = a.photo_url || ""; photoBusy = false; setPhotoUI();
   photoMsg(photoUrl ? "✓ Фото сохранено на Google Диске" : photo ? "Фото отправится вместе с отчётом" : "", photoUrl ? "good" : "");
   $("incidentComment").value = a.comment || "";
   setPriority(a.priority || "Терпит");
@@ -466,11 +436,13 @@ function renderStep() {
   $("backBtn").hidden = idx === 0;
   $("nextBtn").textContent = idx === cur.length - 1 ? "Отправить" : "Далее";
   drawSteps(); window.scrollTo(0, 0);
+  if (t.mediaRequired && !photo && !photoUrl && armed) setTimeout(() => { if (!photo && !photoBusy && $("cam").hidden && !$("checklistView").hidden) openCamera(); }, 350);   // камера открывается сама на шагах с фото
 }
 
 function setPhotoUI() {
-  $("photoPreview").hidden = !photo;
-  if (photo) $("photoPreview").src = photo;
+  const isV = /^data:video/.test(photo);
+  $("photoPreview").hidden = !photo || isV; if (photo && !isV) $("photoPreview").src = photo;
+  $("vidPreview").hidden = !isV; if (isV) { if ($("vidPreview").getAttribute("src") !== photo) $("vidPreview").src = photo; } else $("vidPreview").removeAttribute("src");
   $("camIco").style.display = photo ? "none" : "";
   $("drop").classList.toggle("has", !!photo);
   $("photoPrompt").textContent = photo ? "Переснять" : "Открыть камеру";
@@ -495,38 +467,82 @@ function validate() {
   $("backBtn").disabled = photoBusy;
 }
 
-/* ---------- камера: только живой снимок ---------- */
+/* ---------- камера: только живой снимок или видео, без галереи ---------- */
 function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
-function openCamera() {
-  if (photoBusy) return;
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
-    .then((s) => { stream = s; $("camVideo").srcObject = s; $("cam").hidden = false; })
-    .catch(() => { $("cameraInput").click(); });       // нет доступа к камере в браузере — системная камера
+const VID_MAX = 15;      // максимум секунд видео
+let camFacing = "environment", camMode = "photo", camT = null, recT = null, rec = null, recChunks = [], armed = false;
+document.addEventListener("pointerdown", () => { armed = true; }, { once: true });
+function stopStream() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; }
+async function startStream() {
+  stopStream(); $("camShot").disabled = true;
+  const v = $("camVideo"), tries = [{ video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }, { video: true, audio: false }];
+  let s = null, err;
+  for (const c of tries) { try { s = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) { err = e; if (e && /NotAllowed|Permission|Security/i.test(e.name)) break; } }
+  if (!s) throw err || new Error("no camera");
+  stream = s; v.srcObject = s; v.style.transform = camFacing === "user" ? "scaleX(-1)" : "";
+  try { await v.play(); } catch (e) {}
+  await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 3000); });
+  await new Promise((r) => setTimeout(r, 350));      // первые кадры бывают чёрными — ждём
+  $("camShot").disabled = !v.videoWidth;
 }
-function closeCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; $("cam").hidden = true; }
-$("drop").onclick = openCamera;
-$("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
-$("camCancel").onclick = closeCamera;
-$("camShot").onclick = () => {
+function camError(e) {
+  const n = (e && e.name) || "";
+  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере. Разрешите камеру в настройках браузера и нажмите сюда." : /NotFound|Overconstrained/i.test(n) ? "Камера не найдена на этом устройстве." : /NotReadable|Abort/i.test(n) ? "Камеру занимает другое приложение. Закройте его и нажмите сюда." : "Не удалось открыть камеру. Нажмите сюда, чтобы повторить.", "bad");
+}
+async function openCamera() {
+  if (photoBusy || !$("cam").hidden) return;
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { photoMsg("Камера недоступна в этом браузере. Откройте приложение в Chrome или Safari.", "bad"); return; }
+  $("cam").hidden = false; setMode("photo"); photoMsg("");
+  try { await startStream(); if (!$("cam").hidden && camMode === "photo" && armed) autoShot(); }
+  catch (e) { closeCamera(); camError(e); }
+}
+function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
+function cancelAuto() { clearInterval(camT); $("camCount").hidden = true; }
+function autoShot() {      // фото само через 3 секунды; можно нажать затвор, сменить камеру или режим
+  let n = 3; const el = $("camCount"); el.textContent = n; el.hidden = false; clearInterval(camT);
+  camT = setInterval(() => { n--; if (n <= 0) { cancelAuto(); shot(0); } else el.textContent = n; }, 1000);
+}
+function closeCamera() {
+  cancelAuto(); clearInterval(recT);
+  if (rec && rec.state === "recording") { rec.onstop = null; try { rec.stop(); } catch (e) {} }
+  rec = null; $("camRec").hidden = true; $("camShot").classList.remove("rec"); stopStream(); $("cam").hidden = true;
+}
+function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 12; }
+function shot(n) {
   const v = $("camVideo"); if (!v.videoWidth) return;
   const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
   c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
   c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  if (isBlack(c) && n < 4) return void setTimeout(() => shot(n + 1), 400);      // чёрный кадр — пробуем ещё раз
   closeCamera(); gotPhoto(c);
-};
-$("cameraInput").addEventListener("change", (e) => {   // запасной путь: снимок должен быть свежим
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  if (f.lastModified && Date.now() - f.lastModified > PHOTO_MAX_AGE) { photoMsg("Это старое фото. Сделайте новый снимок камерой.", "bad"); return; }
-  const url = URL.createObjectURL(f), img = new Image();
-  img.onload = () => {
-    const k = Math.min(1, 1280 / img.width), c = document.createElement("canvas");
-    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); gotPhoto(c);
+}
+function pickMime() { if (!window.MediaRecorder) return null; for (const m of ["video/webm;codecs=vp8", "video/webm", "video/mp4"]) if (MediaRecorder.isTypeSupported(m)) return m; return ""; }
+function toggleRec() {
+  if (rec && rec.state === "recording") { rec.stop(); return; }
+  const mime = pickMime(); if (mime === null) { toast("Запись видео не поддерживается — снимите фото"); return; }
+  recChunks = [];
+  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 1200000 }, mime ? { mimeType: mime } : {})); } catch (e) { toast("Не удалось начать запись видео"); return; }
+  const r = rec;
+  r.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  r.onstop = () => {
+    const blob = new Blob(recChunks, { type: (r.mimeType || mime || "video/webm").split(";")[0] }); closeCamera();
+    if (!blob.size) { photoMsg("Видео не записалось — попробуйте ещё раз", "bad"); return; }
+    const fr = new FileReader(); fr.onload = () => { photo = fr.result; photoUrl = ""; setPhotoUI(); uploadNow(); }; fr.readAsDataURL(blob);
   };
-  img.onerror = () => { URL.revokeObjectURL(url); photoMsg("Не удалось прочитать фото — снимите ещё раз", "bad"); };
-  img.src = url;
-});
+  r.start(500); const t0 = Date.now(); $("camRec").hidden = false; $("camShot").classList.add("rec"); $("camTime").textContent = "0:00";
+  recT = setInterval(() => { const sec = Math.floor((Date.now() - t0) / 1000); $("camTime").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); if (sec >= VID_MAX && r.state === "recording") r.stop(); }, 250);
+}
+$("drop").onclick = openCamera;
+$("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
+$("camCancel").onclick = closeCamera;
+$("camShot").onclick = () => { cancelAuto(); if (camMode === "video") toggleRec(); else shot(0); };
+$("mPhoto").onclick = () => { if (!(rec && rec.state === "recording")) setMode("photo"); };
+$("mVideo").onclick = () => { if (!(rec && rec.state === "recording")) setMode("video"); };
+$("camFlip").onclick = async () => {
+  if (rec && rec.state === "recording") return;
+  cancelAuto(); const prev = camFacing; camFacing = prev === "user" ? "environment" : "user";
+  try { await startStream(); } catch (e) { camFacing = prev; try { await startStream(); } catch (x) { closeCamera(); camError(x); return; } toast("Вторая камера недоступна"); }
+};
 function gotPhoto(c) {      // штамп времени на снимке и мгновенная отправка на Google Диск
   const x = c.getContext("2d"), h = Math.max(16, Math.round(c.width / 45));
   x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
@@ -540,14 +556,14 @@ async function uploadNow() {      // фото сразу уходит на Googl
   for (let k = 0; k < 3; k++) {
     photoMsg(k ? "Повторная отправка (" + (k + 1) + "/3)…" : "Отправляем на Google Диск…");
     try {
-      const d = await api({ action: "upload_photo", block, step, photo: my });
+      const d = await api({ action: "upload_photo", block, step, photo: my, kind: /^data:video/.test(my) ? "video" : "photo" });
       if (photo !== my) return;
       photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good"); photoBusy = false; setPhotoUI(); validate(); return;
     } catch (e) { await new Promise((r) => setTimeout(r, 1500 * (k + 1))); if (photo !== my) return; }
   }
   photoMsg("Нет связи. Нажмите сюда, чтобы отправить снова (фото также уйдёт с отчётом)", "bad"); photoBusy = false; setPhotoUI(); validate();
 }
-$("photoState").onclick = () => { if ($("photoState").classList.contains("bad") && photo && !photoUrl && !photoBusy) uploadNow(); };
+$("photoState").onclick = () => { if (!$("photoState").classList.contains("bad") || photoBusy) return; if (photo && !photoUrl) uploadNow(); else if (!photo) openCamera(); };
 window.addEventListener("online", () => { if (photo && !photoUrl && !photoBusy && !$("checklistView").hidden) uploadNow(); });
 $("btnOk").onclick = () => { tap(); setStatus(false); };
 $("btnInc").onclick = () => { tap(); setStatus(true); };
@@ -617,7 +633,7 @@ function finish(ok, text) {
   $("doneText").textContent = ok ? text : "Нет связи — отчёт уйдёт автоматически, когда появится интернет.";
 }
 
-/* ---------- касса: файлы (csv / Excel) и сообщение смены ---------- */
+/* ---------- касса: CSV ---------- */
 async function readText(file) {
   const buf = await file.arrayBuffer();
   let s;
@@ -637,30 +653,6 @@ function parseCsv(text) {
     }
     out.push(c); return out.map((s) => s.trim());
   });
-}
-/* Excel: библиотека подгружается только когда выбран .xlsx/.xls */
-let xlsxLoad = null;
-function loadXlsx() {
-  if (window.XLSX) return Promise.resolve();
-  return xlsxLoad || (xlsxLoad = new Promise((ok, no) => {
-    const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    s.onload = ok; s.onerror = () => { xlsxLoad = null; no(new Error("Для Excel-файлов нужен интернет — или сохраните отчёт как CSV")); };
-    document.head.appendChild(s);
-  }));
-}
-const p2 = (n) => String(n).padStart(2, "0");
-function cellStr(v) {
-  if (v instanceof Date) return p2(v.getDate()) + "." + p2(v.getMonth() + 1) + "." + v.getFullYear() + " " + p2(v.getHours()) + ":" + p2(v.getMinutes());
-  return v == null ? "" : String(v).trim();
-}
-async function readXlsx(file) {
-  await loadXlsx();
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-  for (const n of wb.SheetNames) {
-    const r = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" }).map((row) => row.map(cellStr)).filter((row) => row.some(Boolean));
-    if (r.length > 1) return r;
-  }
-  throw new Error("пустой файл");
 }
 const num = (s) => parseFloat(String(s || "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
@@ -701,118 +693,24 @@ function calcSales(rows) {
   const top = list.slice(0, 8); top.total = total; return top;
 }
 
-/* Автоопределение: смотрим на содержимое (а не на имя файла). Транзакции — даты в 1-м столбце и способ оплаты в 3-м. */
-function detectKind(rows, fname) {
-  const body = rows.slice(1, 60).filter((r) => r.length >= 4);
-  const hit = body.filter((r) => /^\d{1,2}\.\d{1,2}\.\d{4}/.test(r[0] || "") && /налич|мобил|карт|безнал/i.test(r[2] || "")).length;
-  if (hit && hit >= body.length * 0.4) return "trans";
-  const head = (rows[0] || []).join(" ");
-  if (/кол/i.test(head) && /сумм|выруч/i.test(head)) return "sales";
-  if (/транзакц|transact/i.test(fname)) return "trans";
-  if (/продаж|sales/i.test(fname)) return "sales";
-  return "";
-}
-const fmtD = (iso) => iso.split("-").reverse().join(".");
-const recs = [];   // что распознано: [{name, kind, note, ok}]
-function renderRecs() {
-  $("recList").innerHTML = recs.map((r) => '<div class="rec ' + (r.ok ? "ok" : "bad") + '"><span class="ri">' + (r.ok ? "✓" : "✕") + '</span><span><b></b><span class="muted"></span></span></div>').join("");
-  $("recList").querySelectorAll(".rec").forEach((el, i) => { el.querySelector("b").textContent = recs[i].title; el.querySelector(".muted").textContent = recs[i].note; });
-}
-async function handleFiles(files) {
-  for (const f of files) {
-    const ext = (f.name.split(".").pop() || "").toLowerCase();
-    try {
-      if (ext === "txt") {                       // сообщение смены, сохранённое в файл
-        $("shiftText").value = await readText(f); onShiftText();
-        recs.push({ ok: true, title: "Сообщение смены", note: f.name }); continue;
-      }
-      const rows = /^xlsx?$/.test(ext) ? await readXlsx(f) : parseCsv(await readText(f));
-      const kind = detectKind(rows, f.name);
-      if (kind === "trans") {
-        const t = calcTrans(rows);
-        if (t.date && t.date > isoToday()) { recs.push({ ok: false, title: f.name, note: "В файле дата " + fmtD(t.date) + " — это будущее, проверьте выгрузку" }); continue; }
-        trans = t; fileDay = t.date || "";
-        if (t.date) { if (t.date !== reportDate) toast("Дата отчёта — по файлу: " + fmtD(t.date)); setReportDate(t.date); }
-        recs.push({ ok: true, title: "Транзакции", note: f.name + (t.date ? " · за " + fmtD(t.date) : "") });
-      } else if (kind === "sales") {
-        sales = calcSales(rows);
-        recs.push({ ok: true, title: "Продажи", note: f.name + " · позиций: " + sales.length });
-      } else recs.push({ ok: false, title: f.name, note: "Не похоже на отчёт кассы (Транзакции или Продажи)" });
-    } catch (e) {
-      recs.push({ ok: false, title: f.name, note: /Excel|интернет/.test(e.message) ? e.message : "Не удалось прочитать файл — проверьте выгрузку" });
+document.querySelectorAll(".file input").forEach((inp) => inp.addEventListener("change", async () => {
+  const f = inp.files[0]; if (!f) return;
+  const type = inp.dataset.t, box = $(type === "trans" ? "fTrans" : "fSales"), st = $(type === "trans" ? "transState" : "salesState");
+  try {
+    const rows = parseCsv(await readText(f));
+    if (type === "trans") trans = calcTrans(rows); else sales = calcSales(rows);
+    box.classList.add("ok"); st.textContent = "✓ " + f.name;
+    if (type === "trans" && trans.date) {
+      if (trans.date > isoToday()) { st.textContent = "В файле дата " + trans.date.split("-").reverse().join(".") + " — это будущее, проверьте выгрузку"; trans = null; box.classList.remove("ok"); }
+      else { if (trans.date !== reportDate) toast("Дата отчёта выставлена по файлу: " + trans.date.split("-").reverse().join(".")); setReportDate(trans.date); st.textContent += " · за " + trans.date.split("-").reverse().join("."); }
     }
+  } catch (e) {
+    if (type === "trans") trans = null; else sales = null;
+    box.classList.remove("ok"); st.textContent = "Не удалось прочитать файл — проверьте выгрузку";
   }
-  renderRecs(); renderCash(); scheduleSave();
-}
-$("fileAll").addEventListener("change", async (e) => { const fl = Array.from(e.target.files); e.target.value = ""; if (fl.length) { tap(); await handleFiles(fl); } });
-/* перетаскивание файлов (компьютер) */
-["dragover", "drop"].forEach((ev) => $("dropZone").addEventListener(ev, (e) => { e.preventDefault(); if (ev === "drop" && e.dataTransfer.files.length) handleFiles(Array.from(e.dataTransfer.files)); }));
+  renderCash();
+}));
 
-/* ---------- сообщение смены: «вторник 3.11.2026 Соня Алина / Алина / счетчик 648 / списано 3 / наличные 1019» ---------- */
-let shifts = [], msgDate = "", fileDay = "";
-const WD = /(понедельник|вторник|сред[ауы]|четверг|пятниц[ауы]|суббот[ауы]|воскресенье)/gi;
-const KW = /(сч[её]тчик|списан\S*|налич\S*)\s*[:=\-–—]?\s*(-?\d[\d\s]*(?:[.,]\d+)?)/gi;
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-function parseShift(text) {
-  const out = { date: "", names: [], shifts: [] };
-  const mk = (n) => {
-    let s = out.shifts.find((x) => x.name.toLowerCase() === n.toLowerCase());
-    if (!s) { const h = out.names.find((x) => x.toLowerCase() === n.toLowerCase()); s = { name: h || cap(n), counter: null, writeoff: null, cash: null }; out.shifts.push(s); }
-    return s;
-  };
-  let cur = null;
-  for (const ln of text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)) {
-    const hasKw = /сч[её]тчик|списан|налич/i.test(ln);
-    const dm = /(\d{1,2})[./](\d{1,2})[./](\d{2,4})/.exec(ln);
-    if (dm && !hasKw) {                          // строка с датой; слова после неё — имена
-      const y = dm[3].length === 2 ? "20" + dm[3] : dm[3];
-      out.date = y + "-" + p2(dm[2]) + "-" + p2(dm[1]);
-      out.names = ln.replace(dm[0], " ").replace(WD, " ").split(/[\s,;+&]+|\sи\s/).filter((w) => /^[А-ЯЁA-Z][а-яёa-z-]+$/.test(w));
-      continue;
-    }
-    if (hasKw) {
-      const ms = Array.from(ln.matchAll(KW)); if (!ms.length) continue;
-      const head = ln.slice(0, ms[0].index).replace(/[\s:\-–—,]+$/, "").trim();
-      if (head && !/\d/.test(head)) cur = mk(head);
-      if (!cur) cur = mk("Смена");
-      ms.forEach((m) => { const v = num(m[2]), k = /^сч/i.test(m[1]) ? "counter" : /^списан/i.test(m[1]) ? "writeoff" : "cash"; cur[k] = v; });
-    } else if (!/\d/.test(ln) && ln.split(/\s+/).length <= 3) cur = mk(ln.replace(/[\s:\-–—]+$/, ""));
-  }
-  out.shifts = out.shifts.filter((s) => s.counter !== null || s.writeoff !== null || s.cash !== null);
-  return out;
-}
-function onShiftText() {
-  const t = $("shiftText").value, r = parseShift(t);
-  const old = shifts; shifts = r.shifts; msgDate = r.date;
-  if (r.date && !trans && r.date <= isoToday() && r.date !== reportDate) { setReportDate(r.date); toast("Дата отчёта — из сообщения: " + fmtD(r.date)); }
-  $("shiftNote").textContent = !t.trim() ? "" : shifts.length ? "✓ Распознано смен: " + shifts.length + (r.date ? " · за " + fmtD(r.date) : "") + ". Проверьте цифры — их можно поправить." : "Не нашёл «счётчик / списано / наличные» — проверьте текст";
-  $("shiftNote").style.color = t.trim() && !shifts.length ? "var(--bad)" : "";
-  drawShiftCards(); renderCash();
-  if (JSON.stringify(old) !== JSON.stringify(shifts)) scheduleSave();
-}
-function drawShiftCards() {
-  const box = $("shiftCards"); box.innerHTML = "";
-  shifts.forEach((s, i) => {
-    const d = document.createElement("div"); d.className = "shcard";
-    d.innerHTML = '<b></b><div class="shgrid"><label>Счётчик<input type="number" inputmode="decimal" data-k="counter"></label><label>Списано, шт<input type="number" inputmode="decimal" data-k="writeoff"></label><label>Наличные, ₽<input type="number" inputmode="decimal" data-k="cash"></label></div>';
-    d.querySelector("b").textContent = s.name;
-    d.querySelectorAll("input").forEach((inp) => {
-      inp.value = s[inp.dataset.k] === null ? "" : s[inp.dataset.k];
-      inp.addEventListener("input", () => { s[inp.dataset.k] = inp.value === "" ? null : num(inp.value); renderCash(); scheduleSave(); });
-    });
-    box.appendChild(d);
-  });
-}
-$("shiftText").addEventListener("input", () => { clearTimeout(onShiftText.t); onShiftText.t = setTimeout(onShiftText, 400); });
-$("pasteBtn").onclick = async () => {
-  tap();
-  try { const t = await navigator.clipboard.readText(); if (!t.trim()) { toast("Буфер обмена пуст"); return; } $("shiftText").value = t; onShiftText(); }
-  catch (e) { $("shiftText").focus(); toast("Нажмите в поле и выберите «Вставить»"); }
-};
-$("clearShift").onclick = () => { tap(); $("shiftText").value = ""; onShiftText(); };
-$("writeOffs").addEventListener("input", () => scheduleSave());
-
-/* ---------- сводка ---------- */
 function renderCash() {
   const t = trans, total = t ? t.cash + t.card : 0, pct = Math.round(total / PLAN * 100);
   $("cTotal").textContent = rub(total);
@@ -830,59 +728,26 @@ function renderCash() {
   const sum = sales && sales.total, diff = t && sum ? Math.abs(sum - total) : 0;
   $("cCheck").textContent = t && sum ? (diff <= 1 ? "✓ Сверка: «Продажи» совпадают с кассой" : "⚠️ «Продажи» на " + rub(sum) + ", касса на " + rub(total) + " — проверьте, те ли файлы за один день") : "";
   $("cCheck").style.color = diff > 1 ? "var(--bad)" : "";
-  /* сверка наличных: сумма по сменам и наличные из кассы */
-  const withCash = shifts.filter((s) => s.cash !== null), sc = withCash.reduce((a, s) => a + s.cash, 0), cd = t && withCash.length ? Math.round(t.cash - sc) : 0;
-  $("cCashCheck").textContent = t && withCash.length ? (Math.abs(cd) <= 1 ? "✓ Наличные по сменам (" + rub(sc) + ") совпадают с кассой" : "⚠️ Наличные по сменам " + rub(sc) + ", по кассе " + rub(t.cash) + " — разница " + rub(Math.abs(cd)) + (cd > 0 ? " (в кассе больше)" : " (в кассе меньше)")) : "";
-  $("cCashCheck").style.color = t && withCash.length && Math.abs(cd) > 1 ? "var(--bad)" : "";
-  const w = $("dateWarn"), wd = msgDate && fileDay && msgDate !== fileDay;
-  w.hidden = !wd; if (wd) w.textContent = "⚠️ В сообщении дата " + fmtD(msgDate) + ", а в файле " + fmtD(fileDay) + ". Записываю по файлу — если неверно, выберите дату выше.";
+  $("submitCashBtn").disabled = !t;
+  $("submitCashBtn").textContent = t ? "Отправить кассовый отчёт" : "Загрузите «Транзакции.csv»";
 }
 
-/* ---------- автозапись в таблицу ---------- */
-let cashDirty = false, saveTimer = null, lastSig = "", saving = false, savedAt = "";
-function setBtn(text, off) { const b = $("submitCashBtn"); b.textContent = text; b.disabled = !!off; }
-function cashPayload() {
-  const wo = $("writeOffs").value;
-  const p = {
+$("submitCashBtn").onclick = async () => {
+  if (!trans) return;
+  tap();
+  $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
+  const top = sales || [];
+  const ok = await post({
     action: "submit_cash", sid: uid(), location: LOCATION, userName, date: reportDate,
     cash: trans.cash, card: trans.card, checks: trans.checks,
-    shifts: shifts.map((s) => ({ name: s.name, counter: s.counter, writeoff: s.writeoff, cash: s.cash }))
-  };
-  if (wo !== "") p.writeOffs = Math.max(0, Math.round(parseFloat(wo) || 0));
-  if (sales) { p.topItems = sales.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "); p.products = sales; } else p.keepTop = true;   // без «Продаж» хиты дня в таблице не стираем
-  return p;
-}
-function scheduleSave() {
-  clearTimeout(saveTimer);
-  if (!trans) { cashDirty = false; setBtn(shifts.length ? "Добавьте файл «Транзакции»" : "Загрузите отчёты", true); return; }
-  cashDirty = true; setBtn("Записываю в таблицу…", true);
-  saveTimer = setTimeout(doSave, 1200);
-}
-async function doSave() {
-  if (!trans) return;
-  if (saving) { saveTimer = setTimeout(doSave, 600); return; }
-  const p = cashPayload(), sig = JSON.stringify(Object.assign({}, p, { sid: 0 }));
-  if (sig === lastSig) { cashDirty = false; setBtn("✓ Записано в таблицу" + (savedAt ? " · " + savedAt : ""), false); return; }
-  saving = true;
-  const ok = await post(p);
-  saving = false;
-  if (!ok) {   // без связи: в очереди оставляем только последнюю версию отчёта за эту дату
-    const q = getQ(), keep = q.filter((x, i) => !(x.action === "submit_cash" && x.date === p.date && x.location === p.location && i < q.length - 1));
-    if (keep.length !== q.length) { setQ(keep); queueUI(); }
-  }
-  lastSig = sig; cashDirty = false;
-  savedAt = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  if (ok) {
-    if (reportDate === isoToday()) { markDone("КАССА"); drawTabs(); }
-    tgt(() => tg.HapticFeedback.notificationOccurred("success"));
-    setBtn("✓ Записано в таблицу · " + savedAt + " · нажмите, чтобы повторить", false);
-  } else {
-    tgt(() => tg.HapticFeedback.notificationOccurred("warning"));
-    setBtn("Сохранено на телефоне — уйдёт при появлении связи", false);
-  }
-  $("toDash2").href = "dashboard.html?date=" + reportDate; $("toDash2").hidden = false;
-}
-$("submitCashBtn").onclick = () => { if (!trans) return; tap(); lastSig = ""; setBtn("Записываю в таблицу…", true); doSave(); };
+    writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
+    topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
+    products: top
+  });
+  if (reportDate === isoToday()) { markDone("КАССА"); drawTabs(); }
+  finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks + (reportDate === isoToday() ? "" : " · за " + reportDate.slice(8) + "." + reportDate.slice(5, 7)));
+  $("toDash").href = "dashboard.html?date=" + reportDate; $("toDash").hidden = false;
+};
 
 /* ---------- старт ---------- */
 const inProgress = () => block !== "КАССА" && !$("checklistView").hidden && (idx > 0 || !!photo || answers.some(Boolean));
