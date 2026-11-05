@@ -64,7 +64,7 @@ h2{font-size:18px;margin-bottom:12px}.inc{display:flex;justify-content:space-bet
 <section class="card"><h2>Выручка за 14 дней</h2><div id="chart"></div></section>
 <section class="card"><h2 id="incT">Открытые проблемы</h2><div id="inc"></div></section>
 <section class="card" id="phC" hidden><h2>Фотоотчёт</h2><div id="ph"></div></section>
-<p class="mu" style="text-align:center;margin-top:18px">Подробности — прибыль, позиции, задачи персонала — в разделе <a href="report.html" >Отчёты</a></p>
+<p class="mu" style="text-align:center;margin-top:18px">Подробности — в разделе <a href="report.html">Отчёты</a> · <a href="admin.html?tab=cash">Управление выручкой</a> · <a href="index.html?tab=cash">Касса терминала</a></p>
 </main>
 <script>
 const API_URL = window.COFFEE.API_URL;
@@ -110,11 +110,12 @@ function chart(d){
   const days=d.days,W=640,H=190,p=16,base=H-22,max=Math.max(d.plan*1.15,...days.map((x)=>x.revenue)),bw=(W-p*2)/days.length,y=(v)=>base-v/max*(base-10);
   let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Выручка по дням">';
   days.forEach((x,i)=>{const h=Math.max(base-y(x.revenue),x.revenue?2:0);
-    s+='<rect x="'+(p+i*bw+bw*.15)+'" y="'+(base-h)+'" width="'+bw*.7+'" height="'+h+'" rx="3" fill="'+(x.date===d.date?'var(--br)':x.revenue>=d.plan?'var(--ok)':'var(--ln)')+'"><title>'+x.date.slice(8)+'.'+x.date.slice(5,7)+': '+rub(x.revenue)+'</title></rect>';
+    s+='<rect data-d="'+x.date+'" style="cursor:pointer" x="'+(p+i*bw+bw*.15)+'" y="'+(base-h)+'" width="'+bw*.7+'" height="'+h+'" rx="3" fill="'+(x.date===d.date?'var(--br)':x.revenue>=d.plan?'var(--ok)':'var(--ln)')+'"><title>'+x.date.slice(8)+'.'+x.date.slice(5,7)+': '+rub(x.revenue)+'</title></rect>';
     if(i%2===0||days.length<8)s+='<text x="'+(p+i*bw+bw/2)+'" y="'+(H-6)+'" text-anchor="middle">'+x.date.slice(8)+'</text>'});
   s+='<line x1="'+p+'" x2="'+(W-p)+'" y1="'+y(d.plan)+'" y2="'+y(d.plan)+'" stroke="var(--cr)" stroke-dasharray="5 4"/></svg>';
   $('chart').innerHTML=s;
 }
+$('chart').addEventListener('click',(e)=>{const r=e.target.closest('[data-d]');if(r){$('pick').value=r.dataset.d;load()}});
 function photos(d){
   const ord={'Открытие':0,'День':1,'Закрытие':2},r=(d.photoReports||[]).slice().sort((a,b)=>(ord[a.block]??9)-(ord[b.block]??9)||a.time.localeCompare(b.time));
   $('phC').hidden=!r.length;
