@@ -194,12 +194,8 @@
   </div>
 
   <section id="checklistView" class="stack" hidden>
-    <div id="subGroupBar" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px"></div>
     <div class="panel task">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span class="muted" id="stepCounter"></span>
-        <span id="stepCodeBadge" style="font-family:ui-monospace,monospace;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--brew)"></span>
-      </div>
+      <span class="muted" id="stepCounter"></span>
       <h2 id="taskTitle"></h2>
       <p class="instr" id="taskInstruction"></p>
 
@@ -469,35 +465,13 @@ function emptyHint(b) {      // почему пусто: подсказка ад
   else t = "В блоке «" + b + "» нет активных задач. В листе «" + m.sheet + "» строк: " + m.rows + ". Блок берётся из столбца «Блок» (Открытие / День / Закрытие), включение — столбец «Активна» = да.";
   $("emptyText").textContent = t;
 }
-function renderSubGroupBar() {
-  const bar = $("subGroupBar");
-  const opts = BLOCK_GROUPS[block] || [];
-  if (!opts.length) { bar.hidden = true; return; }
-  bar.hidden = false;
-  bar.innerHTML = opts.map((o) => (
-    '<button type="button" data-sg="' + o.k + '" style="flex:1;white-space:nowrap;border:1px solid ' + (subGroup === o.k ? 'var(--brew)' : 'var(--line)') + ';background:' + (subGroup === o.k ? 'var(--brew)' : 'var(--surface)') + ';color:' + (subGroup === o.k ? 'var(--cream)' : 'var(--ink)') + ';padding:8px 12px;border-radius:12px;font-size:12.5px;font-weight:700;cursor:pointer">' + o.l + '</button>'
-  )).join("");
-}
-$("subGroupBar").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-sg]");
-  if (!b) return;
-  subGroup = b.dataset.sg;
-  applyBlockFilter();
-});
-function applyBlockFilter() {
-  const allInBlock = tasks.filter((t) => t.block === block && t.active !== "нет");
-  cur = subGroup === "all" ? allInBlock : allInBlock.filter((t) => (t.group || String(t.id || "").replace(/\d+$/, "")) === subGroup);
-  if (!cur.length) cur = allInBlock;
-  idx = 0; answers = [];
-  renderSubGroupBar();
-  if (!cur.length) { $("steps").hidden = true; emptyHint(block); show("emptyView"); return; }
-  $("steps").hidden = false; renderStep();
-}
 function selectBlock(b) {
   block = b; drawTabs();
   if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
-  subGroup = DEFAULT_SUBGROUP[b] || "all";
-  applyBlockFilter();
+  cur = tasks.filter((t) => t.block === b && t.active !== "нет");
+  idx = 0; answers = [];
+  if (!cur.length) { $("steps").hidden = true; emptyHint(b); show("emptyView"); return; }
+  $("steps").hidden = false; renderStep();
 }
 
 /* ---------- шаги чек-листа ---------- */
@@ -509,7 +483,6 @@ function renderStep() {
   show("checklistView");
   const t = cur[idx], a = answers[idx] || {};
   $("stepCounter").textContent = "Шаг " + (idx + 1) + " из " + cur.length;
-  if ($("stepCodeBadge")) $("stepCodeBadge").textContent = (t.id ? "Код: " + t.id : "") + (t.groupName ? " · " + t.groupName.split("·")[1] : "");
   $("taskTitle").textContent = t.title || "";
   $("taskInstruction").textContent = t.instruction || "";
   $("taskInstruction").hidden = !t.instruction;
