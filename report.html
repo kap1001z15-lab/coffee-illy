@@ -399,7 +399,7 @@ function drawDisc(d) {
 }
 function drawTable(d) {
   const rows = d.series.filter((x) => x.revenue || x.expenses).reverse();
-  $('tbl').innerHTML = rows.length ? rows.map((x) => '<tr><td>' + dm(x.date) + '</td><td><b>' + rub(x.revenue) + '</b></td><td>' + rub(x.expenses) + '</td><td class="' + (x.profit >= 0 ? 'pos' : 'neg') + '">' + rub(x.profit) + '</td><td>' + x.checks + '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td>' + rub(x.writeoff) + '</td></tr>').join('')
+  $('tbl').innerHTML = rows.length ? rows.map((x) => '<tr style="cursor:pointer" onclick="location.href=\'dashboard.html?date=' + x.date + '\'" title="Открыть этот день на Дашборде"><td>' + dm(x.date) + '</td><td><b>' + rub(x.revenue) + '</b></td><td>' + rub(x.expenses) + '</td><td class="' + (x.profit >= 0 ? 'pos' : 'neg') + '">' + rub(x.profit) + '</td><td>' + x.checks + '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td>' + rub(x.writeoff) + '</td></tr>').join('')
     : '<tr><td colspan="9" style="text-align:left;color:var(--muted)">нет данных</td></tr>';
 }
 
