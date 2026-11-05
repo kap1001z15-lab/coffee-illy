@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2e1b11">
+<script src="config.js"></script>
+<script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <title>Кофейня — терминал бариста</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -113,13 +115,6 @@
   .cam .x { color:#fff; background:none; border:0; font-size:16px; min-width:84px; min-height:48px; cursor:pointer; text-align:left; }
   .shutter { width:74px; height:74px; border-radius:50%; border:5px solid #fff; background:rgba(255,255,255,.25); cursor:pointer; }
   .shutter:active { background:#fff; }
-  .shutter.vid { border-color:#ff5a4d; background:rgba(255,90,77,.35); }
-  .shutter.recording { background:#ff3b30; border-radius:22px; transform:scale(.8); }
-  .cam .modes { display:flex; justify-content:center; gap:6px; padding:10px 0; background:#000; }
-  .cam .modes button { border:0; background:rgba(255,255,255,.12); color:#fff; font:inherit; font-weight:600; border-radius:99px; padding:8px 18px; cursor:pointer; }
-  .cam .modes button.on { background:#fff; color:#000; }
-  .cam .rec { position:absolute; top:calc(env(safe-area-inset-top,0px) + 14px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,.65); color:#fff; padding:6px 14px; border-radius:99px; font-weight:700; font-variant-numeric:tabular-nums; }
-  .cam .flip { text-align:right !important; font-size:26px !important; }
   .pstate { font-size:14px; margin:10px 0 0; min-height:21px; }
   .pstate.bad { color:var(--bad); } .pstate.good { color:var(--good); }
   .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); width:max-content; max-width:92vw; background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:16px; font-size:14px; z-index:40; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); }
@@ -168,9 +163,7 @@
 
 <div class="cam" id="cam" hidden role="dialog" aria-label="Камера">
   <video id="camVideo" autoplay playsinline muted></video>
-  <div class="rec" id="camRec" hidden>● 0:00</div>
-  <div class="modes" id="camModes"><button type="button" id="mPhoto" class="on">Фото</button><button type="button" id="mVideo">Видео</button></div>
-  <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Снять"></button><button class="x flip" id="camFlip" type="button" aria-label="Переключить камеру (основная / фронтальная)">🔄</button></div>
+  <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Сделать снимок"></button><span style="min-width:84px"></span></div>
 </div>
 <div class="toast" id="toast" hidden></div>
 <main>
@@ -197,12 +190,13 @@
       <p class="instr" id="taskInstruction"></p>
 
       <div class="field" id="photoBlock">
-        <span class="label">Фото или видео — только с камеры, из галереи нельзя</span>
+        <span class="label">Фото — только с камеры, из галереи нельзя</span>
         <div class="drop" id="drop" role="button" tabindex="0" aria-label="Открыть камеру">
           <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-          <span id="photoPrompt">Снять фото или видео</span>
+          <span id="photoPrompt">Открыть камеру</span>
           <img id="photoPreview" alt="Превью фото" hidden>
         </div>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
         <p class="pstate" id="photoState" aria-live="polite"></p>
       </div>
 
@@ -303,9 +297,9 @@
 </main>
 
 <script>
-const API_URL = "https://script.google.com/macros/s/AKfycbzCECsUCN3d2WOYvjkKZ56lgnYaqW1s1UhMs8ne6u_hzOpcHilgKgB7VaKeUNHwssdLzw/exec";
+const API_URL = window.COFFEE.API_URL;
 let LOCATION = "Кофейня №1";
-let PLAN = 2000;   // реальные значения приходят из таблицы настроек
+let PLAN = 45000;   // реальные значения приходят из таблицы настроек
 
 const $ = (id) => document.getElementById(id);
 const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " ₽";
@@ -345,7 +339,6 @@ $("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long
 let tasks = [], cur = [], idx = 0, answers = [], META = {};
 let block = "Открытие", photo = "", incident = false, priority = "Терпит";
 let photoUrl = "", photoBusy = false, stream = null;
-let facing = "environment", mode = "photo", mediaKind = "photo", videoData = "", rec = null, recTick = null, drawIv = null;
 const PHOTO_MAX_AGE = 3 * 60 * 1000;   // запасной режим: фото старше 3 минут не принимаем
 const ADDON = /молоко|сироп|мёд|маршмеллоу|топпинг|открытка|десерт от бариста/i;   // добавки не попадают в «хиты дня»
 function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3200); }
@@ -380,40 +373,25 @@ function drawTabs() {
 }
 
 /* ---------- загрузка чек-листов ---------- */
-async function loadTasks() {
-  show("loader"); $("cacheNote").hidden = true;
+async function loadTasks() {      // сохранённые задачи показываются сразу, свежие подгружаются следом
+  let saved = []; try { saved = JSON.parse(localStorage.getItem("coffee_illy_tasks") || "[]"); } catch (_) {}
+  $("cacheNote").hidden = true;
+  if (saved.length) { tasks = saved; selectBlock(block); } else show("loader");
   try {
-    const d = await (await fetch(API_URL + "?action=get_checklists")).json();
+    const d = await coffeeFetch(API_URL + "?action=get_checklists" + (location.search.indexOf("fresh") >= 0 ? "&nocache=1" : ""));
     if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
+    const changed = JSON.stringify(d.tasks) !== JSON.stringify(saved);
     tasks = d.tasks; META = d;
     if (d.plan > 0) PLAN = d.plan;
     if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
     try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
-    updateModes();
+    if ((changed || !saved.length) && !inProgress() && !photoBusy) selectBlock(block);     // не сбиваем смену, если она уже идёт
   } catch (e) {
-    try { tasks = JSON.parse(localStorage.getItem("coffee_illy_tasks") || "[]"); } catch (_) { tasks = []; }
     if (!tasks.length && block !== "КАССА") { show("errorView"); return; }
     if (tasks.length) $("cacheNote").hidden = false;
+    if (!saved.length) selectBlock(block);
   }
-  selectBlock(block);
 }
-
-/* настройки из листа «Настройки» подтягиваются сами: раз в минуту и при возврате в приложение */
-async function refreshConfig() {
-  if (document.hidden || photoBusy || !$("cam").hidden || !$("loader").hidden) return;
-  try {
-    const d = await (await fetch(API_URL + "?action=get_checklists&_=" + Date.now())).json();
-    if (!d || d.ok === false || !d.tasks) return;
-    const changed = JSON.stringify(d.tasks) !== JSON.stringify(tasks);
-    META = d; if (d.plan > 0) PLAN = d.plan;
-    if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
-    updateModes();
-    if (changed) { tasks = d.tasks; try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {} if (!inProgress() && $("errorView").hidden) { selectBlock(block); return; } }
-    if (block === "КАССА") renderCash();
-  } catch (e) {}
-}
-setInterval(refreshConfig, 60000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshConfig(); });
 
 function emptyHint(b) {      // почему пусто: подсказка администратору
   const m = META || {}; let t;
@@ -443,8 +421,8 @@ function renderStep() {
   $("taskInstruction").textContent = t.instruction || "";
   $("taskInstruction").hidden = !t.instruction;
   $("photoBlock").hidden = !t.mediaRequired;   // обязательность фото задаёт таблица
-  photo = a.preview || ""; photoUrl = a.photo_url || ""; photoBusy = false; mediaKind = a.kind || "photo"; videoData = a.video || ""; setPhotoUI();
-  photoMsg(photoUrl ? "✓ " + (mediaKind === "video" ? "Видео" : "Фото") + " сохранено на Google Диске" : photo ? "Файл отправится вместе с отчётом" : "", photoUrl ? "good" : "");
+  photo = a.preview || ""; photoUrl = a.photo_url || ""; photoBusy = false; $("cameraInput").value = ""; setPhotoUI();
+  photoMsg(photoUrl ? "✓ Фото сохранено на Google Диске" : photo ? "Фото отправится вместе с отчётом" : "", photoUrl ? "good" : "");
   $("incidentComment").value = a.comment || "";
   setPriority(a.priority || "Терпит");
   setStatus(!!a.isIncident);
@@ -458,7 +436,7 @@ function setPhotoUI() {
   if (photo) $("photoPreview").src = photo;
   $("camIco").style.display = photo ? "none" : "";
   $("drop").classList.toggle("has", !!photo);
-  $("photoPrompt").textContent = photo ? (mediaKind === "video" ? "🎬 Видео записано · переснять" : "Переснять") : "Снять фото или видео";
+  $("photoPrompt").textContent = photo ? "Переснять" : "Открыть камеру";
   $("backBtn").disabled = photoBusy;
 }
 
@@ -480,138 +458,57 @@ function validate() {
   $("backBtn").disabled = photoBusy;
 }
 
-/* ---------- камера: только живая съёмка (фото и видео, основная и фронтальная), из галереи нельзя ---------- */
+/* ---------- камера: только живой снимок ---------- */
 function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
-const videoOk = () => META.videoEnabled !== false && typeof MediaRecorder !== "undefined" && !!HTMLCanvasElement.prototype.captureStream;
-function updateModes() { const ok = videoOk(); $("mVideo").hidden = !ok; if (!ok && mode === "video") setMode("photo"); }
-function setMode(m) { mode = m; $("mPhoto").className = m === "photo" ? "on" : ""; $("mVideo").className = m === "video" ? "on" : ""; $("camShot").className = "shutter" + (m === "video" ? " vid" : ""); }
-const camLive = (v) => v.videoWidth > 0 && v.readyState >= 2;
-const streamAlive = () => !!(stream && stream.getTracks().some((t) => t.readyState === "live"));
-function stopStream() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; }
-const camConstraints = () => ({ video: { facingMode: { ideal: facing }, width: { ideal: 1280 } }, audio: false });
-function startStream(constraints, v) {
-  return (streamAlive() ? Promise.resolve(stream) : navigator.mediaDevices.getUserMedia(constraints)).then((s) => {   // поток уже есть — повторного запроса доступа нет
-    stream = s; v.srcObject = s; v.muted = true; v.setAttribute("playsinline", ""); v.setAttribute("webkit-playsinline", "");
-    $("cam").hidden = false;
-    const play = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
-    v.onloadedmetadata = play; play();
-    return new Promise((res) => {                       // ждём реальные кадры до 3 секунд
-      const t0 = Date.now(), iv = setInterval(() => {
-        if (camLive(v)) { clearInterval(iv); res(true); } else if (Date.now() - t0 > 3000) { clearInterval(iv); res(false); }
-      }, 150);
-    });
-  });
-}
-function camFail(err) {
-  closeCamera();
-  const n = err && err.name;
-  photoMsg(n === "NotAllowedError" || n === "SecurityError"
-    ? "Доступ к камере запрещён. Разрешите камеру для Telegram: Настройки телефона → Приложения → Telegram → Разрешения → Камера."
-    : "Камера не запустилась. Закройте другие приложения, которые используют камеру, и нажмите ещё раз. Из галереи фото и видео брать нельзя.", "bad");
-}
-async function openCamera() {
+function openCamera() {
   if (photoBusy) return;
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { camFail(); return; }
-  const v = $("camVideo"); updateModes();
-  try {
-    let ok = await startStream(camConstraints(), v);
-    if (!ok) { stopStream(); ok = await startStream({ video: true, audio: false }, v); }     // упрощённые настройки для капризных WebView
-    if (!ok) camFail();
-  } catch (err) { camFail(err); }
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $("cameraInput").click(); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false })
+    .then((s) => { stream = s; $("camVideo").srcObject = s; $("cam").hidden = false; })
+    .catch(() => { $("cameraInput").click(); });       // нет доступа к камере в браузере — системная камера
 }
-function closeCamera() { $("camVideo").srcObject = null; $("cam").hidden = true; }   // камера остаётся «прогретой», пока открыта смена — запрос доступа не повторяется
-async function warmCamera() {        // один запрос доступа при входе в приложение; дальше поток переиспользуется
-  if (streamAlive() || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return;
-  try { stream = await navigator.mediaDevices.getUserMedia(camConstraints()); }
-  catch (e) { try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); } catch (x) {} }
-}
-document.addEventListener("visibilitychange", () => { if (document.hidden) { cancelRec(); closeCamera(); stopStream(); } });   // свернули приложение — камера выключается
-window.addEventListener("pagehide", stopStream);
+function closeCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; $("cam").hidden = true; }
 $("drop").onclick = openCamera;
 $("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
-$("mPhoto").onclick = () => { if (!rec) setMode("photo"); };
-$("mVideo").onclick = () => { if (!rec) setMode("video"); };
-$("camCancel").onclick = () => { cancelRec(); closeCamera(); };
-$("camFlip").onclick = async () => {          // основная ⇄ фронтальная камера
-  if (rec) return;
-  const v = $("camVideo"), prev = facing;
-  facing = facing === "user" ? "environment" : "user"; stopStream();
-  try { let ok = await startStream(camConstraints(), v); if (!ok) throw new Error("no frames"); }
-  catch (e) { facing = prev; stopStream(); photoMsg("Не удалось переключить камеру", "bad"); try { if (!(await startStream(camConstraints(), v))) camFail(); } catch (x) { camFail(x); } }
-};
-function stampOn(c, now) {      // крупный штамп даты, времени, точки, шага и сотрудника
-  const p2 = (n) => String(n).padStart(2, "0");
-  const stamp = p2(now.getDate()) + "." + p2(now.getMonth() + 1) + "." + now.getFullYear() + "  " + p2(now.getHours()) + ":" + p2(now.getMinutes()) + ":" + p2(now.getSeconds());
-  const x = c.getContext("2d"), h = Math.max(18, Math.round(Math.min(c.width, 1280) / 28)), bar = h * 2.9;
-  x.fillStyle = "rgba(0,0,0,.65)"; x.fillRect(0, c.height - bar, c.width, bar);
-  x.fillStyle = "#ffd9a0"; x.font = "700 " + h + "px system-ui,sans-serif"; x.fillText(stamp, h * .6, c.height - bar + h * 1.15);
-  x.fillStyle = "#fff"; x.font = "500 " + Math.round(h * .62) + "px system-ui,sans-serif";
-  x.fillText(LOCATION + " · " + (cur[idx] ? cur[idx].title : "") + " · " + userName, h * .6, c.height - h * .55);
-}
+$("camCancel").onclick = closeCamera;
 $("camShot").onclick = () => {
-  const v = $("camVideo");
-  if (!camLive(v)) { camFail(); return; }
-  if (mode === "video") { rec ? stopRec() : startRec(); return; }
+  const v = $("camVideo"); if (!v.videoWidth) return;
   const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
   c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
   c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-  closeCamera(); gotPhoto(c, "камера", 0);
+  closeCamera(); gotPhoto(c);
 };
-/* видео: пишем с canvas, поэтому время снимка вшито в каждый кадр */
-function startRec() {
-  const v = $("camVideo"), maxSec = Math.max(3, +META.videoMax || 15);
-  const k = Math.min(1, 960 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement("canvas");
-  c.width = Math.round(v.videoWidth * k) & ~1; c.height = Math.round(v.videoHeight * k) & ~1;
-  const x = c.getContext("2d"), draw = () => { x.drawImage(v, 0, 0, c.width, c.height); stampOn(c, new Date()); };
-  draw();
-  const types = ["video/mp4;codecs=avc1", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"], mt = types.filter((t) => MediaRecorder.isTypeSupported(t))[0] || "";
-  let mr;
-  try { mr = new MediaRecorder(c.captureStream(25), Object.assign({ videoBitsPerSecond: 1200000 }, mt ? { mimeType: mt } : {})); }
-  catch (e) { photoMsg("Запись видео не поддерживается на этом телефоне — снимайте фото", "bad"); return; }
-  const poster = document.createElement("canvas"); poster.width = c.width; poster.height = c.height; poster.getContext("2d").drawImage(c, 0, 0);
-  const chunks = [], t0 = Date.now();
-  drawIv = setInterval(draw, 40);
-  mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-  mr.onstop = () => {
-    clearInterval(drawIv); clearInterval(recTick); rec = null; $("camRec").hidden = true; $("camShot").classList.remove("recording");
-    if (mr.discard) return;
-    const sec = Math.round((Date.now() - t0) / 1000); closeCamera();
-    if (!chunks.length || sec < 1) { photoMsg("Видео получилось пустым — запишите ещё раз", "bad"); return; }
-    const fr = new FileReader(); fr.onload = () => gotVideo(String(fr.result), poster, sec); fr.readAsDataURL(new Blob(chunks, { type: mr.mimeType || mt || "video/webm" }));
+$("cameraInput").addEventListener("change", (e) => {   // запасной путь: снимок должен быть свежим
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (f.lastModified && Date.now() - f.lastModified > PHOTO_MAX_AGE) { photoMsg("Это старое фото. Сделайте новый снимок камерой.", "bad"); return; }
+  const url = URL.createObjectURL(f), img = new Image();
+  img.onload = () => {
+    const k = Math.min(1, 1280 / img.width), c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); gotPhoto(c);
   };
-  rec = mr; mr.start(500);
-  $("camShot").classList.add("recording"); $("camRec").hidden = false;
-  const fmt = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
-  recTick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $("camRec").textContent = "● " + fmt(s) + " / " + fmt(maxSec); if (s >= maxSec) stopRec(); }, 250);
-  $("camRec").textContent = "● 0:00 / " + fmt(maxSec);
-}
-function stopRec() { if (rec && rec.state !== "inactive") rec.stop(); }
-function cancelRec() { if (rec && rec.state !== "inactive") { rec.discard = true; rec.stop(); } }
-let photoMeta = { src: "камера", age: 0, takenAt: "" };
-function gotPhoto(c, src, age) {      // фото со штампом и мгновенная отправка на Google Диск
-  const now = new Date(); stampOn(c, now);
-  photoMeta = { src: src || "камера", age: Math.round((age || 0) / 1000), takenAt: now.toISOString() };
-  mediaKind = "photo"; videoData = "";
+  img.onerror = () => { URL.revokeObjectURL(url); photoMsg("Не удалось прочитать фото — снимите ещё раз", "bad"); };
+  img.src = url;
+});
+function gotPhoto(c) {      // штамп времени на снимке и мгновенная отправка на Google Диск
+  const x = c.getContext("2d"), h = Math.max(16, Math.round(c.width / 45));
+  x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
+  x.fillStyle = "#fff"; x.font = "600 " + h + "px system-ui,sans-serif";
+  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION + " · " + (cur[idx] ? cur[idx].title : ""), h * .6, c.height - h * .6);
   photo = c.toDataURL("image/jpeg", 0.72); photoUrl = ""; setPhotoUI(); uploadNow();
 }
-function gotVideo(data, poster, sec) {
-  if (data.length > 28e6) { photoMsg("Видео слишком большое — запишите покороче", "bad"); return; }
-  photoMeta = { src: "камера (видео, " + sec + " с)", age: 0, takenAt: new Date().toISOString() };
-  mediaKind = "video"; videoData = data;
-  photo = poster.toDataURL("image/jpeg", 0.72); photoUrl = ""; setPhotoUI(); uploadNow();
-}
-async function uploadNow() {      // фото/видео сразу уходит на Google Диск; при сбое — 3 попытки, затем повтор по нажатию или при появлении сети
-  const my = photo, kind = mediaKind, word = kind === "video" ? "Видео" : "Фото", payload = kind === "video" ? videoData : photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
+async function uploadNow() {      // фото сразу уходит на Google Диск; при сбое — 3 попытки, затем повтор по нажатию или при появлении сети
+  const my = photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
   photoBusy = true; setPhotoUI(); validate();
   for (let k = 0; k < 3; k++) {
     photoMsg(k ? "Повторная отправка (" + (k + 1) + "/3)…" : "Отправляем на Google Диск…");
     try {
-      const d = await api({ action: "upload_photo", block, step, photo: payload, userName, location: LOCATION, src: photoMeta.src, ageSec: photoMeta.age, takenAt: photoMeta.takenAt });
+      const d = await api({ action: "upload_photo", block, step, photo: my });
       if (photo !== my) return;
-      photoUrl = d.url || ""; photoMsg("✓ " + word + " сохранено на Google Диске", "good"); photoBusy = false; setPhotoUI(); validate(); return;
+      photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good"); photoBusy = false; setPhotoUI(); validate(); return;
     } catch (e) { await new Promise((r) => setTimeout(r, 1500 * (k + 1))); if (photo !== my) return; }
   }
-  photoMsg("Нет связи. Нажмите сюда, чтобы отправить снова (файл также уйдёт с отчётом)", "bad"); photoBusy = false; setPhotoUI(); validate();
+  photoMsg("Нет связи. Нажмите сюда, чтобы отправить снова (фото также уйдёт с отчётом)", "bad"); photoBusy = false; setPhotoUI(); validate();
 }
 $("photoState").onclick = () => { if ($("photoState").classList.contains("bad") && photo && !photoUrl && !photoBusy) uploadNow(); };
 window.addEventListener("online", () => { if (photo && !photoUrl && !photoBusy && !$("checklistView").hidden) uploadNow(); });
@@ -627,7 +524,7 @@ function saveAnswer() {
     id: t.id, title: t.title, isIncident: incident,
     comment: incident ? $("incidentComment").value.trim() : "",
     priority: incident ? priority : "",
-    photo_url: photoUrl, preview: photo, kind: mediaKind, video: mediaKind === "video" ? videoData : "", responsible: t.responsible
+    photo_url: photoUrl, preview: photo, responsible: t.responsible
   };
 }
 $("backBtn").onclick = () => { saveAnswer(); idx--; renderStep(); };
@@ -635,7 +532,7 @@ $("nextBtn").onclick = async () => {
   tap(); saveAnswer();
   if (idx < cur.length - 1) { idx++; renderStep(); return; }
   $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
-  const items = answers.map((a) => Object.assign({}, a, { preview: undefined, video: undefined, photo_base64: a.photo_url ? "" : (a.video || a.preview) }));
+  const items = answers.map((a) => Object.assign({}, a, { preview: undefined, photo_base64: a.photo_url ? "" : a.preview }));
   const ok = await post({ action: "submit_checklist", sid: uid(), location: LOCATION, userName, block, items });
   if (ok) { markDone(block); drawTabs(); }
   const n = answers.filter((a) => a && a.isIncident).length;
@@ -646,8 +543,8 @@ $("nextBtn").onclick = async () => {
 function getQ() { try { return JSON.parse(localStorage.getItem("coffee_illy_queue") || "[]"); } catch (e) { return []; } }
 function setQ(q) { try { localStorage.setItem("coffee_illy_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
 async function api(p) {
-  const r = await fetch(API_URL, { method: "POST", body: JSON.stringify(p) });
-  const d = await r.json(); if (!d || d.ok === false) throw new Error((d && d.error) || "ошибка сервера"); return d;
+  const d = await coffeeFetch(API_URL, { method: "POST", body: JSON.stringify(p) }, 45000);
+  if (!d || d.ok === false) throw new Error((d && d.error) || "ошибка сервера"); return d;
 }
 const sendRaw = api;
 async function post(p) {
@@ -677,7 +574,6 @@ $("queueBtn").onclick = flush;
 window.addEventListener("online", flush);
 
 function finish(ok, text) {
-  closeCamera(); stopStream();
   tgt(() => tg.HapticFeedback.notificationOccurred(ok ? "success" : "warning"));
   $("steps").hidden = true; show("doneView");
   $("doneTitle").textContent = ok ? "Отправлено!" : "Сохранено на телефоне";
@@ -816,8 +712,7 @@ $("retryBtn").onclick = loadTasks;
   if (qp.get("tab") === "cash") block = "КАССА";
   setReportDate(reportDate);
 })();
-queueUI(); flush(); loadTasks().then(() => { if (block !== "КАССА") warmCamera(); });
-document.addEventListener("visibilitychange", () => { if (!document.hidden && block !== "КАССА" && !$("checklistView").hidden) warmCamera(); });
+queueUI(); flush(); loadTasks();
 </script>
 <script src="app.js" defer></script>
 </body>
