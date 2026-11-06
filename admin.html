@@ -2,7 +2,8 @@
 <html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кофейня — управление</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <script src="config.js"></script>
-<style>html.gate body>*:not(#gate){visibility:hidden}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1")document.documentElement.classList.add("gate")}catch(e){}</script>
+<style>html.gate body>*:not(#gate){display:none!important}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1"||!localStorage.getItem("coffee_illy_pin"))document.documentElement.classList.add("gate")}catch(e){}</script>
+
 <script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <style>
@@ -44,7 +45,7 @@ dialog{border:1px solid var(--line);border-radius:22px;background:var(--surface)
 dialog::backdrop{background:rgba(0,0,0,.5)}
 .derr{color:var(--bad);font-size:14px;margin-top:10px;min-height:20px}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--espresso);color:var(--cream);padding:10px 18px;border-radius:16px;font-size:14px;z-index:60;max-width:92vw}
-.app-header{position:sticky;top:0;z-index:20;color:var(--cream);background:linear-gradient(160deg,#2e1b11,#5a3a29);border-radius:0 0 24px 24px;box-shadow:0 10px 30px -14px rgba(0,0,0,.55);padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px}
+.app-header{position:relative;z-index:20;color:var(--cream);background:linear-gradient(160deg,#2e1b11,#5a3a29);border-radius:0 0 24px 24px;box-shadow:0 10px 30px -14px rgba(0,0,0,.55);padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px}
 .app-header .wrap{max-width:var(--w);margin:0 auto}
 .app-header .brand{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .app-header h1{font-size:20px;display:flex;align-items:center;gap:8px;color:var(--cream)}.app-header h1 svg{width:26px;height:26px}
@@ -54,6 +55,102 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .app-header .tabs a{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size:13px;text-decoration:none}
 .app-header .tabs a.on{background:var(--cream);color:var(--espresso)}
 @media(max-width:400px){.app-header .tabs a{font-size:12px}}
+
+  /* === АДАПТИВНЫЙ USER-FRIENDLY ИНТЕРФЕЙС ДЛЯ ПК И ТЕЛЕФОНА (v8) === */
+  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:99px; }
+
+  /* Карточки и кнопки: плавный отклик на ПК и телефоне */
+  .card, .panel { transition:box-shadow .2s ease, border-color .2s ease; }
+  button, .b, .p, .btn, .btn-s, .btn-p, .file, .drop {
+    transition:transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine) {
+    .b:hover, .btn-s:hover { transform:translateY(-1px); box-shadow:0 4px 12px -4px rgba(0,0,0,.12); }
+    .p:hover, .btn-p:hover, .btn:not(:disabled):hover { filter:brightness(1.06); transform:translateY(-1px); }
+    .file:hover, .drop:hover { border-color:var(--brew); background:color-mix(in srgb, var(--crema) 8%, var(--bg)); }
+  }
+  .file.dragover, .drop.dragover {
+    border-style:solid !important;
+    border-color:var(--good) !important;
+    background:color-mix(in srgb, var(--good) 12%, var(--bg)) !important;
+    transform:scale(1.01);
+  }
+
+  /* Таблицы: закреплённый первый столбец на узких экранах + удобный скролл */
+  .scrollx, .sx { -webkit-overflow-scrolling:touch; scrollbar-width:thin; border-radius:12px; }
+  .tbl th:first-child, .tbl td:first-child {
+    position:sticky; left:0; z-index:2;
+    background:var(--surface);
+  }
+  .tbl tr:hover td:first-child { background:var(--bg); }
+
+  /* Поле быстрого поиска задач */
+  .task-search {
+    width:100%; height:42px; border-radius:12px; border:1px solid var(--line);
+    background:var(--bg); padding:0 14px; font-size:14px; margin:8px 0 12px;
+  }
+
+  /* --- Широкие экраны ПК (Desktop >= 900px) --- */
+  @media (min-width:900px) {
+    :root { --w:1120px; }
+    main { padding:26px 24px 64px; }
+    .card, .panel { padding:24px 26px; border-radius:24px; }
+    .app-header { padding:16px 24px; border-radius:0 0 28px 28px; }
+    .app-header .wrap {
+      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px;
+    }
+    .app-header .brand { flex:1 1 auto; }
+    .app-header .tabs, .app-header .nav-bar { margin-top:0; }
+    .app-header .dp, .app-header .sub-bar { margin-top:0; width:auto; }
+    .k, .k4 { grid-template-columns:repeat(4, 1fr) !important; gap:16px; }
+    .dash-two-col { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
+    .dash-two-col > .card { margin-top:16px; }
+    .settings-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px 22px; }
+    .settings-grid .set, .settings-grid .set-item {
+      border:1px solid var(--line); border-radius:16px; padding:16px; background:var(--bg); margin:0;
+    }
+    .narrow-view { max-width:780px; }
+    #tCashView, #cashView {
+      display:grid; grid-template-columns:1.1fr 0.9fr; gap:18px; align-items:start;
+    }
+    #tCashView > *, #cashView > * { margin-top:0 !important; }
+    #tCashView > .panel:first-child, #cashView > .panel:first-child,
+    #tSubmitCashBtn, #submitCashBtn { grid-column:1 / -1; }
+  }
+
+  /* --- Мобильные телефоны (Mobile <= 640px) --- */
+  @media (max-width:640px) {
+    .app-header, header {
+      padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;
+      border-radius:0 0 20px 20px;
+    }
+    .app-header h1, header h1 { font-size:18px; }
+    .app-header .tabs, .main-tabs, .term-tabs, .owner-nav {
+      margin-top:8px; padding:3px; border-radius:13px;
+    }
+    .app-header .tabs a, .main-tabs button, .term-tabs button, .owner-nav a {
+      min-height:38px; font-size:12px; padding:0 4px; border-radius:10px;
+    }
+    .app-header .dp, .sub-bar { margin-top:8px; }
+    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size:13px; }
+    main { padding:12px 10px calc(36px + env(safe-area-inset-bottom,0px)); }
+    .card, .panel { padding:15px 14px; border-radius:18px; margin-top:10px; }
+    .big, .total { font-size:clamp(30px, 9vw, 40px); }
+    .k, .k4 { grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:10px; }
+    .k .card, .k4 .card { padding:13px; }
+    .k b, .k4 b { font-size:21px; }
+    .k6 { grid-template-columns:repeat(2, 1fr); gap:10px; }
+    .kpi .num { font-size:21px; }
+    .seg, .seg-bar { scrollbar-width:none; -ms-overflow-style:none; }
+    .seg::-webkit-scrollbar, .seg-bar::-webkit-scrollbar { display:none; }
+    .adm-row, .inc-row, .row { grid-template-columns:1fr; gap:8px; }
+    .adm-row .acts, .inc-row .acts, .row .acts { justify-content:flex-start; }
+    .set .line, .set-item .line { flex-direction:column; }
+    .set .line button, .set-item .line button { width:100%; min-height:42px; }
+  }
+
 </style></head><body>
 <header class="app-header"><div class="wrap">
   <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Управление</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
@@ -130,7 +227,7 @@ $('tabs').addEventListener('click',(e)=>{const b=e.target.closest('[data-t]');if
 function rTasks(){
   const defList=(window.COFFEE&&window.COFFEE.DEFAULT_TASKS)||[];
   if((!D.tasks||D.tasks.length<defList.length)&&defList.length){D.tasks=defList.slice();}
-  let h='<div class="top"><h2 style="font-size:18px">Задачи для сотрудников ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv (91 шаг)</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div><p class="mu" style="margin:0 0 8px">Изменения сразу попадают в таблицу и появляются в терминале у бариста.</p>';
+  let h='<div class="top"><h2 style="font-size:18px">Задачи для сотрудников ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv (91 шаг)</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div><p class="mu" style="margin:0 0 4px">Изменения сразу попадают в таблицу и появляются в терминале у бариста.</p><input type="search" id="admTaskSearch" class="task-search" placeholder="🔍 Быстрый поиск задачи по названию, коду (o01, c12, q01) или инструкции…">';
   D.blocks.forEach((b)=>{const l=D.tasks.filter((t)=>t.block===b);
     h+='<h3>'+esc(b)+' · '+l.length+'</h3>'+(l.length?l.map((t)=>'<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">'+esc(t.id||('#'+t.row))+'</span><span class="t">'+esc(t.title)+'</span>'+(t.photo==='да'?'<span class="tag">📷 фото</span>':'')+(t.active==='нет'?'<span class="tag no">выключена</span>':'')+(t.instruction?'<div class="mu">'+esc(t.instruction)+'</div>':'')+(t.responsible?'<div class="mu">Ответственный: '+esc(t.responsible)+'</div>':'')+'</div><div class="acts"><button class="b" data-a="task-edit" data-i="'+D.tasks.indexOf(t)+'">Изменить</button><button class="b del" data-a="task-del" data-i="'+D.tasks.indexOf(t)+'">Удалить</button></div></div>').join(''):'<p class="mu">Задач нет</p>')});
   return h}
@@ -146,7 +243,7 @@ function taskForm(t){
 function rCash(){
   let h='<div class="top"><h2 style="font-size:18px">Выручка по дням</h2><button class="p" data-a="cash-new">+ Добавить / исправить день</button></div><p class="mu" style="margin:0 0 8px">Обычно данные приходят из терминала (вкладка «Касса»). Здесь можно внести или поправить день вручную.</p>';
   if(!D.cash.length)return h+'<p class="mu">Данных пока нет</p>';
-  return h+'<div class="sx"><table class="tbl"><thead><tr><th>Дата</th><th>Наличные</th><th>Безнал</th><th>Итого</th><th>Чеков</th><th>Списания</th><th></th></tr></thead><tbody>'+D.cash.map((r,i)=>'<tr><td><a href="dashboard.html?date='+r.date+'" title="Открыть день на Дашборде">'+dmy(r.date)+'</a></td><td>'+rub(r.cash)+'</td><td>'+rub(r.card)+'</td><td><b>'+rub(r.cash+r.card)+'</b></td><td>'+r.checks+'</td><td>'+rub(r.writeoff)+'</td><td><div class="acts"><button class="b" data-a="cash-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="cash-del" data-i="'+i+'">Удалить</button></div></td></tr>').join('')+'</tbody></table></div>'}
+  return h+'<div class="sx"><table class="tbl"><thead><tr><th>Дата</th><th>Наличные</th><th>Безнал</th><th>Итого</th><th>Чеков</th><th>Списания</th><th></th></tr></thead><tbody>'+D.cash.map((r,i)=>'<tr><td><a href="dashboard.html?date='+r.date+'" title="Открыть день на Дашборде">'+dmy(r.date)+'</a></td><td>'+rub(r.cash)+'</td><td>'+rub(r.card)+'</td><td style="color:var(--good)"><b>'+rub(r.cash+r.card)+'</b>'+(r.barista?'<div class="mu" style="font-size:11.5px">'+esc(r.barista)+'</div>':'')+'</td><td>'+r.checks+'</td><td style="color:var(--bad)"><b>'+rub(r.writeoff)+'</b></td><td><div class="acts"><button class="b" data-a="cash-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="cash-del" data-i="'+i+'">Удалить</button></div></td></tr>').join('')+'</tbody></table></div>'}
 function cashForm(r){
   const isNew=!r;r=r||{date:D.today,cash:'',card:'',checks:'',writeoff:''};
   openForm(isNew?'Выручка за день':'Изменить день '+dmy(r.date),[
@@ -157,7 +254,7 @@ function cashForm(r){
 function rExp(){
   let h='<div class="top"><h2 style="font-size:18px">Расходы</h2><button class="p" data-a="exp-new">+ Добавить расход</button></div>';
   if(!D.expenses.length)return h+'<p class="mu">Расходов пока нет</p>';
-  return h+D.expenses.map((x,i)=>'<div class="row"><div><span class="t">'+esc(x.category)+' · '+rub(x.amount)+'</span><div class="mu">'+dmy(x.date)+(x.comment?' · '+esc(x.comment):'')+' · '+esc(x.id)+'</div></div><div class="acts"><button class="b" data-a="exp-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="exp-del" data-i="'+i+'">Удалить</button></div></div>').join('')}
+  return h+D.expenses.map((x,i)=>'<div class="row"><div><span class="t">'+esc(x.category)+' · <span style="color:var(--bad)">'+rub(x.amount)+'</span></span><div class="mu">'+dmy(x.date)+(x.comment?' · '+esc(x.comment):'')+' · '+esc(x.id)+'</div></div><div class="acts"><button class="b" data-a="exp-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="exp-del" data-i="'+i+'">Удалить</button></div></div>').join('')}
 function expForm(x){
   const isNew=!x;x=x||{date:D.today,category:D.categories[0],amount:'',comment:''};
   const cats=D.categories.indexOf(x.category)<0?D.categories.concat(x.category):D.categories;
@@ -170,16 +267,33 @@ function rInc(){
   const l=D.incidents;let h='<h2 style="font-size:18px;margin-bottom:6px">Поломки и проблемы</h2><p class="mu" style="margin:0 0 8px">Присылаются сотрудниками из терминала. Здесь их можно закрыть, открыть заново, поправить или удалить.</p>';
   if(!l.length)return h+'<p class="mu">Поломок нет</p>';
   const isOpen=(s)=>s==='Open'||s==='Открыта';const o=l.filter((x)=>isOpen(x.status)),r=l.filter((x)=>!isOpen(x.status));
-  const item=(x)=>'<div class="row"><div><span class="t">'+esc(x.step||'Проблема')+'</span>'+(x.priority==='Критично'?'<span class="tag no">критично</span>':'')+'<span class="tag '+(isOpen(x.status)?'no':'ok')+'">'+(isOpen(x.status)?'открыта':'решена')+'</span><div>'+esc(x.text)+'</div><div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(x.time)+(x.who?' · '+esc(x.who):'')+(x.owner&&x.owner!=='—'?' · ответственный: '+esc(x.owner):'')+(/^https:\/\//.test(x.photo)?' · <a href="'+esc(x.photo)+'" target="_blank" rel="noopener">фото</a>':'')+'</div></div><div class="acts">'+(isOpen(x.status)?'<button class="b ok" data-a="inc-res" data-i="'+l.indexOf(x)+'">Решено</button>':'<button class="b" data-a="inc-open" data-i="'+l.indexOf(x)+'">Открыть снова</button>')+'<button class="b" data-a="inc-edit" data-i="'+l.indexOf(x)+'">Изменить</button><button class="b del" data-a="inc-del" data-i="'+l.indexOf(x)+'">Удалить</button></div></div>';
+  const item=(x)=>'<div class="row"><div><span class="t">'+esc(x.step||'Проблема')+'</span>'+(x.priority==='Критично'?'<span class="tag no">критично</span>':'')+'<span class="tag '+(isOpen(x.status)?'no':'ok')+'">'+(isOpen(x.status)?'открыта':'решена')+'</span><div>'+esc(x.text)+'</div><div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(x.time)+(x.who?' · '+esc(x.who):'')+(x.owner&&x.owner!=='—'?' · ответственный: '+esc(x.owner):'')+(/^https:\/\//.test(x.photo)?' · <a href="'+esc(x.photo)+'" target="_blank" rel="noopener">фото</a>':'')+'</div></div><div class="acts">'+(isOpen(x.status)?'<button class="b ok" data-a="inc-res" data-i="'+l.indexOf(x)+'">Решено</button>':'<button class="b" data-a="inc-open" data-i="'+l.indexOf(x)+'">Открыть снова</button>')+'<button class="b" data-a="inc-tg" data-i="'+l.indexOf(x)+'" title="Отправить поломку с фото/видео в Telegram">📲 В Telegram</button><button class="b" data-a="inc-edit" data-i="'+l.indexOf(x)+'">Изменить</button><button class="b del" data-a="inc-del" data-i="'+l.indexOf(x)+'">Удалить</button></div></div>';
   return h+'<h3>Открытые · '+o.length+'</h3>'+(o.map(item).join('')||'<p class="mu">Открытых нет — всё в порядке</p>')+'<h3>Решённые · '+r.length+'</h3>'+(r.map(item).join('')||'<p class="mu">Нет</p>')}
 function incForm(x){
   openForm('Изменить поломку '+x.id,[{k:'comment',label:'Описание',type:'area'},{k:'priority',label:'Срочность',type:'select',opts:['Терпит','Критично']},{k:'responsible',label:'Ответственный'}],
     {comment:x.text,priority:x.priority,responsible:x.owner==='—'?'':x.owner},(o)=>call('update_incident',Object.assign(o,{id:x.id})))}
 
 function rSet(){
-  return '<h2 style="font-size:18px;margin-bottom:6px">Настройки</h2><p class="mu" style="margin:0 0 8px">Те же параметры, что в листе «Настройки» таблицы. Изменения действуют сразу.</p>'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b><div class="mu">'+esc(s.hint)+'</div><div class="line"><input id="s_'+i+'" type="'+(s.secret?'password':'text')+'" autocomplete="off" value="'+esc(s.value)+'" placeholder="'+(s.secret?(s.set?'••••••  задано — введите новое значение, чтобы заменить':'не задано'):'')+'"><button class="b" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')}
+  const inputFor=(s,i)=>{
+    if(s.id==='PHOTO_ALL'){
+      const v=String(s.value||'нет').toLowerCase()==='да'?'да':'нет';
+      return '<select id="s_'+i+'" style="flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)"><option value="нет"'+(v==='нет'?' selected':'')+'>нет — только для задач с пометкой «📷 фото»</option><option value="да"'+(v==='да'?' selected':'')+'>да — обязательно на каждом шаге Открытия и Закрытия</option></select>';
+    }
+    if(s.id==='DEADLINE')return '<input id="s_'+i+'" type="time" value="'+esc(s.value||'08:30')+'">';
+    if(s.id==='PLAN'||s.id==='WO_NORM'||s.id==='INIT_COUNTER')return '<input id="s_'+i+'" type="number" min="0" step="any" inputmode="decimal" value="'+esc(s.value)+'">';
+    return '<input id="s_'+i+'" type="'+(s.secret?'password':'text')+'" autocomplete="off" value="'+esc(s.value)+'" placeholder="'+(s.secret?(s.set?'••••••  задано — введите новый код, чтобы заменить':'не задано'):'')+'">';
+  };
+  const tgBox='<div style="background:color-mix(in srgb,var(--crema) 14%,var(--bg));border:1px solid var(--crema);border-radius:16px;padding:14px;margin-bottom:14px"><div class="top" style="margin-bottom:6px"><b>🤖 Telegram-уведомления администратору о поломках (с фото и видео)</b><div class="acts"><button class="b" type="button" data-a="tg-detect">🔍 Найти мой Chat ID</button><button class="p" type="button" data-a="tg-test">📲 Тест: отправить фото поломки в Telegram</button></div></div><div class="mu">1. Создайте бота в <b>@BotFather</b> и вставьте его токен в поле <code>TG_TOKEN</code> ниже.<br>2. Напишите вашему боту <code>/start</code> в Telegram и нажмите <b>«🔍 Найти мой Chat ID»</b> — поле <code>TG_CHAT</code> заполнится автоматически.<br>3. Теперь как только бариста отметит «⚠️ Поломка» в терминале, бот мгновенно пришлёт вам в Telegram сообщение вместе с отснятым фото или видео!</div></div>';
+  return '<div class="top"><h2 style="font-size:18px">Настройки системы и таблицы</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
 
 /* ----- действия ----- */
+$('panel').addEventListener('input',(e)=>{
+  if(e.target.id!=='admTaskSearch')return;
+  const q=e.target.value.trim().toLowerCase();
+  document.querySelectorAll('#panel .row').forEach((r)=>{
+    r.hidden=!!q&&r.textContent.toLowerCase().indexOf(q)<0;
+  });
+});
 $('panel').addEventListener('click',(e)=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=+b.dataset.i;
   if(a==='task-flt'){taskFlt=b.dataset.g||'all';render();return;}
@@ -197,6 +311,46 @@ $('panel').addEventListener('click',(e)=>{
   if(a==='inc-open')return act('update_incident',{id:D.incidents[i].id,status:'Открыта'},'Поломка открыта снова');
   if(a==='inc-edit')return incForm(D.incidents[i]);
   if(a==='inc-del'){const x=D.incidents[i];if(window.coffeeConfirm?false:confirm('Удалить поломку '+x.id+'?'))act('delete_incident',{id:x.id},'Поломка удалена');return}
+  if(a==='inc-tg'){
+    const x=D.incidents[i];if(!x||!window.coffeeTelegram)return;
+    toast('Отправляем в Telegram…');
+    window.coffeeTelegram.sendIncidentAlert(x,{throwIfUnconfigured:true}).then(()=>toast('✓ Отправлено в Telegram администратору')).catch((err)=>toast('Ошибка Telegram: '+errText(err)));
+    return;
+  }
+  if(a==='tg-detect'){
+    const tIdx=D.settings.findIndex((s)=>s.id==='TG_TOKEN'),cIdx=D.settings.findIndex((s)=>s.id==='TG_CHAT');
+    const tok=tIdx>=0?$('s_'+tIdx).value.trim():'';
+    toast('Ищем последнее сообщение боту…');
+    window.coffeeTelegram.detectChatId(tok).then(async(res)=>{
+      if(cIdx>=0)$('s_'+cIdx).value=res.chatId;
+      await call('save_all_settings',{items:[{id:'TG_TOKEN',value:tok},{id:'TG_CHAT',value:res.chatId}]});
+      toast('✓ Найден чат «'+res.title+'» (ID: '+res.chatId+') и сохранён!');
+      await load();
+    }).catch((err)=>toast('Telegram: '+errText(err)));
+    return;
+  }
+  if(a==='tg-test'){
+    const tIdx=D.settings.findIndex((s)=>s.id==='TG_TOKEN'),cIdx=D.settings.findIndex((s)=>s.id==='TG_CHAT');
+    const tok=tIdx>=0?$('s_'+tIdx).value.trim():'',ch=cIdx>=0?$('s_'+cIdx).value.trim():'';
+    call('save_all_settings',{items:[{id:'TG_TOKEN',value:tok},{id:'TG_CHAT',value:ch}]}).then(()=>{
+      toast('Отправляем тестовое фото поломки в Telegram…');
+      return window.coffeeTelegram.sendIncidentAlert({
+        step:'☕ Кофемашина (тест уведомления)',
+        text:'Тестовая проверка доставки фото и видео поломок администратору в Telegram',
+        priority:'Критично',
+        block:'Открытие',
+        who:'Бариста Соня',
+        owner:'Техник',
+        photo:(window.COFFEE&&window.COFFEE.SAMPLE_INC_PHOTO)||''
+      },{token:tok,chat:ch,throwIfUnconfigured:true});
+    }).then(()=>{toast('✓ Тестовое фото поломки доставлено в ваш Telegram!');return load()}).catch((err)=>toast('Ошибка Telegram: '+errText(err)));
+    return;
+  }
+  if(a==='set-save-all'){
+    const items=D.settings.map((s,idx)=>({id:s.id,value:$('s_'+idx).value.trim()}));
+    call('save_all_settings',{items}).then(()=>{toast('Все настройки сохранены и применены в системе');return load()}).catch((x)=>toast('Ошибка: '+errText(x)));
+    return;
+  }
   if(a==='set-save'){const s=D.settings[i],v=$('s_'+i).value.trim();
     call('save_setting',{id:s.id,value:v}).then(()=>{if(s.id==='ADMIN_PIN')setPin(v);toast('Сохранено');return load()}).catch((x)=>toast('Ошибка: '+errText(x)))}
 });
