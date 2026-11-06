@@ -40,7 +40,7 @@
   h1,h2,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
   .muted { color:var(--muted); font-size:14px; }
 
-  header { position:sticky; top:0; z-index:5; color:var(--cream);
+  header { position:relative; z-index:5; color:var(--cream);
     background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
     padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
   .wrap { max-width:480px; margin:0 auto; }
@@ -55,8 +55,8 @@
   .owner-nav { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:12px; }
   .owner-nav a { display:flex; align-items:center; justify-content:center; min-height:42px; border-radius:12px; color:rgba(246,236,226,.82); font-weight:600; font-size:13px; text-decoration:none; }
   .owner-nav a.on { background:var(--cream); color:var(--espresso); }
-  .steps { display:flex; gap:5px; margin-top:12px; }
-  .steps i { flex:1; height:5px; border-radius:99px; background:rgba(255,255,255,.2); transition:background .2s; }
+  .steps { display:flex; gap:2px; margin-top:8px; }
+  .steps i { flex:1; height:4px; border-radius:99px; background:rgba(255,255,255,.2); transition:background .2s; }
   .steps i.done { background:#e0a76a; } .steps i.now { background:var(--cream); }
 
   main { max-width:480px; margin:0 auto; padding:18px 16px calc(40px + env(safe-area-inset-bottom,0px)); }
@@ -142,6 +142,102 @@
   .seg input[type=date] { min-width:0; box-sizing:border-box; }
   @media (max-width:380px) { .seg.three { grid-template-columns:1fr 1fr; } .seg.three input[type=date] { grid-column:1 / -1; } }
   @media (max-width:360px) { .tabs { gap:2px; padding:3px; } .tabs button { font-size:11.5px; padding:0 2px; } main { padding-left:12px; padding-right:12px; } .btn { font-size:16px; } header h1 { font-size:19px; } }
+
+  /* === АДАПТИВНЫЙ USER-FRIENDLY ИНТЕРФЕЙС ДЛЯ ПК И ТЕЛЕФОНА (v8) === */
+  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:99px; }
+
+  /* Карточки и кнопки: плавный отклик на ПК и телефоне */
+  .card, .panel { transition:box-shadow .2s ease, border-color .2s ease; }
+  button, .b, .p, .btn, .btn-s, .btn-p, .file, .drop {
+    transition:transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine) {
+    .b:hover, .btn-s:hover { transform:translateY(-1px); box-shadow:0 4px 12px -4px rgba(0,0,0,.12); }
+    .p:hover, .btn-p:hover, .btn:not(:disabled):hover { filter:brightness(1.06); transform:translateY(-1px); }
+    .file:hover, .drop:hover { border-color:var(--brew); background:color-mix(in srgb, var(--crema) 8%, var(--bg)); }
+  }
+  .file.dragover, .drop.dragover {
+    border-style:solid !important;
+    border-color:var(--good) !important;
+    background:color-mix(in srgb, var(--good) 12%, var(--bg)) !important;
+    transform:scale(1.01);
+  }
+
+  /* Таблицы: закреплённый первый столбец на узких экранах + удобный скролл */
+  .scrollx, .sx { -webkit-overflow-scrolling:touch; scrollbar-width:thin; border-radius:12px; }
+  .tbl th:first-child, .tbl td:first-child {
+    position:sticky; left:0; z-index:2;
+    background:var(--surface);
+  }
+  .tbl tr:hover td:first-child { background:var(--bg); }
+
+  /* Поле быстрого поиска задач */
+  .task-search {
+    width:100%; height:42px; border-radius:12px; border:1px solid var(--line);
+    background:var(--bg); padding:0 14px; font-size:14px; margin:8px 0 12px;
+  }
+
+  /* --- Широкие экраны ПК (Desktop >= 900px) --- */
+  @media (min-width:900px) {
+    :root { --w:1120px; }
+    main { padding:26px 24px 64px; }
+    .card, .panel { padding:24px 26px; border-radius:24px; }
+    .app-header { padding:16px 24px; border-radius:0 0 28px 28px; }
+    .app-header .wrap {
+      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px;
+    }
+    .app-header .brand { flex:1 1 auto; }
+    .app-header .tabs, .app-header .nav-bar { margin-top:0; }
+    .app-header .dp, .app-header .sub-bar { margin-top:0; width:auto; }
+    .k, .k4 { grid-template-columns:repeat(4, 1fr) !important; gap:16px; }
+    .dash-two-col { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
+    .dash-two-col > .card { margin-top:16px; }
+    .settings-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px 22px; }
+    .settings-grid .set, .settings-grid .set-item {
+      border:1px solid var(--line); border-radius:16px; padding:16px; background:var(--bg); margin:0;
+    }
+    .narrow-view { max-width:780px; }
+    #tCashView, #cashView {
+      display:grid; grid-template-columns:1.1fr 0.9fr; gap:18px; align-items:start;
+    }
+    #tCashView > *, #cashView > * { margin-top:0 !important; }
+    #tCashView > .panel:first-child, #cashView > .panel:first-child,
+    #tSubmitCashBtn, #submitCashBtn { grid-column:1 / -1; }
+  }
+
+  /* --- Мобильные телефоны (Mobile <= 640px) --- */
+  @media (max-width:640px) {
+    .app-header, header {
+      padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;
+      border-radius:0 0 20px 20px;
+    }
+    .app-header h1, header h1 { font-size:18px; }
+    .app-header .tabs, .main-tabs, .term-tabs, .owner-nav {
+      margin-top:8px; padding:3px; border-radius:13px;
+    }
+    .app-header .tabs a, .main-tabs button, .term-tabs button, .owner-nav a {
+      min-height:38px; font-size:12px; padding:0 4px; border-radius:10px;
+    }
+    .app-header .dp, .sub-bar { margin-top:8px; }
+    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size:13px; }
+    main { padding:12px 10px calc(36px + env(safe-area-inset-bottom,0px)); }
+    .card, .panel { padding:15px 14px; border-radius:18px; margin-top:10px; }
+    .big, .total { font-size:clamp(30px, 9vw, 40px); }
+    .k, .k4 { grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:10px; }
+    .k .card, .k4 .card { padding:13px; }
+    .k b, .k4 b { font-size:21px; }
+    .k6 { grid-template-columns:repeat(2, 1fr); gap:10px; }
+    .kpi .num { font-size:21px; }
+    .seg, .seg-bar { scrollbar-width:none; -ms-overflow-style:none; }
+    .seg::-webkit-scrollbar, .seg-bar::-webkit-scrollbar { display:none; }
+    .adm-row, .inc-row, .row { grid-template-columns:1fr; gap:8px; }
+    .adm-row .acts, .inc-row .acts, .row .acts { justify-content:flex-start; }
+    .set .line, .set-item .line { flex-direction:column; }
+    .set .line button, .set-item .line button { width:100%; min-height:42px; }
+  }
+
 </style>
 </head>
 <body>
@@ -249,25 +345,32 @@
       <p class="muted" id="rdLabel" style="margin:10px 0 0"></p>
     </div>
     <div class="panel">
-      <span class="label">1. Файлы из кассы (автоопределение даты, бариста и типа файла)</span>
-      <label class="file" id="fTrans">
-        <span class="ico">📄</span>
-        <span><b>Транзакции.csv</b><span class="muted" id="transState">Считает наличные, мобильный платеж и чеки (можно выбрать оба файла сразу)</span></span>
-        <input type="file" accept=".csv,text/csv" data-t="trans" multiple>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <span class="label" style="margin:0">1. Единое поле загрузки документов (CSV и TXT — любое количество файлов сразу)</span>
+        <label style="font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--good)">
+          <input type="checkbox" id="sumModeChk" checked style="width:16px;height:16px"> ➕ Суммировать, если 2 человека в день
+        </label>
+      </div>
+      <label class="file" id="fUnified" style="padding:18px;border-width:2px">
+        <span class="ico">📂</span>
+        <span>
+          <b>Выберите или перетащите все файлы сюда (Транзакции.csv, Продажи.csv, сводки смен)</b>
+          <span class="muted" id="unifiedState">Автоматически распознаёт тип каждого файла, разбивает по датам и бариста, суммирует смены 2 сотрудников за один день и строит полную сводку</span>
+        </span>
+        <input type="file" id="unifiedFilesIn" accept=".csv,.txt,text/csv,text/plain" multiple>
       </label>
-      <label class="file" id="fSales">
-        <span class="ico">📈</span>
-        <span><b>Продажи.csv</b><span class="muted" id="salesState">Считает позиции, чашки кофе и сверяет сумму (4 или 9 столбцов)</span></span>
-        <input type="file" accept=".csv,text/csv" data-t="sales" multiple>
-      </label>
+      <span id="fTrans" hidden></span><span id="transState" hidden></span>
+      <span id="fSales" hidden></span><span id="salesState" hidden></span>
       <div style="margin-top:12px">
-        <span class="muted" style="display:block;font-size:12px;margin-bottom:6px">Загрузить ваши примеры выгрузок в 1 клик:</span>
+        <span class="muted" style="display:block;font-size:12px;margin-bottom:6px">Проверить пакетную обработку и суммирование на ваших реальных файлах:</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" class="b-sm" data-preset="30_10" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer">📄 Пт 30.10 (Настя · Продажи)</button>
-          <button type="button" class="b-sm" data-preset="31_10" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer">📄 Сб 31.10 (Настя · Оба файла)</button>
-          <button type="button" class="b-sm" data-preset="01_11" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer">📄 Вс 01.11 (Соня · Оба файла)</button>
+          <button type="button" class="b-sm" data-preset="all_batch" style="border:1px solid var(--good);background:color-mix(in srgb,var(--good) 14%,var(--bg));color:var(--good);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:700;cursor:pointer">🚀 Загрузить сразу все 5 дней (Пт 30.10 – Ср 04.11)</button>
+          <button type="button" class="b-sm" data-preset="30_10" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer">📄 Пт 30.10 (Настя)</button>
+          <button type="button" class="b-sm" data-preset="31_10" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer">📄 Сб 31.10 (Настя)</button>
+          <button type="button" class="b-sm" data-preset="01_11" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer">📄 Вс 01.11 (Соня)</button>
         </div>
       </div>
+      <div id="batchSummaryBox" hidden style="margin-top:14px"></div>
     </div>
 
     <div class="panel">
@@ -290,7 +393,7 @@
 
     <div class="panel">
       <span class="muted">Итого выручка</span>
-      <span class="num total" id="cTotal">0 ₽</span>
+      <span class="num total" id="cTotal" style="color:var(--good)">0 ₽</span>
       <div class="meter" aria-hidden="true"><i id="cMeter" style="width:0"></i></div>
       <span class="muted" id="cPlan"></span>
       <p class="muted" id="cCheck" style="margin:8px 0 0"></p>
@@ -306,7 +409,7 @@
           <input type="text" id="shiftBaristaIn" placeholder="Алина, Соня, Настя…" style="width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">
         </div>
         <div class="field" style="margin:0">
-          <label class="label" for="writeOffs">🗑 Списания (шт. или ₽)</label>
+          <label class="label" for="writeOffs" style="color:var(--bad)">🗑 Списания (шт. или ₽)</label>
           <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0">
         </div>
       </div>
@@ -449,6 +552,8 @@ async function loadTasks() {
     META = d;
     if (d.plan > 0) PLAN = d.plan;
     if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
+    if (d.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = d.initCounter;
+    renderCash();
     try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
     if (!inProgress() && !photoBusy) selectBlock(block);
   } catch (e) {
@@ -511,6 +616,12 @@ function setPhotoUI() {
 function setStatus(isInc) {
   incident = isInc;
   $("incidentBox").hidden = !isInc;
+  const t = cur[idx];
+  if (t && $("photoBlock")) {
+    $("photoBlock").hidden = !(t.mediaRequired || isInc);
+    const lbl = $("photoBlock").querySelector(".label");
+    if (lbl) lbl.textContent = isInc ? "📸 Фото или видео поломки (сразу уйдёт в Telegram администратору и в Отчёты)" : "Фото или видео — только с камеры, из галереи нельзя";
+  }
   $("btnOk").className = !isInc ? "ok" : "";
   $("btnInc").className = isInc ? "bad" : "";
   validate();
@@ -644,12 +755,12 @@ $("nextBtn").onclick = async () => {
   tap(); saveAnswer();
   if (idx < cur.length - 1) { idx++; renderStep(); return; }
   $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
-  const items = answers.map((a) => Object.assign({}, a, { preview: undefined, photo_base64: a.photo_url ? "" : a.preview }));
+  const items = answers.map((a) => Object.assign({}, a, { photo_url: a.photo_url || a.preview || "", photo_base64: a.photo_url ? "" : a.preview }));
   const ok = await post({ action: "submit_checklist", sid: uid(), location: LOCATION, userName, block, items });
   if (ok) { markDone(block); drawTabs(); }
   const n = answers.filter((a) => a && a.isIncident).length;
   finish(ok, n ? "Передано проблем: " + n : "Все пункты в норме");
-  $("toDash").href = "dashboard.html?date=" + isoToday(); $("toDash").hidden = false;
+  $("toDash").hidden = true;
 };
 
 /* ---------- отправка с очередью на случай offline ---------- */
@@ -828,30 +939,218 @@ function applyParsedCsv(kind, data, labelName) {
   renderCash();
 }
 
-document.querySelectorAll(".file input").forEach((inp) => inp.addEventListener("change", async () => {
-  const files = Array.from(inp.files || []);
+let batchDaysMap = {};
+
+function mergeIntoBatchDay(dateStr, baristaName, part) {
+  const d = dateStr || reportDate || isoToday();
+  const sumMode = !$("sumModeChk") || $("sumModeChk").checked;
+  if (!batchDaysMap[d] || !sumMode) {
+    batchDaysMap[d] = {
+      date: d,
+      baristas: baristaName ? [baristaName] : [],
+      shifts: [],
+      cash: 0, card: 0, checks: 0, writeoff: 0, coffeeCups: 0,
+      salesTotal: 0,
+      productsMap: {},
+      files: []
+    };
+  }
+  const rec = batchDaysMap[d];
+  if (baristaName) {
+    baristaName.split(",").map((s) => s.trim()).filter(Boolean).forEach((n) => {
+      if (!rec.baristas.includes(n)) rec.baristas.push(n);
+    });
+  }
+  if (part.fileName && !rec.files.includes(part.fileName)) rec.files.push(part.fileName);
+
+  if (part.kind === "trans") {
+    rec.cash += part.cash || 0;
+    rec.card += part.card || 0;
+    rec.checks += part.checks || 0;
+    rec.shifts.push({ name: baristaName || "Бариста", cash: part.cash || 0, card: part.card || 0, checks: part.checks || 0, writeoff: 0, cups: part.checks || 0 });
+  } else if (part.kind === "sales") {
+    rec.salesTotal += part.total || 0;
+    rec.coffeeCups += part.coffeeCups || 0;
+    (part.items || []).forEach((it) => {
+      const pm = rec.productsMap[it.name] || (rec.productsMap[it.name] = { name: it.name, qty: 0, sum: 0 });
+      pm.qty += it.qty || 0;
+      pm.sum += it.sum || 0;
+    });
+  } else if (part.kind === "shift") {
+    rec.cash += part.cash || 0;
+    rec.card += part.card || 0;
+    rec.checks += part.checks || 0;
+    rec.writeoff += part.writeoff || 0;
+    rec.coffeeCups += part.cups || 0;
+    if (Array.isArray(part.shifts)) rec.shifts = rec.shifts.concat(part.shifts);
+  }
+}
+
+function finalizeBatchDay(dObj) {
+  const products = Object.values(dObj.productsMap || {}).sort((a, b) => b.qty - a.qty);
+  const cash = dObj.cash || (dObj.salesTotal && !dObj.card ? dObj.salesTotal : 0);
+  const card = dObj.card || 0;
+  const checks = dObj.checks || dObj.coffeeCups || products.reduce((s, x) => s + x.qty, 0) || 1;
+  return {
+    date: dObj.date,
+    barista: dObj.baristas.join(", ") || "Бариста",
+    shifts: dObj.shifts.length ? dObj.shifts : [{ name: dObj.baristas.join(", ") || "Бариста", cash, card, checks, writeoff: dObj.writeoff || 0, cups: dObj.coffeeCups || checks }],
+    cash,
+    card,
+    revenue: cash + card,
+    checks,
+    writeoff: dObj.writeoff || 0,
+    coffeeCups: dObj.coffeeCups || checks,
+    salesTotal: dObj.salesTotal || 0,
+    products: products.slice(0, 12),
+    topItems: products.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
+    files: dObj.files || []
+  };
+}
+
+function renderBatchSummaryUI() {
+  const box = $("batchSummaryBox");
+  const keys = Object.keys(batchDaysMap).sort();
+  if (!keys.length) { box.hidden = true; return; }
+  const list = keys.map((k) => finalizeBatchDay(batchDaysMap[k]));
+  const grandRev = list.reduce((s, x) => s + x.revenue, 0);
+  const grandWo = list.reduce((s, x) => s + x.writeoff, 0);
+  const grandCups = list.reduce((s, x) => s + x.coffeeCups, 0);
+
+  box.hidden = false;
+  box.innerHTML =
+    '<div style="background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
+        '<b>📊 Автоматическая сводка по загруженным данным (' + list.length + ' дн.)</b>' +
+        '<span style="font-size:13px"><b style="color:var(--good)">Доход: ' + rub(grandRev) + '</b> · <b style="color:var(--bad)">Списания: ' + grandWo + '</b> · ☕ Чашек: <b>' + grandCups + '</b></span>' +
+      '</div>' +
+      list.map((d) => (
+        '<div style="padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<div>' +
+            '<b>📅 ' + d.date.split("-").reverse().join(".") + '</b> · 👤 <b>' + d.barista + '</b>' +
+            (d.shifts.length > 1 ? ' <span style="font-size:11.5px;padding:1px 6px;border-radius:99px;background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good);font-weight:700">Сумма ' + d.shifts.length + ' смен</span>' : '') +
+            '<div class="muted" style="font-size:12px">Нал: ' + rub(d.cash) + ' · Безнал: ' + rub(d.card) + ' · Чеков/чашек: ' + d.checks + (d.topItems ? ' · Хиты: ' + d.topItems : '') + '</div>' +
+          '</div>' +
+          '<div style="text-align:right">' +
+            '<b style="color:var(--good);font-size:15px">' + rub(d.revenue) + '</b>' +
+            (d.writeoff ? '<div style="color:var(--bad);font-size:12px;font-weight:700">Списания: ' + d.writeoff + '</div>' : '') +
+          '</div>' +
+        '</div>'
+      )).join("") +
+      '<button type="button" class="btn" id="saveAllBatchBtn" style="margin-top:12px;min-height:46px;font-size:15px">💾 Записать все распознанные дни (' + list.length + ') в систему</button>' +
+    '</div>';
+
+  /* Подставляем последний распознанный день в основную карточку Кассы */
+  const last = list[list.length - 1];
+  if (last) {
+    setReportDate(last.date);
+    $("shiftBaristaIn").value = last.barista;
+    $("who").textContent = last.barista;
+    $("writeOffs").value = last.writeoff;
+    activeShiftCounterCups = last.coffeeCups;
+    trans = { cash: last.cash, card: last.card, checks: last.checks, date: last.date, barista: last.barista, shifts: last.shifts };
+    if (last.products && last.products.length) {
+      sales = last.products.slice();
+      sales.total = last.salesTotal || last.revenue;
+      sales.coffeeCups = last.coffeeCups;
+      sales.totalQty = last.checks;
+    }
+    renderCash();
+  }
+
+  $("saveAllBatchBtn").onclick = async () => {
+    const mergeMode = (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace";
+    await post({ action: "batch_submit_cash", mergeMode, days: list });
+    markDone("КАССА"); drawTabs();
+    finish(true, "Сохранено дней: " + list.length + " · Общий доход " + rub(grandRev) + " · все смены просуммированы и доступны на Дашборде и в Отчётах.");
+    $("toDash").hidden = true;
+  };
+}
+
+$("unifiedFilesIn").addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files || []);
   if (!files.length) return;
+  if (!$("sumModeChk") || !$("sumModeChk").checked) batchDaysMap = {};
   for (const f of files) {
     try {
-      const rows = parseCsv(await readText(f));
-      const kind = detectCsvKind(rows, f.name);
-      if (kind === "trans") applyParsedCsv("trans", calcTrans(rows, f.name), f.name);
-      else applyParsedCsv("sales", calcSales(rows, f.name), f.name);
-    } catch (e) {
-      toast("Не удалось прочитать " + f.name);
+      const txt = await readText(f);
+      if (/сч[её]тчик/i.test(txt) && !/способ оплаты|номенклатура|номиенклатура/i.test(txt)) {
+        const sDays = parseShiftCounterText(txt, Number($("initCounterIn").value) || 600);
+        sDays.forEach((sd) => {
+          mergeIntoBatchDay(sd.date, sd.baristas.join(", "), {
+            kind: "shift", fileName: f.name, cash: sd.totalCash, card: 0,
+            checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoff: sd.totalWoQty,
+            shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoff: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
+          });
+        });
+      } else {
+        const rows = parseCsv(txt);
+        const kind = detectCsvKind(rows, f.name);
+        if (kind === "trans") {
+          const td = calcTrans(rows, f.name);
+          mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: f.name, cash: td.cash, card: td.card, checks: td.checks });
+          applyParsedCsv("trans", td, f.name);
+        } else {
+          const sd = calcSales(rows, f.name);
+          mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: f.name, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
+          applyParsedCsv("sales", sd, f.name);
+        }
+      }
+    } catch (err) {
+      toast("Не удалось обработать " + f.name);
     }
   }
-}));
+  $("fUnified").classList.add("ok");
+  $("unifiedState").textContent = "✓ Обработано файлов: " + files.length + " · разбито по датам и бариста";
+  renderBatchSummaryUI();
+});
 
 document.querySelectorAll("[data-preset]").forEach((btn) => btn.addEventListener("click", () => {
-  const p = SAMPLE_FILES_DB[btn.dataset.preset];
+  const key = btn.dataset.preset;
+  if (key === "all_batch") {
+    batchDaysMap = {};
+    ["30_10", "31_10", "01_11"].forEach((k) => {
+      const p = SAMPLE_FILES_DB[k];
+      if (p.transCsv) {
+        const td = calcTrans(parseCsv(p.transCsv), p.transName);
+        mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, cash: td.cash, card: td.card, checks: td.checks });
+      }
+      if (p.salesCsv) {
+        const sd = calcSales(parseCsv(p.salesCsv), p.salesName);
+        mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
+      }
+    });
+    const sDays = parseShiftCounterText(SAMPLE_FILES_DB.shift_text, 600);
+    sDays.forEach((sd) => {
+      mergeIntoBatchDay(sd.date, sd.baristas.join(", "), {
+        kind: "shift", fileName: "Смены 3.11 и 4.11", cash: sd.totalCash, card: 0,
+        checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoff: sd.totalWoQty,
+        shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoff: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
+      });
+    });
+    $("fUnified").classList.add("ok");
+    $("unifiedState").textContent = "✓ Загружен пакет за 5 дней (Пт 30.10 – Ср 04.11) с суммированием смен Алины и Сони";
+    renderBatchSummaryUI();
+    toast("Все 5 дней распознаны, разбиты по датам и бариста и просуммированы!");
+    return;
+  }
+  const p = SAMPLE_FILES_DB[key];
   if (!p) return;
+  batchDaysMap = {};
   trans = null; sales = null; activeShiftCounterCups = null;
-  $("fTrans").classList.remove("ok"); $("fSales").classList.remove("ok");
-  $("transState").textContent = "Считает наличные, мобильный платеж и чеки";
-  $("salesState").textContent = "Считает позиции, чашки кофе и сверяет сумму";
-  if (p.transCsv) applyParsedCsv("trans", calcTrans(parseCsv(p.transCsv), p.transName), p.transName);
-  if (p.salesCsv) applyParsedCsv("sales", calcSales(parseCsv(p.salesCsv), p.salesName), p.salesName);
+  if (p.transCsv) {
+    const td = calcTrans(parseCsv(p.transCsv), p.transName);
+    mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, cash: td.cash, card: td.card, checks: td.checks });
+    applyParsedCsv("trans", td, p.transName);
+  }
+  if (p.salesCsv) {
+    const sd = calcSales(parseCsv(p.salesCsv), p.salesName);
+    mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
+    applyParsedCsv("sales", sd, p.salesName);
+  }
+  $("fUnified").classList.add("ok");
+  $("unifiedState").textContent = "✓ " + p.label;
+  renderBatchSummaryUI();
   toast("Загружен пример: " + p.label);
 }));
 
@@ -1037,7 +1336,7 @@ $("submitCashBtn").onclick = async () => {
   $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
   const top = sales || [];
   const ok = await post({
-    action: "submit_cash", sid: uid(), location: LOCATION, userName: ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName, date: reportDate,
+    action: "submit_cash", mergeMode: (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace", shifts: (trans && trans.shifts) || undefined, sid: uid(), location: LOCATION, userName: ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName, date: reportDate,
     cash: trans.cash, card: trans.card, checks: trans.checks,
     writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
     topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
@@ -1045,7 +1344,7 @@ $("submitCashBtn").onclick = async () => {
   });
   if (reportDate === isoToday()) { markDone("КАССА"); drawTabs(); }
   finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks + (reportDate === isoToday() ? "" : " · за " + reportDate.slice(8) + "." + reportDate.slice(5, 7)));
-  $("toDash").href = "dashboard.html?date=" + reportDate; $("toDash").hidden = false;
+  $("toDash").hidden = true;
 };
 
 /* ---------- старт ---------- */
@@ -1065,6 +1364,26 @@ $("retryBtn").onclick = loadTasks;
   const qb = qp.get("block"); if (qb && ["Открытие","День","Закрытие","КАССА"].includes(qb)) block = qb;
   setReportDate(reportDate);
 })();
+if (window.coffeeSettings) { const cs = window.coffeeSettings.get(); if (cs.location) { LOCATION = cs.location; $("loc").textContent = LOCATION; } if (cs.plan > 0) PLAN = cs.plan; if (cs.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = cs.initCounter; }
+
+/* Поддержка перетаскивания файлов мышкой (Drag & Drop) на ПК */
+document.querySelectorAll('label.file').forEach((lbl) => {
+  const inp = lbl.querySelector('input[type="file"]');
+  if (!inp) return;
+  ['dragenter', 'dragover'].forEach((ev) => lbl.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation(); lbl.classList.add('dragover');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => lbl.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation(); lbl.classList.remove('dragover');
+  }));
+  lbl.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      inp.files = e.dataTransfer.files;
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+});
+
 queueUI(); flush(); loadTasks();
 </script>
 <script src="app.js" defer></script>
