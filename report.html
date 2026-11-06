@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кофейня — отчёты</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <script src="config.js"></script>
-<style>html.gate body>*:not(#gate){visibility:hidden}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1")document.documentElement.classList.add("gate")}catch(e){}</script>
+<style>html.gate body>*:not(#gate){display:none!important}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1"||!localStorage.getItem("coffee_illy_pin"))document.documentElement.classList.add("gate")}catch(e){}</script>
+
 <script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -44,7 +45,7 @@
   button, input { font:inherit; color:var(--ink); }
   button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline:3px solid var(--crema); outline-offset:2px; }
 
-  .nav { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top,0);
+  .nav { position:relative; z-index:20; border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top,0);
     background:color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
   .nav .in { max-width:1120px; margin:0 auto; padding:10px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:space-between; }
   .logo { display:flex; align-items:center; gap:10px; }
@@ -161,7 +162,7 @@
   .tbl:has(#tasks) th,.tbl:has(#whoB) th{text-align:left}#tasks td,#whoB td{vertical-align:top}#tasks td:not(:first-child){text-align:left;white-space:normal;min-width:130px}
 
   /* --- единая шапка: как в приложении сотрудников --- */
-  .app-header { position:sticky; top:0; z-index:20; color:var(--cream); background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
+  .app-header { position:relative; z-index:20; color:var(--cream); background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
     padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
   .app-header .wrap { max-width:var(--w,1120px); margin:0 auto; }
   .app-header .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
@@ -177,6 +178,102 @@
   .app-header .dp input { flex:1; min-width:0; }
   .app-header .dp button { min-width:42px; }
   .app-header .tabs a { font-size:13px; } @media (max-width:400px) { .app-header .tabs a { font-size:12px; } }
+
+  /* === АДАПТИВНЫЙ USER-FRIENDLY ИНТЕРФЕЙС ДЛЯ ПК И ТЕЛЕФОНА (v8) === */
+  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:99px; }
+
+  /* Карточки и кнопки: плавный отклик на ПК и телефоне */
+  .card, .panel { transition:box-shadow .2s ease, border-color .2s ease; }
+  button, .b, .p, .btn, .btn-s, .btn-p, .file, .drop {
+    transition:transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
+  }
+  @media (hover:hover) and (pointer:fine) {
+    .b:hover, .btn-s:hover { transform:translateY(-1px); box-shadow:0 4px 12px -4px rgba(0,0,0,.12); }
+    .p:hover, .btn-p:hover, .btn:not(:disabled):hover { filter:brightness(1.06); transform:translateY(-1px); }
+    .file:hover, .drop:hover { border-color:var(--brew); background:color-mix(in srgb, var(--crema) 8%, var(--bg)); }
+  }
+  .file.dragover, .drop.dragover {
+    border-style:solid !important;
+    border-color:var(--good) !important;
+    background:color-mix(in srgb, var(--good) 12%, var(--bg)) !important;
+    transform:scale(1.01);
+  }
+
+  /* Таблицы: закреплённый первый столбец на узких экранах + удобный скролл */
+  .scrollx, .sx { -webkit-overflow-scrolling:touch; scrollbar-width:thin; border-radius:12px; }
+  .tbl th:first-child, .tbl td:first-child {
+    position:sticky; left:0; z-index:2;
+    background:var(--surface);
+  }
+  .tbl tr:hover td:first-child { background:var(--bg); }
+
+  /* Поле быстрого поиска задач */
+  .task-search {
+    width:100%; height:42px; border-radius:12px; border:1px solid var(--line);
+    background:var(--bg); padding:0 14px; font-size:14px; margin:8px 0 12px;
+  }
+
+  /* --- Широкие экраны ПК (Desktop >= 900px) --- */
+  @media (min-width:900px) {
+    :root { --w:1120px; }
+    main { padding:26px 24px 64px; }
+    .card, .panel { padding:24px 26px; border-radius:24px; }
+    .app-header { padding:16px 24px; border-radius:0 0 28px 28px; }
+    .app-header .wrap {
+      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px;
+    }
+    .app-header .brand { flex:1 1 auto; }
+    .app-header .tabs, .app-header .nav-bar { margin-top:0; }
+    .app-header .dp, .app-header .sub-bar { margin-top:0; width:auto; }
+    .k, .k4 { grid-template-columns:repeat(4, 1fr) !important; gap:16px; }
+    .dash-two-col { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
+    .dash-two-col > .card { margin-top:16px; }
+    .settings-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px 22px; }
+    .settings-grid .set, .settings-grid .set-item {
+      border:1px solid var(--line); border-radius:16px; padding:16px; background:var(--bg); margin:0;
+    }
+    .narrow-view { max-width:780px; }
+    #tCashView, #cashView {
+      display:grid; grid-template-columns:1.1fr 0.9fr; gap:18px; align-items:start;
+    }
+    #tCashView > *, #cashView > * { margin-top:0 !important; }
+    #tCashView > .panel:first-child, #cashView > .panel:first-child,
+    #tSubmitCashBtn, #submitCashBtn { grid-column:1 / -1; }
+  }
+
+  /* --- Мобильные телефоны (Mobile <= 640px) --- */
+  @media (max-width:640px) {
+    .app-header, header {
+      padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;
+      border-radius:0 0 20px 20px;
+    }
+    .app-header h1, header h1 { font-size:18px; }
+    .app-header .tabs, .main-tabs, .term-tabs, .owner-nav {
+      margin-top:8px; padding:3px; border-radius:13px;
+    }
+    .app-header .tabs a, .main-tabs button, .term-tabs button, .owner-nav a {
+      min-height:38px; font-size:12px; padding:0 4px; border-radius:10px;
+    }
+    .app-header .dp, .sub-bar { margin-top:8px; }
+    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size:13px; }
+    main { padding:12px 10px calc(36px + env(safe-area-inset-bottom,0px)); }
+    .card, .panel { padding:15px 14px; border-radius:18px; margin-top:10px; }
+    .big, .total { font-size:clamp(30px, 9vw, 40px); }
+    .k, .k4 { grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:10px; }
+    .k .card, .k4 .card { padding:13px; }
+    .k b, .k4 b { font-size:21px; }
+    .k6 { grid-template-columns:repeat(2, 1fr); gap:10px; }
+    .kpi .num { font-size:21px; }
+    .seg, .seg-bar { scrollbar-width:none; -ms-overflow-style:none; }
+    .seg::-webkit-scrollbar, .seg-bar::-webkit-scrollbar { display:none; }
+    .adm-row, .inc-row, .row { grid-template-columns:1fr; gap:8px; }
+    .adm-row .acts, .inc-row .acts, .row .acts { justify-content:flex-start; }
+    .set .line, .set-item .line { flex-direction:column; }
+    .set .line button, .set-item .line button { width:100%; min-height:42px; }
+  }
+
 </style>
 </head>
 <body>
@@ -203,18 +300,18 @@
 
   <p class="muted" id="periodLbl" style="margin:14px 2px 0"></p>
   <div class="grid g4 k6">
-    <div class="panel kpi"><span class="muted">Выручка</span><span class="num" id="kRev">—</span><span class="sub" id="kRevS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Расходы</span><span class="num" id="kExp">—</span><span class="sub" id="kExpS">&nbsp;</span></div>
+    <div class="panel kpi"><span class="muted">Доход (Выручка)</span><span class="num pos" id="kRev">—</span><span class="sub" id="kRevS">&nbsp;</span></div>
+    <div class="panel kpi"><span class="muted">Расходы</span><span class="num neg" id="kExp">—</span><span class="sub" id="kExpS">&nbsp;</span></div>
     <div class="panel kpi"><span class="muted">Прибыль</span><span class="num" id="kPro">—</span><span class="sub" id="kProS">&nbsp;</span></div>
     <div class="panel kpi"><span class="muted">Чеков · средний чек</span><span class="num" id="kChk">—</span><span class="sub" id="kChkS">&nbsp;</span></div>
     <div class="panel kpi"><span class="muted">План</span><span class="num" id="kPlan">—</span><span class="sub" id="kPlanS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Списания</span><span class="num" id="kWo">—</span><span class="sub">не вычитаются из прибыли</span></div>
+    <div class="panel kpi"><span class="muted">Списания</span><span class="num neg" id="kWo">—</span><span class="sub">контроль потерь и порций</span></div>
   </div>
 
   <section class="panel" style="margin-top:16px"><h2>Прибыль и убытки</h2><div class="wk" id="pnl"></div></section>
 
-  <section class="panel" style="margin-top:16px"><h2>Выручка и расходы</h2><div id="chart"></div>
-    <div class="lg"><span><i style="background:var(--brew)"></i>Выручка</span><span><i style="background:var(--crema)"></i>Расходы</span><span id="grpNote"></span></div></section>
+  <section class="panel" style="margin-top:16px"><h2>Доход (зелёный) и Расходы со списаниями (красный)</h2><div id="chart"></div>
+    <div class="lg"><span><i style="background:var(--good)"></i>Доход (выручка)</span><span><i style="background:var(--bad)"></i>Расходы и списания</span><span id="grpNote"></span></div></section>
 
   <div class="grid g11">
     <section class="panel"><h2>Расходы по статьям</h2><div id="cats"></div></section>
@@ -240,8 +337,16 @@
 
   <section class="panel" style="margin-top:16px"><h2>Расходы за период</h2><div id="exps"></div></section>
 
-  <section class="panel" style="margin-top:16px"><h2>Дисциплина и инциденты</h2>
-    <div class="wk" id="disc"></div></section>
+  <section class="panel" style="margin-top:16px"><h2>Автоматическая сводка по сотрудникам (смены, выручка, чашки, списания)</h2>
+    <p class="muted" style="margin:-6px 0 12px">Если в один день работали 2 бариста (например, Алина и Соня), система суммирует их вклад в общую выручку дня и считает персональную статистику каждого сотрудника.</p>
+    <div class="scrollx"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Смен</th><th>Доход (всего)</th><th>Наличные</th><th>Безнал</th><th>Чашек / Чеков</th><th>Списания</th></tr></thead><tbody id="staffSummaryB"></tbody></table></div>
+  </section>
+
+  <section class="panel" style="margin-top:16px"><h2>Дисциплина, поломки и фото/видео фиксация замечаний</h2>
+    <div class="wk" id="disc"></div>
+    <h3 style="font-size:16px;margin:18px 0 8px">Фото и видео отчёт по отмеченным поломкам и замечаниям</h3>
+    <div id="incMediaList"></div>
+  </section>
 
   <section class="panel" style="margin-top:16px"><h2>Разбивка по дням</h2>
     <div class="scrollx"><table class="tbl"><thead><tr><th>Дата</th><th>Выручка</th><th>Расходы</th><th>Прибыль</th><th>Чеков</th><th>Ср. чек</th><th>Нал</th><th>Безнал</th><th>Списания</th></tr></thead><tbody id="tbl"></tbody></table></div>
@@ -316,12 +421,13 @@ async function load(fresh) {
       : '<b>Не удалось загрузить отчёт.</b> ' + esc(e.message);
   } finally { $('main').classList.remove('loading'); }
 }
-$('err').addEventListener('click', (e) => { if (e.target.id !== 'pinOk') return; try { localStorage.setItem(PIN_KEY, $('pinIn').value.trim()); } catch (x) {} load(); });
+$('err').addEventListener('click', (e) => { if (e.target.id !== 'pinOk') return; try { localStorage.setItem(PIN_KEY, $('pinIn').value.trim()); localStorage.setItem('coffee_admin_ok', '1'); } catch (x) {} load(); });
 $('err').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'pinIn') $('pinOk').click(); });
 
 /* ---------- отрисовка ---------- */
 function delta(cur, prev) { return prev ? Math.round((cur - prev) / Math.abs(prev) * 100) : null; }
 function render(d) {
+  if (d.location && $('sub')) $('sub').textContent = 'Отчёты владельца · ' + d.location;
   if (d.categories && d.categories.length) { const c = $('xCat').value; $('xCat').innerHTML = d.categories.map((x) => '<option' + (x === c ? ' selected' : '') + '>' + esc(x) + '</option>').join(''); }
   const f = d.finance, t = d.totals;
   $('periodLbl').textContent = d.from === d.to ? dmy(d.from) : dmy(d.from) + ' — ' + dmy(d.to) + ' · ' + d.days + ' дн., с выручкой: ' + t.days;
@@ -338,10 +444,13 @@ function render(d) {
   drawPnl(d); drawChart(d); drawCats(f); drawTop(d); drawExps(f); drawDisc(d); drawTable(d); drawTasks(d);
 }
 
-function bucket(series) {   // длинные периоды показываем по неделям
-  if (series.length <= 31) return { rows: series.map((x) => ({ label: dm(x.date), rev: x.revenue, exp: x.expenses })), grouped: false };
+function bucket(series) {
+  if (series.length <= 31) return { rows: series.map((x) => ({ label: dm(x.date), rev: x.revenue, exp: (Number(x.expenses) || 0) + (Number(x.writeoff) || 0), wo: Number(x.writeoff) || 0 })), grouped: false };
   const out = [];
-  for (let i = 0; i < series.length; i += 7) { const g = series.slice(i, i + 7); out.push({ label: dm(g[0].date), rev: g.reduce((a, x) => a + x.revenue, 0), exp: g.reduce((a, x) => a + x.expenses, 0) }); }
+  for (let i = 0; i < series.length; i += 7) {
+    const g = series.slice(i, i + 7);
+    out.push({ label: dm(g[0].date), rev: g.reduce((a, x) => a + x.revenue, 0), exp: g.reduce((a, x) => a + (Number(x.expenses) || 0) + (Number(x.writeoff) || 0), 0), wo: g.reduce((a, x) => a + (Number(x.writeoff) || 0), 0) });
+  }
   return { rows: out, grouped: true };
 }
 function drawChart(d) {
@@ -349,11 +458,11 @@ function drawChart(d) {
   if (!b.rows.some((x) => x.rev || x.exp)) { $('chart').innerHTML = '<div class="empty"><b>За этот период данных нет</b>Выберите другие даты или загрузите кассовый отчёт в терминале.</div>'; return; }
   const W = 720, H = 260, pad = 28, base = H - 28, max = Math.max(...b.rows.map((x) => Math.max(x.rev, x.exp)), 1) * 1.1, n = b.rows.length, bw = (W - pad * 2) / n;
   const y = (v) => base - v / max * (base - 18), step = Math.ceil(n / 12);
-  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Выручка и расходы"><line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Доход, расходы и списания"><line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
   b.rows.forEach((x, i) => {
     const cx = pad + i * bw, w = bw * .36;
-    s += '<rect x="' + (cx + bw * .1) + '" y="' + y(x.rev) + '" width="' + w + '" height="' + Math.max(base - y(x.rev), x.rev ? 2 : 0) + '" rx="3" fill="var(--brew)"><title>' + x.label + ': выручка ' + rub(x.rev) + '</title></rect>';
-    s += '<rect x="' + (cx + bw * .1 + w + 2) + '" y="' + y(x.exp) + '" width="' + w + '" height="' + Math.max(base - y(x.exp), x.exp ? 2 : 0) + '" rx="3" fill="var(--crema)"><title>' + x.label + ': расходы ' + rub(x.exp) + '</title></rect>';
+    s += '<rect x="' + (cx + bw * .1) + '" y="' + y(x.rev) + '" width="' + w + '" height="' + Math.max(base - y(x.rev), x.rev ? 3 : 0) + '" rx="3" fill="var(--good)"><title>' + x.label + ': доход ' + rub(x.rev) + '</title></rect>';
+    s += '<rect x="' + (cx + bw * .1 + w + 2) + '" y="' + y(x.exp) + '" width="' + w + '" height="' + Math.max(base - y(x.exp), x.exp ? 4 : 0) + '" rx="3" fill="var(--bad)"><title>' + x.label + ': расходы и списания ' + rub(x.exp) + '</title></rect>';
     if (i % step === 0) s += '<text x="' + (cx + bw / 2) + '" y="' + (H - 9) + '" text-anchor="middle" style="font-size:10px">' + x.label + '</text>';
   });
   $('chart').innerHTML = s + '</svg>';
@@ -396,10 +505,38 @@ function drawDisc(d) {
   const i = d.incidents, c = d.discipline, cell = (l, v, s) => '<div><span class="muted">' + l + '</span><span class="num">' + v + '</span><span class="muted">' + (s || '') + '</span></div>';
   $('disc').innerHTML = cell('Открытий смены', c.openings, 'с опозданием: ' + c.late) + cell('Дней без открытия', c.missed, 'при наличии выручки') + cell('Чек-листов', c.checklists, 'проблемных шагов: ' + c.problemSteps) +
     cell('Инцидентов', i.total, 'открыто ' + i.open + ' · решено ' + i.resolved) + cell('Критичных', i.critical);
+
+  if ($('staffSummaryB')) {
+    const st = d.staffSummary || [];
+    $('staffSummaryB').innerHTML = st.length
+      ? st.map((s) => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + s.shifts + '</td><td class="pos"><b>' + rub(s.revenue) + '</b></td><td>' + rub(s.cash) + '</td><td>' + rub(s.card) + '</td><td>' + s.cups + '</td><td class="neg"><b>' + rub(s.writeoff) + '</b></td></tr>').join('')
+      : '<tr><td colspan="7" style="text-align:left;color:var(--muted)">Нет данных по сменам сотрудников за этот период</td></tr>';
+  }
+
+  if ($('incMediaList')) {
+    const list = d.incidentList || [];
+    $('incMediaList').innerHTML = list.length
+      ? list.map((inc) => {
+          const media = window.coffeeMediaHtml ? window.coffeeMediaHtml(inc.photo, inc.step) : '';
+          const isOp = inc.status === 'Open' || inc.status === 'Открыта';
+          return '<div class="xrow" style="grid-template-columns:1fr auto;align-items:start">' +
+            '<div>' +
+              '<b>' + esc(inc.step || 'Замечание') + '</b> ' +
+              '<span class="tag ' + (isOp ? 'no' : 'ok') + '">' + (isOp ? 'открыта' : 'решена') + '</span> ' +
+              (inc.priority === 'Критично' ? '<span class="tag no">критично</span>' : '') +
+              '<div style="margin-top:4px">' + esc(inc.text) + '</div>' +
+              '<div class="muted">' + dmy(inc.date || '') + (inc.time ? ' ' + esc(inc.time) : '') + (inc.who ? ' · Сотрудник: ' + esc(inc.who) : '') + (inc.owner && inc.owner !== '—' ? ' · Отв.: ' + esc(inc.owner) : '') + '</div>' +
+              media +
+            '</div>' +
+            '<div><a href="admin.html?tab=inc" class="btn-s" style="text-decoration:none;display:inline-block">В поломки →</a></div>' +
+          '</div>';
+        }).join('')
+      : '<p class="muted">Замечаний и поломок нет.</p>';
+  }
 }
 function drawTable(d) {
-  const rows = d.series.filter((x) => x.revenue || x.expenses).reverse();
-  $('tbl').innerHTML = rows.length ? rows.map((x) => '<tr style="cursor:pointer" onclick="location.href=\'dashboard.html?date=' + x.date + '\'" title="Открыть этот день на Дашборде"><td>' + dm(x.date) + '</td><td><b>' + rub(x.revenue) + '</b></td><td>' + rub(x.expenses) + '</td><td class="' + (x.profit >= 0 ? 'pos' : 'neg') + '">' + rub(x.profit) + '</td><td>' + x.checks + '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td>' + rub(x.writeoff) + '</td></tr>').join('')
+  const rows = d.series.filter((x) => x.revenue || x.expenses || x.writeoff).reverse();
+  $('tbl').innerHTML = rows.length ? rows.map((x) => '<tr style="cursor:pointer" onclick="location.href=\'dashboard.html?date=' + x.date + '\'" title="Открыть этот день на Дашборде"><td><b>' + dm(x.date) + '</b>' + (x.barista ? '<div class="muted" style="font-size:11.5px">' + esc(x.barista) + '</div>' : '') + '</td><td class="pos"><b>' + rub(x.revenue) + '</b></td><td class="neg">' + rub(x.expenses) + '</td><td class="' + (x.profit >= 0 ? 'pos' : 'neg') + '"><b>' + rub(x.profit) + '</b></td><td>' + x.checks + '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td class="neg"><b>' + rub(x.writeoff) + '</b></td></tr>').join('')
     : '<tr><td colspan="9" style="text-align:left;color:var(--muted)">нет данных</td></tr>';
 }
 
