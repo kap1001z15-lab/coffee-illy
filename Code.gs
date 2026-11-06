@@ -54,6 +54,7 @@ function doPost(e) {
     if (action === 'update_incident') return jsonOut_(updateIncident_(ss, body));
     if (action === 'delete_incident') return jsonOut_(deleteIncident_(ss, body));
     if (action === 'save_setting') return jsonOut_(saveSetting_(ss, body));
+    if (action === 'save_all_settings' && body.items) { body.items.forEach(function(it){ saveSetting_(ss, it); }); return jsonOut_({ ok: true }); }
 
     return jsonOut_({ ok: true });
   } catch (err) {
@@ -87,13 +88,31 @@ function ensureSheets_(ss) {
   });
 }
 
+function normSetKey_(raw) {
+  var k = String(raw || '').trim(), low = k.toLowerCase();
+  if (k === 'LOCATION' || /назван|точк|кофейн|локац/.test(low)) return 'LOCATION';
+  if (k === 'PLAN' || /план|цель/.test(low)) return 'PLAN';
+  if (k === 'DEADLINE' || /дедлайн|время открыт|опоздан/.test(low)) return 'DEADLINE';
+  if (k === 'WO_NORM' || /норм.*списан|списан/.test(low)) return 'WO_NORM';
+  if (k === 'PHOTO_ALL' || /фото.*шаг|обязат.*фото/.test(low)) return 'PHOTO_ALL';
+  if (k === 'INIT_COUNTER' || /счетчик|счётчик/.test(low)) return 'INIT_COUNTER';
+  if (k === 'CATEGORIES' || /статьи|категор/.test(low)) return 'CATEGORIES';
+  if (k === 'ADMIN_PIN' || /код доступ|пин|pin|парол/.test(low)) return 'ADMIN_PIN';
+  return k;
+}
+
 function getSettingsMap_(ss) {
   var sh = ss.getSheetByName('Настройки');
   var rows = sh.getDataRange().getValues();
-  var map = { LOCATION: 'Кофейня', PLAN: '2200', DEADLINE: '08:30', WO_NORM: '500', PHOTO_ALL: 'нет', ADMIN_PIN: '1234' };
+  var map = {
+    LOCATION: 'Кофейня №1', PLAN: '2200', DEADLINE: '08:30', WO_NORM: '500',
+    PHOTO_ALL: 'нет', INIT_COUNTER: '600',
+    CATEGORIES: 'Закупка продуктов, Аренда, Зарплата, Коммунальные, Реклама, Ремонт и оборудование, Прочее',
+    ADMIN_PIN: '1234'
+  };
   for (var i = 1; i < rows.length; i++) {
-    var k = String(rows[i][0] || '').trim(), v = String(rows[i][1] || '').trim();
-    if (k) map[k] = v;
+    var rawK = String(rows[i][0] || '').trim(), v = String(rows[i][1] || '').trim();
+    if (rawK && v !== '') map[normSetKey_(rawK)] = v;
   }
   return map;
 }
@@ -281,7 +300,7 @@ function saveSetting_(ss, b) {
   var sh = ss.getSheetByName('Настройки');
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === String(b.id)) {
+    if (normSetKey_(rows[i][0]) === normSetKey_(b.id)) {
       sh.getRange(i + 1, 2).setValue(b.value);
       return { ok: true };
     }
@@ -315,7 +334,7 @@ function getDashboard_(ss, dateStr) {
   var chks = c ? c.checks : 0;
   return {
     ok: true, date: day, isToday: day === adm.today, location: adm.location,
-    plan: 2200, woNorm: 500, deadline: '08:30', hasData: !!c,
+    plan: Number(getSettingsMap_(ss).PLAN) || 2200, woNorm: Number(getSettingsMap_(ss).WO_NORM) || 500, deadline: getSettingsMap_(ss).DEADLINE || '08:30', hasData: !!c,
     revenue: rev, checks: chks, avg: chks > 0 ? Math.round(rev / chks) : 0,
     writeoff: c ? c.writeoff : 0, openedAt: '08:20',
     days: adm.cash.slice(0, 14).reverse().map(function(x) { return { date: x.date, revenue: x.cash + x.card }; }),
@@ -331,4 +350,29 @@ function getReport_(ss, fromStr, toStr) {
     series: [], products: [], tasks: [], discipline: { openings: 0, late: 0, missed: 0, checklists: 0, problemSteps: 0 },
     incidents: { total: adm.incidents.length, open: 0, resolved: 0, critical: 0 }
   };
+}
+
+
+function sendTelegramServerAlert_(ss, inc) {
+  try {
+    var map = getSettingsMap_(ss);
+    var token = String(map.TG_TOKEN || '').trim();
+    var chatRaw = String(map.TG_CHAT || '').trim();
+    if (!token || !chatRaw) return;
+    var chats = chatRaw.split(/[,;\s]+/).filter(Boolean);
+    var text = '🚨 <b>ПОЛОМКА В КОФЕЙНЕ</b>\n' +
+      '📍 <b>Точка:</b> ' + (map.LOCATION || 'Кофейня') + '\n' +
+      '⚡ <b>Срочность:</b> ' + (inc.priority || 'Терпит') + '\n' +
+      '🔧 <b>Шаг:</b> ' + (inc.step || inc.title || '') + '\n' +
+      '💬 <b>Описание:</b> ' + (inc.comment || inc.text || '') + '\n' +
+      '👤 <b>Бариста:</b> ' + (inc.who || 'Бариста');
+    chats.forEach(function(chatId) {
+      UrlFetchApp.fetch('https://api.telegram.org/bot' + encodeURIComponent(token) + '/sendMessage', {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' }),
+        muteHttpExceptions: true
+      });
+    });
+  } catch (e) {}
 }
