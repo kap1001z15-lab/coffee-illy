@@ -160,7 +160,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <div id="err" class="al" hidden></div>
   <div id="content" hidden>
     <div class="seg" id="tabs" role="tablist" aria-label="Что редактировать">
-      <button data-t="tasks">Задачи</button><button data-t="cash">Выручка</button><button data-t="exp">Расходы</button><button data-t="inc">Поломки</button><button data-t="set">Настройки</button>
+      <button data-t="tasks">Задачи</button><button data-t="info">📢 Информирование</button><button data-t="inc">Поломки (5 статусов)</button><button data-t="cash">Выручка</button><button data-t="exp">Расходы</button><button data-t="staff">👥 Штат и Журнал</button><button data-t="set">Настройки</button>
     </div>
     <section class="card" id="panel"></section>
   </div>
@@ -221,24 +221,51 @@ async function act(action,data,ok){try{await call(action,data);toast(ok||'Гот
 const YN=['да','нет'];
 function render(){
   document.querySelectorAll('#tabs button').forEach((b)=>b.classList.toggle('on',b.dataset.t===tab));
-  const f={tasks:rTasks,cash:rCash,exp:rExp,inc:rInc,set:rSet}[tab]||rTasks;$('panel').innerHTML=f()}
+  const f={tasks:rTasks,info:rInfo,cash:rCash,exp:rExp,inc:rInc,staff:rStaff,set:rSet}[tab]||rTasks;$('panel').innerHTML=f()}
 $('tabs').addEventListener('click',(e)=>{const b=e.target.closest('[data-t]');if(!b||!D)return;tab=b.dataset.t;try{localStorage.setItem('adm_tab',tab)}catch(x){}render()});
 
 function rTasks(){
   const defList=(window.COFFEE&&window.COFFEE.DEFAULT_TASKS)||[];
   if((!D.tasks||D.tasks.length<defList.length)&&defList.length){D.tasks=defList.slice();}
-  let h='<div class="top"><h2 style="font-size:18px">Задачи для сотрудников ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv (91 шаг)</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div><p class="mu" style="margin:0 0 4px">Изменения сразу попадают в таблицу и появляются в терминале у бариста.</p><input type="search" id="admTaskSearch" class="task-search" placeholder="🔍 Быстрый поиск задачи по названию, коду (o01, c12, q01) или инструкции…">';
+  let h='<div class="top"><h2 style="font-size:18px">Регламенты, тайм-слоты и задачи ('+D.tasks.length+' шагов)</h2><div class="acts"><button class="b" data-a="dl-extend">⏱ Продлить дедлайн смены</button><button class="b" data-a="task-csv">⬇ Скачать Задачи.csv</button><button class="p" data-a="task-new">+ Добавить задачу</button></div></div>';
+  h+='<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin:8px 0 12px">';
+  h+='<div class="top" style="margin-bottom:8px"><b>⏰ Временные окна доступа к чек-листам в Терминале (вне окна доступ автоматически закрывается)</b><button class="p" type="button" data-a="win-save">💾 Сохранить окна времени</button></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">';
+  [['Открытие','open'],['День','day'],['Закрытие','close']].forEach(([blk,code])=>{
+    const w=window.coffeeGetBlockWindow?window.coffeeGetBlockWindow(blk):{openTime:'07:30',deadline:'08:30',baseOpenTime:'07:30',baseDeadline:'08:30',status:'В срок',state:'open'};
+    const bCls=w.state==='overdue_closed'?'no':(w.state==='open'||w.state==='completed'?'ok':'');
+    h+='<div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);font-size:13px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px"><b>'+esc(blk)+'</b><span class="tag '+bCls+'">'+esc(w.status)+'</span></div>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">' +
+        '<input type="time" id="win_'+code+'_start" value="'+esc(w.baseOpenTime||w.openTime)+'" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);flex:1">' +
+        '<span>—</span>' +
+        '<input type="time" id="win_'+code+'_dl" value="'+esc(w.baseDeadline||w.deadline)+'" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);flex:1">' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        '<button type="button" class="b ok" data-a="win-unlock" data-b="'+esc(blk)+'" style="font-size:12px;padding:4px 8px;min-height:30px">🔓 Открыть доступ</button>' +
+        '<button type="button" class="b del" data-a="win-sim-overdue" data-b="'+esc(blk)+'" style="font-size:12px;padding:4px 8px;min-height:30px" title="Закрыть окно и проверить создание инцидента + Telegram">🔴 Просрочить (тест)</button>' +
+      '</div>' +
+    '</div>';
+  });
+  h+='</div></div><input type="search" id="admTaskSearch" class="task-search" placeholder="🔍 Быстрый поиск задачи по названию, коду (o01, c12, q01) или инструкции…">';
   D.blocks.forEach((b)=>{const l=D.tasks.filter((t)=>t.block===b);
-    h+='<h3>'+esc(b)+' · '+l.length+'</h3>'+(l.length?l.map((t)=>'<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">'+esc(t.id||('#'+t.row))+'</span><span class="t">'+esc(t.title)+'</span>'+(t.photo==='да'?'<span class="tag">📷 фото</span>':'')+(t.active==='нет'?'<span class="tag no">выключена</span>':'')+(t.instruction?'<div class="mu">'+esc(t.instruction)+'</div>':'')+(t.responsible?'<div class="mu">Ответственный: '+esc(t.responsible)+'</div>':'')+'</div><div class="acts"><button class="b" data-a="task-edit" data-i="'+D.tasks.indexOf(t)+'">Изменить</button><button class="b del" data-a="task-del" data-i="'+D.tasks.indexOf(t)+'">Удалить</button></div></div>').join(''):'<p class="mu">Задач нет</p>')});
+    h+='<h3>'+esc(b)+' · '+l.length+'</h3>'+(l.length?l.map((t)=>{
+      const pMode=t.photoMode||t.photo||'нет';
+      const pTag=pMode==='да'?'<span class="tag ok">📷 фото обязательно</span>':(pMode==='при проблеме'?'<span class="tag">📷 фото при проблеме</span>':'<span class="tag">без фото</span>');
+      return '<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">'+esc(t.id||('#'+t.row))+'</span><span class="t">'+esc(t.title)+'</span>'+pTag+(t.active==='нет'?'<span class="tag no">выключена</span>':'')+(t.instruction?'<div class="mu">'+esc(t.instruction)+'</div>':'')+(t.responsible?'<div class="mu">Ответственный: '+esc(t.responsible)+'</div>':'')+'</div><div class="acts"><button class="b" data-a="task-up" data-i="'+D.tasks.indexOf(t)+'" title="Выше">↑</button><button class="b" data-a="task-down" data-i="'+D.tasks.indexOf(t)+'" title="Ниже">↓</button><button class="b" data-a="task-edit" data-i="'+D.tasks.indexOf(t)+'">Изменить</button><button class="b del" data-a="task-del" data-i="'+D.tasks.indexOf(t)+'">Удалить</button></div></div>';
+    }).join(''):'<p class="mu">Задач нет</p>')});
   return h}
 function taskForm(t){
-  const isNew=!t;t=t||{block:D.blocks[0],title:'',instruction:'',photo:'нет',responsible:'',active:'да'};
-  openForm(isNew?'Новая задача':'Изменить задачу',[
-    {k:'block',label:'Блок',type:'select',opts:D.blocks},{k:'title',label:'Название',ph:'Например: Проверить кофемашину'},
-    {k:'instruction',label:'Инструкция',type:'area'},{k:'mediaRequired',label:'Нужно фото',type:'select',opts:YN},
-    {k:'responsible',label:'Ответственный',ph:'Техник, Закупщик…'},{k:'active',label:'Показывать сотрудникам',type:'select',opts:YN}],
-    {block:t.block,title:t.title,instruction:t.instruction,mediaRequired:t.photo,responsible:t.responsible,active:t.active},
-    (o)=>call('save_task',Object.assign(o,isNew?{}:{row:t.row,expect:t.title})))}
+  const isNew=!t;t=t||{block:D.blocks[0],title:'',instruction:'',photo:'нет',photoMode:'нет',responsible:'Администратор',active:'да'};
+  openForm(isNew?'Новая задача чек-листа':'Изменить задачу '+esc(t.id||''),[
+    {k:'block',label:'Блок чек-листа',type:'select',opts:D.blocks},
+    {k:'title',label:'Название пункта',ph:'Например: Проверить кофемашину'},
+    {k:'instruction',label:'Инструкция (и критерии для фотообразца)',type:'area'},
+    {k:'photoMode',label:'Режим фотофиксации (п. 4.4 ТЗ)',type:'select',opts:['нет','да','при проблеме']},
+    {k:'responsible',label:'Ответственный',ph:'Техник, Шеф-бариста, Администратор…'},
+    {k:'active',label:'Показывать в терминале',type:'select',opts:YN}],
+    {block:t.block,title:t.title,instruction:t.instruction,photoMode:t.photoMode||t.photo||'нет',responsible:t.responsible,active:t.active},
+    (o)=>call('save_task',Object.assign(o,{mediaRequired:o.photoMode},isNew?{}:{row:t.row,id:t.id,expect:t.title})))}
 
 function rCash(){
   let h='<div class="top"><h2 style="font-size:18px">Выручка по дням</h2><button class="p" data-a="cash-new">+ Добавить / исправить день</button></div><p class="mu" style="margin:0 0 8px">Обычно данные приходят из терминала (вкладка «Касса»). Здесь можно внести или поправить день вручную.</p>';
@@ -263,15 +290,108 @@ function expForm(x){
     {k:'amount',label:'Сумма, ₽',type:'number'},{k:'comment',label:'Комментарий',ph:'Необязательно'}],x,
     (o)=>call(isNew?'add_expense':'update_expense',Object.assign(o,isNew?{}:{id:x.id})))}
 
+function rInfo(){
+  const list=D.announcements||[];
+  const staffNames=(D.staff||[]).filter((s)=>s.active!=='нет').map((s)=>s.name);
+  let h='<div class="top"><h2 style="font-size:18px">📢 Информирование персонала и привязка к календарю ('+list.length+')</h2><button class="p" data-a="info-new">+ Создать материал / событие</button></div>';
+  h+='<p class="mu" style="margin:0 0 10px">Сотрудники видят эти материалы во вкладке «📢 Инфо» мобильного терминала и подтверждают изучение кнопкой «Ознакомлен». Ниже видно, кто ознакомился, а кто ещё нет.</p>';
+  if(!list.length)return h+'<p class="mu">Материалов пока нет</p>';
+  return h+list.map((a,i)=>{
+    const acks=Array.isArray(a.acks)?a.acks:[];
+    const target=Array.isArray(a.targetStaff)&&a.targetStaff.length?a.targetStaff:staffNames;
+    const notAcked=target.filter((nm)=>!acks.some((k)=>String(k.name||'').toLowerCase()===String(nm||'').toLowerCase()));
+    return '<div class="row" style="align-items:start"><div>' +
+      (a.calendarDate?'<span class="tag" style="background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn);margin:0 6px 4px 0">📅 Календарь: '+dmy(a.calendarDate)+(a.calendarEventTitle?' · '+esc(a.calendarEventTitle):'')+'</span>':'') +
+      '<span class="tag" style="margin:0 6px 4px 0">'+esc(a.category||'Объявление')+'</span>' +
+      '<div class="t" style="font-size:16px;margin-top:2px">'+esc(a.title)+'</div>' +
+      '<div class="mu" style="white-space:pre-line;margin:4px 0">'+esc(a.text)+'</div>' +
+      '<div style="font-size:13px;margin-top:6px"><span style="color:var(--good);font-weight:700">✓ Ознакомились ('+acks.length+'):</span> '+(acks.length?acks.map((k)=>esc(k.name)+' <span class="mu">('+esc(k.at)+')</span>').join(', '):'пока никто')+'</div>' +
+      (notAcked.length?'<div style="font-size:13px;margin-top:2px"><span style="color:var(--bad);font-weight:700">⏳ Не ознакомились ('+notAcked.length+'):</span> '+esc(notAcked.join(', '))+'</div>':'<div style="font-size:12.5px;color:var(--good);margin-top:2px">🎉 Все назначенные сотрудники ознакомились</div>') +
+      '</div><div class="acts"><button class="b" data-a="info-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="info-del" data-i="'+i+'">Удалить</button></div></div>';
+  }).join('');
+}
+function infoForm(a){
+  const isNew=!a;
+  const infoTypes=(window.COFFEE_MVP&&window.COFFEE_MVP.INFO_TYPES)||['Изменения меню','Новые напитки','Новые стандарты приготовления','Изменения регламентов','Внутренние объявления'];
+  a=a||{title:'',category:infoTypes[0],text:'',validFrom:D.today,validTo:'',calendarDate:'',calendarEventTitle:'',targetStaff:'Соня, Алина, Настя'};
+  openForm(isNew?'Новый материал информирования':'Изменить материал '+esc(a.id||''),[
+    {k:'title',label:'Заголовок',ph:'Например: Запуск зимнего меню с 15 ноября'},
+    {k:'category',label:'Тип информации (п. 3.2 ТЗ)',type:'select',opts:infoTypes},
+    {k:'text',label:'Описание и стандарты',type:'area'},
+    {k:'calendarDate',label:'Привязка к дате календаря (п. 3.2.1, необязательно)',type:'date'},
+    {k:'calendarEventTitle',label:'Название события календаря',ph:'Например: Запуск зимнего меню'},
+    {k:'validTo',label:'Период актуальности (до даты)',type:'date'},
+    {k:'targetStaff',label:'Кому необходимо ознакомиться (через запятую)',ph:'Соня, Алина, Настя'}],
+    {title:a.title,category:a.category,text:a.text,calendarDate:a.calendarDate||'',calendarEventTitle:a.calendarEventTitle||'',validTo:a.validTo||'',targetStaff:Array.isArray(a.targetStaff)?a.targetStaff.join(', '):(a.targetStaff||'Соня, Алина, Настя')},
+    (o)=>call('save_announcement',Object.assign(o,isNew?{}:{id:a.id})))}
+
+function rStaff(){
+  const st=D.staff||[];
+  const logs=(D.auditLog||[]).slice(0,30);
+  let h='<div class="top"><h2 style="font-size:18px">👥 Роли и сотрудники ('+st.length+')</h2><button class="p" data-a="staff-new">+ Добавить сотрудника</button></div>';
+  h+='<p class="mu" style="margin:0 0 8px">Список учётных записей для входа в терминал бариста и распределения ответственности по ролям (п. 2.1 и 11.2 ТЗ).</p>';
+  h+=st.map((s,i)=>'<div class="row"><div><span class="t">'+esc(s.name)+'</span> <span class="tag ok">'+esc(s.role||'Бариста')+'</span> <span class="tag">'+esc(s.shop||D.location)+'</span></div><div class="acts"><button class="b" data-a="staff-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="staff-del" data-i="'+i+'">Удалить</button></div></div>').join('');
+  h+='<h3 style="margin-top:22px">📜 Неизменяемый журнал действий системы (п. 13.1 и 16 ТЗ)</h3>';
+  h+='<div class="sx"><table class="tbl"><thead><tr><th>Дата и время</th><th>Пользователь / Роль</th><th>Событие</th><th>Детали</th></tr></thead><tbody>' +
+    (logs.length?logs.map((l)=>'<tr><td>'+dmy(l.date)+' '+esc(l.time)+'</td><td><b>'+esc(l.actor)+'</b></td><td>'+esc(l.action)+'</td><td style="text-align:left">'+esc(l.details)+'</td></tr>').join(''):'<tr><td colspan="4">Журнал пуст</td></tr>') +
+    '</tbody></table></div>';
+  return h;
+}
+function staffForm(s){
+  const isNew=!s;
+  const roles=(window.COFFEE_MVP&&window.COFFEE_MVP.ROLES)||['Бариста','Шеф-бариста','Администратор','Владелец'];
+  s=s||{name:'',role:'Бариста',shop:D.location||'Кофейня №1',active:'да'};
+  openForm(isNew?'Добавить сотрудника':'Изменить сотрудника',[
+    {k:'name',label:'Имя и фамилия',ph:'Например: Соня'},
+    {k:'role',label:'Роль в системе (п. 2.1 ТЗ)',type:'select',opts:roles},
+    {k:'shop',label:'Кофейня',ph:'Кофейня №1'},
+    {k:'active',label:'Доступ активен',type:'select',opts:YN}],
+    s,(o)=>call('save_staff',Object.assign(o,isNew?{}:{id:s.id})))}
+
 function rInc(){
-  const l=D.incidents;let h='<h2 style="font-size:18px;margin-bottom:6px">Поломки и проблемы</h2><p class="mu" style="margin:0 0 8px">Присылаются сотрудниками из терминала. Здесь их можно закрыть, открыть заново, поправить или удалить.</p>';
-  if(!l.length)return h+'<p class="mu">Поломок нет</p>';
-  const isOpen=(s)=>s==='Open'||s==='Открыта';const o=l.filter((x)=>isOpen(x.status)),r=l.filter((x)=>!isOpen(x.status));
-  const item=(x)=>'<div class="row"><div><span class="t">'+esc(x.step||'Проблема')+'</span>'+(x.priority==='Критично'?'<span class="tag no">критично</span>':'')+'<span class="tag '+(isOpen(x.status)?'no':'ok')+'">'+(isOpen(x.status)?'открыта':'решена')+'</span><div>'+esc(x.text)+'</div><div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(x.time)+(x.who?' · '+esc(x.who):'')+(x.owner&&x.owner!=='—'?' · ответственный: '+esc(x.owner):'')+(/^https:\/\//.test(x.photo)?' · <a href="'+esc(x.photo)+'" target="_blank" rel="noopener">фото</a>':'')+'</div></div><div class="acts">'+(isOpen(x.status)?'<button class="b ok" data-a="inc-res" data-i="'+l.indexOf(x)+'">Решено</button>':'<button class="b" data-a="inc-open" data-i="'+l.indexOf(x)+'">Открыть снова</button>')+'<button class="b" data-a="inc-tg" data-i="'+l.indexOf(x)+'" title="Отправить поломку с фото/видео в Telegram">📲 В Telegram</button><button class="b" data-a="inc-edit" data-i="'+l.indexOf(x)+'">Изменить</button><button class="b del" data-a="inc-del" data-i="'+l.indexOf(x)+'">Удалить</button></div></div>';
-  return h+'<h3>Открытые · '+o.length+'</h3>'+(o.map(item).join('')||'<p class="mu">Открытых нет — всё в порядке</p>')+'<h3>Решённые · '+r.length+'</h3>'+(r.map(item).join('')||'<p class="mu">Нет</p>')}
+  const l=D.incidents||[];
+  const statuses=(window.COFFEE_MVP&&window.COFFEE_MVP.INCIDENT_STATUSES)||['Новая проблема','Принята в работу','Ожидает решения','Решена','Закрыта'];
+  let h='<div class="top"><h2 style="font-size:18px;margin:0">Реестр инцидентов и эскалаций (5 статусов ТЗ)</h2></div><p class="mu" style="margin:0 0 8px">Закрытие инцидента не удаляет его из истории. В каждой карточке сохраняется история переходов по статусам и время устранения.</p>';
+  if(!l.length)return h+'<p class="mu">Инцидентов нет</p>';
+  const isAct=(x)=>window.coffeeIsIncActive?window.coffeeIsIncActive(x.status):(x.status==='Open'||x.status==='Открыта');
+  const o=l.filter(isAct),r=l.filter((x)=>!isAct(x));
+  const item=(x)=>{
+    const idx=l.indexOf(x);
+    const normSt=window.coffeeNormIncStatus?window.coffeeNormIncStatus(x.status):x.status;
+    const stBadge=window.coffeeIncStatusBadge?window.coffeeIncStatusBadge(x.status):('<span class="tag">'+esc(normSt)+'</span>');
+    const hist=Array.isArray(x.history)?x.history:[];
+    const media=window.coffeeMediaHtml?window.coffeeMediaHtml(x.photo,x.step):'';
+    return '<div class="row" style="align-items:start"><div>' +
+      '<span class="tag" style="margin:0 6px 4px 0">'+esc(x.incType||'Поломка оборудования')+'</span>' +
+      '<span class="t">'+esc(x.step||'Проблема')+'</span>' +
+      (x.priority==='Критично'?'<span class="tag no">🔴 критично</span>':'<span class="tag">🟡 терпит</span>') +
+      stBadge +
+      '<div style="margin-top:4px">'+esc(x.text)+'</div>' +
+      '<div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(x.time)+(x.who?' · зарегистрировал: <b>'+esc(x.who)+'</b>':'')+(x.owner&&x.owner!=='—'?' · ответственный: <b>'+esc(x.owner)+'</b>':'')+(x.resolvedAt?' · устранено: <b>'+esc(x.resolvedAt)+'</b>':'')+'</div>' +
+      media +
+      (hist.length?'<details style="margin-top:6px;font-size:12.5px;color:var(--muted)"><summary style="cursor:pointer;font-weight:600">История изменений ('+hist.length+')</summary><div style="padding:6px 0 0 8px;border-left:2px solid var(--line);margin-top:4px">'+hist.map((hItem)=>'<div>• <b>'+esc(hItem.time)+'</b> ['+esc(hItem.status)+'] '+esc(hItem.actor)+': '+esc(hItem.note||'')+'</div>').join('')+'</div></details>':'') +
+    '</div><div class="acts">' +
+      (normSt==='Новая проблема'?'<button class="b" data-a="inc-work" data-i="'+idx+'">▶ Принять в работу</button>':'') +
+      (isAct(x)?'<button class="b ok" data-a="inc-res" data-i="'+idx+'">✓ Решена</button>':'') +
+      (normSt==='Решена'?'<button class="b" data-a="inc-close" data-i="'+idx+'">🔒 Закрыть</button>':'') +
+      (!isAct(x)?'<button class="b" data-a="inc-open" data-i="'+idx+'">Открыть снова</button>':'') +
+      '<button class="b" data-a="inc-tg" data-i="'+idx+'" title="Отправить в Telegram">📲 В Telegram</button>' +
+      '<button class="b" data-a="inc-edit" data-i="'+idx+'">Статус / Изменить</button>' +
+    '</div></div>';
+  };
+  return h+'<h3>Активные проблемы (Новая / Принята в работу / Ожидает решения) · '+o.length+'</h3>'+(o.map(item).join('')||'<p class="mu">Активных проблем нет — всё в норме</p>')+'<h3>Решённые и Закрытые (в истории) · '+r.length+'</h3>'+(r.map(item).join('')||'<p class="mu">Нет завершённых инцидентов</p>')}
 function incForm(x){
-  openForm('Изменить поломку '+x.id,[{k:'comment',label:'Описание',type:'area'},{k:'priority',label:'Срочность',type:'select',opts:['Терпит','Критично']},{k:'responsible',label:'Ответственный'}],
-    {comment:x.text,priority:x.priority,responsible:x.owner==='—'?'':x.owner},(o)=>call('update_incident',Object.assign(o,{id:x.id})))}
+  const statuses=(window.COFFEE_MVP&&window.COFFEE_MVP.INCIDENT_STATUSES)||['Новая проблема','Принята в работу','Ожидает решения','Решена','Закрыта'];
+  const types=(window.COFFEE_MVP&&window.COFFEE_MVP.INCIDENT_TYPES)||['Поломка оборудования','Отсутствие необходимых продуктов','Проблемы с кассой','Прочие операционные проблемы'];
+  openForm('Карточка инцидента '+x.id,[
+    {k:'status',label:'Статус инцидента (п. 6.2 ТЗ)',type:'select',opts:statuses},
+    {k:'incType',label:'Тип инцидента (п. 6.1 ТЗ)',type:'select',opts:types},
+    {k:'comment',label:'Описание проблемы',type:'area'},
+    {k:'priority',label:'Срочность',type:'select',opts:['Терпит','Критично']},
+    {k:'responsible',label:'Ответственный за решение'},
+    {k:'statusNote',label:'Комментарий в историю изменений',ph:'Например: Вызван мастер / Деталь заменена'}],
+    {status:window.coffeeNormIncStatus?window.coffeeNormIncStatus(x.status):x.status,incType:x.incType||'Поломка оборудования',comment:x.text,priority:x.priority,responsible:x.owner==='—'?'':x.owner,statusNote:''},
+    (o)=>call('update_incident',Object.assign(o,{id:x.id})))}
 
 function rSet(){
   const inputFor=(s,i)=>{
@@ -279,7 +399,7 @@ function rSet(){
       const v=String(s.value||'нет').toLowerCase()==='да'?'да':'нет';
       return '<select id="s_'+i+'" style="flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)"><option value="нет"'+(v==='нет'?' selected':'')+'>нет — только для задач с пометкой «📷 фото»</option><option value="да"'+(v==='да'?' selected':'')+'>да — обязательно на каждом шаге Открытия и Закрытия</option></select>';
     }
-    if(s.id==='DEADLINE')return '<input id="s_'+i+'" type="time" value="'+esc(s.value||'08:30')+'">';
+    if(/DEADLINE|OPEN_START|DAY_START|CLOSE_START/.test(s.id))return '<input id="s_'+i+'" type="time" value="'+esc(s.value||'08:30')+'">';
     if(s.id==='PLAN'||s.id==='WO_NORM'||s.id==='INIT_COUNTER')return '<input id="s_'+i+'" type="number" min="0" step="any" inputmode="decimal" value="'+esc(s.value)+'">';
     return '<input id="s_'+i+'" type="'+(s.secret?'password':'text')+'" autocomplete="off" value="'+esc(s.value)+'" placeholder="'+(s.secret?(s.set?'••••••  задано — введите новый код, чтобы заменить':'не задано'):'')+'">';
   };
@@ -297,6 +417,56 @@ $('panel').addEventListener('input',(e)=>{
 $('panel').addEventListener('click',(e)=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=+b.dataset.i;
   if(a==='task-flt'){taskFlt=b.dataset.g||'all';render();return;}
+  if(a==='win-save'){
+    const p={
+      openStart:$('win_open_start')?$('win_open_start').value:'07:30',
+      openDeadline:$('win_open_dl')?$('win_open_dl').value:'08:30',
+      dayStart:$('win_day_start')?$('win_day_start').value:'11:00',
+      dayDeadline:$('win_day_dl')?$('win_day_dl').value:'18:30',
+      closeStart:$('win_close_start')?$('win_close_start').value:'19:00',
+      closeDeadline:$('win_close_dl')?$('win_close_dl').value:'22:30'
+    };
+    call('save_block_windows',p).then(()=>{
+      if(window.coffeeEnforceOverdueChecklists)window.coffeeEnforceOverdueChecklists();
+      toast('✓ Временные окна сохранены и применены в Терминале!');
+      return load();
+    }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='win-unlock'){
+    const blk=b.dataset.b||'Открытие';
+    call('extend_deadline',{block:blk,openFrom:'00:00',until:'23:59',reason:'Разблокировано администратором из панели управления'}).then(()=>{
+      toast('🔓 Доступ к чек-листу «'+blk+'» открыт для сотрудников до конца дня');
+      return load();
+    }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='win-sim-overdue'){
+    const blk=b.dataset.b||'День';
+    call('simulate_overdue',{block:blk}).then(()=>{
+      const created=window.coffeeEnforceOverdueChecklists?window.coffeeEnforceOverdueChecklists():[];
+      toast('🚨 Чек-лист «'+blk+'» закрыт по времени, создан инцидент просрочки и отправлено уведомление в Telegram!');
+      return load();
+    }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='dl-extend'){
+    openForm('Продлить дедлайн чек-листа (п. 19.2 ТЗ)',[
+      {k:'block',label:'Чек-лист',type:'select',opts:D.blocks},
+      {k:'until',label:'Разрешить выполнение до (ЧЧ:ММ)',type:'time'},
+      {k:'reason',label:'Причина восстановления (в журнал аудита)',ph:'Например: Задержка поставки / Отключение света'}
+    ],{block:'Открытие',until:'10:00',reason:'Согласовано руководителем'},(o)=>call('extend_deadline',o));
+    return;
+  }
+  if(a==='task-up'||a==='task-down')return act('reorder_task',{id:D.tasks[i].id,row:D.tasks[i].row,dir:a==='task-up'?'up':'down'},'Порядок задач обновлён');
+  if(a==='info-new')return infoForm();
+  if(a==='info-edit')return infoForm(D.announcements[i]);
+  if(a==='info-del')return act('delete_announcement',{id:D.announcements[i].id},'Материал удалён');
+  if(a==='staff-new')return staffForm();
+  if(a==='staff-edit')return staffForm(D.staff[i]);
+  if(a==='staff-del')return act('delete_staff',{id:D.staff[i].id,name:D.staff[i].name},'Сотрудник удалён');
+  if(a==='inc-work')return act('update_incident',{id:D.incidents[i].id,status:'Принята в работу',statusNote:'Принята в работу администратором'},'Статус: Принята в работу');
+  if(a==='inc-close')return act('update_incident',{id:D.incidents[i].id,status:'Закрыта',statusNote:'Проверка выполнена, проблема закрыта'},'Статус: Закрыта');
   if(a==='task-new')return taskForm();
   if(a==='task-csv'){const q=(v)=>"\""+String(v==null?'':v).replace(/"/g,'""')+"\"";const rows=[['Код','Блок','Подгруппа','Название','Инструкция','Нужно фото','Ответственный','Активна'].map(q).join(',')].concat(D.tasks.map((t)=>[t.id||'',t.block,t.groupName||'',t.title,t.instruction,t.photo,t.responsible,t.active].map(q).join(',')));const el=document.createElement('a');el.href=URL.createObjectURL(new Blob(['\uFEFF'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'}));el.download='Задачи_91_инструкции.csv';document.body.appendChild(el);el.click();el.remove();return;}
   if(a==='task-edit')return taskForm(D.tasks[i]);
