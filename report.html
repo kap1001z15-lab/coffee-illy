@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кофейня — отчёты</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
-<script src="config.js"></script>
+<script src="config.js">window.addEventListener('storage', (e) => { if (e && (e.key === 'coffee_unified_hybrid_db_v3' || e.key === 'coffee_sync_signal')) load(true, true); });
+window.addEventListener('focus', () => load(true, true));
+</script>
 <style>html.gate body>*:not(#gate){display:none!important}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1"||!localStorage.getItem("coffee_illy_pin"))document.documentElement.classList.add("gate")}catch(e){}</script>
 
 <script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
@@ -502,9 +504,15 @@ function drawExps(f) {
     : '<div class="empty"><b>Нет расходов за период</b></div>';
 }
 function drawDisc(d) {
-  const i = d.incidents, c = d.discipline, cell = (l, v, s) => '<div><span class="muted">' + l + '</span><span class="num">' + v + '</span><span class="muted">' + (s || '') + '</span></div>';
-  $('disc').innerHTML = cell('Открытий смены', c.openings, 'с опозданием: ' + c.late) + cell('Дней без открытия', c.missed, 'при наличии выручки') + cell('Чек-листов', c.checklists, 'проблемных шагов: ' + c.problemSteps) +
-    cell('Инцидентов', i.total, 'открыто ' + i.open + ' · решено ' + i.resolved) + cell('Критичных', i.critical);
+  const i = d.incidents, c = d.discipline, mvpD = d.mvpDiscipline || (window.coffeeCalcDiscipline ? window.coffeeCalcDiscipline(null, d.from, d.to) : { overallPct: 100, totalOnTime: 0, totalAssigned: 0 });
+  const cell = (l, v, s) => '<div><span class="muted">' + l + '</span><span class="num">' + v + '</span><span class="muted">' + (s || '') + '</span></div>';
+  $('disc').innerHTML =
+    cell('Дисциплина (ТЗ 7.1)', mvpD.overallPct + '%', 'в срок ' + mvpD.totalOnTime + ' из ' + mvpD.totalAssigned + ' задач') +
+    cell('Открытий смены', c.openings, 'просрочено: ' + c.late) +
+    cell('Пропущено чек-листов', c.missed, 'при наличии выручки') +
+    cell('Чек-листов сдано', c.checklists, 'проблемных шагов: ' + c.problemSteps) +
+    cell('Инцидентов (5 статусов)', i.total, 'в работе ' + i.open + ' · закрыто ' + i.resolved) +
+    cell('Критичных', i.critical);
 
   if ($('staffSummaryB')) {
     const st = d.staffSummary || [];
@@ -518,11 +526,13 @@ function drawDisc(d) {
     $('incMediaList').innerHTML = list.length
       ? list.map((inc) => {
           const media = window.coffeeMediaHtml ? window.coffeeMediaHtml(inc.photo, inc.step) : '';
-          const isOp = inc.status === 'Open' || inc.status === 'Открыта';
+          const isOp = window.coffeeIsIncActive ? window.coffeeIsIncActive(inc.status) : (inc.status === 'Open' || inc.status === 'Открыта');
+          const normSt = window.coffeeNormIncStatus ? window.coffeeNormIncStatus(inc.status) : (isOp ? 'Новая проблема' : 'Решена');
           return '<div class="xrow" style="grid-template-columns:1fr auto;align-items:start">' +
             '<div>' +
+              (inc.incType ? '<span class="tag" style="margin-right:6px">' + esc(inc.incType) + '</span>' : '') +
               '<b>' + esc(inc.step || 'Замечание') + '</b> ' +
-              '<span class="tag ' + (isOp ? 'no' : 'ok') + '">' + (isOp ? 'открыта' : 'решена') + '</span> ' +
+              '<span class="tag ' + (isOp ? 'no' : 'ok') + '">' + esc(normSt) + '</span> ' +
               (inc.priority === 'Критично' ? '<span class="tag no">критично</span>' : '') +
               '<div style="margin-top:4px">' + esc(inc.text) + '</div>' +
               '<div class="muted">' + dmy(inc.date || '') + (inc.time ? ' ' + esc(inc.time) : '') + (inc.who ? ' · Сотрудник: ' + esc(inc.who) : '') + (inc.owner && inc.owner !== '—' ? ' · Отв.: ' + esc(inc.owner) : '') + '</div>' +
