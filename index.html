@@ -238,6 +238,60 @@
     .set .line button, .set-item .line button { width:100%; min-height:42px; }
   }
 
+
+  /* === MVP v10: 5 вкладок терминала, тайм-слоты, мульти-фото, фотообразцы и Информирование === */
+  .tabs { grid-template-columns:repeat(5,1fr); }
+  .barista-sel {
+    border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.12); color:var(--cream);
+    border-radius:10px; padding:4px 8px; font-size:13px; font-weight:700; cursor:pointer; width:auto;
+  }
+  .barista-sel option { color:#172326; background:#fff; }
+  .dl-banner {
+    display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:10px 14px; border-radius:14px; margin-bottom:12px; font-size:13.5px;
+    border:1px solid var(--line); background:var(--surface);
+  }
+  .dl-banner.overdue {
+    border-color:var(--bad); background:color-mix(in srgb, var(--bad) 12%, var(--surface));
+  }
+  .dl-banner.ontime {
+    border-color:var(--good); background:color-mix(in srgb, var(--good) 10%, var(--surface));
+  }
+  .sample-btn {
+    width:100%; min-height:42px; border-radius:12px; border:1px dashed var(--crema);
+    background:color-mix(in srgb, var(--crema) 12%, var(--bg)); color:var(--ink);
+    font-weight:700; font-size:14px; cursor:pointer; margin:0 0 14px;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .multi-photos {
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px; margin-top:10px;
+  }
+  .mp-item {
+    position:relative; border-radius:12px; overflow:hidden; border:2px solid var(--good);
+    background:var(--bg); aspect-ratio:4/3;
+  }
+  .mp-item img, .mp-item video { width:100%; height:100%; object-fit:cover; display:block; }
+  .mp-del {
+    position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%;
+    border:0; background:rgba(194,59,34,.92); color:#fff; font-weight:700; font-size:13px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .mp-lbl {
+    position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,.6); color:#fff;
+    font-size:11px; padding:2px 6px; text-align:center;
+  }
+  .info-card {
+    background:var(--surface); border:1px solid var(--line); border-radius:20px;
+    padding:18px; box-shadow:var(--shadow); margin-top:12px;
+  }
+  .info-card.unread { border-left:5px solid var(--crema); }
+  .info-card.acked { border-left:5px solid var(--good); }
+  .cal-pill {
+    display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700;
+    padding:3px 10px; border-radius:99px; background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn);
+    margin-bottom:6px;
+  }
+
 </style>
 </head>
 <body>
@@ -249,8 +303,17 @@
         <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1>
         <span class="sub" id="today"></span>
       </div>
-      <div class="who" style="display:flex;gap:10px;align-items:center">
-        <div><span class="sub" id="loc"></span><br><b id="who"></b></div>
+      <div class="who" style="display:flex;gap:8px;align-items:center">
+        <div style="text-align:right">
+          <span class="sub" id="loc"></span><br>
+          <b id="who" hidden></b>
+          <select id="baristaSelect" class="barista-sel" aria-label="Учётная запись сотрудника" title="Выберите свою учётную запись">
+            <option value="Соня">👤 Соня (Бариста)</option>
+            <option value="Алина">👤 Алина (Бариста)</option>
+            <option value="Настя">👤 Настя (Бариста)</option>
+            <option value="Максим">👤 Максим (Шеф-бариста)</option>
+          </select>
+        </div>
         <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button>
       </div>
     </div>
@@ -258,6 +321,7 @@
       <button role="tab" data-b="Открытие" data-l="Открытие" aria-selected="true">Открытие</button>
       <button role="tab" data-b="День" data-l="День" aria-selected="false">День</button>
       <button role="tab" data-b="Закрытие" data-l="Закрытие" aria-selected="false">Закрытие</button>
+      <button role="tab" data-b="ИНФО" data-l="📢 Инфо" aria-selected="false">📢 Инфо</button>
       <button role="tab" data-b="КАССА" data-l="Касса" aria-selected="false">Касса</button>
     </div>
     <div class="steps" id="steps" aria-hidden="true"></div>
@@ -290,37 +354,77 @@
   </div>
 
   <section id="checklistView" class="stack" hidden>
+    <div id="deadlineBanner" class="dl-banner ontime">
+      <span id="deadlineText">⏰ Окно выполнения: 07:30 – 08:30</span>
+      <span id="deadlineBadge" style="font-weight:700;color:var(--good)">🟢 В срок</span>
+    </div>
+    <div id="draftRestoreBanner" class="notice" hidden>
+      <span id="draftRestoreText">↺ Восстановлен незавершённый чек-лист</span>
+      <button type="button" id="resetDraftBtn">Сбросить</button>
+    </div>
+    <div id="windowLockCard" class="panel center" hidden style="border-width:2px">
+      <div id="windowLockIcon" style="font-size:44px;margin-bottom:8px">🔒</div>
+      <h2 id="windowLockTitle" style="font-size:21px;margin:0 0 8px">Доступ к чек-листу закрыт</h2>
+      <p id="windowLockDesc" class="muted" style="margin:0 0 12px;font-size:15px"></p>
+      <div id="windowLockAlertBox" style="padding:12px 14px;border-radius:14px;background:color-mix(in srgb,var(--bad) 12%,var(--bg));border:1px solid var(--bad);font-size:13.5px;text-align:left;margin-top:10px" hidden></div>
+    </div>
+    <div id="taskStepWrap">
+
     <div class="panel task">
-      <span class="muted" id="stepCounter"></span>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="muted" id="stepCounter"></span>
+        <span id="photoModeTag" style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--muted)"></span>
+      </div>
       <h2 id="taskTitle"></h2>
       <p class="instr" id="taskInstruction"></p>
 
+      <button type="button" class="sample-btn" id="btnSampleModal">📖 Как правильно выполнить (фотообразец)</button>
+
       <div class="field" id="photoBlock">
-        <span class="label">Фото или видео — только с камеры, из галереи нельзя</span>
+        <span class="label" id="photoBlockLabel">Фото или видео — можно прикрепить несколько снимков</span>
         <div class="drop" id="drop" role="button" tabindex="0" aria-label="Открыть камеру">
           <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
           <span id="photoPrompt">Открыть камеру</span>
           <img id="photoPreview" alt="Превью фото" hidden>
           <video id="vidPreview" autoplay loop muted playsinline hidden style="max-height:220px;max-width:100%;border-radius:12px"></video>
         </div>
-                <p class="pstate" id="photoState" aria-live="polite"></p>
+        <div id="multiPhotoGallery" class="multi-photos" hidden></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" id="addMorePhotoBtn" hidden style="border:1px solid var(--crema);background:var(--bg);border-radius:10px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">➕ Добавить ещё фото</button>
+          <button type="button" id="simPhotoBtn" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer">📸 Контрольный снимок со штампом</button>
+        </div>
+        <p class="pstate" id="photoState" aria-live="polite"></p>
       </div>
 
       <div class="field">
-        <span class="label">Результат проверки</span>
+        <span class="label">Обязательное подтверждение результата</span>
         <div class="seg">
-          <button type="button" id="btnOk">✅ В норме</button>
-          <button type="button" id="btnInc">⚠️ Поломка</button>
+          <button type="button" id="btnOk">✅ Всё в норме</button>
+          <button type="button" id="btnInc">⚠️ Обнаружена проблема</button>
         </div>
+        <p class="muted" id="choiceHint" style="margin:6px 0 0;font-size:12.5px">Выберите результат проверки для перехода к следующей задаче</p>
       </div>
 
       <div id="incidentBox" hidden>
         <div class="field">
-          <span class="label" style="color:var(--bad)">Что случилось</span>
-          <textarea id="incidentComment" placeholder="Опишите проблему коротко"></textarea>
+          <label class="label" for="incidentType" style="color:var(--bad)">Тип инцидента (по классификатору)</label>
+          <select id="incidentType" style="width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">
+            <option value="Поломка оборудования">🔧 Поломка оборудования</option>
+            <option value="Отсутствие необходимых продуктов">🥛 Отсутствие необходимых продуктов</option>
+            <option value="Проблемы с поставками">🚚 Проблемы с поставками</option>
+            <option value="Проблемы с кассой">💰 Проблемы с кассой</option>
+            <option value="Жалобы клиентов">💬 Жалобы клиентов</option>
+            <option value="Нарушение санитарных требований">🧼 Нарушение санитарных требований</option>
+            <option value="Проблемы с персоналом">👥 Проблемы с персоналом</option>
+            <option value="Прочие операционные проблемы">⚠️ Прочие операционные проблемы</option>
+          </select>
         </div>
         <div class="field">
-          <span class="label">Срочность</span>
+          <span class="label" style="color:var(--bad)">Описание проблемы</span>
+          <textarea id="incidentComment" placeholder="Опишите неисправность или отклонение (минимум 3 символа)"></textarea>
+        </div>
+        <div class="field">
+          <span class="label">Срочность эскалации</span>
           <div class="seg">
             <button type="button" id="prLow">Терпит</button>
             <button type="button" id="prHigh">Критично</button>
@@ -332,6 +436,25 @@
       <button class="btn ghost" id="backBtn" type="button" hidden>Назад</button>
       <button class="btn" id="nextBtn" type="button" disabled style="grid-column:2">Далее</button>
     </div>
+    </div>
+  </section>
+
+  <!-- Вкладка 3.2: ИНФОРМИРОВАНИЕ И ОБУЧЕНИЕ ПЕРСОНАЛА -->
+  <section id="infoView" class="stack" hidden>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div>
+          <h2 style="font-size:20px;margin:0">📢 Информирование и стандарты</h2>
+          <p class="muted" style="margin:4px 0 0">Ознакомьтесь с актуальными изменениями меню, регламентов и событиями календаря и нажмите «Ознакомлен».</p>
+        </div>
+        <button type="button" id="quickIncidentBtn" style="border:1px solid var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--bg));color:var(--bad);border-radius:12px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer">🚨 Сообщить о проблеме</button>
+      </div>
+      <div class="seg" id="infoFilterSeg" style="margin-top:12px">
+        <button type="button" data-iflt="all" class="ok">Все актуальные</button>
+        <button type="button" data-iflt="unread">Непрочитанные</button>
+      </div>
+    </div>
+    <div id="infoCardsList"></div>
   </section>
 
   <section id="cashView" class="stack" hidden>
@@ -441,6 +564,55 @@
   </section>
 </main>
 
+<dialog id="sampleDlg" style="border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:20px;width:min(520px,94vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.65)">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+    <h2 id="sampleDlgTitle" style="font-size:19px;margin:0">📖 Как правильно выполнить</h2>
+    <button type="button" id="sampleDlgClose" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 12px;font-weight:700;cursor:pointer">✕ Закрыть</button>
+  </div>
+  <p class="instr" id="sampleDlgInstr" style="margin-bottom:14px"></p>
+  <div id="sampleDlgPhotos" class="stack"></div>
+</dialog>
+
+<dialog id="quickIncDlg" style="border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:20px;width:min(480px,94vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.65)">
+  <form id="quickIncForm" method="dialog">
+    <h2 style="font-size:19px;margin:0 0 8px">🚨 Зарегистрировать инцидент</h2>
+    <p class="muted" style="margin:0 0 12px">Сообщение сразу попадёт в реестр проблем и уйдёт ответственным лицам в Telegram.</p>
+    <div class="field">
+      <label class="label" for="qiType">Тип проблемы</label>
+      <select id="qiType" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
+        <option value="Поломка оборудования">Поломка оборудования</option>
+        <option value="Отсутствие необходимых продуктов">Отсутствие необходимых продуктов</option>
+        <option value="Проблемы с поставками">Проблемы с поставками</option>
+        <option value="Проблемы с кассой">Проблемы с кассой</option>
+        <option value="Жалобы клиентов">Жалобы клиентов</option>
+        <option value="Нарушение санитарных требований">Нарушение санитарных требований</option>
+        <option value="Проблемы с персоналом">Проблемы с персоналом</option>
+        <option value="Прочие операционные проблемы">Прочие операционные проблемы</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="label" for="qiStep">Участок / Оборудование</label>
+      <input type="text" id="qiStep" placeholder="Например: Кофемашина / Холодильник / Терминал" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
+    </div>
+    <div class="field">
+      <label class="label" for="qiText">Описание</label>
+      <textarea id="qiText" placeholder="Подробно опишите, что произошло"></textarea>
+    </div>
+    <div class="field">
+      <label class="label" for="qiPriority">Критичность</label>
+      <select id="qiPriority" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
+        <option value="Критично">🔴 Критично (требует немедленной реакции)</option>
+        <option value="Терпит">🟡 Терпит (в рабочем порядке)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" id="qiCancel" style="border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 16px;font-weight:600;cursor:pointer">Отмена</button>
+      <button type="submit" id="qiSubmit" style="border:0;background:var(--bad);color:#fff;border-radius:12px;padding:10px 18px;font-weight:700;cursor:pointer">Отправить инцидент</button>
+    </div>
+  </form>
+</dialog>
+
+
 <script>
 const API_URL = window.COFFEE.API_URL;
 let LOCATION = "Кофейня №1";
@@ -452,7 +624,13 @@ const isoToday = () => { const d = new Date(); return d.getFullYear() + "-" + St
 const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 const tgu = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
-const userName = tgu && tgu.first_name ? tgu.first_name + (tgu.last_name ? " " + tgu.last_name.charAt(0) + "." : "") : "Бариста";
+let userName = (function () {
+  try {
+    const saved = localStorage.getItem("coffee_active_barista");
+    if (saved) return saved;
+  } catch (_) {}
+  return tgu && tgu.first_name ? tgu.first_name : "Соня";
+})();
 const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {} };
 const tgt = (f) => { try { return f(); } catch (e) {} };
 $("loc").textContent = LOCATION; $("who").textContent = userName;
@@ -502,7 +680,7 @@ $("rdToday").onclick = () => setReportDate(isoToday());
 $("rdYest").onclick = () => setReportDate(shiftIso(isoToday(), -1));
 $("rdPick").onchange = (e) => { const v = e.target.value; setReportDate(v && v <= isoToday() ? v : reportDate); };
 
-const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "cashView", "doneView"];
+const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "infoView", "cashView", "doneView"];
 function show(v) { VIEWS.forEach((x) => $(x).hidden = x !== v); }
 
 /* отметки «сегодня уже сдано» */
@@ -570,61 +748,368 @@ function emptyHint(b) {      // почему пусто: подсказка ад
   else t = "В блоке «" + b + "» нет активных задач. В листе «" + m.sheet + "» строк: " + m.rows + ". Блок берётся из столбца «Блок» (Открытие / День / Закрытие), включение — столбец «Активна» = да.";
   $("emptyText").textContent = t;
 }
-function selectBlock(b) {
-  block = b; drawTabs();
-  if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
-  cur = tasks.filter((t) => t.block === b && t.active !== "нет");
-  idx = 0; answers = [];
-  if (!cur.length) { $("steps").hidden = true; emptyHint(b); show("emptyView"); return; }
-  $("steps").hidden = false; renderStep();
+
+let photos = [];
+let choiceMade = false;
+let checklistStartedAt = "";
+let stepNavLock = false;
+let infoFilter = "all";
+const DRAFT_KEY = "coffee_shift_draft_v10";
+
+function syncStaffSelector() {
+  const sel = $("baristaSelect");
+  if (!sel) return;
+  const staffList = (META && Array.isArray(META.staff) && META.staff.length)
+    ? META.staff.filter((s) => s.active !== "нет")
+    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
+  sel.innerHTML = staffList.map((s) => '<option value="' + s.name.replace(/"/g, '&quot;') + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + s.name + ' (' + (s.role || 'Бариста') + ')</option>').join("");
+  if (!staffList.some((s) => s.name === userName) && staffList.length) {
+    userName = staffList[0].name;
+    sel.value = userName;
+  }
+  $("who").textContent = userName;
+  if ($("shiftBaristaIn") && !$("shiftBaristaIn").value) $("shiftBaristaIn").value = userName;
+}
+if ($("baristaSelect")) {
+  $("baristaSelect").addEventListener("change", (e) => {
+    userName = e.target.value || "Соня";
+    try { localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
+    $("who").textContent = userName;
+    if ($("shiftBaristaIn")) $("shiftBaristaIn").value = userName;
+    drawTabs();
+    if (block === "ИНФО") renderInfoView();
+    saveShiftDraft();
+    toast("Активный сотрудник: " + userName);
+  });
 }
 
-/* ---------- шаги чек-листа ---------- */
+function getUnreadInfoCount() {
+  const list = (META && Array.isArray(META.announcements) && META.announcements.length)
+    ? META.announcements
+    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(isoToday())) || []);
+  return list.filter((a) => {
+    const acks = Array.isArray(a.acks) ? a.acks : [];
+    return !acks.some((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
+  }).length;
+}
+
+function saveShiftDraft() {
+  if (block === "КАССА" || block === "ИНФО" || !cur.length) return;
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      date: isoToday(),
+      block,
+      idx,
+      startedAt: checklistStartedAt || new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+      userName,
+      answers
+    }));
+  } catch (_) {}
+}
+
+function clearShiftDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
+  if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
+}
+
+function tryRestoreShiftDraft(targetBlock) {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d || d.date !== isoToday() || d.block !== targetBlock || !Array.isArray(d.answers) || !d.answers.length) return false;
+    const hasProgress = d.idx > 0 || d.answers.some((a) => a && (a.choiceMade || (a.photos && a.photos.length)));
+    if (!hasProgress) return false;
+    idx = Math.min(d.idx || 0, Math.max(0, cur.length - 1));
+    answers = d.answers;
+    checklistStartedAt = d.startedAt || "";
+    if ($("draftRestoreBanner")) {
+      $("draftRestoreBanner").hidden = false;
+      $("draftRestoreText").textContent = "↺ Восстановлен черновик смены (шаг " + (idx + 1) + " из " + cur.length + ") — данные сохранены";
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+if ($("resetDraftBtn")) {
+  $("resetDraftBtn").onclick = () => {
+    clearShiftDraft();
+    idx = 0;
+    answers = [];
+    renderStep();
+    toast("Чек-лист начат с первого шага");
+  };
+}
+
+function updateDeadlineUI() {
+  if (window.coffeeEnforceOverdueChecklists) {
+    const createdIncs = window.coffeeEnforceOverdueChecklists(userName);
+    if (createdIncs && createdIncs.length) {
+      toast("🚨 Дедлайн истёк! Доступ закрыт, инцидент отправлен администратору");
+    }
+  }
+  const banner = $("deadlineBanner");
+  if (!banner || block === "КАССА" || block === "ИНФО") return true;
+  const win = window.coffeeGetBlockWindow
+    ? window.coffeeGetBlockWindow(block)
+    : { openTime: "07:30", deadline: "08:30", isOverdue: false, isBefore: false, completed: false, canPass: true, state: "open", currentTime: "08:00" };
+
+  banner.className = "dl-banner " + (win.state === "overdue_closed" ? "overdue" : "ontime");
+  $("deadlineText").textContent = "⏰ Отведённое время «" + block + "»: " + win.openTime + " – " + win.deadline + (win.extended ? " (разблокировано админом)" : "");
+  if (win.state === "completed") {
+    $("deadlineBadge").innerHTML = '<span style="color:var(--good)">✓ Сдано вовремя</span>';
+  } else if (win.state === "overdue_closed") {
+    $("deadlineBadge").innerHTML = '<span style="color:var(--bad)">🔒 Доступ закрыт (просрочено после ' + win.deadline + ')</span>';
+  } else if (win.state === "before_window") {
+    $("deadlineBadge").innerHTML = '<span style="color:var(--warn)">⏳ Доступ с ' + win.openTime + '</span>';
+  } else {
+    $("deadlineBadge").innerHTML = '<span style="color:var(--good)">🟢 Доступ открыт (до ' + win.deadline + ')</span>';
+  }
+
+  const lockCard = $("windowLockCard");
+  const stepWrap = $("taskStepWrap");
+  if (lockCard && stepWrap) {
+    if (!win.canPass) {
+      lockCard.hidden = false;
+      stepWrap.hidden = true;
+      $("steps").hidden = true;
+      if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
+      const alertBox = $("windowLockAlertBox");
+      if (win.state === "completed") {
+        lockCard.style.borderColor = "var(--good)";
+        $("windowLockIcon").textContent = "✅";
+        $("windowLockTitle").textContent = "Чек-лист «" + block + "» за сегодня выполнен";
+        $("windowLockDesc").textContent = "Все обязательные пункты блока «" + block + "» успешно сданы" + (win.completedRecord && win.completedRecord.time ? " в " + win.completedRecord.time : "") + ". Повторная отправка не требуется.";
+        alertBox.hidden = true;
+      } else if (win.state === "before_window") {
+        lockCard.style.borderColor = "var(--warn)";
+        $("windowLockIcon").textContent = "⏳";
+        $("windowLockTitle").textContent = "Доступ к чек-листу «" + block + "» ещё не открыт";
+        $("windowLockDesc").textContent = "Прохождение чек-листа доступно для сотрудников строго в отведённое время: с " + win.openTime + " до " + win.deadline + " (сейчас " + win.currentTime + ").";
+        alertBox.hidden = true;
+      } else {
+        lockCard.style.borderColor = "var(--bad)";
+        $("windowLockIcon").textContent = "🔒";
+        $("windowLockTitle").textContent = "Доступ закрыт — время выполнения истекло!";
+        $("windowLockDesc").textContent = "Отведённое время для прохождения чек-листа «" + block + "» (" + win.openTime + " – " + win.deadline + ") закончилось. Прохождение после дедлайна заблокировано.";
+        alertBox.hidden = false;
+        alertBox.innerHTML =
+          "<b>🚨 Автоматическая фиксация нарушения:</b><br>" +
+          "• В реестр проблем занесён критический инцидент о несвоевременном выполнении чек-листа «" + block + "».<br>" +
+          "• Администратору отправлено уведомление в Telegram.<br>" +
+          "• Открыть доступ или продлить окно может только администратор в разделе <b>«Управление → Задачи»</b>.";
+      }
+      return false;
+    } else {
+      lockCard.hidden = true;
+      stepWrap.hidden = false;
+      $("steps").hidden = false;
+    }
+  }
+  return true;
+}
+setInterval(() => {
+  updateDeadlineUI();
+  drawTabs();
+}, 10000);
+
+function selectBlock(b) {
+  block = b;
+  syncStaffSelector();
+  drawTabs();
+  if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
+  if (b === "ИНФО") { $("steps").hidden = true; show("infoView"); renderInfoView(); return; }
+  cur = tasks.filter((t) => t.block === b && t.active !== "нет");
+  idx = 0;
+  answers = [];
+  checklistStartedAt = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
+  if (!cur.length) { $("steps").hidden = true; emptyHint(b); show("emptyView"); return; }
+  tryRestoreShiftDraft(b);
+  $("steps").hidden = false;
+  updateDeadlineUI();
+  renderStep();
+}
+
+/* ---------- шаги чек-листа (1 экран = 1 задача) ---------- */
 function drawSteps() {
   $("steps").innerHTML = cur.map((_, i) => '<i class="' + (i < idx ? "done" : i === idx ? "now" : "") + '"></i>').join("");
 }
 
+function getTaskPhotoMode(t) {
+  if (!t) return "нет";
+  if (t.photoMode) return t.photoMode;
+  return t.mediaRequired || t.photo === "да" ? "да" : "нет";
+}
+
 function renderStep() {
   show("checklistView");
+  updateDeadlineUI();
   const t = cur[idx], a = answers[idx] || {};
-  $("stepCounter").textContent = "Шаг " + (idx + 1) + " из " + cur.length;
+  const pMode = getTaskPhotoMode(t);
+  $("stepCounter").textContent = "Задача " + (idx + 1) + " из " + cur.length + (t.id ? " · код " + t.id : "");
+  if ($("photoModeTag")) {
+    $("photoModeTag").textContent = pMode === "да" ? "📷 Фото обязательно" : (pMode === "при проблеме" ? "📷 Фото при проблеме" : "✓ Без фото");
+    $("photoModeTag").style.color = pMode === "да" ? "var(--warn)" : "var(--muted)";
+  }
   $("taskTitle").textContent = t.title || "";
   $("taskInstruction").textContent = t.instruction || "";
   $("taskInstruction").hidden = !t.instruction;
-  $("photoBlock").hidden = !t.mediaRequired;   // обязательность фото задаёт таблица
-  photo = a.preview || ""; photoUrl = a.photo_url || ""; photoBusy = false; setPhotoUI();
-  photoMsg(photoUrl ? "✓ Фото сохранено на Google Диске" : photo ? "Фото отправится вместе с отчётом" : "", photoUrl ? "good" : "");
+
+  photos = Array.isArray(a.photos) ? a.photos.slice() : (a.preview ? [a.preview] : []);
+  photo = photos[0] || "";
+  photoUrl = a.photo_url || "";
+  photoBusy = false;
+
+  choiceMade = !!a.choiceMade;
+  incident = !!a.isIncident;
+  if ($("incidentType")) $("incidentType").value = a.incType || "Поломка оборудования";
   $("incidentComment").value = a.comment || "";
   setPriority(a.priority || "Терпит");
-  setStatus(!!a.isIncident);
+
+  /* Применяем состояние выбора (нельзя автоматически считать задачу выполненной без подтверждения сотрудника!) */
+  $("incidentBox").hidden = !(choiceMade && incident);
+  $("btnOk").className = (choiceMade && !incident) ? "ok" : "";
+  $("btnInc").className = (choiceMade && incident) ? "bad" : "";
+  if ($("choiceHint")) {
+    $("choiceHint").textContent = !choiceMade
+      ? "Нажмите «Всё в норме» или «Обнаружена проблема», чтобы разблокировать переход далее"
+      : (incident ? "Заполните карточку проблемы — она сразу поступит в реестр инцидентов и Telegram" : "✓ Выполнение по стандарту подтверждено");
+    $("choiceHint").style.color = !choiceMade ? "var(--warn)" : (incident ? "var(--bad)" : "var(--good)");
+  }
+
+  const showPhoto = (pMode === "да") || (choiceMade && incident);
+  $("photoBlock").hidden = !showPhoto;
+  setPhotoUI();
+  photoMsg(photos.length ? ("✓ Прикреплено кадров: " + photos.length) : "", photos.length ? "good" : "");
+
   $("backBtn").hidden = idx === 0;
-  $("nextBtn").textContent = idx === cur.length - 1 ? "Отправить" : "Далее";
-  drawSteps(); window.scrollTo(0, 0);
-  if (t.mediaRequired && !photo && !photoUrl && armed) setTimeout(() => { if (!photo && !photoBusy && $("cam").hidden && !$("checklistView").hidden) openCamera(); }, 350);   // камера открывается сама на шагах с фото
+  $("nextBtn").textContent = idx === cur.length - 1 ? "Завершить и отправить чек-лист" : "Следующая задача →";
+  drawSteps();
+  validate();
+  window.scrollTo(0, 0);
 }
 
 function setPhotoUI() {
+  photo = photos[0] || "";
   const isV = /^data:video/.test(photo);
-  $("photoPreview").hidden = !photo || isV; if (photo && !isV) $("photoPreview").src = photo;
-  $("vidPreview").hidden = !isV; if (isV) { if ($("vidPreview").getAttribute("src") !== photo) $("vidPreview").src = photo; } else $("vidPreview").removeAttribute("src");
+  $("photoPreview").hidden = !photo || isV;
+  if (photo && !isV) $("photoPreview").src = photo;
+  $("vidPreview").hidden = !isV;
+  if (isV) { if ($("vidPreview").getAttribute("src") !== photo) $("vidPreview").src = photo; } else $("vidPreview").removeAttribute("src");
   $("camIco").style.display = photo ? "none" : "";
-  $("drop").classList.toggle("has", !!photo);
-  $("photoPrompt").textContent = photo ? "Переснять" : "Открыть камеру";
+  $("drop").classList.toggle("has", photos.length > 0);
+  $("photoPrompt").textContent = photos.length ? ("Снято кадров: " + photos.length + " (нажмите, чтобы снять ещё)") : "Открыть камеру";
+  if ($("addMorePhotoBtn")) $("addMorePhotoBtn").hidden = photos.length === 0;
+
+  const gal = $("multiPhotoGallery");
+  if (gal) {
+    gal.hidden = photos.length === 0;
+    gal.innerHTML = photos.map((src, i) => {
+      const v = /^data:video/.test(src);
+      return '<div class="mp-item">' +
+        (v ? '<video src="' + src + '" muted playsinline></video>' : '<img src="' + src + '" alt="Кадр ' + (i + 1) + '">') +
+        '<button type="button" class="mp-del" data-delphoto="' + i + '" title="Удалить кадр">×</button>' +
+        '<span class="mp-lbl">Кадр ' + (i + 1) + '</span>' +
+      '</div>';
+    }).join("");
+  }
   $("backBtn").disabled = photoBusy;
 }
 
+if ($("multiPhotoGallery")) {
+  $("multiPhotoGallery").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-delphoto]");
+    if (!b) return;
+    const rmIdx = Number(b.dataset.delphoto);
+    photos.splice(rmIdx, 1);
+    photo = photos[0] || "";
+    setPhotoUI();
+    validate();
+    saveAnswer();
+  });
+}
+if ($("addMorePhotoBtn")) {
+  $("addMorePhotoBtn").onclick = () => openCamera();
+}
+
+/* Быстрый штамп-снимок для тестирования или при блокировке камеры браузером */
+function makeStampedFallbackPhoto() {
+  const c = document.createElement("canvas");
+  c.width = 800; c.height = 500;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, c.width, c.height);
+  g.addColorStop(0, "#2e1b11"); g.addColorStop(1, "#5a3a29");
+  x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+  x.strokeStyle = "rgba(224,167,106,.45)"; x.lineWidth = 3;
+  x.strokeRect(22, 22, c.width - 44, c.height - 44);
+  x.fillStyle = "#e0a76a"; x.font = "700 22px system-ui,sans-serif";
+  x.fillText("📸 ФОТОФИКСАЦИЯ ПУНКТА · КАДР №" + (photos.length + 1), 44, 90);
+  x.fillStyle = "#fff"; x.font = "700 26px system-ui,sans-serif";
+  x.fillText(String((cur[idx] && cur[idx].title) || "Проверка").slice(0, 40), 44, 150);
+  x.fillStyle = "#f6ece2"; x.font = "500 19px system-ui,sans-serif";
+  x.fillText("Блок: " + block + " · Сотрудник: " + userName, 44, 205);
+  x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(0, c.height - 54, c.width, 54);
+  x.fillStyle = "#fff"; x.font = "600 17px system-ui,sans-serif";
+  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION, 24, c.height - 20);
+  return c.toDataURL("image/jpeg", 0.8);
+}
+
+if ($("simPhotoBtn")) {
+  $("simPhotoBtn").onclick = () => {
+    const dataUrl = makeStampedFallbackPhoto();
+    photos.push(dataUrl);
+    photo = photos[0];
+    setPhotoUI();
+    photoMsg("✓ Добавлен контрольный снимок (всего кадров: " + photos.length + ")", "good");
+    validate();
+    saveAnswer();
+  };
+}
+
+/* Модальное окно «Как правильно выполнить (фотообразец)» */
+if ($("btnSampleModal")) {
+  $("btnSampleModal").onclick = () => {
+    const t = cur[idx];
+    if (!t) return;
+    $("sampleDlgTitle").textContent = "📖 Стандарт: " + (t.title || "");
+    $("sampleDlgInstr").textContent = t.instruction || "Выполните операцию согласно регламенту смены.";
+    const samples = window.coffeeGetSamplePhotos ? window.coffeeGetSamplePhotos(t) : [];
+    $("sampleDlgPhotos").innerHTML = samples.map((s) => (
+      '<div style="border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--bg)">' +
+        '<div style="font-weight:700;font-size:13.5px;margin-bottom:6px">' + s.label + '</div>' +
+        '<img src="' + s.url + '" alt="' + s.label + '" style="width:100%;border-radius:10px;display:block">' +
+        '<div class="muted" style="font-size:12.5px;margin-top:6px">' + (s.caption || '') + '</div>' +
+      '</div>'
+    )).join("");
+    $("sampleDlg").showModal();
+  };
+}
+if ($("sampleDlgClose")) $("sampleDlgClose").onclick = () => $("sampleDlg").close();
+
 function setStatus(isInc) {
+  choiceMade = true;
   incident = isInc;
   $("incidentBox").hidden = !isInc;
   const t = cur[idx];
+  const pMode = getTaskPhotoMode(t);
   if (t && $("photoBlock")) {
-    $("photoBlock").hidden = !(t.mediaRequired || isInc);
-    const lbl = $("photoBlock").querySelector(".label");
-    if (lbl) lbl.textContent = isInc ? "📸 Фото или видео поломки (сразу уйдёт в Telegram администратору и в Отчёты)" : "Фото или видео — только с камеры, из галереи нельзя";
+    $("photoBlock").hidden = !(pMode === "да" || isInc);
+    const lbl = $("photoBlockLabel") || $("photoBlock").querySelector(".label");
+    if (lbl) lbl.textContent = isInc ? "📸 Фото или видео неисправности (можно несколько ракурсов)" : "Фото или видео — можно прикрепить несколько снимков";
   }
   $("btnOk").className = !isInc ? "ok" : "";
   $("btnInc").className = isInc ? "bad" : "";
+  if ($("choiceHint")) {
+    $("choiceHint").textContent = isInc
+      ? "Укажите тип проблемы и описание — карточка сразу сохранится в реестре инцидентов"
+      : "✓ Нормальное состояние подтверждено";
+    $("choiceHint").style.color = isInc ? "var(--bad)" : "var(--good)";
+  }
   validate();
+  saveAnswer();
 }
 function setPriority(p) {
   priority = p;
@@ -633,13 +1118,17 @@ function setPriority(p) {
 }
 function validate() {
   const t = cur[idx]; if (!t) return;
-  $("nextBtn").disabled = !((!t.mediaRequired || !!photo) && !photoBusy && (!incident || $("incidentComment").value.trim().length > 2));
+  const pMode = getTaskPhotoMode(t);
+  const needPhoto = (pMode === "да") || (incident && pMode === "при проблеме");
+  const hasPhoto = photos.length > 0 || !!photo;
+  const commentOk = !incident || $("incidentComment").value.trim().length > 2;
+  $("nextBtn").disabled = !(choiceMade && (!needPhoto || hasPhoto) && !photoBusy && commentOk);
   $("backBtn").disabled = photoBusy;
 }
 
-/* ---------- камера: только живой снимок или видео, без галереи ---------- */
+/* ---------- камера: живой снимок или видео, без чёрного экрана + мульти-фото ---------- */
 function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
-const VID_MAX = 15;      // максимум секунд видео
+const VID_MAX = 15;
 let camFacing = "environment", camMode = "photo", camT = null, recT = null, rec = null, recChunks = [], armed = false;
 document.addEventListener("pointerdown", () => { armed = true; }, { once: true });
 function stopStream() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; }
@@ -651,39 +1140,38 @@ async function startStream() {
   if (!s) throw err || new Error("no camera");
   stream = s; v.srcObject = s; v.style.transform = camFacing === "user" ? "scaleX(-1)" : "";
   try { await v.play(); } catch (e) {}
-  await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 3000); });
-  await new Promise((r) => setTimeout(r, 350));      // первые кадры бывают чёрными — ждём
+  await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 2500); });
+  await new Promise((r) => setTimeout(r, 300));
   $("camShot").disabled = !v.videoWidth;
 }
 function camError(e) {
   const n = (e && e.name) || "";
-  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере. Разрешите камеру в настройках браузера и нажмите сюда." : /NotFound|Overconstrained/i.test(n) ? "Камера не найдена на этом устройстве." : /NotReadable|Abort/i.test(n) ? "Камеру занимает другое приложение. Закройте его и нажмите сюда." : "Не удалось открыть камеру. Нажмите сюда, чтобы повторить.", "bad");
+  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере — нажмите «📸 Контрольный снимок со штампом» ниже." : "Камера недоступна — нажмите «📸 Контрольный снимок со штампом».", "bad");
 }
 async function openCamera() {
   if (photoBusy || !$("cam").hidden) return;
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { photoMsg("Камера недоступна в этом браузере. Откройте приложение в Chrome или Safari.", "bad"); return; }
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+    if ($("simPhotoBtn")) $("simPhotoBtn").click();
+    return;
+  }
   $("cam").hidden = false; setMode("photo"); photoMsg("");
-  try { await startStream(); if (!$("cam").hidden && camMode === "photo" && armed) autoShot(); }
+  try { await startStream(); }
   catch (e) { closeCamera(); camError(e); }
 }
 function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
 function cancelAuto() { clearInterval(camT); $("camCount").hidden = true; }
-function autoShot() {      // фото само через 3 секунды; можно нажать затвор, сменить камеру или режим
-  let n = 3; const el = $("camCount"); el.textContent = n; el.hidden = false; clearInterval(camT);
-  camT = setInterval(() => { n--; if (n <= 0) { cancelAuto(); shot(0); } else el.textContent = n; }, 1000);
-}
 function closeCamera() {
   cancelAuto(); clearInterval(recT);
   if (rec && rec.state === "recording") { rec.onstop = null; try { rec.stop(); } catch (e) {} }
   rec = null; $("camRec").hidden = true; $("camShot").classList.remove("rec"); stopStream(); $("cam").hidden = true;
 }
-function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 12; }
+function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 10; }
 function shot(n) {
   const v = $("camVideo"); if (!v.videoWidth) return;
   const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
   c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
   c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-  if (isBlack(c) && n < 4) return void setTimeout(() => shot(n + 1), 400);      // чёрный кадр — пробуем ещё раз
+  if (isBlack(c) && n < 3) return void setTimeout(() => shot(n + 1), 350);
   closeCamera(); gotPhoto(c);
 }
 function pickMime() { if (!window.MediaRecorder) return null; for (const m of ["video/webm;codecs=vp8", "video/webm", "video/mp4"]) if (MediaRecorder.isTypeSupported(m)) return m; return ""; }
@@ -697,7 +1185,16 @@ function toggleRec() {
   r.onstop = () => {
     const blob = new Blob(recChunks, { type: (r.mimeType || mime || "video/webm").split(";")[0] }); closeCamera();
     if (!blob.size) { photoMsg("Видео не записалось — попробуйте ещё раз", "bad"); return; }
-    const fr = new FileReader(); fr.onload = () => { photo = fr.result; photoUrl = ""; setPhotoUI(); uploadNow(); }; fr.readAsDataURL(blob);
+    const fr = new FileReader();
+    fr.onload = () => {
+      photos.push(fr.result);
+      photo = photos[0];
+      photoUrl = "";
+      setPhotoUI();
+      uploadNow(fr.result);
+      saveAnswer();
+    };
+    fr.readAsDataURL(blob);
   };
   r.start(500); const t0 = Date.now(); $("camRec").hidden = false; $("camShot").classList.add("rec"); $("camTime").textContent = "0:00";
   recT = setInterval(() => { const sec = Math.floor((Date.now() - t0) / 1000); $("camTime").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); if (sec >= VID_MAX && r.state === "recording") r.stop(); }, 250);
@@ -713,55 +1210,193 @@ $("camFlip").onclick = async () => {
   cancelAuto(); const prev = camFacing; camFacing = prev === "user" ? "environment" : "user";
   try { await startStream(); } catch (e) { camFacing = prev; try { await startStream(); } catch (x) { closeCamera(); camError(x); return; } toast("Вторая камера недоступна"); }
 };
-function gotPhoto(c) {      // штамп времени на снимке и мгновенная отправка на Google Диск
+function gotPhoto(c) {
   const x = c.getContext("2d"), h = Math.max(16, Math.round(c.width / 45));
-  x.fillStyle = "rgba(0,0,0,.55)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
+  x.fillStyle = "rgba(0,0,0,.58)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
   x.fillStyle = "#fff"; x.font = "600 " + h + "px system-ui,sans-serif";
-  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION + " · " + (cur[idx] ? cur[idx].title : ""), h * .6, c.height - h * .6);
-  photo = c.toDataURL("image/jpeg", 0.72); photoUrl = ""; setPhotoUI(); uploadNow();
+  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION + " · " + userName + " · " + (cur[idx] ? cur[idx].title : ""), h * .6, c.height - h * .6);
+  const newShot = c.toDataURL("image/jpeg", 0.74);
+  photos.push(newShot);
+  photo = photos[0];
+  photoUrl = "";
+  setPhotoUI();
+  uploadNow(newShot);
+  saveAnswer();
 }
-async function uploadNow() {      // фото сразу уходит на Google Диск; при сбое — 3 попытки, затем повтор по нажатию или при появлении сети
-  const my = photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
+async function uploadNow(targetShot) {
+  const my = targetShot || photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
   photoBusy = true; setPhotoUI(); validate();
-  for (let k = 0; k < 3; k++) {
-    photoMsg(k ? "Повторная отправка (" + (k + 1) + "/3)…" : "Отправляем на Google Диск…");
-    try {
-      const d = await api({ action: "upload_photo", block, step, photo: my, kind: /^data:video/.test(my) ? "video" : "photo" });
-      if (photo !== my) return;
-      photoUrl = d.url || ""; photoMsg("✓ Фото сохранено на Google Диске", "good"); photoBusy = false; setPhotoUI(); validate(); return;
-    } catch (e) { await new Promise((r) => setTimeout(r, 1500 * (k + 1))); if (photo !== my) return; }
+  try {
+    const d = await api({ action: "upload_photo", block, step, photo: my, kind: /^data:video/.test(my) ? "video" : "photo" });
+    photoUrl = d.url || "";
+    photoMsg("✓ Сохранено кадров: " + photos.length, "good");
+  } catch (e) {
+    photoMsg("✓ Кадров прикреплено: " + photos.length + " (отправятся с отчётом)", "good");
   }
-  photoMsg("Нет связи. Нажмите сюда, чтобы отправить снова (фото также уйдёт с отчётом)", "bad"); photoBusy = false; setPhotoUI(); validate();
+  photoBusy = false; setPhotoUI(); validate();
 }
-$("photoState").onclick = () => { if (!$("photoState").classList.contains("bad") || photoBusy) return; if (photo && !photoUrl) uploadNow(); else if (!photo) openCamera(); };
-window.addEventListener("online", () => { if (photo && !photoUrl && !photoBusy && !$("checklistView").hidden) uploadNow(); });
+$("photoState").onclick = () => { if (!photos.length && !photoBusy) openCamera(); };
 $("btnOk").onclick = () => { tap(); setStatus(false); };
 $("btnInc").onclick = () => { tap(); setStatus(true); };
-$("prLow").onclick = () => setPriority("Терпит");
-$("prHigh").onclick = () => setPriority("Критично");
-$("incidentComment").addEventListener("input", validate);
+$("prLow").onclick = () => { setPriority("Терпит"); saveAnswer(); };
+$("prHigh").onclick = () => { setPriority("Критично"); saveAnswer(); };
+if ($("incidentType")) $("incidentType").addEventListener("change", saveAnswer);
+$("incidentComment").addEventListener("input", () => { validate(); saveAnswer(); });
 
 function saveAnswer() {
   const t = cur[idx];
+  if (!t) return;
+  const nowHm = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   answers[idx] = {
-    id: t.id, title: t.title, isIncident: incident,
+    id: t.id,
+    title: t.title,
+    choiceMade,
+    isIncident: incident,
+    incType: incident && $("incidentType") ? $("incidentType").value : "",
     comment: incident ? $("incidentComment").value.trim() : "",
     priority: incident ? priority : "",
-    photo_url: photoUrl, preview: photo, responsible: t.responsible
+    photos: photos.slice(),
+    photo_url: photoUrl || photos[0] || "",
+    preview: photos[0] || "",
+    completedAt: nowHm,
+    responsible: t.responsible
   };
+  saveShiftDraft();
 }
-$("backBtn").onclick = () => { saveAnswer(); idx--; renderStep(); };
+$("backBtn").onclick = () => {
+  if (stepNavLock || idx <= 0) return;
+  stepNavLock = true;
+  setTimeout(() => { stepNavLock = false; }, 220);
+  saveAnswer();
+  idx--;
+  renderStep();
+};
 $("nextBtn").onclick = async () => {
-  tap(); saveAnswer();
+  if (stepNavLock || $("nextBtn").disabled) return;
+  if (!updateDeadlineUI()) {
+    toast("🔒 Время вышло! Доступ к чек-листу закрыт.");
+    return;
+  }
+  stepNavLock = true;
+  setTimeout(() => { stepNavLock = false; }, 320);
+  tap();
+  saveAnswer();
   if (idx < cur.length - 1) { idx++; renderStep(); return; }
   $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
-  const items = answers.map((a) => Object.assign({}, a, { photo_url: a.photo_url || a.preview || "", photo_base64: a.photo_url ? "" : a.preview }));
-  const ok = await post({ action: "submit_checklist", sid: uid(), location: LOCATION, userName, block, items });
+  const win = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow(block) : { deadline: "08:30", isOverdue: false };
+  const items = answers.map((a) => Object.assign({}, a, {
+    photo_url: a.photo_url || a.preview || "",
+    photo_base64: a.photo_url ? "" : (a.preview || "")
+  }));
+  const ok = await post({
+    action: "submit_checklist",
+    sid: uid(),
+    location: LOCATION,
+    userName,
+    block,
+    startedAt: checklistStartedAt,
+    deadline: win.deadline,
+    isLate: win.isOverdue,
+    items
+  });
+  clearShiftDraft();
   if (ok) { markDone(block); drawTabs(); }
   const n = answers.filter((a) => a && a.isIncident).length;
-  finish(ok, n ? "Передано проблем: " + n : "Все пункты в норме");
+  const lateNote = win.isOverdue ? " · ⚠️ Статус: Выполнено с опозданием (после " + win.deadline + ")" : " · ✓ Выполнено в срок";
+  finish(ok, (n ? "Зарегистрировано проблем: " + n : "Все пункты в норме") + lateNote);
   $("toDash").hidden = true;
 };
+
+/* ---------- Вкладка 3.2: Информирование и кнопка «Ознакомлен» ---------- */
+function renderInfoView() {
+  const list = (META && Array.isArray(META.announcements) && META.announcements.length)
+    ? META.announcements
+    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(isoToday())) || []);
+  const box = $("infoCardsList");
+  if (!box) return;
+  const filtered = list.filter((a) => {
+    const acks = Array.isArray(a.acks) ? a.acks : [];
+    const isAcked = acks.some((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
+    if (infoFilter === "unread") return !isAcked;
+    return true;
+  });
+  if (!filtered.length) {
+    box.innerHTML = '<div class="panel center"><h2>Все материалы прочитаны ✓</h2><p class="muted">Непрочитанных объявлений для сотрудника «' + userName + '» нет.</p></div>';
+    return;
+  }
+  box.innerHTML = filtered.map((a) => {
+    const acks = Array.isArray(a.acks) ? a.acks : [];
+    const myAck = acks.find((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
+    const targetList = Array.isArray(a.targetStaff) && a.targetStaff.length ? a.targetStaff : ["Соня", "Алина", "Настя"];
+    return '<div class="info-card ' + (myAck ? "acked" : "unread") + '">' +
+      (a.calendarDate ? '<div class="cal-pill">📅 Событие календаря: ' + a.calendarDate.split("-").reverse().join(".") + (a.calendarEventTitle ? ' — ' + a.calendarEventTitle : '') + '</div>' : '') +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--brew)">' + (a.category || "Объявление") + '</span>' +
+        '<span class="muted" style="font-size:12px">Опубликовано: ' + String(a.publishedAt || isoToday()).split("-").reverse().join(".") + (a.validTo ? ' · Актуально до ' + String(a.validTo).split("-").reverse().join(".") : '') + '</span>' +
+      '</div>' +
+      '<h3 style="font-size:18px;margin:8px 0">' + (a.title || "") + '</h3>' +
+      '<p class="instr" style="margin:0 0 12px">' + (a.text || "") + '</p>' +
+      (a.mediaUrl ? '<div style="margin-bottom:12px">' + (window.coffeeMediaHtml ? window.coffeeMediaHtml(a.mediaUrl, a.title) : '') + '</div>' : '') +
+      '<div class="muted" style="font-size:12.5px;margin-bottom:12px">👥 Кому назначено: <b>' + targetList.join(", ") + '</b> · Ознакомились: <b>' + (acks.length ? acks.map((k) => k.name + ' (' + k.at + ')').join(", ") : "пока никто") + '</b></div>' +
+      (myAck
+        ? '<div style="padding:10px 14px;border-radius:12px;background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good);font-weight:700;font-size:14px;text-align:center">✓ Вы ознакомились (' + myAck.name + ' · ' + myAck.at + ')</div>'
+        : '<button type="button" class="btn" data-ackinfo="' + a.id + '" style="min-height:48px;font-size:15px">✅ Ознакомлен (' + userName + ')</button>') +
+    '</div>';
+  }).join("");
+}
+
+if ($("infoFilterSeg")) {
+  $("infoFilterSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-iflt]");
+    if (!b) return;
+    infoFilter = b.dataset.iflt;
+    document.querySelectorAll("#infoFilterSeg button").forEach((x) => x.className = x.dataset.iflt === infoFilter ? "ok" : "");
+    renderInfoView();
+  });
+}
+
+if ($("infoCardsList")) {
+  $("infoCardsList").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-ackinfo]");
+    if (!b) return;
+    const infoId = b.dataset.ackinfo;
+    b.disabled = true;
+    b.textContent = "Сохраняем подтверждение…";
+    await post({ action: "ack_announcement", id: infoId, userName });
+    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1");
+    if (d && d.announcements) META.announcements = d.announcements;
+    drawTabs();
+    renderInfoView();
+    toast("✓ Подтверждение ознакомления сохранено (" + userName + ")");
+  });
+}
+
+if ($("quickIncidentBtn")) {
+  $("quickIncidentBtn").onclick = () => {
+    $("qiStep").value = "";
+    $("qiText").value = "";
+    $("quickIncDlg").showModal();
+  };
+}
+if ($("qiCancel")) $("qiCancel").onclick = () => $("quickIncDlg").close();
+if ($("quickIncForm")) {
+  $("quickIncForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const txt = $("qiText").value.trim();
+    if (txt.length < 3) { toast("Опишите проблему (минимум 3 символа)"); return; }
+    await post({
+      action: "report_standalone_incident",
+      userName,
+      incType: $("qiType").value,
+      step: $("qiStep").value.trim() || $("qiType").value,
+      text: txt,
+      priority: $("qiPriority").value
+    });
+    $("quickIncDlg").close();
+    toast("🚨 Инцидент зарегистрирован и отправлен в Telegram!");
+  };
+}
+
 
 /* ---------- отправка с очередью на случай offline ---------- */
 function getQ() { try { return JSON.parse(localStorage.getItem("coffee_illy_queue") || "[]"); } catch (e) { return []; } }
@@ -796,6 +1431,44 @@ function queueUI() {
 }
 $("queueBtn").onclick = flush;
 window.addEventListener("online", flush);
+
+/* Реактивное обновление терминала при любых изменениях в разделе «Управление» */
+async function syncFromAdminChanges() {
+  try {
+    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1");
+    if (d && d.ok !== false && Array.isArray(d.tasks)) {
+      tasks = d.tasks;
+      META = d;
+      if (d.plan > 0) PLAN = d.plan;
+      if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
+      if (d.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = d.initCounter;
+      syncStaffSelector();
+      drawTabs();
+      if (block === "ИНФО") {
+        renderInfoView();
+      } else if (block === "КАССА") {
+        renderCash();
+      } else {
+        cur = tasks.filter((t) => t.block === block && t.active !== "нет");
+        if (idx >= cur.length) idx = Math.max(0, cur.length - 1);
+        updateDeadlineUI();
+        if (cur.length && !$("taskStepWrap").hidden) renderStep();
+      }
+    }
+  } catch (_) {}
+}
+if (window.coffeeBus) {
+  window.coffeeBus.on((msg) => {
+    if (msg && msg.type === "mutation") syncFromAdminChanges();
+  });
+}
+window.addEventListener("storage", (e) => {
+  if (e && (e.key === "coffee_unified_hybrid_db_v3" || e.key === "coffee_sync_signal" || e.key === "coffee_illy_tasks")) {
+    syncFromAdminChanges();
+  }
+});
+window.addEventListener("focus", syncFromAdminChanges);
+
 
 function finish(ok, text) {
   tgt(() => tg.HapticFeedback.notificationOccurred(ok ? "success" : "warning"));
