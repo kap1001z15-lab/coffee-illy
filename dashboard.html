@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кофейня — дашборд</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
-<script src="config.js"></script>
+<script src="config.js">window.addEventListener('storage', (e) => { if (e && (e.key === 'coffee_unified_hybrid_db_v3' || e.key === 'coffee_sync_signal')) load(true, true); });
+window.addEventListener('focus', () => load(true, true));
+</script>
 <style>html.gate body>*:not(#gate){display:none!important}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1"||!localStorage.getItem("coffee_illy_pin"))document.documentElement.classList.add("gate")}catch(e){}</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <style>
@@ -293,16 +295,18 @@ function photos(d) {
 }
 
 function incs(d) {
-  const open = (d.incidents || []).filter((i) => i && (i.status === 'Open' || i.status === 'Открыта'));
-  $('incT').textContent = 'Открытые проблемы и фото поломок' + (open.length ? ' · ' + open.length : '');
+  const isAct = (i) => i && (window.coffeeIsIncActive ? window.coffeeIsIncActive(i.status) : (i.status === 'Open' || i.status === 'Открыта'));
+  const open = (d.incidents || []).filter(isAct);
+  $('incT').textContent = 'Активные инциденты и фото поломок' + (open.length ? ' · ' + open.length : '');
   $('inc').innerHTML = open.length
     ? open.slice(0, 6).map((i) => {
         const dt = String(i.date || '');
         const dmStr = dt.length >= 10 ? (dt.slice(8, 10) + '.' + dt.slice(5, 7)) : dt;
         const media = window.coffeeMediaHtml ? window.coffeeMediaHtml(i.photo, i.step) : '';
-        return '<div class="inc" style="align-items:flex-start"><div><b>' + esc(i.step || 'Проблема') + '</b>' + (i.priority === 'Критично' ? ' <span class="t no">критично</span>' : '') + '<div class="mu">' + esc(i.text) + (dmStr ? ' · ' + esc(dmStr) : '') + (i.who ? ' · ' + esc(i.who) : '') + '</div>' + media + '</div><button type="button" data-r="' + esc(i.id) + '">Решено</button></div>';
+        const stNorm = window.coffeeNormIncStatus ? window.coffeeNormIncStatus(i.status) : i.status;
+        return '<div class="inc" style="align-items:flex-start"><div><b>' + esc(i.step || 'Проблема') + '</b> <span class="t ' + (stNorm === 'Новая проблема' ? 'no' : 'ok') + '">' + esc(stNorm) + '</span>' + (i.priority === 'Критично' ? ' <span class="t no">критично</span>' : '') + '<div class="mu">' + (i.incType ? '<b>' + esc(i.incType) + ':</b> ' : '') + esc(i.text) + (dmStr ? ' · ' + esc(dmStr) : '') + (i.who ? ' · ' + esc(i.who) : '') + '</div>' + media + '</div><button type="button" data-r="' + esc(i.id) + '">✓ Решена</button></div>';
       }).join('') + (open.length > 6 ? '<p class="mu">и ещё ' + (open.length - 6) + ' — в управлении</p>' : '')
-    : '<p class="mu" style="margin:0">Всё в порядке — открытых проблем нет</p>';
+    : '<p class="mu" style="margin:0">Всё в порядке — активных проблем нет</p>';
 }
 
 $('inc').addEventListener('click', async (e) => {
