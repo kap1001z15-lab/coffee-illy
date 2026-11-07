@@ -50,6 +50,11 @@ function normalizeSettingKey(rawKey) {
   const low = k.toLowerCase();
   if (k === 'LOCATION' || /назван|точк|кофейн|локац/.test(low)) return 'LOCATION';
   if (k === 'PLAN' || /план|цель/.test(low)) return 'PLAN';
+  if (k === 'OPEN_START' || /начал.*открыт/.test(low)) return 'OPEN_START';
+  if (k === 'DAY_START' || /начал.*дн/.test(low)) return 'DAY_START';
+  if (k === 'DAY_DEADLINE' || /дедлайн.*дн|дневн.*дедлайн/.test(low)) return 'DAY_DEADLINE';
+  if (k === 'CLOSE_START' || /начал.*закрыт/.test(low)) return 'CLOSE_START';
+  if (k === 'CLOSE_DEADLINE' || /дедлайн.*закрыт/.test(low)) return 'CLOSE_DEADLINE';
   if (k === 'DEADLINE' || /дедлайн|время открыт|опоздан/.test(low)) return 'DEADLINE';
   if (k === 'WO_NORM' || /норм.*списан|списан/.test(low)) return 'WO_NORM';
   if (k === 'PHOTO_ALL' || /фото.*шаг|обязат.*фото/.test(low)) return 'PHOTO_ALL';
@@ -64,7 +69,12 @@ function normalizeSettingKey(rawKey) {
 const DEFAULT_SETTINGS_SCHEMA = [
   { id: 'LOCATION', label: 'Название точки', hint: 'Отображается в шапке всех разделов и на штампе фото в терминале', value: 'Кофейня №1', secret: false },
   { id: 'PLAN', label: 'План выручки на день, ₽', hint: 'Сразу пересчитывает цель и % выполнения на Дашборде, в Кассе и в Отчётах', value: '2200', secret: false },
-  { id: 'DEADLINE', label: 'Дедлайн открытия смены (ЧЧ:ММ)', hint: 'Пересчитывает статус «вовремя / с опозданием» на Дашборде и в Дисциплине', value: '08:30', secret: false },
+  { id: 'OPEN_START', label: 'Начало окна «Открытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к чек-листу «Открытие» в терминале', value: '07:30', secret: false },
+  { id: 'DEADLINE', label: 'Дедлайн закрытия «Открытие» (ЧЧ:ММ)', hint: 'После этого времени доступ к «Открытию» закрывается, создаётся инцидент и уходит алерт в Telegram', value: '08:30', secret: false },
+  { id: 'DAY_START', label: 'Начало окна «День» (ЧЧ:ММ)', hint: 'Время открытия доступа к дневному чек-листу в терминале', value: '11:00', secret: false },
+  { id: 'DAY_DEADLINE', label: 'Дедлайн закрытия «День» (ЧЧ:ММ)', hint: 'После этого времени доступ к блоку «День» закрывается и фиксируется инцидент просрочки', value: '18:30', secret: false },
+  { id: 'CLOSE_START', label: 'Начало окна «Закрытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к чек-листу «Закрытие» в терминале', value: '19:00', secret: false },
+  { id: 'CLOSE_DEADLINE', label: 'Дедлайн закрытия «Закрытие» (ЧЧ:ММ)', hint: 'После этого времени доступ к «Закрытию» закрывается и фиксируется инцидент просрочки', value: '22:30', secret: false },
   { id: 'WO_NORM', label: 'Норма списаний в день, ₽', hint: 'Пересчитывает индикатор списаний «в норме / выше нормы» на Дашборде', value: '15', secret: false },
   { id: 'PHOTO_ALL', label: 'Фото на каждом шаге (да/нет)', hint: 'Если «да», для всех шагов Открытия и Закрытия в Терминале фото обязательно', value: 'нет', secret: false },
   { id: 'INIT_COUNTER', label: 'Текущий счётчик кофемашины', hint: 'Автоматически подставляется как начальный счётчик при расчёте смен в Кассе', value: '600', secret: false },
@@ -73,6 +83,463 @@ const DEFAULT_SETTINGS_SCHEMA = [
   { id: 'CATEGORIES', label: 'Статьи расходов (через запятую)', hint: 'Список статей для добавления расходов в Отчётах и Управлении', value: 'Закупка продуктов, Аренда, Зарплата, Коммунальные, Реклама, Ремонт и оборудование, Прочее', secret: false },
   { id: 'ADMIN_PIN', label: 'Код доступа к дашборду и отчётам', hint: 'Код владельца для входа в Дашборд, Отчёты и Управление', value: '', secret: true, set: true }
 ];
+
+
+/* =========================================================================
+   МОДУЛЬ MVP v10 (Этапы 1–4 ТЗ v1.0, 17 критериев приёмки):
+   - Учётные записи сотрудников и роли (Владелец, Администратор, Шеф-бариста, Бариста)
+   - Временные окна и дедлайны чек-листов + авто-статус «Просрочено» без закрытия задним числом
+   - 3 режима фотофиксации (нет / да / при проблеме) + несколько фото на 1 пункт (photos[])
+   - Фотообразцы («Как правильно выполнить») с ракурсами и инструкцией по запросу
+   - Вкладка «Информирование» с привязкой к календарю и кнопкой «Ознакомлен» (фиксация даты/времени)
+   - Реестр инцидентов: 8 типов проблем и 5 статусов + история изменений без удаления при закрытии
+   - Показатель дисциплины по формуле ТЗ 7.1: Выполненные в срок / Все назначенные × 100%
+   ========================================================================= */
+window.COFFEE_MVP = {
+  ROLES: ['Бариста', 'Шеф-бариста', 'Администратор', 'Владелец', 'Технический специалист'],
+  INCIDENT_TYPES: [
+    'Поломка оборудования',
+    'Отсутствие необходимых продуктов',
+    'Проблемы с поставками',
+    'Проблемы с кассой',
+    'Жалобы клиентов',
+    'Нарушение санитарных требований',
+    'Проблемы с персоналом',
+    'Прочие операционные проблемы'
+  ],
+  INCIDENT_STATUSES: [
+    'Новая проблема',
+    'Принята в работу',
+    'Ожидает решения',
+    'Решена',
+    'Закрыта'
+  ],
+  INFO_TYPES: [
+    'Новые напитки',
+    'Изменения меню',
+    'Новые стандарты приготовления',
+    'Изменения регламентов',
+    'Обновления оборудования',
+    'Информация о мероприятиях',
+    'Обучающие материалы',
+    'Внутренние объявления'
+  ],
+  PHOTO_MODES: [
+    { k: 'нет', l: 'Фото не требуется' },
+    { k: 'да', l: 'Фото обязательно' },
+    { k: 'при проблеме', l: 'Фото обязательно при проблеме' }
+  ],
+  DEFAULT_STAFF: [
+    { id: 'st1', name: 'Соня', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st2', name: 'Алина', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st3', name: 'Настя', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st4', name: 'Максим', role: 'Шеф-бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st5', name: 'Администратор', role: 'Администратор', shop: 'Кофейня №1', active: 'да' }
+  ],
+  DEFAULT_ANNOUNCEMENTS: function (todayStr) {
+    return [
+      {
+        id: 'INFO-101',
+        title: '❄️ Запуск зимнего меню с 15 ноября (Привязка к календарю)',
+        category: 'Изменения меню',
+        text: 'С 15 ноября вводим сезонные напитки: Раф Пряная тыква, Глинтвейн на вишнёвом соке и Латте Имбирный пряник.\n• Проверьте наличие сезонных сиропов, пюре и специй на баре.\n• Изучите технологические карты граммовки (ТК №14–16).\n• При подаче предлагайте гостям сезонный десерт.',
+        publishedAt: '2026-11-05',
+        validFrom: '2026-11-05',
+        validTo: '2026-11-30',
+        calendarDate: '2026-11-15',
+        calendarEventTitle: 'Запуск зимнего меню',
+        mediaUrl: '',
+        targetStaff: ['Соня', 'Алина', 'Настя', 'Максим'],
+        acks: [
+          { name: 'Соня', at: '05.11.2026 09:15' },
+          { name: 'Максим', at: '05.11.2026 10:02' }
+        ]
+      },
+      {
+        id: 'INFO-102',
+        title: '☕ Стандарт настройки помола и температуры молока (60–65 °C)',
+        category: 'Новые стандарты приготовления',
+        text: 'Напоминание от шеф-бариста:\n• Утренний контрольный пролив эспрессо по весам и таймеру обязателен до 08:30.\n• При взбивании альтернативного молока (овсяное, кокосовое) не превышайте температуру 60 °C, чтобы сохранить сладость и глянцевую микропену.',
+        publishedAt: '2026-11-04',
+        validFrom: '2026-11-04',
+        validTo: '2026-12-01',
+        calendarDate: '',
+        calendarEventTitle: '',
+        mediaUrl: '',
+        targetStaff: ['Соня', 'Алина', 'Настя'],
+        acks: [
+          { name: 'Соня', at: '04.11.2026 14:10' },
+          { name: 'Алина', at: '04.11.2026 16:40' }
+        ]
+      },
+      {
+        id: 'INFO-103',
+        title: '🧽 Обновление регламента вечерней промывки кофемашины (Cafiza)',
+        category: 'Изменения регламентов',
+        text: 'При закрытии смены (шаг c03) обязательно снимать и замачивать рассекатели и холдеры в растворе Cafiza на 15 минут, после чего выполнять 5 проливов чистой водой. К шагу c03 прикреплять 2 фото: чистые группы и насухо натёртые холдеры.',
+        publishedAt: todayStr || '2026-11-06',
+        validFrom: todayStr || '2026-11-06',
+        validTo: '2026-12-15',
+        calendarDate: '2026-11-10',
+        calendarEventTitle: 'Плановый ТО кофемашины техником',
+        mediaUrl: '',
+        targetStaff: ['Соня', 'Алина', 'Настя'],
+        acks: []
+      }
+    ];
+  }
+};
+
+window.coffeeNormIncStatus = function (st) {
+  const s = String(st || '').trim();
+  if (!s || s === 'Open' || s === 'Открыта' || s === 'Новая проблема') return 'Новая проблема';
+  if (s === 'Принята в работу' || s === 'InProgress') return 'Принята в работу';
+  if (s === 'Ожидает решения' || s === 'Pending') return 'Ожидает решения';
+  if (s === 'Resolved' || s === 'Решена' || s === 'Решено') return 'Решена';
+  if (s === 'Closed' || s === 'Закрыта') return 'Закрыта';
+  return 'Новая проблема';
+};
+
+window.coffeeIsIncActive = function (st) {
+  const norm = window.coffeeNormIncStatus(st);
+  return norm !== 'Решена' && norm !== 'Закрыта';
+};
+
+window.coffeeIncStatusBadge = function (st) {
+  const norm = window.coffeeNormIncStatus(st);
+  const cls = (norm === 'Решена' || norm === 'Закрыта') ? 'ok' : (norm === 'Новая проблема' ? 'no' : 'warn');
+  return '<span class="tag ' + cls + '">' + norm + '</span>';
+};
+
+window.coffeeMakeSampleSvg = function (title, angleLabel, bullets, accentColor) {
+  const safeTitle = String(title || 'Стандарт выполнения').replace(/[<>&"']/g, '');
+  const safeAngle = String(angleLabel || 'Ракурс 1: Общий план').replace(/[<>&"']/g, '');
+  const lines = (bullets || []).slice(0, 3).map((b) => String(b).replace(/[<>&"']/g, '').slice(0, 56));
+  const acc = accentColor || '#e0a76a';
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">' +
+      '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#231710"/><stop offset="100%" stop-color="#4b3122"/></linearGradient></defs>' +
+      '<rect width="640" height="360" rx="18" fill="url(#bg)"/>' +
+      '<rect x="16" y="16" width="608" height="328" rx="14" fill="none" stroke="' + acc + '" stroke-width="2" stroke-dasharray="6 4"/>' +
+      '<rect x="32" y="30" width="235" height="28" rx="8" fill="rgba(224,167,106,0.22)"/>' +
+      '<text x="44" y="49" fill="' + acc + '" font-family="system-ui,sans-serif" font-size="13" font-weight="700">✓ ФОТООБРАЗЕЦ СТАНДАРТА</text>' +
+      '<text x="594" y="49" text-anchor="end" fill="#f6ece2" font-family="system-ui,sans-serif" font-size="13" font-weight="600">' + safeAngle + '</text>' +
+      '<text x="32" y="90" fill="#ffffff" font-family="system-ui,sans-serif" font-size="20" font-weight="700">' + safeTitle.slice(0, 44) + '</text>' +
+      '<rect x="32" y="110" width="576" height="164" rx="12" fill="rgba(0,0,0,0.3)" stroke="rgba(255,255,255,0.12)"/>' +
+      '<circle cx="90" cy="192" r="34" fill="rgba(76,195,138,0.18)" stroke="#4cc38a" stroke-width="2.5"/>' +
+      '<text x="90" y="202" text-anchor="middle" fill="#4cc38a" font-family="system-ui,sans-serif" font-size="26" font-weight="700">✓</text>' +
+      '<text x="144" y="146" fill="#e0a76a" font-family="system-ui,sans-serif" font-size="13.5" font-weight="700">КРИТЕРИИ ПРАВИЛЬНОГО ВЫПОЛНЕНИЯ:</text>' +
+      '<text x="144" y="176" fill="#f6ece2" font-family="system-ui,sans-serif" font-size="13.5">1. ' + (lines[0] || 'Чистая поверхность без пятен, крошек и разводов') + '</text>' +
+      '<text x="144" y="206" fill="#f6ece2" font-family="system-ui,sans-serif" font-size="13.5">2. ' + (lines[1] || 'Все элементы на штатных местах согласно регламенту') + '</text>' +
+      '<text x="144" y="236" fill="#f6ece2" font-family="system-ui,sans-serif" font-size="13.5">3. ' + (lines[2] || 'Хорошее освещение и чёткий фокус при съёмке') + '</text>' +
+      '<rect x="32" y="290" width="576" height="36" rx="8" fill="rgba(0,0,0,0.45)"/>' +
+      '<text x="46" y="313" fill="#c9d6d9" font-family="system-ui,sans-serif" font-size="12.5">Эталонный образец · При отклонении от стандарта нажмите «Обнаружена проблема»</text>' +
+    '</svg>';
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+};
+
+window.coffeeGetSamplePhotos = function (task) {
+  if (!task) return [];
+  if (Array.isArray(task.samplePhotos) && task.samplePhotos.length) return task.samplePhotos;
+  const rawLines = String(task.instruction || '')
+    .split(/\r?\n/)
+    .map((s) => s.replace(/^[•\-*]\s*/, '').trim())
+    .filter(Boolean);
+  return [
+    {
+      label: 'Ракурс 1 · Общий вид',
+      caption: 'Общий план рабочей зоны / оборудования по стандарту',
+      url: window.coffeeMakeSampleSvg(task.title, 'Ракурс 1: Общий план', rawLines.slice(0, 3), '#e0a76a')
+    },
+    {
+      label: 'Ракурс 2 · Детали контроля',
+      caption: 'Крупный план узлов контроля (отсутствие подтёков, накипи, чистота поверхностей)',
+      url: window.coffeeMakeSampleSvg(task.title, 'Ракурс 2: Крупный план', rawLines.slice(1, 4).length ? rawLines.slice(1, 4) : rawLines, '#4cc38a')
+    }
+  ];
+};
+
+window.coffeeIsBlockCompletedToday = function (block, dbOpt) {
+  const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+  const today = _isoToday();
+  const rec = (db.checklists || []).find((c) => c.date === today && c.block === block);
+  let lsDone = false;
+  try { lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + block) === '1'; } catch (_) {}
+  return {
+    completed: !!rec || lsDone,
+    record: rec || null
+  };
+};
+
+window.coffeeGetBlockWindow = function (block, dbOpt) {
+  const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+  const openStart = db.openStart || '07:30';
+  const openDl = db.deadline || '08:30';
+  const dayStart = db.dayStart || '11:00';
+  const dayDl = db.dayDeadline || '18:30';
+  const closeStart = db.closeStart || '19:00';
+  const closeDl = db.closeDeadline || '22:30';
+  const wins = {
+    'Открытие': { openTime: openStart, deadline: openDl },
+    'День': { openTime: dayStart, deadline: dayDl },
+    'Закрытие': { openTime: closeStart, deadline: closeDl }
+  };
+  const w = wins[block] || { openTime: '07:00', deadline: '23:59' };
+  const now = new Date();
+  const curHm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  const today = _isoToday();
+  const extKey = today + ':' + block;
+  const extObj = (db.deadlineExtensions && db.deadlineExtensions[extKey]) || null;
+  const effectiveOpen = (extObj && extObj.openFrom) ? extObj.openFrom : w.openTime;
+  const effectiveDeadline = (extObj && extObj.until) ? extObj.until : w.deadline;
+  const comp = window.coffeeIsBlockCompletedToday(block, db);
+  const completed = comp.completed;
+
+  const isBefore = !completed && curHm < effectiveOpen && !(extObj && extObj.forceOpen);
+  const isOverdue = !completed && curHm > effectiveDeadline;
+  const canPass = !completed && !isBefore && !isOverdue;
+
+  let state = 'open';
+  let status = 'Доступ открыт (до ' + effectiveDeadline + ')';
+  if (completed) {
+    state = 'completed';
+    status = 'Выполнено в срок' + (comp.record && comp.record.time ? ' (' + comp.record.time + ')' : '');
+  } else if (isOverdue) {
+    state = 'overdue_closed';
+    status = 'Доступ закрыт · Просрочено (дедлайн был ' + effectiveDeadline + ')';
+  } else if (isBefore) {
+    state = 'before_window';
+    status = 'Доступ закрыт до ' + effectiveOpen + ' (окно ' + effectiveOpen + '–' + effectiveDeadline + ')';
+  }
+
+  return {
+    block,
+    openTime: effectiveOpen,
+    deadline: effectiveDeadline,
+    baseOpenTime: w.openTime,
+    baseDeadline: w.deadline,
+    extended: !!extObj,
+    extensionReason: extObj ? extObj.reason : '',
+    currentTime: curHm,
+    completed,
+    completedRecord: comp.record,
+    isBefore,
+    isOverdue,
+    canPass,
+    state,
+    status
+  };
+};
+
+/* Автоматическая фиксация инцидента и отправка Telegram-уведомления администратору
+   при несвоевременном выполнении любого из чек-листов (Открытие, День, Закрытие) */
+window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
+  if (typeof getUDB !== 'function') return [];
+  const db = getUDB();
+  const today = _isoToday();
+  db.overdueIncidentsCreated = db.overdueIncidentsCreated || {};
+  let activeBarista = activeBaristaOpt || '';
+  if (!activeBarista) {
+    try { activeBarista = localStorage.getItem('coffee_active_barista') || 'Дежурный бариста'; } catch (_) { activeBarista = 'Дежурный бариста'; }
+  }
+  const newlyCreated = [];
+  let changed = false;
+
+  ['Открытие', 'День', 'Закрытие'].forEach((blk) => {
+    const win = window.coffeeGetBlockWindow(blk, db);
+    const key = today + ':' + blk;
+    if (win.state === 'overdue_closed' && !db.overdueIncidentsCreated[key]) {
+      db.overdueIncidentsCreated[key] = { at: win.currentTime, deadline: win.deadline };
+      const codeMap = { 'Открытие': 'OPEN', 'День': 'DAY', 'Закрытие': 'CLOSE' };
+      const incId = 'INC-LATE-' + today.slice(8, 10) + today.slice(5, 7) + '-' + (codeMap[blk] || 'CHK');
+      const existing = (db.incidents || []).find((x) => x.id === incId);
+      if (!existing) {
+        const newInc = {
+          id: incId,
+          date: today,
+          time: win.deadline,
+          location: db.location || 'Кофейня №1',
+          block: blk,
+          incType: 'Проблемы с персоналом',
+          step: '⏰ Не выполнен в срок чек-лист «' + blk + '»',
+          text: 'Чек-лист «' + blk + '» не был пройден сотрудником в отведённое время (' + win.openTime + ' – ' + win.deadline + '). Доступ к прохождению чек-листа в терминале автоматически закрыт.',
+          priority: 'Критично',
+          status: 'Новая проблема',
+          who: activeBarista,
+          owner: 'Администратор',
+          photo: '',
+          photos: [],
+          isOverdueAuto: true,
+          history: [
+            {
+              time: today.split('-').reverse().join('.') + ' ' + win.currentTime,
+              actor: 'Система автоконтроля',
+              status: 'Новая проблема',
+              note: 'Автоматическая блокировка чек-листа после дедлайна (' + win.deadline + ') и отправка уведомления администратору'
+            }
+          ]
+        };
+        db.incidents.unshift(newInc);
+        appendAudit(
+          db,
+          'Система автоконтроля',
+          'Просрочка чек-листа «' + blk + '» (доступ закрыт)',
+          'Создан инцидент ' + incId + ' · Окно ' + win.openTime + '–' + win.deadline + ' пропущено (смена: ' + activeBarista + ')'
+        );
+        newlyCreated.push(newInc);
+        changed = true;
+        if (window.coffeeTelegram && window.coffeeTelegram.sendOverdueAlert) {
+          window.coffeeTelegram.sendOverdueAlert({
+            incId,
+            block: blk,
+            openTime: win.openTime,
+            deadline: win.deadline,
+            time: win.currentTime,
+            who: activeBarista,
+            location: db.location
+          }).catch(() => {});
+        }
+      }
+    }
+  });
+
+  if (changed) {
+    saveUDB(db);
+    if (window.coffeeCache) window.coffeeCache.invalidate('all');
+    if (window.coffeeBus) window.coffeeBus.emit('mutation', { action: 'auto_overdue_incident', count: newlyCreated.length });
+  }
+  return newlyCreated;
+};
+
+window.coffeeCalcDiscipline = function (dbOpt, fromStr, toStr) {
+  const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+  const t = _isoToday();
+  const from = fromStr || _shiftIso(t, -6);
+  const to = toStr || t;
+  const checklists = (db.checklists || []).filter((c) => c.date >= from && c.date <= to);
+  const staffMap = {};
+  const ensureStaff = (name) => {
+    const nm = String(name || 'Бариста').trim() || 'Бариста';
+    if (!staffMap[nm]) {
+      staffMap[nm] = {
+        name: nm,
+        assignedTasks: 0,
+        onTimeTasks: 0,
+        lateTasks: 0,
+        missedTasks: 0,
+        checklistsOnTime: 0,
+        checklistsLate: 0,
+        incidentsReported: 0,
+        disciplinePct: 100
+      };
+    }
+    return staffMap[nm];
+  };
+
+  let totalAssigned = 0, totalOnTime = 0, totalLate = 0, totalMissed = 0;
+  const seenKeys = {};
+
+  checklists.forEach((chk) => {
+    const uniqKey = chk.date + ':' + chk.block + ':' + (chk.who || '');
+    if (seenKeys[uniqKey]) return; /* Исключаем повторный учёт одной и той же задачи (п. 7.1 ТЗ) */
+    seenKeys[uniqKey] = true;
+    const st = ensureStaff(chk.who);
+    const stepCount = Number(chk.totalSteps) || (chk.block === 'Открытие' ? 8 : chk.block === 'День' ? 6 : 14);
+    const dl = chk.deadline || (chk.block === 'Открытие' ? (db.deadline || '08:30') : chk.block === 'День' ? (db.dayDeadline || '16:30') : (db.closeDeadline || '22:30'));
+    const isLate = chk.isLate != null ? !!chk.isLate : (String(chk.time || '') > dl);
+    st.assignedTasks += stepCount;
+    totalAssigned += stepCount;
+    if (isLate) {
+      st.lateTasks += stepCount;
+      st.checklistsLate += 1;
+      totalLate += stepCount;
+    } else {
+      st.onTimeTasks += stepCount;
+      st.checklistsOnTime += 1;
+      totalOnTime += stepCount;
+    }
+    st.incidentsReported += Number(chk.problems) || 0;
+  });
+
+  (db.cash || []).filter((c) => c.date >= from && c.date <= to && (Number(c.cash) + Number(c.card) > 0)).forEach((c) => {
+    const dayChks = checklists.filter((x) => x.date === c.date);
+    const mainBarista = String(c.barista || 'Бариста').split(',')[0].trim() || 'Бариста';
+    const st = ensureStaff(mainBarista);
+    ['Открытие', 'День', 'Закрытие'].forEach((blk) => {
+      if (!dayChks.some((x) => x.block === blk)) {
+        const blkTasks = blk === 'Открытие' ? 8 : blk === 'День' ? 6 : 14;
+        st.assignedTasks += blkTasks;
+        st.missedTasks += blkTasks;
+        totalAssigned += blkTasks;
+        totalMissed += blkTasks;
+      }
+    });
+  });
+
+  Object.values(staffMap).forEach((s) => {
+    s.disciplinePct = s.assignedTasks > 0 ? Math.round((s.onTimeTasks / s.assignedTasks) * 100) : 100;
+  });
+
+  const overallPct = totalAssigned > 0 ? Math.round((totalOnTime / totalAssigned) * 100) : 100;
+  return {
+    overallPct,
+    totalAssigned,
+    totalOnTime,
+    totalLate,
+    totalMissed,
+    byStaff: Object.values(staffMap).sort((a, b) => b.disciplinePct - a.disciplinePct)
+  };
+};
+
+function ensureMvpFields(db) {
+  const t = _isoToday();
+  if (!Array.isArray(db.staff) || !db.staff.length) {
+    db.staff = window.COFFEE_MVP.DEFAULT_STAFF.map((x) => Object.assign({}, x));
+  }
+  if (!Array.isArray(db.announcements) || !db.announcements.length) {
+    db.announcements = window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(t);
+  }
+  db.deadlineExtensions = db.deadlineExtensions || {};
+  if (!Array.isArray(db.auditLog)) {
+    db.auditLog = [
+      { ts: Date.now() - 86400000, date: '2026-11-05', time: '08:20', actor: 'Соня (Бариста)', action: 'Чек-лист «Открытие»', details: 'Выполнен в срок (08:20, дедлайн 08:30)' },
+      { ts: Date.now() - 43200000, date: '2026-11-05', time: '09:15', actor: 'Соня (Бариста)', action: 'Ознакомление с инфо', details: 'Подтверждено: «❄️ Запуск зимнего меню с 15 ноября»' }
+    ];
+  }
+  (db.incidents || []).forEach((inc) => {
+    inc.status = window.coffeeNormIncStatus(inc.status);
+    inc.incType = inc.incType || 'Поломка оборудования';
+    if (!Array.isArray(inc.photos)) {
+      inc.photos = inc.photo ? [inc.photo] : [];
+    }
+    if (!inc.photo && inc.photos.length) inc.photo = inc.photos[0];
+    if (!Array.isArray(inc.history) || !inc.history.length) {
+      inc.history = [
+        { time: (inc.date || t) + ' ' + (inc.time || '12:00'), actor: inc.who || 'Бариста', status: inc.status, note: 'Регистрация карточки инцидента' }
+      ];
+    }
+  });
+  (db.tasks || []).forEach((task) => {
+    if (!task.photoMode) {
+      task.photoMode = task.photo === 'да' ? 'да' : (task.photo === 'при проблеме' ? 'при проблеме' : 'нет');
+    }
+  });
+}
+
+function appendAudit(db, actor, action, details) {
+  const now = new Date();
+  const hm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  db.auditLog = db.auditLog || [];
+  db.auditLog.unshift({
+    ts: Date.now(),
+    date: _isoToday(),
+    time: hm,
+    actor: actor || 'Система',
+    action: action || 'Действие',
+    details: details || ''
+  });
+  if (db.auditLog.length > 250) db.auditLog.length = 250;
+}
 
 const UDB_KEY = 'coffee_unified_hybrid_db_v3';
 
@@ -203,11 +670,21 @@ function syncSettingsFields(db) {
     if (parsedCats.length) db.categories = parsedCats;
   }
 
+  db.openStart = getVal('OPEN_START', db.openStart || '07:30');
+  db.dayStart = getVal('DAY_START', db.dayStart || '11:00');
+  db.dayDeadline = getVal('DAY_DEADLINE', db.dayDeadline || '18:30');
+  db.closeStart = getVal('CLOSE_START', db.closeStart || '19:00');
+  db.closeDeadline = getVal('CLOSE_DEADLINE', db.closeDeadline || '22:30');
+  ensureMvpFields(db);
+
   const forcePhoto = db.photoAll === 'да';
   (db.tasks || []).forEach((t, i) => {
     t.row = i + 2;
     const isOC = t.block === 'Открытие' || t.block === 'Закрытие';
-    t.mediaRequired = (t.photo === 'да') || (forcePhoto && isOC);
+    const pMode = t.photoMode || t.photo || 'нет';
+    t.photoMode = pMode;
+    t.mediaRequired = (pMode === 'да') || (forcePhoto && isOC);
+    t.mediaOnProblem = (pMode === 'при проблеме' || pMode === 'да');
   });
 }
 
@@ -243,7 +720,7 @@ function saveUDB(db) {
     localStorage.setItem('coffee_meta_location', db.location);
     localStorage.setItem('coffee_meta_plan', String(db.plan));
     localStorage.setItem('coffee_meta_init_counter', String(db.initCounter));
-    const openCnt = (db.incidents || []).filter((i) => i.status === 'Open' || i.status === 'Открыта').length;
+    const openCnt = (db.incidents || []).filter((i) => window.coffeeIsIncActive(i.status)).length;
     localStorage.setItem('coffee_meta_open_inc', String(openCnt));
   } catch (_) {}
 }
@@ -355,6 +832,7 @@ function mergeOrSaveCashDay(db, payload) {
 
 function enforceSettingsOnResponse(act, data) {
   if (!data || data.ok === false) return data;
+  window.coffeeEnforceOverdueChecklists();
   const db = getUDB();
 
   data.location = db.location;
@@ -362,15 +840,25 @@ function enforceSettingsOnResponse(act, data) {
     data.plan = db.plan;
     data.photoAll = db.photoAll;
     data.initCounter = db.initCounter;
-    if (Array.isArray(data.tasks)) {
-      const forcePhoto = db.photoAll === 'да';
-      data.tasks = data.tasks.map((t) => {
-        const isOC = t.block === 'Открытие' || t.block === 'Закрытие';
-        return Object.assign({}, t, {
-          mediaRequired: (t.photo === 'да' || t.mediaRequired === true) || (forcePhoto && isOC)
-        });
+    data.deadline = db.deadline;
+    data.openStart = db.openStart || '07:30';
+    data.dayStart = db.dayStart || '11:00';
+    data.dayDeadline = db.dayDeadline || '18:30';
+    data.closeStart = db.closeStart || '19:00';
+    data.closeDeadline = db.closeDeadline || '22:30';
+    data.announcements = db.announcements || [];
+    data.staff = db.staff || [];
+    data.deadlineExtensions = db.deadlineExtensions || {};
+    const forcePhoto = db.photoAll === 'да';
+    /* Всегда отдаём актуальный список задач из единой базы (с учётом всех изменений из «Управления») */
+    data.tasks = (db.tasks || []).filter((t) => t.active !== 'нет').map((t) => {
+      const isOC = t.block === 'Открытие' || t.block === 'Закрытие';
+      const pMode = t.photoMode || t.photo || 'нет';
+      return Object.assign({}, t, {
+        photoMode: pMode,
+        mediaRequired: (pMode === 'да') || (forcePhoto && isOC)
       });
-    }
+    });
   } else if (act === 'dashboard') {
     data.plan = db.plan;
     data.woNorm = db.woNorm;
@@ -412,8 +900,22 @@ function enforceSettingsOnResponse(act, data) {
       data.discipline.late = lateCount;
     }
   } else if (act === 'admin') {
+    data.location = db.location;
     data.categories = db.categories;
     data.settings = db.settings;
+    data.tasks = db.tasks;
+    data.cash = db.cash;
+    data.expenses = db.expenses;
+    data.incidents = db.incidents;
+    data.announcements = db.announcements || [];
+    data.staff = db.staff || [];
+    data.auditLog = db.auditLog || [];
+    data.deadlineExtensions = db.deadlineExtensions || {};
+  }
+  if (act === 'dashboard' || act === 'report') {
+    data.announcements = db.announcements || [];
+    data.staff = db.staff || [];
+    data.mvpDiscipline = window.coffeeCalcDiscipline(db, data.from, data.to);
   }
   return data;
 }
@@ -551,8 +1053,9 @@ function applyLocalMutation(payload) {
       groupName: payload.groupName || payload.block,
       title: (payload.title || '').trim(),
       instruction: (payload.instruction || '').trim(),
-      photo: payload.mediaRequired || payload.photo || 'нет',
-      mediaRequired: (payload.mediaRequired || payload.photo) === 'да',
+      photo: payload.photoMode || payload.mediaRequired || payload.photo || 'нет',
+      photoMode: payload.photoMode || payload.mediaRequired || payload.photo || 'нет',
+      mediaRequired: (payload.photoMode || payload.mediaRequired || payload.photo) === 'да',
       responsible: (payload.responsible || '').trim(),
       active: payload.active || 'да'
     };
@@ -599,21 +1102,199 @@ function applyLocalMutation(payload) {
     }
   } else if (a === 'delete_expense') {
     db.expenses = db.expenses.filter((x) => x.id !== payload.id);
+  } else if (a === 'reorder_task') {
+    const idx = db.tasks.findIndex((t) => t.id === payload.id || t.row === Number(payload.row));
+    if (idx >= 0) {
+      const dir = payload.dir === 'up' ? -1 : 1;
+      const blk = db.tasks[idx].block;
+      let swapIdx = idx + dir;
+      while (swapIdx >= 0 && swapIdx < db.tasks.length && db.tasks[swapIdx].block !== blk) swapIdx += dir;
+      if (swapIdx >= 0 && swapIdx < db.tasks.length) {
+        const tmp = db.tasks[idx];
+        db.tasks[idx] = db.tasks[swapIdx];
+        db.tasks[swapIdx] = tmp;
+        appendAudit(db, 'Администратор', 'Изменение порядка задач', 'Перемещена задача «' + tmp.title + '»');
+      }
+    }
+  } else if (a === 'ack_announcement') {
+    const ann = (db.announcements || []).find((x) => x.id === payload.id);
+    const whoName = String(payload.userName || 'Бариста').trim();
+    if (ann && whoName) {
+      ann.acks = Array.isArray(ann.acks) ? ann.acks : [];
+      if (!ann.acks.some((k) => k.name.toLowerCase() === whoName.toLowerCase())) {
+        const now = new Date();
+        const stamp = _isoToday().split('-').reverse().join('.') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        ann.acks.push({ name: whoName, at: stamp });
+        appendAudit(db, whoName, 'Ознакомление с материалом', 'Ознакомлен с «' + ann.title + '» (' + stamp + ')');
+      }
+    }
+  } else if (a === 'save_announcement') {
+    db.announcements = db.announcements || [];
+    const item = {
+      id: payload.id || ('INFO-' + Math.floor(100 + Math.random() * 900)),
+      title: String(payload.title || '').trim(),
+      category: payload.category || 'Внутренние объявления',
+      text: String(payload.text || '').trim(),
+      publishedAt: payload.publishedAt || _isoToday(),
+      validFrom: payload.validFrom || _isoToday(),
+      validTo: payload.validTo || _shiftIso(_isoToday(), 30),
+      calendarDate: payload.calendarDate || '',
+      calendarEventTitle: String(payload.calendarEventTitle || '').trim(),
+      mediaUrl: payload.mediaUrl || '',
+      targetStaff: Array.isArray(payload.targetStaff)
+        ? payload.targetStaff
+        : String(payload.targetStaff || 'Соня, Алина, Настя').split(',').map((s) => s.trim()).filter(Boolean),
+      acks: Array.isArray(payload.acks) ? payload.acks : []
+    };
+    const exIdx = db.announcements.findIndex((x) => x.id === item.id);
+    if (exIdx >= 0) {
+      item.acks = db.announcements[exIdx].acks || [];
+      db.announcements[exIdx] = item;
+    } else {
+      db.announcements.unshift(item);
+    }
+    appendAudit(db, 'Администратор', 'Публикация информирования', item.title);
+  } else if (a === 'delete_announcement') {
+    db.announcements = (db.announcements || []).filter((x) => x.id !== payload.id);
+    appendAudit(db, 'Администратор', 'Удаление инфо-материала', String(payload.id || ''));
+  } else if (a === 'save_staff') {
+    db.staff = db.staff || [];
+    const stItem = {
+      id: payload.id || ('st_' + Date.now().toString(36)),
+      name: String(payload.name || '').trim(),
+      role: payload.role || 'Бариста',
+      shop: payload.shop || db.location || 'Кофейня №1',
+      active: payload.active || 'да'
+    };
+    const sIdx = db.staff.findIndex((x) => x.id === stItem.id || x.name.toLowerCase() === stItem.name.toLowerCase());
+    if (sIdx >= 0) db.staff[sIdx] = Object.assign({}, db.staff[sIdx], stItem);
+    else db.staff.push(stItem);
+    appendAudit(db, 'Администратор', 'Обновление сотрудника', stItem.name + ' (' + stItem.role + ')');
+  } else if (a === 'delete_staff') {
+    db.staff = (db.staff || []).filter((x) => x.id !== payload.id && x.name !== payload.name);
+  } else if (a === 'extend_deadline') {
+    const dt = payload.date || _isoToday();
+    const blk = payload.block || 'Открытие';
+    const extKey = dt + ':' + blk;
+    db.deadlineExtensions = db.deadlineExtensions || {};
+    const nowHm = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    db.deadlineExtensions[extKey] = {
+      openFrom: payload.openFrom || '00:00',
+      until: payload.until || '23:59',
+      forceOpen: true,
+      reason: String(payload.reason || 'Разблокировано администратором').trim(),
+      by: payload.actor || 'Администратор',
+      at: nowHm
+    };
+    if (db.overdueIncidentsCreated) delete db.overdueIncidentsCreated[extKey];
+    appendAudit(db, 'Администратор', 'Разблокировка / Продление чек-листа', blk + ' открыт до ' + (payload.until || '23:59') + ' · Причина: ' + (payload.reason || ''));
+  } else if (a === 'save_block_windows') {
+    const pairs = [
+      ['OPEN_START', payload.openStart],
+      ['DEADLINE', payload.openDeadline],
+      ['DAY_START', payload.dayStart],
+      ['DAY_DEADLINE', payload.dayDeadline],
+      ['CLOSE_START', payload.closeStart],
+      ['CLOSE_DEADLINE', payload.closeDeadline]
+    ];
+    pairs.forEach(([k, v]) => {
+      if (v) {
+        const s = (db.settings || []).find((x) => x.id === k);
+        if (s) s.value = String(v).trim();
+        else db.settings.push({ id: k, label: k, hint: '', value: String(v).trim(), secret: false });
+        db.modifiedSettings[k] = Date.now();
+      }
+    });
+    /* При ручном изменении окон времени сбрасываем временные расширения за сегодня, чтобы новые часы сразу действовали */
+    db.deadlineExtensions = {};
+    db.overdueIncidentsCreated = {};
+    appendAudit(db, 'Администратор', 'Изменение временных окон чек-листов', 'Открытие: ' + (payload.openStart || '') + '–' + (payload.openDeadline || '') + ', День: ' + (payload.dayStart || '') + '–' + (payload.dayDeadline || '') + ', Закрытие: ' + (payload.closeStart || '') + '–' + (payload.closeDeadline || ''));
+  } else if (a === 'simulate_overdue') {
+    const blk = payload.block || 'День';
+    const today = _isoToday();
+    const now = new Date();
+    const pastMin = new Date(now.getTime() - 10 * 60000);
+    const pastHm = String(pastMin.getHours()).padStart(2, '0') + ':' + String(pastMin.getMinutes()).padStart(2, '0');
+    const startHm = '06:00';
+    const setKeyMap = {
+      'Открытие': ['OPEN_START', 'DEADLINE'],
+      'День': ['DAY_START', 'DAY_DEADLINE'],
+      'Закрытие': ['CLOSE_START', 'CLOSE_DEADLINE']
+    };
+    const [sKey, dKey] = setKeyMap[blk] || ['DAY_START', 'DAY_DEADLINE'];
+    const sObj = (db.settings || []).find((x) => x.id === sKey);
+    const dObj = (db.settings || []).find((x) => x.id === dKey);
+    if (sObj) sObj.value = startHm;
+    if (dObj) dObj.value = pastHm;
+    db.modifiedSettings[sKey] = Date.now();
+    db.modifiedSettings[dKey] = Date.now();
+    /* Удаляем отметку о выполнении этого блока за сегодня, чтобы сработала блокировка и авто-инцидент */
+    db.checklists = (db.checklists || []).filter((c) => !(c.date === today && c.block === blk));
+    try { localStorage.removeItem('coffee_illy_done_' + today + '_' + blk); } catch (_) {}
+    if (db.deadlineExtensions) delete db.deadlineExtensions[today + ':' + blk];
+    if (db.overdueIncidentsCreated) delete db.overdueIncidentsCreated[today + ':' + blk];
   } else if (a === 'resolve_incident') {
-    db.resolvedIncidents[payload.id] = 'Resolved';
+    const normSt = 'Решена';
+    db.resolvedIncidents[payload.id] = normSt;
     const inc = db.incidents.find((x) => x.id === payload.id);
-    if (inc) inc.status = 'Resolved';
+    if (inc) {
+      inc.status = normSt;
+      const nowHm = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      inc.resolvedAt = _isoToday() + ' ' + nowHm;
+      inc.history = inc.history || [];
+      inc.history.push({ time: _isoToday().split('-').reverse().join('.') + ' ' + nowHm, actor: payload.actor || 'Администратор', status: normSt, note: payload.note || 'Отмечено как решённое' });
+      appendAudit(db, payload.actor || 'Администратор', 'Статус инцидента → Решена', inc.id + ' (' + inc.step + ')');
+    }
   } else if (a === 'update_incident') {
     const inc = db.incidents.find((x) => x.id === payload.id);
     if (inc) {
+      const nowHm = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       if (payload.status) {
-        const st = (payload.status === 'Open' || payload.status === 'Открыта') ? 'Open' : 'Resolved';
+        const st = window.coffeeNormIncStatus(payload.status);
         inc.status = st;
         db.resolvedIncidents[payload.id] = st;
+        if (st === 'Решена' || st === 'Закрыта') inc.resolvedAt = _isoToday() + ' ' + nowHm;
       }
+      if (payload.incType != null) inc.incType = payload.incType;
       if (payload.comment != null) inc.text = payload.comment;
       if (payload.priority != null) inc.priority = payload.priority;
       if (payload.responsible != null) inc.owner = payload.responsible || '—';
+      inc.history = inc.history || [];
+      inc.history.push({
+        time: _isoToday().split('-').reverse().join('.') + ' ' + nowHm,
+        actor: payload.actor || 'Администратор',
+        status: inc.status,
+        note: payload.statusNote || ('Обновлена карточка (' + inc.status + ')')
+      });
+      appendAudit(db, payload.actor || 'Администратор', 'Обновление инцидента ' + inc.id, 'Статус: ' + inc.status);
+    }
+  } else if (a === 'report_standalone_incident') {
+    const now = new Date();
+    const tStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const photosArr = Array.isArray(payload.photos) && payload.photos.length ? payload.photos : (payload.photo ? [payload.photo] : []);
+    const newInc = {
+      id: 'INC-' + Math.floor(100 + Math.random() * 900),
+      date: _isoToday(),
+      time: tStr,
+      location: db.location || 'Кофейня №1',
+      block: payload.block || 'Вне чек-листа',
+      incType: payload.incType || 'Поломка оборудования',
+      step: payload.step || payload.incType || 'Внеплановый инцидент',
+      text: payload.text || payload.comment || 'Замечание сотрудника',
+      priority: payload.priority || 'Критично',
+      status: 'Новая проблема',
+      who: payload.userName || 'Бариста',
+      owner: payload.responsible || 'Техник',
+      photo: photosArr[0] || '',
+      photos: photosArr,
+      history: [
+        { time: _isoToday().split('-').reverse().join('.') + ' ' + tStr, actor: payload.userName || 'Бариста', status: 'Новая проблема', note: 'Зарегистрирован инцидент (' + (payload.incType || 'Поломка оборудования') + ')' }
+      ]
+    };
+    db.incidents.unshift(newInc);
+    appendAudit(db, newInc.who, 'Регистрация проблемы ' + newInc.id, newInc.step + ': ' + newInc.text);
+    if (window.coffeeTelegram) {
+      window.coffeeTelegram.sendIncidentAlert(newInc).catch(() => {});
     }
   } else if (a === 'delete_incident') {
     db.deletedIncidents[payload.id] = true;
@@ -621,35 +1302,73 @@ function applyLocalMutation(payload) {
   } else if (a === 'submit_checklist') {
     const now = new Date();
     const tStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const blk = payload.block || 'Открытие';
+    const winInfo = window.coffeeGetBlockWindow(blk, db);
+    const isLate = !!winInfo.isOverdue;
     const items = Array.isArray(payload.items) ? payload.items : [];
     const probs = items.filter((i) => i && i.isIncident);
-    const phs = items.filter((i) => i && (i.photo_url || i.preview || i.photo_base64)).map((i) => ({
-      step: i.title,
-      url: i.photo_url || i.preview || i.photo_base64,
-      isIncident: !!i.isIncident,
-      comment: i.comment || ''
-    }));
+    const phs = [];
+    items.forEach((i) => {
+      if (!i) return;
+      const pList = Array.isArray(i.photos) && i.photos.length ? i.photos : ((i.photo_url || i.preview || i.photo_base64) ? [i.photo_url || i.preview || i.photo_base64] : []);
+      pList.forEach((u, pIdx) => {
+        phs.push({
+          step: i.title + (pList.length > 1 ? ' (кадр ' + (pIdx + 1) + ')' : ''),
+          url: u,
+          isIncident: !!i.isIncident,
+          comment: i.comment || '',
+          completedAt: i.completedAt || tStr
+        });
+      });
+    });
     db.checklists.push({
       date: _isoToday(),
       time: tStr,
-      block: payload.block || 'Открытие',
+      startedAt: payload.startedAt || tStr,
+      deadline: winInfo.deadline,
+      isLate,
+      status: isLate ? 'Просрочено' : 'Выполнено',
+      totalSteps: items.length || (blk === 'Открытие' ? 8 : blk === 'День' ? 6 : 14),
+      block: blk,
       who: payload.userName || 'Бариста',
       problems: probs.length,
       photos: phs
     });
+    appendAudit(
+      db,
+      payload.userName || 'Бариста',
+      'Сдан чек-лист «' + blk + '»',
+      (isLate ? '⚠️ ПРОСРОЧЕНО (сдан в ' + tStr + ', дедлайн ' + winInfo.deadline + ')' : '✓ В срок (' + tStr + ', до ' + winInfo.deadline + ')') + ' · Шагов: ' + items.length + ' · Проблем: ' + probs.length
+    );
+    if (isLate && window.coffeeTelegram && window.coffeeTelegram.sendOverdueAlert) {
+      window.coffeeTelegram.sendOverdueAlert({
+        block: blk,
+        time: tStr,
+        deadline: winInfo.deadline,
+        who: payload.userName || 'Бариста',
+        location: db.location
+      }).catch(() => {});
+    }
     probs.forEach((p) => {
+      const pPhotos = Array.isArray(p.photos) && p.photos.length ? p.photos : ((p.photo_url || p.preview || p.photo_base64) ? [p.photo_url || p.preview || p.photo_base64] : []);
       const newInc = {
         id: 'INC-' + Math.floor(100 + Math.random() * 900),
         date: _isoToday(),
         time: tStr,
-        block: payload.block || 'Открытие',
+        location: db.location || 'Кофейня №1',
+        block: blk,
+        incType: p.incType || 'Поломка оборудования',
         step: p.title || 'Шаг чек-листа',
         text: p.comment || 'Замечание сотрудника',
         priority: p.priority || 'Терпит',
-        status: 'Open',
+        status: 'Новая проблема',
         who: payload.userName || 'Бариста',
         owner: p.responsible || 'Техник',
-        photo: p.photo_url || p.preview || p.photo_base64 || ''
+        photo: pPhotos[0] || '',
+        photos: pPhotos,
+        history: [
+          { time: _isoToday().split('-').reverse().join('.') + ' ' + tStr, actor: payload.userName || 'Бариста', status: 'Новая проблема', note: 'Отмечена проблема при прохождении чек-листа «' + blk + '»' }
+        ]
       };
       db.incidents.unshift(newInc);
       if (window.coffeeTelegram) {
@@ -672,7 +1391,11 @@ function buildAdminResponse() {
     cash: db.cash,
     expenses: db.expenses,
     incidents: db.incidents,
-    settings: db.settings
+    settings: db.settings,
+    announcements: db.announcements || [],
+    staff: db.staff || [],
+    auditLog: db.auditLog || [],
+    deadlineExtensions: db.deadlineExtensions || {}
   };
 }
 
@@ -1057,6 +1780,35 @@ window.coffeeTelegram = {
       throw new Error(lastErr || 'Не удалось отправить сообщение в Telegram');
     }
     return { ok: sentCount > 0, sentCount, error: lastErr };
+  },
+
+  /* Автоматическое уведомление руководителю о невыполнении чек-листа в срок и блокировке терминала */
+  async sendOverdueAlert(info) {
+    const { token, chats, location } = this.getConfig();
+    if (!token || !chats.length) return { ok: false, skipped: true };
+    const text = [
+      '🚨 <b>ЧЕК-ЛИСТ НЕ ВЫПОЛНЕН В СРОК (ДОСТУП ЗАКРЫТ)</b>',
+      '📍 <b>Точка:</b> ' + String(info.location || location),
+      '🗂 <b>Чек-лист:</b> «' + String(info.block || 'Открытие') + '»',
+      '⏰ <b>Отведённое окно:</b> ' + String(info.openTime || '07:30') + ' – ' + String(info.deadline || '08:30'),
+      '🔒 <b>Статус в терминале:</b> Доступ для сотрудника автоматически закрыт',
+      '📋 <b>Инцидент в системе:</b> ' + String(info.incId || 'Занесён в реестр проблем'),
+      '👤 <b>Смена / Сотрудник:</b> ' + String(info.who || 'Дежурный бариста'),
+      '🕒 <b>Время фиксации:</b> ' + String(info.time || '')
+    ].join('\n');
+    const baseApi = 'https://api.telegram.org/bot' + encodeURIComponent(token);
+    let sentCount = 0;
+    for (const chatId of chats) {
+      try {
+        await fetch(baseApi + '/sendMessage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+        });
+        sentCount++;
+      } catch (_) {}
+    }
+    return { ok: sentCount > 0, sentCount };
   }
 };
 
@@ -1070,7 +1822,7 @@ function isPinAuthorized(pinArg) {
   const expected = (sPin && sPin.value ? String(sPin.value).trim() : '') || db.adminPin || '1234';
   return p === expected || p === '1234';
 }
-const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings)$/;
+const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|save_announcement|delete_announcement|extend_deadline|save_block_windows|simulate_overdue|save_staff|delete_staff)$/;
 
 window.coffeeFetch = async function (url, opt, ms, tries) {
   opt = opt || {};
