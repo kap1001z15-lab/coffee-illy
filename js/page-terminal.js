@@ -320,13 +320,14 @@ function updateDeadlineUI() {
     }
   }
   const banner = $("deadlineBanner");
-  if (!banner || block === "КАССА" || block === "ИНФО") return true;
+  if (!banner || block === "ИНФО") return true;
+  const checkBlkName = block === "КАССА" ? "Касса" : block;
   const win = window.coffeeGetBlockWindow
-    ? window.coffeeGetBlockWindow(block)
+    ? window.coffeeGetBlockWindow(checkBlkName)
     : { openTime: "07:30", deadline: "08:30", isOverdue: false, isBefore: false, completed: false, canPass: true, state: "open", currentTime: "08:00" };
 
   banner.className = "dl-banner " + (win.state === "overdue_closed" ? "overdue" : "ontime");
-  $("deadlineText").textContent = "⏰ Отведённое время «" + block + "»: " + win.openTime + " – " + win.deadline + (win.extended ? " (разблокировано админом)" : "");
+  $("deadlineText").textContent = "⏰ Отведённое время «" + checkBlkName + "»: " + win.openTime + " – " + win.deadline + (win.extended ? " (разблокировано админом)" : "");
   if ($("deadlineTimerChip")) {
     if (win.state === "open") {
       const leftStr = window.coffeeFormatTimeLeft ? window.coffeeFormatTimeLeft(win.deadline, win.currentTime) : "";
@@ -402,17 +403,33 @@ function selectBlock(b) {
   block = b;
   syncStaffSelector();
   drawTabs();
-  if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
   if (b === "ИНФО") { $("steps").hidden = true; show("infoView"); renderInfoView(); return; }
+  if (b === "КАССА" || b === "Касса") {
+    const winCash = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow("Касса") : { canPass: true };
+    if (!winCash.canPass) {
+      $("steps").hidden = true;
+      show("checklistView");
+      updateDeadlineUI();
+      return;
+    }
+    $("steps").hidden = true;
+    show("cashView");
+    renderCash();
+    return;
+  }
   cur = tasks.filter((t) => t.block === b && t.active !== "нет");
   idx = 0;
   answers = [];
   checklistStartedAt = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
   if (!cur.length) { $("steps").hidden = true; emptyHint(b); show("emptyView"); return; }
+  show("checklistView");
+  if (!updateDeadlineUI()) {
+    $("steps").hidden = true;
+    return;
+  }
   tryRestoreShiftDraft(b);
   $("steps").hidden = false;
-  updateDeadlineUI();
   renderStep();
 }
 
@@ -435,7 +452,7 @@ function getTaskPhotoMode(t) {
 
 function renderStep() {
   show("checklistView");
-  updateDeadlineUI();
+  if (!updateDeadlineUI()) { $("steps").hidden = true; return; }
   const t = cur[idx], a = answers[idx] || {};
   const pMode = getTaskPhotoMode(t);
   $("stepCounter").textContent = "Задача " + (idx + 1) + " из " + cur.length + (t.id ? " · код " + t.id : "");

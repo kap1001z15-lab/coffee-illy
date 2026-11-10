@@ -549,9 +549,10 @@ window.coffeeGetBlockWindow = function (block, dbOpt) {
   const comp = window.coffeeIsBlockCompletedToday(block, db);
   const completed = comp.completed;
 
-  const isBefore = !completed && curHm < effectiveOpen && !(extObj && extObj.forceOpen);
-  const isOverdue = !completed && curHm > effectiveDeadline && !(extObj && extObj.forceOpen && effectiveDeadline >= curHm);
-  const canPass = !completed && !isBefore && !isOverdue;
+  const adminForcedOpen = !!(extObj && extObj.forceOpen && curHm >= effectiveOpen && curHm <= effectiveDeadline);
+  const isBefore = !adminForcedOpen && !completed && curHm < effectiveOpen;
+  const isOverdue = !adminForcedOpen && !completed && curHm > effectiveDeadline;
+  const canPass = adminForcedOpen || (!completed && curHm >= effectiveOpen && curHm <= effectiveDeadline);
 
   let state = 'open';
   let status = 'Доступ открыт (' + effectiveOpen + '–' + effectiveDeadline + ')';

@@ -182,85 +182,15 @@ function _defaultUDB() {
     settings: DEFAULT_SETTINGS_SCHEMA.map((s) => Object.assign({}, s)),
     modifiedSettings: {},
     tasks: (window.COFFEE.DEFAULT_TASKS || []).map((x, i) => Object.assign({}, x, { row: i + 2, mediaRequired: x.photo === 'да' })),
-    cash: [
-      {
-        date: '2026-10-30', cash: 1620, card: 682, checks: 98, writeoff: 2,
-        barista: 'Настя',
-        shifts: [{ name: 'Настя', cash: 1620, card: 682, checks: 98, writeoff: 2, cups: 98 }],
-        topItems: 'Американо ×38, Капучино ×23, Латте (мал) ×12'
-      },
-      {
-        date: '2026-10-31', cash: 1313, card: 710, checks: 53, writeoff: 2,
-        barista: 'Настя',
-        shifts: [{ name: 'Настя', cash: 1313, card: 710, checks: 53, writeoff: 2, cups: 64 }],
-        topItems: 'Американо ×22, Капучино ×16, Латте (мал) ×11'
-      },
-      {
-        date: '2026-11-01', cash: 1475, card: 459, checks: 60, writeoff: 1,
-        barista: 'Соня',
-        shifts: [{ name: 'Соня', cash: 1475, card: 459, checks: 60, writeoff: 1, cups: 71 }],
-        topItems: 'Американо ×28, Капучино ×16, Латте (мал) ×8'
-      },
-      {
-        date: '2026-11-03', cash: 1663, card: 540, checks: 73, writeoff: 6,
-        barista: 'Алина, Соня',
-        shifts: [
-          { name: 'Алина', cash: 1019, card: 310, checks: 45, writeoff: 3, prevCounter: 600, counter: 648, cups: 48 },
-          { name: 'Соня', cash: 644, card: 230, checks: 28, writeoff: 3, prevCounter: 648, counter: 679, cups: 31 }
-        ],
-        topItems: 'Алина (сч. 600→648, +48 чаш., сп. 3, нал 1019) + Соня (сч. 648→679, +31 чаш., сп. 3, нал 644)'
-      },
-      {
-        date: '2026-11-04', cash: 2359, card: 610, checks: 96, writeoff: 2,
-        barista: 'Алина, Соня',
-        shifts: [
-          { name: 'Алина', cash: 1450, card: 360, checks: 55, writeoff: 1, prevCounter: 679, counter: 735, cups: 56 },
-          { name: 'Соня', cash: 909, card: 250, checks: 41, writeoff: 1, prevCounter: 735, counter: 777, cups: 42 }
-        ],
-        topItems: 'Алина (сч. 679→735, +56 чаш., сп. 1, нал 1450) + Соня (сч. 735→777, +42 чаш., сп. 1, нал 909)'
-      }
-    ],
-    expenses: [
-      { id: 'EXP-101', date: '2026-10-31', category: 'Закупка продуктов', amount: 380, comment: 'Молоко 3.2% и сливки 10% (ТМК, Тирасполь, руб.)' },
-      { id: 'EXP-102', date: '2026-11-02', category: 'Закупка продуктов', amount: 950, comment: 'Кофе в зёрнах ILLY + сиропы (руб.)' },
-      { id: 'EXP-103', date: '2026-11-03', category: 'Прочее', amount: 240, comment: 'Стаканы 200/250/350 мл, крышки и салфетки (руб.)' }
-    ],
-    incidents: [
-      {
-        id: 'INC-201', date: '2026-11-04', time: '14:20',
-        step: '☕ Кофемашина',
-        text: 'Подтекает правый стимер при продувке пара, требуется замена уплотнителя',
-        priority: 'Критично', status: 'Open', who: 'Соня', owner: 'Техник',
-        photo: window.COFFEE.SAMPLE_INC_PHOTO
-      }
-    ],
+    cash: [],
+    expenses: [],
+    incidents: [],
     deletedIncidents: {},
     resolvedIncidents: {},
-    productsByDate: {
-      '2026-10-30': [
-        { name: 'Американо', qty: 38, sum: 456 },
-        { name: 'Капучино', qty: 23, sum: 437 },
-        { name: 'Латте (мал)', qty: 12, sum: 240 },
-        { name: 'Эспрессо', qty: 11, sum: 132 }
-      ],
-      '2026-10-31': [
-        { name: 'Американо', qty: 22, sum: 264 },
-        { name: 'Капучино', qty: 16, sum: 304 },
-        { name: 'Латте (мал)', qty: 11, sum: 220 },
-        { name: 'Чизкейк', qty: 6, sum: 240 }
-      ],
-      '2026-11-01': [
-        { name: 'Американо', qty: 28, sum: 336 },
-        { name: 'Капучино', qty: 16, sum: 304 },
-        { name: 'Латте (мал)', qty: 8, sum: 160 }
-      ]
-    },
-    checklists: [
-      { date: t, time: '08:20', block: 'Открытие', who: 'Соня', problems: 0, photos: [] },
-      { date: '2026-11-04', time: '08:15', block: 'Открытие', who: 'Алина', problems: 0, photos: [] },
-      { date: '2026-11-04', time: '14:20', block: 'День', who: 'Соня', problems: 1, photos: [{ step: '☕ Кофемашина', url: window.COFFEE.SAMPLE_INC_PHOTO }] },
-      { date: '2026-11-04', time: '21:50', block: 'Закрытие', who: 'Соня', problems: 0, photos: [] }
-    ]
+    productsByDate: {},
+    checklists: [],
+    checklistSubmissions: [],
+    announcements: []
   };
 }
 
@@ -472,6 +402,40 @@ function _migrateAndMergeOwnerDB(existing) {
     db.tasks = def.tasks;
   }
 
+    /* Однократная очистка демо-примеров при переходе к боевому запуску (prodCleanInitV23) */
+  if (!db.prodCleanInitV23) {
+    const demoDates = { '2026-10-30': 1, '2026-10-31': 1, '2026-11-01': 1, '2026-11-03': 1, '2026-11-04': 1 };
+    const demoIncIds = { 'INC-200': 1, 'INC-201': 1 };
+    const demoExpIds = { 'EXP-101': 1, 'EXP-102': 1, 'EXP-103': 1, 'EXP-104': 1, 'EXP-105': 1 };
+    const demoAnnIds = { 'ann1': 1, 'ann2': 1, 'ann3': 1, 'ann_1': 1, 'ann_2': 1, 'ann_3': 1 };
+    if (Array.isArray(db.cash)) {
+      db.cash = db.cash.filter((c) => c && !demoDates[c.date] && c.barista !== 'Анна К.' && c.barista !== 'Максим В.');
+    }
+    if (Array.isArray(db.expenses)) {
+      db.expenses = db.expenses.filter((e) => e && !demoExpIds[e.id]);
+    }
+    if (Array.isArray(db.incidents)) {
+      db.incidents = db.incidents.filter((i) => i && !demoIncIds[i.id] && i.who !== 'Анна К.');
+    }
+    if (Array.isArray(db.checklists)) {
+      db.checklists = db.checklists.filter((c) => c && !demoDates[c.date] && c.who !== 'Анна К.' && c.who !== 'Максим В.' && !(c.time === '08:20' && c.who === 'Соня'));
+    }
+    if (Array.isArray(db.checklistSubmissions)) {
+      db.checklistSubmissions = db.checklistSubmissions.filter((c) => c && !demoDates[c.date] && c.userName !== 'Анна К.' && !(c.time === '08:20' && c.userName === 'Соня'));
+    }
+    if (Array.isArray(db.announcements)) {
+      db.announcements = db.announcements.filter((a) => a && !demoAnnIds[a.id]);
+    }
+    db.productsByDate = {};
+    db.prodCleanInitV23 = true;
+    try {
+      Object.keys(localStorage).forEach((k) => {
+        if (k.indexOf('coffee_illy_done_') === 0 || k.indexOf('coffee_shift_draft') === 0) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (_) {}
+  }
   syncSettingsFields(db);
   return db;
 }
