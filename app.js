@@ -1,20 +1,20 @@
-/* Единое ядро авторизации и защиты «Кофейня» (v9):
-   - Терминал бариста (index.html) полностью отделён от панели владельца: в нём нет вкладок Дашборда, Отчётов и Управления.
-   - Неавторизованные пользователи (бариста) не имеют доступа к просмотру отчётов или редактированию настроек и задач.
-   - При переходе в Терминал сессия владельца автоматически блокируется, чтобы бариста не мог зайти в панель управления без PIN-кода. */
+/* Единое ядро авторизации и защиты «Кофейня» (v21 Enterprise Security):
+   - Использует подписанные токены сессии (window.coffeeAuth.isAuthorized) вместо флага coffee_admin_ok=1.
+   - Защита от перебора PIN-кода: блокировка на 15 минут после 5 неверных попыток (window.coffeeRateLimiter).
+   - Персональные и административные PIN-коды проверяются через солёный SHA-256 хеш и серверный auth_login. */
 (function () {
   'use strict';
-  const API = window.COFFEE && window.COFFEE.API_URL;
-  const PIN = 'coffee_illy_pin', OK = 'coffee_admin_ok', SHARED_DATE = 'coffee_shared_date';
+  const SHARED_DATE = 'coffee_shared_date';
   const page = (location.pathname.split('/').pop() || 'index.html').replace('.html', '') || 'index';
   const ls = {
     get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
     del(k) { try { localStorage.removeItem(k); } catch (e) {} }
   };
-  const isAdmin = () => ls.get(OK) === '1' && !!ls.get(PIN);
 
-  /* Неблокирующее диалоговое окно подтверждения */
+  // Строгая проверка криптографической сессии (подстановка coffee_admin_ok=1 в консоли не работает!)
+  const isAdmin = () => !!(window.coffeeAuth && window.coffeeAuth.isAuthorized('admin'));
+
   window.coffeeConfirm = function (message, onConfirm) {
     let dlg = document.getElementById('coffeeConfirmDlg');
     if (!dlg) {
@@ -32,22 +32,21 @@
 
   async function verify(pin) {
     if (!pin || !String(pin).trim()) return 'Введите код доступа';
-    const d = await coffeeFetch(API + '?action=dashboard&nocache=1&pin=' + encodeURIComponent(pin), {}, 20000);
-    if (d && d.ok !== false && d.days) return '';
-    const e = String((d && d.error) || '');
-    if (/PIN_NOT_SET/.test(e)) return 'Код доступа не задан в таблице (лист «Настройки»)';
-    return /PIN/.test(e) ? 'Неверный код доступа' : (e || 'Не удалось проверить код');
+    if (window.coffeeAuth) {
+      const res = await window.coffeeAuth.loginOwner(pin);
+      if (res && res.ok) return '';
+      return (res && res.error) || 'Неверный код доступа';
+    }
+    return 'Модуль безопасности не загружен';
   }
 
   function logout() {
-    ls.del(OK);
-    ls.del(PIN);
+    if (window.coffeeAuth) window.coffeeAuth.logout();
     if (window.coffeeBus) window.coffeeBus.emit('auth', { ok: false });
     location.href = 'index.html';
   }
   window.coffeeLogout = logout;
 
-  /* Окно ввода PIN-кода владельца (скрывает содержимое страницы до успешного входа) */
   function gate(onOk) {
     document.documentElement.classList.add('gate');
     let g = document.getElementById('gate');
@@ -55,13 +54,17 @@
     g = document.createElement('div');
     g.id = 'gate';
     g.style.cssText = 'position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg,#12191b)';
-    g.innerHTML = '<form style="width:min(360px,100%);background:var(--surface,#1b2528);border:1px solid var(--line,#2c3a3e);border-radius:22px;padding:24px;box-shadow:var(--shadow)"><h2 style="margin:0 0 6px;font-family:var(--font-d)">🔒 Вход для владельца</h2><p style="margin:0 0 14px;color:var(--muted);font-size:14px">Дашборд, отчёты и управление закрыты от сотрудников и доступны только по коду администратора.</p><input id="gPin" type="password" autocomplete="current-password" placeholder="Код доступа администратора" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line,#2c3a3e);background:var(--bg);padding:0 14px;font:inherit;color:var(--ink)"><div id="gErr" style="color:var(--bad,#c23b22);font-size:14px;min-height:20px;margin:8px 0" role="alert"></div><button id="gGo" type="submit" style="width:100%;min-height:50px;border:0;border-radius:14px;background:#5a3a29;color:#f6ece2;font:inherit;font-weight:700;cursor:pointer">Войти в панель управления</button><a href="index.html" id="gBackTerm" style="display:block;text-align:center;margin-top:12px;color:var(--muted);font-size:14px;text-decoration:none">← Вернуться в терминал бариста</a></form>';
+    g.innerHTML = '<form style="width:min(380px,100%);background:var(--surface,#1b2528);border:1px solid var(--line,#2c3a3e);border-radius:22px;padding:24px;box-shadow:var(--shadow)"><h2 style="margin:0 0 6px;font-family:var(--font-d)">🔒 Защищённый вход (SHA-256)</h2><p style="margin:0 0 14px;color:var(--muted);font-size:13.5px">Дашборд, отчёты и управление защищены токеном сессии и блокировкой перебора (макс. 5 попыток).</p><input id="gPin" type="password" autocomplete="current-password" placeholder="Код доступа администратора" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line,#2c3a3e);background:var(--bg);padding:0 14px;font:inherit;color:var(--ink)"><div id="gErr" style="color:var(--bad,#c23b22);font-size:13.5px;min-height:20px;margin:8px 0;font-weight:600" role="alert"></div><button id="gGo" type="submit" style="width:100%;min-height:50px;border:0;border-radius:14px;background:#5a3a29;color:#f6ece2;font:inherit;font-weight:700;cursor:pointer">Войти в панель управления</button><a href="index.html" id="gBackTerm" style="display:block;text-align:center;margin-top:12px;color:var(--muted);font-size:14px;text-decoration:none">← Вернуться в терминал бариста</a></form>';
     document.body.appendChild(g);
     const backLink = g.querySelector('#gBackTerm');
     if (page === 'index') {
       backLink.onclick = (e) => { e.preventDefault(); g.remove(); document.documentElement.classList.remove('gate'); };
     }
-    const f = g.querySelector('form'), inp = g.querySelector('#gPin');
+    const f = g.querySelector('form'), inp = g.querySelector('#gPin'), errBox = g.querySelector('#gErr');
+    if (window.coffeeRateLimiter) {
+      const st = window.coffeeRateLimiter.check('owner_admin');
+      if (st.locked) errBox.textContent = st.message;
+    }
     setTimeout(() => inp.focus(), 50);
     f.onsubmit = async (e) => {
       e.preventDefault();
@@ -69,18 +72,16 @@
       if (!v) return;
       const b = g.querySelector('#gGo');
       b.disabled = true;
-      b.textContent = 'Проверяем код…';
+      b.textContent = 'Проверяем хеш и сессию…';
       try {
         const err = await verify(v);
         if (err) throw new Error(err);
-        ls.set(PIN, v);
-        ls.set(OK, '1');
         if (window.coffeeBus) window.coffeeBus.emit('auth', { ok: true });
         g.remove();
         document.documentElement.classList.remove('gate');
         if (onOk) onOk();
       } catch (x) {
-        g.querySelector('#gErr').textContent = x.message;
+        errBox.textContent = x.message;
         b.disabled = false;
         b.textContent = 'Войти в панель управления';
       }
@@ -96,8 +97,7 @@
     document.querySelectorAll('nav.tabs a').forEach((a) => {
       const href = a.getAttribute('href').split('?')[0];
       if (href === 'index.html') {
-        /* При переходе из панели владельца в Терминал бариста автоматически блокируем сессию владельца */
-        a.onclick = () => { ls.del(OK); ls.del(PIN); };
+        a.onclick = () => { if (window.coffeeAuth) window.coffeeAuth.logout(); };
       }
       if (sharedDate && href === 'dashboard.html') {
         a.setAttribute('href', href + '?date=' + encodeURIComponent(sharedDate));
@@ -120,12 +120,8 @@
   function init() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-    /* В Терминале бариста (index.html):
-       1. Сбрасываем активную сессию владельца, чтобы бариста не имел доступа к отчётам и настройкам.
-       2. НЕ показываем панель вкладок Дашборд / Отчёты / Управление — только чистый Терминал и иконку замка 🔒 для владельца. */
     if (page === 'index') {
-      ls.del(OK);
-      ls.del(PIN);
+      if (window.coffeeAuth) window.coffeeAuth.logout();
       document.documentElement.classList.remove('gate');
       const oldOwnerNav = document.querySelector('.owner-nav');
       if (oldOwnerNav) oldOwnerNav.remove();
@@ -144,7 +140,6 @@
       return;
     }
 
-    /* Разделы владельца (dashboard.html, report.html, admin.html) строго требуют авторизации по PIN */
     if (isAdmin()) {
       document.documentElement.classList.remove('gate');
       const t = document.getElementById('theme');
@@ -154,20 +149,13 @@
         x.className = 'theme-btn';
         x.type = 'button';
         x.textContent = '⎋';
-        x.title = 'Выйти и закрыть панель владельца';
+        x.title = 'Выйти и закрыть сессию владельца';
         x.setAttribute('aria-label', 'Выйти');
         x.style.marginLeft = '6px';
         x.onclick = logout;
         t.parentNode.style.display = 'flex';
         t.parentNode.appendChild(x);
       }
-      verify(ls.get(PIN)).then((err) => {
-        if (err && /Неверный|не задан/.test(err)) {
-          ls.del(OK);
-          ls.del(PIN);
-          gate(() => location.reload());
-        }
-      }).catch(() => {});
       syncNavLinks();
       const pick = document.getElementById('pick') || document.getElementById('rdPick');
       if (pick) pick.addEventListener('change', syncNavLinks);

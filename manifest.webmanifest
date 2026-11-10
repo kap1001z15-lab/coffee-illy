@@ -1,10 +1,53 @@
 {
-  "name": "Кофейня — Единая система управления",
+  "id": "/kofeinya-pwa-v21",
+  "name": "Кофейня — Терминал и Панель управления",
   "short_name": "Кофейня",
-  "description": "Терминал бариста, дашборд владельца, отчёты и управление кофейней",
-  "start_url": "index.html",
+  "description": "Операционная система управления кофейней: чек-листы, экшн-план, касса, дашборд и аналитика (local-first PWA)",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#e6ecee",
-  "theme_color": "#5a3a29",
-  "lang": "ru"
+  "orientation": "portrait-primary",
+  "background_color": "#1e1612",
+  "theme_color": "#3b261d",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Терминал бариста",
+      "short_name": "Терминал",
+      "url": "./index.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Дашборд владельца",
+      "short_name": "Дашборд",
+      "url": "./dashboard.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Управление",
+      "short_name": "Управление",
+      "url": "./admin.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
 }

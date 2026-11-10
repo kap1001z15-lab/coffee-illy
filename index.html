@@ -4,295 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2e1b11">
-<script src="config.js"></script>
+
 <script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <title>Кофейня — терминал бариста</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<style>
-  :root {
-    --bg:#e6ecee; --surface:#f7f9fa; --ink:#172326; --muted:#5b6d72; --line:#d3dde0;
-    --brew:#5a3a29; --crema:#c98b4f; --good:#1b8a57; --bad:#c23b22; --warn:#b7791f;
-    --espresso:#2e1b11; --cream:#f6ece2;
-    --shadow:0 1px 2px rgba(23,35,38,.05), 0 14px 30px -18px rgba(23,35,38,.35);
-    --font-d:"Bricolage Grotesque",system-ui,sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
-      --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d;
-      --shadow:0 1px 0 rgba(255,255,255,.03), 0 14px 30px -18px rgba(0,0,0,.7); }
-  }
-  :root { color-scheme:light; }
-  :root[data-theme="dark"] { color-scheme:dark; --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
-    --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d;
-    --shadow:0 1px 0 rgba(255,255,255,.03), 0 14px 30px -18px rgba(0,0,0,.7); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme:dark; } }
-  .theme-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); border-radius:12px; width:42px; height:42px; font-size:18px; cursor:pointer; }
-  .seg.three { grid-template-columns:1fr 1fr 1.5fr; }
-  .seg input[type=date] { min-height:52px; width:100%; border-radius:14px; border:1px solid var(--line); background:var(--bg); padding:0 10px; font-weight:600; }
-  a.btn { display:flex; align-items:center; justify-content:center; text-decoration:none; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  [hidden] { display:none !important; }
-  body { margin:0; min-height:100vh;min-height:100dvh; color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:radial-gradient(900px 400px at 50% -120px, color-mix(in srgb, var(--crema) 22%, transparent), transparent), var(--bg); }
-  h1,h2,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
-  .muted { color:var(--muted); font-size:14px; }
 
-  header { position:relative; z-index:5; color:var(--cream);
-    background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
-    padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
-  .wrap { max-width:480px; margin:0 auto; }
-  .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-  .brand h1 { font-size:20px; display:flex; align-items:center; gap:8px; }
-  .brand h1 svg { width:26px; height:26px; }
-  header .sub { color:rgba(246,236,226,.68); font-size:13px; }
-  .who { text-align:right; line-height:1.3; }
-  .tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:14px; }
-  .tabs button { border:0; background:transparent; color:rgba(246,236,226,.8); font:inherit; font-weight:600; font-size:13px; min-height:44px; border-radius:12px; cursor:pointer; transition:background .15s,color .15s; }
-  .tabs button[aria-selected=true] { background:var(--cream); color:var(--espresso); }
-  .owner-nav { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:12px; }
-  .owner-nav a { display:flex; align-items:center; justify-content:center; min-height:42px; border-radius:12px; color:rgba(246,236,226,.82); font-weight:600; font-size:13px; text-decoration:none; }
-  .owner-nav a.on { background:var(--cream); color:var(--espresso); }
-  .steps { display:flex; gap:2px; margin-top:8px; }
-  .steps i { flex:1; height:4px; border-radius:99px; background:rgba(255,255,255,.2); transition:background .2s; }
-  .steps i.done { background:#e0a76a; } .steps i.now { background:var(--cream); }
-
-  main { max-width:480px; margin:0 auto; padding:18px 16px calc(40px + env(safe-area-inset-bottom,0px)); }
-  .panel { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:20px; box-shadow:var(--shadow); }
-  .stack > * + * { margin-top:14px; }
-  .center { text-align:center; padding:48px 16px; }
-  .spin { width:40px; height:40px; border:4px solid var(--line); border-top-color:var(--crema); border-radius:50%; margin:0 auto 14px; animation:sp 1s linear infinite; }
-  @keyframes sp { to { transform:rotate(360deg); } }
-
-  button, input, textarea { font:inherit; color:var(--ink); }
-  button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-within { outline:3px solid var(--crema); outline-offset:2px; }
-  .btn { width:100%; min-height:56px; border-radius:18px; border:0; font-weight:700; font-size:17px; cursor:pointer; padding:0 18px;
-    background:linear-gradient(135deg,#7a4e32,#4a2f20); color:var(--cream); box-shadow:0 10px 20px -12px rgba(74,47,32,.9); transition:transform .1s; }
-  .btn:active { transform:scale(.98); }
-  .btn:disabled { background:var(--line); color:var(--muted); box-shadow:none; cursor:not-allowed; }
-  .btn.ghost { background:var(--surface); color:var(--ink); border:1px solid var(--line); box-shadow:none; }
-  .navrow { display:grid; grid-template-columns:auto 1fr; gap:10px; }
-  .navrow .btn.ghost { padding:0 22px; }
-
-  .label { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:8px; }
-  .task h2 { font-size:24px; line-height:1.2; margin:6px 0 12px; }
-  .instr { white-space:pre-line; overflow-wrap:anywhere; background:var(--bg); border-left:4px solid var(--crema); border-radius:12px; padding:12px 14px; font-size:15px; margin:0 0 20px; }
-  .drop { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; min-height:132px; border:2px dashed var(--crema);
-    border-radius:18px; padding:14px; cursor:pointer; text-align:center; background:var(--bg); }
-  .drop img { max-height:220px; max-width:100%; border-radius:12px; object-fit:cover; }
-  .drop svg { width:32px; height:32px; stroke:var(--brew); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-  .drop.has { border-style:solid; border-color:var(--good); }
-  .seg { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .seg button { min-height:52px; border-radius:14px; border:1px solid var(--line); background:var(--bg); font-weight:600; cursor:pointer; }
-  .seg button.ok { border-color:var(--good); background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good); }
-  .seg button.bad { border-color:var(--bad); background:color-mix(in srgb, var(--bad) 16%, transparent); color:var(--bad); }
-  .seg button.warn { border-color:var(--warn); background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); }
-  textarea, input[type=number] { width:100%; padding:13px; border-radius:14px; border:1px solid var(--line); background:var(--bg); }
-  textarea { resize:vertical; min-height:84px; }
-  .field + .field { margin-top:18px; }
-
-  .file { display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:center; padding:14px; border:1px dashed var(--crema); border-radius:16px; background:var(--bg); cursor:pointer; }
-  .file + .file { margin-top:10px; }
-  .file.ok { border-style:solid; border-color:var(--good); }
-  .file input { display:none; }
-  .file .ico { font-size:28px; }
-  .file b { display:block; font-size:15px; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .stat { background:var(--bg); border-radius:16px; padding:12px 14px; }
-  .stat .num { font-size:24px; font-weight:700; display:block; }
-  .total { font-size:clamp(36px,11vw,52px); font-weight:700; line-height:1.05; display:block; }
-  .meter { height:10px; border-radius:99px; background:var(--line); overflow:hidden; margin:10px 0 4px; }
-  .meter i { display:block; height:100%; background:linear-gradient(90deg,var(--crema),var(--brew)); border-radius:99px; transition:width .5s; }
-  .bar { display:grid; grid-template-columns:1fr auto; gap:2px 12px; margin-bottom:10px; font-size:14px; }
-  .bar .t { grid-column:1/-1; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
-  .bar .t i { display:block; height:100%; background:var(--brew); }
-  .notice { border:1px dashed var(--warn); background:var(--surface); border-radius:14px; padding:10px 14px; margin-bottom:14px; font-size:14px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
-  .notice button { border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:6px 12px; font-weight:600; cursor:pointer; }
-  .cup { width:170px; margin:0 auto 8px; display:block; }
-  @media (prefers-reduced-motion: no-preference) { .fill { animation:fill 1.4s cubic-bezier(.2,.8,.2,1); } }
-  .cam { position:fixed; inset:0; z-index:30; background:#000; display:flex; flex-direction:column; }
-  .cam video { flex:1; min-height:0; width:100%; object-fit:cover; }
-  .cam .bar { display:flex; align-items:center; justify-content:space-between; padding:16px 24px calc(16px + env(safe-area-inset-bottom,0px)); background:#000; color:#fff; }
-  .cam .x { color:#fff; background:none; border:0; font-size:16px; min-width:84px; min-height:48px; cursor:pointer; text-align:left; }
-  .shutter { width:74px; height:74px; border-radius:50%; border:5px solid #fff; background:rgba(255,255,255,.25); cursor:pointer; }
-  .shutter:active { background:#fff; }
-  .cm { border:0; border-radius:99px; padding:8px 18px; background:rgba(255,255,255,.15); color:#fff; font-weight:600; cursor:pointer; }
-  .cm.on { background:#fff; color:#000; }
-  .shutter:disabled { opacity:.4; }
-  .shutter.rec { background:#e5322d; border-color:#fff; border-radius:18px; }
-  .pstate { font-size:14px; margin:10px 0 0; min-height:21px; }
-  .pstate.bad { color:var(--bad); } .pstate.good { color:var(--good); }
-  .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); width:max-content; max-width:92vw; background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:16px; font-size:14px; z-index:40; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); }
-  .tabs button.locked { opacity:.45; }
-  @keyframes fill { from { transform:translateY(120px); } to { transform:translateY(0); } }
-  /* --- адаптация под телефон и Telegram Mini App --- */
-  html { -webkit-text-size-adjust:100%; overscroll-behavior-y:contain; }
-  * { -webkit-tap-highlight-color:transparent; }
-  button, .drop, .file, .tabs { touch-action:manipulation; -webkit-user-select:none; user-select:none; }
-  .tabs button { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #checklistView .navrow { position:sticky; bottom:calc(env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px) + 6px); z-index:4; padding-top:14px; background:linear-gradient(to top,var(--bg) 72%,transparent); }
-  #submitCashBtn { position:sticky; bottom:calc(env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px) + 8px); z-index:4; box-shadow:0 -10px 18px var(--bg); }
-  .toast { bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px)); }
-  main { padding-bottom:calc(24px + env(safe-area-inset-bottom,0px) + var(--tg-safe-area-inset-bottom,0px)); }
-  .tabs .ck { font-size:10px; margin-left:2px; vertical-align:super; }
-  @media (max-width:340px) { .tabs { grid-template-columns:repeat(2,1fr); } }
-  @media (max-width:400px) { .tabs button { font-size:12px; padding:0 2px; } }
-  .seg input[type=date] { min-width:0; box-sizing:border-box; }
-  @media (max-width:380px) { .seg.three { grid-template-columns:1fr 1fr; } .seg.three input[type=date] { grid-column:1 / -1; } }
-  @media (max-width:360px) { .tabs { gap:2px; padding:3px; } .tabs button { font-size:11.5px; padding:0 2px; } main { padding-left:12px; padding-right:12px; } .btn { font-size:16px; } header h1 { font-size:19px; } }
-
-  /* === АДАПТИВНЫЙ USER-FRIENDLY ИНТЕРФЕЙС ДЛЯ ПК И ТЕЛЕФОНА (v8) === */
-  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
-  ::-webkit-scrollbar { width:8px; height:8px; }
-  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:99px; }
-
-  /* Карточки и кнопки: плавный отклик на ПК и телефоне */
-  .card, .panel { transition:box-shadow .2s ease, border-color .2s ease; }
-  button, .b, .p, .btn, .btn-s, .btn-p, .file, .drop {
-    transition:transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
-  }
-  @media (hover:hover) and (pointer:fine) {
-    .b:hover, .btn-s:hover { transform:translateY(-1px); box-shadow:0 4px 12px -4px rgba(0,0,0,.12); }
-    .p:hover, .btn-p:hover, .btn:not(:disabled):hover { filter:brightness(1.06); transform:translateY(-1px); }
-    .file:hover, .drop:hover { border-color:var(--brew); background:color-mix(in srgb, var(--crema) 8%, var(--bg)); }
-  }
-  .file.dragover, .drop.dragover {
-    border-style:solid !important;
-    border-color:var(--good) !important;
-    background:color-mix(in srgb, var(--good) 12%, var(--bg)) !important;
-    transform:scale(1.01);
-  }
-
-  /* Таблицы: закреплённый первый столбец на узких экранах + удобный скролл */
-  .scrollx, .sx { -webkit-overflow-scrolling:touch; scrollbar-width:thin; border-radius:12px; }
-  .tbl th:first-child, .tbl td:first-child {
-    position:sticky; left:0; z-index:2;
-    background:var(--surface);
-  }
-  .tbl tr:hover td:first-child { background:var(--bg); }
-
-  /* Поле быстрого поиска задач */
-  .task-search {
-    width:100%; height:42px; border-radius:12px; border:1px solid var(--line);
-    background:var(--bg); padding:0 14px; font-size:14px; margin:8px 0 12px;
-  }
-
-  /* --- Широкие экраны ПК (Desktop >= 900px) --- */
-  @media (min-width:900px) {
-    :root { --w:1120px; }
-    main { padding:26px 24px 64px; }
-    .card, .panel { padding:24px 26px; border-radius:24px; }
-    .app-header { padding:16px 24px; border-radius:0 0 28px 28px; }
-    .app-header .wrap {
-      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px;
-    }
-    .app-header .brand { flex:1 1 auto; }
-    .app-header .tabs, .app-header .nav-bar { margin-top:0; }
-    .app-header .dp, .app-header .sub-bar { margin-top:0; width:auto; }
-    .k, .k4 { grid-template-columns:repeat(4, 1fr) !important; gap:16px; }
-    .dash-two-col { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
-    .dash-two-col > .card { margin-top:16px; }
-    .settings-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px 22px; }
-    .settings-grid .set, .settings-grid .set-item {
-      border:1px solid var(--line); border-radius:16px; padding:16px; background:var(--bg); margin:0;
-    }
-    .narrow-view { max-width:780px; }
-    #tCashView, #cashView {
-      display:grid; grid-template-columns:1.1fr 0.9fr; gap:18px; align-items:start;
-    }
-    #tCashView > *, #cashView > * { margin-top:0 !important; }
-    #tCashView > .panel:first-child, #cashView > .panel:first-child,
-    #tSubmitCashBtn, #submitCashBtn { grid-column:1 / -1; }
-  }
-
-  /* --- Мобильные телефоны (Mobile <= 640px) --- */
-  @media (max-width:640px) {
-    .app-header, header {
-      padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;
-      border-radius:0 0 20px 20px;
-    }
-    .app-header h1, header h1 { font-size:18px; }
-    .app-header .tabs, .main-tabs, .term-tabs, .owner-nav {
-      margin-top:8px; padding:3px; border-radius:13px;
-    }
-    .app-header .tabs a, .main-tabs button, .term-tabs button, .owner-nav a {
-      min-height:38px; font-size:12px; padding:0 4px; border-radius:10px;
-    }
-    .app-header .dp, .sub-bar { margin-top:8px; }
-    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size:13px; }
-    main { padding:12px 10px calc(36px + env(safe-area-inset-bottom,0px)); }
-    .card, .panel { padding:15px 14px; border-radius:18px; margin-top:10px; }
-    .big, .total { font-size:clamp(30px, 9vw, 40px); }
-    .k, .k4 { grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:10px; }
-    .k .card, .k4 .card { padding:13px; }
-    .k b, .k4 b { font-size:21px; }
-    .k6 { grid-template-columns:repeat(2, 1fr); gap:10px; }
-    .kpi .num { font-size:21px; }
-    .seg, .seg-bar { scrollbar-width:none; -ms-overflow-style:none; }
-    .seg::-webkit-scrollbar, .seg-bar::-webkit-scrollbar { display:none; }
-    .adm-row, .inc-row, .row { grid-template-columns:1fr; gap:8px; }
-    .adm-row .acts, .inc-row .acts, .row .acts { justify-content:flex-start; }
-    .set .line, .set-item .line { flex-direction:column; }
-    .set .line button, .set-item .line button { width:100%; min-height:42px; }
-  }
-
-
-  /* === MVP v10: 5 вкладок терминала, тайм-слоты, мульти-фото, фотообразцы и Информирование === */
-  .tabs { grid-template-columns:repeat(5,1fr); }
-  .barista-sel {
-    border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.12); color:var(--cream);
-    border-radius:10px; padding:4px 8px; font-size:13px; font-weight:700; cursor:pointer; width:auto;
-  }
-  .barista-sel option { color:#172326; background:#fff; }
-  .dl-banner {
-    display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;
-    padding:10px 14px; border-radius:14px; margin-bottom:12px; font-size:13.5px;
-    border:1px solid var(--line); background:var(--surface);
-  }
-  .dl-banner.overdue {
-    border-color:var(--bad); background:color-mix(in srgb, var(--bad) 12%, var(--surface));
-  }
-  .dl-banner.ontime {
-    border-color:var(--good); background:color-mix(in srgb, var(--good) 10%, var(--surface));
-  }
-  .sample-btn {
-    width:100%; min-height:42px; border-radius:12px; border:1px dashed var(--crema);
-    background:color-mix(in srgb, var(--crema) 12%, var(--bg)); color:var(--ink);
-    font-weight:700; font-size:14px; cursor:pointer; margin:0 0 14px;
-    display:flex; align-items:center; justify-content:center; gap:6px;
-  }
-  .multi-photos {
-    display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px; margin-top:10px;
-  }
-  .mp-item {
-    position:relative; border-radius:12px; overflow:hidden; border:2px solid var(--good);
-    background:var(--bg); aspect-ratio:4/3;
-  }
-  .mp-item img, .mp-item video { width:100%; height:100%; object-fit:cover; display:block; }
-  .mp-del {
-    position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%;
-    border:0; background:rgba(194,59,34,.92); color:#fff; font-weight:700; font-size:13px; cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .mp-lbl {
-    position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,.6); color:#fff;
-    font-size:11px; padding:2px 6px; text-align:center;
-  }
-  .info-card {
-    background:var(--surface); border:1px solid var(--line); border-radius:20px;
-    padding:18px; box-shadow:var(--shadow); margin-top:12px;
-  }
-  .info-card.unread { border-left:5px solid var(--crema); }
-  .info-card.acked { border-left:5px solid var(--good); }
-  .cal-pill {
-    display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700;
-    padding:3px 10px; border-radius:99px; background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn);
-    margin-bottom:6px;
-  }
-
-</style>
+<link rel="stylesheet" href="css/terminal.css">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="config.js"></script>
+<script src="js/defaults.js"></script>
+<script src="js/security.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/telegram.js"></script>
 </head>
 <body>
 
@@ -317,11 +46,15 @@
         <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button>
       </div>
     </div>
-    <div class="tabs" role="tablist" aria-label="Раздел">
+    <div class="seg" id="termModeSwitch" style="margin:8px 0 6px;background:rgba(0,0,0,0.22);padding:4px;border-radius:14px;gap:6px">
+      <button type="button" data-tmode="checklists" class="ok" style="min-height:40px;border-radius:11px;font-size:13.5px;font-weight:700;color:#fff;border-color:rgba(255,255,255,0.25)">📋 Чек-листы (Таймлайн)</button>
+      <button type="button" data-tmode="tasks_info" style="min-height:40px;border-radius:11px;font-size:13.5px;font-weight:700;color:#f6ece2;background:transparent;border-color:transparent"><span id="termInfoModeLbl">📢 Задачи + Информирование</span></button>
+    </div>
+    <div class="tabs" id="termTimelineTabs" role="tablist" aria-label="Таймлайн чек-листов" style="grid-template-columns:repeat(auto-fit,minmax(92px,1fr))">
       <button role="tab" data-b="Открытие" data-l="Открытие" aria-selected="true">Открытие</button>
-      <button role="tab" data-b="День" data-l="День" aria-selected="false">День</button>
+      <button role="tab" data-b="Лайн Чек 1" data-l="Лайн Чек 1" aria-selected="false">Лайн Чек 1</button>
+      <button role="tab" data-b="Лайн Чек 2" data-l="Лайн Чек 2" aria-selected="false">Лайн Чек 2</button>
       <button role="tab" data-b="Закрытие" data-l="Закрытие" aria-selected="false">Закрытие</button>
-      <button role="tab" data-b="ИНФО" data-l="📢 Инфо" aria-selected="false">📢 Инфо</button>
       <button role="tab" data-b="КАССА" data-l="Касса" aria-selected="false">Касса</button>
     </div>
     <div class="steps" id="steps" aria-hidden="true"></div>
@@ -356,7 +89,15 @@
   <section id="checklistView" class="stack" hidden>
     <div id="deadlineBanner" class="dl-banner ontime">
       <span id="deadlineText">⏰ Окно выполнения: 07:30 – 08:30</span>
-      <span id="deadlineBadge" style="font-weight:700;color:var(--good)">🟢 В срок</span>
+      <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="deadlineTimerChip" class="timer-chip">⏱ Осталось: —</span>
+        <span id="deadlineBadge" style="font-weight:700;color:var(--good)">🟢 В срок</span>
+      </span>
+    </div>
+    <div id="stepProgressWrap" class="pro-progress-wrap">
+      <span id="stepProgressLbl" style="font-weight:700">Прогресс: 0%</span>
+      <div class="pro-progress-bar"><i id="stepProgressFill" style="width:0%"></i></div>
+      <span id="stepDoneCountLbl" class="muted" style="font-size:12px">0 / 0</span>
     </div>
     <div id="draftRestoreBanner" class="notice" hidden>
       <span id="draftRestoreText">↺ Восстановлен незавершённый чек-лист</span>
@@ -444,20 +185,41 @@
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div>
-          <h2 style="font-size:20px;margin:0">📢 Информирование и стандарты</h2>
-          <p class="muted" style="margin:4px 0 0">Ознакомьтесь с актуальными изменениями меню, регламентов и событиями календаря и нажмите «Ознакомлен».</p>
+          <h2 style="font-size:20px;margin:0">📢 Задачи смены + Информирование персонала</h2>
+          <p class="muted" style="margin:4px 0 0">Персональные поручения сотруднику, события календаря, обновления меню и технологические карты.</p>
         </div>
         <button type="button" id="quickIncidentBtn" style="border:1px solid var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--bg));color:var(--bad);border-radius:12px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer">🚨 Сообщить о проблеме</button>
       </div>
       <div class="seg" id="infoFilterSeg" style="margin-top:12px">
-        <button type="button" data-iflt="all" class="ok">Все актуальные</button>
-        <button type="button" data-iflt="unread">Непрочитанные</button>
+        <button type="button" data-iflt="unread" class="ok">🔥 Актуальные сейчас (непрочитанные)</button>
+        <button type="button" data-iflt="all">📚 Архив прочитанных и все события</button>
       </div>
     </div>
+    <div class="panel" id="personalTasksPanel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <h3 style="font-size:17px;margin:0">📌 Поручения и задачи для сотрудника: <span id="personalTasksWho">Соня</span></h3>
+        <span class="tag ok" id="personalTasksCountTag">Актуально</span>
+      </div>
+      <div id="personalTasksList" class="stack" style="gap:8px"></div>
+    </div>
     <div id="infoCardsList"></div>
+    <div class="panel" id="ttkCardsSection" style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div>
+          <h2 style="font-size:19px;margin:0">☕ Технологические карты напитков (ТТК и стандарты бара)</h2>
+          <p class="muted" style="margin:3px 0 0;font-size:13px">Быстрая шпаргалка бариста: граммовки зерна, экстракция, температура взбивания молока и подача.</p>
+        </div>
+      </div>
+      <input type="search" id="ttkSearchIn" placeholder="🔍 Поиск напитка (Капучино, Раф, Флэт Уайт, Матча)…" style="margin-bottom:10px">
+      <div id="ttkListContainer" class="stack" style="gap:10px"></div>
+    </div>
   </section>
 
   <section id="cashView" class="stack" hidden>
+    <div id="cashDeadlineBanner" class="dl-banner ontime">
+      <span id="cashDeadlineText">⏰ Таймлайн «Касса»: 22:00 – 23:59</span>
+      <span id="cashDeadlineBadge" style="font-weight:700;color:var(--good)">🟢 В расписании смены</span>
+    </div>
     <div class="panel">
       <span class="label">Дата отчёта</span>
       <div class="seg three">
@@ -467,6 +229,38 @@
       </div>
       <p class="muted" id="rdLabel" style="margin:10px 0 0"></p>
     </div>
+    <div class="panel" id="minimalBaristaCashCard" style="border:2px solid var(--good)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span class="label" style="margin:0;color:var(--good)">⚡ Быстрая сдача смены бариста (Счётчик + 2 Фото с камеры)</span>
+        <span class="tag ok">Принцип 1 окна (30 сек)</span>
+      </div>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">В конце смены просто укажите показание счётчика кофемашины, сфотографируйте экран счётчика и ваш бумажный лист кассы — управляющий сам сверит цифры на Дашборде:</p>
+      <div class="grid2" style="gap:10px;margin-bottom:10px">
+        <div>
+          <label class="muted" for="quickCounterIn" style="font-size:12.5px;display:block;margin-bottom:4px">☕ Счётчик кофемашины (конец смены)</label>
+          <input type="number" id="quickCounterIn" min="0" inputmode="numeric" placeholder="Например: 777">
+        </div>
+        <div>
+          <label class="muted" for="quickPaperCashIn" style="font-size:12.5px;display:block;margin-bottom:4px">💵 Наличные по бумаге, руб. (необяз.)</label>
+          <input type="number" id="quickPaperCashIn" min="0" inputmode="decimal" placeholder="Например: 1650">
+        </div>
+      </div>
+      <div class="grid2" style="gap:10px;margin-bottom:10px">
+        <label class="file" style="padding:12px;min-height:64px;cursor:pointer">
+          <span class="ico">📷</span>
+          <span><b id="lblPhotoCounter">1. Фото счётчика кофемашины</b><span class="muted" style="display:block;font-size:11.5px">Только камера (без галереи)</span></span>
+          <input type="file" id="inPhotoCounter" accept="image/*" capture="environment">
+        </label>
+        <label class="file" style="padding:12px;min-height:64px;cursor:pointer">
+          <span class="ico">📄</span>
+          <span><b id="lblPhotoPaper">2. Фото бумажного отчёта кассы</b><span class="muted" style="display:block;font-size:11.5px">Фото рукописного листа смены</span></span>
+          <input type="file" id="inPhotoPaper" accept="image/*" capture="environment">
+        </label>
+      </div>
+      <div id="quickCashPhotosPreview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" hidden></div>
+      <button type="button" class="btn" id="quickSubmitPaperCashBtn" style="min-height:48px;font-size:15px">✅ Отправить счётчик и фото бумажного отчёта</button>
+    </div>
+
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <span class="label" style="margin:0">1. Единое поле загрузки документов (CSV и TXT — любое количество файлов сразу)</span>
@@ -512,14 +306,37 @@
         </div>
       </div>
       <div id="shiftCalcResult" hidden style="margin-top:14px"></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+        <span class="label" style="margin:0 0 8px;display:block">3. Быстрый ручной ввод кассы за смену (сразу синхронизируется с Дашбордом)</span>
+        <div class="grid2" style="gap:10px">
+          <div>
+            <label class="muted" for="manCashIn" style="font-size:12.5px;display:block;margin-bottom:4px">💵 Наличные за смену, руб.</label>
+            <input type="number" id="manCashIn" min="0" inputmode="decimal" placeholder="Например: 1650">
+          </div>
+          <div>
+            <label class="muted" for="manCardIn" style="font-size:12.5px;display:block;margin-bottom:4px">💳 Безнал (терминал), руб.</label>
+            <input type="number" id="manCardIn" min="0" inputmode="decimal" placeholder="Например: 850">
+          </div>
+          <div>
+            <label class="muted" for="manChecksIn" style="font-size:12.5px;display:block;margin-bottom:4px">🧾 Количество чеков / чашек</label>
+            <input type="number" id="manChecksIn" min="0" inputmode="numeric" placeholder="Например: 75">
+          </div>
+          <div style="display:flex;align-items:end">
+            <button type="button" class="btn ghost" id="applyManCashBtn" style="min-height:46px;font-size:14px;width:100%">✓ Подставить суммы в отчёт</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
       <span class="muted">Итого выручка</span>
-      <span class="num total" id="cTotal" style="color:var(--good)">0 ₽</span>
+      <span class="num total" id="cTotal" style="color:var(--good)">0 руб.</span>
       <div class="meter" aria-hidden="true"><i id="cMeter" style="width:0"></i></div>
       <span class="muted" id="cPlan"></span>
       <p class="muted" id="cCheck" style="margin:8px 0 0"></p>
+      <div id="smartCashCopilot" class="smart-box insight-ok" style="margin-top:10px;font-size:13px">
+        <b>🧠 Умный ориентир смены:</b> введите выручку или загрузите отчёт — помощник рассчитает средний чек, остаток до плана дня и проверит счётчик кофемашины.
+      </div>
       <div class="grid2" style="margin-top:16px">
         <div class="stat"><span class="muted">💵 Наличные</span><span class="num" id="cCash">—</span></div>
         <div class="stat"><span class="muted">💳 Мобильный / Безнал</span><span class="num" id="cCard">—</span></div>
@@ -532,7 +349,7 @@
           <input type="text" id="shiftBaristaIn" placeholder="Алина, Соня, Настя…" style="width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">
         </div>
         <div class="field" style="margin:0">
-          <label class="label" for="writeOffs" style="color:var(--bad)">🗑 Списания (шт. или ₽)</label>
+          <label class="label" for="writeOffs" style="color:var(--bad)">🗑 Списания (шт. или руб.)</label>
           <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0">
         </div>
       </div>
@@ -612,1453 +429,21 @@
   </form>
 </dialog>
 
-
-<script>
-const API_URL = window.COFFEE.API_URL;
-let LOCATION = "Кофейня №1";
-let PLAN = 45000;   // реальные значения приходят из таблицы настроек
-
-const $ = (id) => document.getElementById(id);
-const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " ₽";
-const isoToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
-const tg = window.Telegram && window.Telegram.WebApp;
-if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
-const tgu = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
-let userName = (function () {
-  try {
-    const saved = localStorage.getItem("coffee_active_barista");
-    if (saved) return saved;
-  } catch (_) {}
-  return tgu && tgu.first_name ? tgu.first_name : "Соня";
-})();
-const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {} };
-const tgt = (f) => { try { return f(); } catch (e) {} };
-$("loc").textContent = LOCATION; $("who").textContent = userName;
-const curTheme = () => document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-function paintTheme() { const d = curTheme() === "dark"; $("theme").textContent = d ? "☀️" : "🌙"; $("theme").setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема"); }
-$("theme").onclick = () => { const n = curTheme() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {} paintTheme(); };
-paintTheme();
-/* ---------- Telegram Mini App ---------- */
-if (tg) {
-  tgt(() => tg.ready()); tgt(() => tg.expand()); tgt(() => tg.disableVerticalSwipes());     // не закрывается случайным свайпом вниз
-  const hasTheme = () => { try { return !!localStorage.getItem("coffee_illy_theme"); } catch (e) { return false; } };
-  const tgTheme = () => { if (!hasTheme() && tg.colorScheme) { document.documentElement.setAttribute("data-theme", tg.colorScheme === "dark" ? "dark" : "light"); paintTheme(); } };
-  tgTheme(); tgt(() => tg.onEvent("themeChanged", tgTheme));
-  tgt(() => tg.setHeaderColor("#5a3a29"));
-  tgt(() => tg.setBackgroundColor(curTheme() === "dark" ? "#161211" : "#f6ece2"));
-  tgt(() => tg.BackButton.onClick(() => { const b = $("backBtn"); if (!b.hidden && !b.disabled) b.click(); }));   // системная «назад» = предыдущий шаг
-  setInterval(() => {        // подтверждение закрытия, пока есть несохранённая работа; кнопка «назад» на шагах 2+
-    const work = (typeof inProgress === "function" && inProgress()) || photoBusy || (!$("cashView").hidden && !!trans);
-    tgt(() => work ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation());
-    const back = block !== "КАССА" && !$("checklistView").hidden && idx > 0;
-    tgt(() => back ? tg.BackButton.show() : tg.BackButton.hide());
-  }, 700);
-}
-document.addEventListener("focusin", (e) => {     // клавиатура не перекрывает поле ввода
-  if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName)) setTimeout(() => { try { e.target.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (x) {} }, 320);
-});
-$("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-
-let tasks = [], cur = [], idx = 0, answers = [], META = {};
-let block = "Открытие", photo = "", incident = false, priority = "Терпит";
-let photoUrl = "", photoBusy = false, stream = null;
-const PHOTO_MAX_AGE = 3 * 60 * 1000;   // запасной режим: фото старше 3 минут не принимаем
-const ADDON = /молоко|сироп|мёд|маршмеллоу|топпинг|открытка|десерт от бариста/i;   // добавки не попадают в «хиты дня»
-function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3200); }
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-let trans = null, sales = null;
-let reportDate = isoToday();
-const shiftIso = (s, n) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
-function setReportDate(s) {
-  reportDate = s; $("rdPick").value = s; $("rdPick").max = isoToday();
-  const t = isoToday(), y = shiftIso(t, -1);
-  $("rdToday").className = s === t ? "ok" : ""; $("rdYest").className = s === y ? "ok" : "";
-  const nice = new Date(s + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-  $("rdLabel").textContent = "Отчёт будет записан в строку за " + nice + (s === t ? " (сегодня)" : s === y ? " (вчера)" : "") + ". Если за эту дату уже есть данные, они обновятся.";
-}
-$("rdToday").onclick = () => setReportDate(isoToday());
-$("rdYest").onclick = () => setReportDate(shiftIso(isoToday(), -1));
-$("rdPick").onchange = (e) => { const v = e.target.value; setReportDate(v && v <= isoToday() ? v : reportDate); };
-
-const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "infoView", "cashView", "doneView"];
-function show(v) { VIEWS.forEach((x) => $(x).hidden = x !== v); }
-
-/* отметки «сегодня уже сдано» */
-const doneKey = (b) => "coffee_illy_done_" + isoToday() + "_" + b;
-const isDone = (b) => { try { return !!localStorage.getItem(doneKey(b)); } catch (e) { return false; } };
-const markDone = (b) => { try { localStorage.setItem(doneKey(b), "1"); } catch (e) {} };
-function drawTabs() {
-  document.querySelectorAll(".tabs button").forEach((x) => {
-    x.setAttribute("aria-selected", x.dataset.b === block);
-    x.textContent = x.dataset.l; if (isDone(x.dataset.b)) { const c = document.createElement("span"); c.className = "ck"; c.textContent = "✓"; x.appendChild(c); }
-    x.classList.toggle("locked", x.dataset.b !== block && inProgress());
-  });
-}
-
-/* ---------- загрузка чек-листов ---------- */
-let subGroup = "all";
-const BLOCK_GROUPS = {
-  "Открытие": [
-    { k: "o", l: "Стандарт (o01–o08 · 8)" },
-    { k: "pa", l: "Приёмка (pa01–pa21 · 21)" },
-    { k: "all", l: "Все (29)" }
-  ],
-  "День": [
-    { k: "d", l: "Обход дня (d01–d06 · 6)" },
-    { k: "q", l: "Чистка До/После (q01–q09 · 9)" },
-    { k: "all", l: "Все (15)" }
-  ],
-  "Закрытие": [
-    { k: "c", l: "Стандарт (c01–c14 · 14)" },
-    { k: "pe", l: "Полная сдача (pe01–pe26 · 26)" },
-    { k: "u", l: "Уборка (u01–u07 · 7)" },
-    { k: "all", l: "Все (47)" }
-  ]
-};
-const DEFAULT_SUBGROUP = { "Открытие": "o", "День": "d", "Закрытие": "c" };
-
-async function loadTasks() {
-  const defTasks = (window.COFFEE && window.COFFEE.DEFAULT_TASKS) || [];
-  let saved = []; try { saved = JSON.parse(localStorage.getItem("coffee_illy_tasks") || "[]"); } catch (_) {}
-  if (saved.length < defTasks.length) saved = defTasks;
-  $("cacheNote").hidden = true;
-  if (saved.length) { tasks = saved; selectBlock(block); } else show("loader");
-  try {
-    const d = await coffeeFetch(API_URL + "?action=get_checklists" + (location.search.indexOf("fresh") >= 0 ? "&nocache=1" : ""));
-    if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
-    tasks = d.tasks.length >= defTasks.length ? d.tasks : defTasks;
-    META = d;
-    if (d.plan > 0) PLAN = d.plan;
-    if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
-    if (d.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = d.initCounter;
-    renderCash();
-    try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
-    if (!inProgress() && !photoBusy) selectBlock(block);
-  } catch (e) {
-    if (!tasks.length) tasks = defTasks;
-    if (!tasks.length && block !== "КАССА") { show("errorView"); return; }
-    if (!saved.length) selectBlock(block);
-  }
-}
-
-function emptyHint(b) {      // почему пусто: подсказка администратору
-  const m = META || {}; let t;
-  if (!m.v) t = "Скрипт на сервере устарел. Администратору: Apps Script → «Развернуть» → «Управление развёртываниями» → ✏️ → Версия «Новая версия» → «Развернуть».";
-  else if (!m.rows) t = "Лист «" + (m.sheet || "Задачи") + "» пуст. Загрузите задачи в закрытую таблицу.";
-  else t = "В блоке «" + b + "» нет активных задач. В листе «" + m.sheet + "» строк: " + m.rows + ". Блок берётся из столбца «Блок» (Открытие / День / Закрытие), включение — столбец «Активна» = да.";
-  $("emptyText").textContent = t;
-}
-
-let photos = [];
-let choiceMade = false;
-let checklistStartedAt = "";
-let stepNavLock = false;
-let infoFilter = "all";
-const DRAFT_KEY = "coffee_shift_draft_v10";
-
-function syncStaffSelector() {
-  const sel = $("baristaSelect");
-  if (!sel) return;
-  const staffList = (META && Array.isArray(META.staff) && META.staff.length)
-    ? META.staff.filter((s) => s.active !== "нет")
-    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
-  sel.innerHTML = staffList.map((s) => '<option value="' + s.name.replace(/"/g, '&quot;') + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + s.name + ' (' + (s.role || 'Бариста') + ')</option>').join("");
-  if (!staffList.some((s) => s.name === userName) && staffList.length) {
-    userName = staffList[0].name;
-    sel.value = userName;
-  }
-  $("who").textContent = userName;
-  if ($("shiftBaristaIn") && !$("shiftBaristaIn").value) $("shiftBaristaIn").value = userName;
-}
-if ($("baristaSelect")) {
-  $("baristaSelect").addEventListener("change", (e) => {
-    userName = e.target.value || "Соня";
-    try { localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
-    $("who").textContent = userName;
-    if ($("shiftBaristaIn")) $("shiftBaristaIn").value = userName;
-    drawTabs();
-    if (block === "ИНФО") renderInfoView();
-    saveShiftDraft();
-    toast("Активный сотрудник: " + userName);
-  });
-}
-
-function getUnreadInfoCount() {
-  const list = (META && Array.isArray(META.announcements) && META.announcements.length)
-    ? META.announcements
-    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(isoToday())) || []);
-  return list.filter((a) => {
-    const acks = Array.isArray(a.acks) ? a.acks : [];
-    return !acks.some((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
-  }).length;
-}
-
-function saveShiftDraft() {
-  if (block === "КАССА" || block === "ИНФО" || !cur.length) return;
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      date: isoToday(),
-      block,
-      idx,
-      startedAt: checklistStartedAt || new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
-      userName,
-      answers
-    }));
-  } catch (_) {}
-}
-
-function clearShiftDraft() {
-  try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
-  if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
-}
-
-function tryRestoreShiftDraft(targetBlock) {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return false;
-    const d = JSON.parse(raw);
-    if (!d || d.date !== isoToday() || d.block !== targetBlock || !Array.isArray(d.answers) || !d.answers.length) return false;
-    const hasProgress = d.idx > 0 || d.answers.some((a) => a && (a.choiceMade || (a.photos && a.photos.length)));
-    if (!hasProgress) return false;
-    idx = Math.min(d.idx || 0, Math.max(0, cur.length - 1));
-    answers = d.answers;
-    checklistStartedAt = d.startedAt || "";
-    if ($("draftRestoreBanner")) {
-      $("draftRestoreBanner").hidden = false;
-      $("draftRestoreText").textContent = "↺ Восстановлен черновик смены (шаг " + (idx + 1) + " из " + cur.length + ") — данные сохранены";
-    }
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-if ($("resetDraftBtn")) {
-  $("resetDraftBtn").onclick = () => {
-    clearShiftDraft();
-    idx = 0;
-    answers = [];
-    renderStep();
-    toast("Чек-лист начат с первого шага");
-  };
-}
-
-function updateDeadlineUI() {
-  if (window.coffeeEnforceOverdueChecklists) {
-    const createdIncs = window.coffeeEnforceOverdueChecklists(userName);
-    if (createdIncs && createdIncs.length) {
-      toast("🚨 Дедлайн истёк! Доступ закрыт, инцидент отправлен администратору");
-    }
-  }
-  const banner = $("deadlineBanner");
-  if (!banner || block === "КАССА" || block === "ИНФО") return true;
-  const win = window.coffeeGetBlockWindow
-    ? window.coffeeGetBlockWindow(block)
-    : { openTime: "07:30", deadline: "08:30", isOverdue: false, isBefore: false, completed: false, canPass: true, state: "open", currentTime: "08:00" };
-
-  banner.className = "dl-banner " + (win.state === "overdue_closed" ? "overdue" : "ontime");
-  $("deadlineText").textContent = "⏰ Отведённое время «" + block + "»: " + win.openTime + " – " + win.deadline + (win.extended ? " (разблокировано админом)" : "");
-  if (win.state === "completed") {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--good)">✓ Сдано вовремя</span>';
-  } else if (win.state === "overdue_closed") {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--bad)">🔒 Доступ закрыт (просрочено после ' + win.deadline + ')</span>';
-  } else if (win.state === "before_window") {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--warn)">⏳ Доступ с ' + win.openTime + '</span>';
-  } else {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--good)">🟢 Доступ открыт (до ' + win.deadline + ')</span>';
-  }
-
-  const lockCard = $("windowLockCard");
-  const stepWrap = $("taskStepWrap");
-  if (lockCard && stepWrap) {
-    if (!win.canPass) {
-      lockCard.hidden = false;
-      stepWrap.hidden = true;
-      $("steps").hidden = true;
-      if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
-      const alertBox = $("windowLockAlertBox");
-      if (win.state === "completed") {
-        lockCard.style.borderColor = "var(--good)";
-        $("windowLockIcon").textContent = "✅";
-        $("windowLockTitle").textContent = "Чек-лист «" + block + "» за сегодня выполнен";
-        $("windowLockDesc").textContent = "Все обязательные пункты блока «" + block + "» успешно сданы" + (win.completedRecord && win.completedRecord.time ? " в " + win.completedRecord.time : "") + ". Повторная отправка не требуется.";
-        alertBox.hidden = true;
-      } else if (win.state === "before_window") {
-        lockCard.style.borderColor = "var(--warn)";
-        $("windowLockIcon").textContent = "⏳";
-        $("windowLockTitle").textContent = "Доступ к чек-листу «" + block + "» ещё не открыт";
-        $("windowLockDesc").textContent = "Прохождение чек-листа доступно для сотрудников строго в отведённое время: с " + win.openTime + " до " + win.deadline + " (сейчас " + win.currentTime + ").";
-        alertBox.hidden = true;
-      } else {
-        lockCard.style.borderColor = "var(--bad)";
-        $("windowLockIcon").textContent = "🔒";
-        $("windowLockTitle").textContent = "Доступ закрыт — время выполнения истекло!";
-        $("windowLockDesc").textContent = "Отведённое время для прохождения чек-листа «" + block + "» (" + win.openTime + " – " + win.deadline + ") закончилось. Прохождение после дедлайна заблокировано.";
-        alertBox.hidden = false;
-        alertBox.innerHTML =
-          "<b>🚨 Автоматическая фиксация нарушения:</b><br>" +
-          "• В реестр проблем занесён критический инцидент о несвоевременном выполнении чек-листа «" + block + "».<br>" +
-          "• Администратору отправлено уведомление в Telegram.<br>" +
-          "• Открыть доступ или продлить окно может только администратор в разделе <b>«Управление → Задачи»</b>.";
-      }
-      return false;
-    } else {
-      lockCard.hidden = true;
-      stepWrap.hidden = false;
-      $("steps").hidden = false;
-    }
-  }
-  return true;
-}
-setInterval(() => {
-  updateDeadlineUI();
-  drawTabs();
-}, 10000);
-
-function selectBlock(b) {
-  block = b;
-  syncStaffSelector();
-  drawTabs();
-  if (b === "КАССА") { $("steps").hidden = true; show("cashView"); renderCash(); return; }
-  if (b === "ИНФО") { $("steps").hidden = true; show("infoView"); renderInfoView(); return; }
-  cur = tasks.filter((t) => t.block === b && t.active !== "нет");
-  idx = 0;
-  answers = [];
-  checklistStartedAt = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
-  if (!cur.length) { $("steps").hidden = true; emptyHint(b); show("emptyView"); return; }
-  tryRestoreShiftDraft(b);
-  $("steps").hidden = false;
-  updateDeadlineUI();
-  renderStep();
-}
-
-/* ---------- шаги чек-листа (1 экран = 1 задача) ---------- */
-function drawSteps() {
-  $("steps").innerHTML = cur.map((_, i) => '<i class="' + (i < idx ? "done" : i === idx ? "now" : "") + '"></i>').join("");
-}
-
-function getTaskPhotoMode(t) {
-  if (!t) return "нет";
-  if (t.photoMode) return t.photoMode;
-  return t.mediaRequired || t.photo === "да" ? "да" : "нет";
-}
-
-function renderStep() {
-  show("checklistView");
-  updateDeadlineUI();
-  const t = cur[idx], a = answers[idx] || {};
-  const pMode = getTaskPhotoMode(t);
-  $("stepCounter").textContent = "Задача " + (idx + 1) + " из " + cur.length + (t.id ? " · код " + t.id : "");
-  if ($("photoModeTag")) {
-    $("photoModeTag").textContent = pMode === "да" ? "📷 Фото обязательно" : (pMode === "при проблеме" ? "📷 Фото при проблеме" : "✓ Без фото");
-    $("photoModeTag").style.color = pMode === "да" ? "var(--warn)" : "var(--muted)";
-  }
-  $("taskTitle").textContent = t.title || "";
-  $("taskInstruction").textContent = t.instruction || "";
-  $("taskInstruction").hidden = !t.instruction;
-
-  photos = Array.isArray(a.photos) ? a.photos.slice() : (a.preview ? [a.preview] : []);
-  photo = photos[0] || "";
-  photoUrl = a.photo_url || "";
-  photoBusy = false;
-
-  choiceMade = !!a.choiceMade;
-  incident = !!a.isIncident;
-  if ($("incidentType")) $("incidentType").value = a.incType || "Поломка оборудования";
-  $("incidentComment").value = a.comment || "";
-  setPriority(a.priority || "Терпит");
-
-  /* Применяем состояние выбора (нельзя автоматически считать задачу выполненной без подтверждения сотрудника!) */
-  $("incidentBox").hidden = !(choiceMade && incident);
-  $("btnOk").className = (choiceMade && !incident) ? "ok" : "";
-  $("btnInc").className = (choiceMade && incident) ? "bad" : "";
-  if ($("choiceHint")) {
-    $("choiceHint").textContent = !choiceMade
-      ? "Нажмите «Всё в норме» или «Обнаружена проблема», чтобы разблокировать переход далее"
-      : (incident ? "Заполните карточку проблемы — она сразу поступит в реестр инцидентов и Telegram" : "✓ Выполнение по стандарту подтверждено");
-    $("choiceHint").style.color = !choiceMade ? "var(--warn)" : (incident ? "var(--bad)" : "var(--good)");
-  }
-
-  const showPhoto = (pMode === "да") || (choiceMade && incident);
-  $("photoBlock").hidden = !showPhoto;
-  setPhotoUI();
-  photoMsg(photos.length ? ("✓ Прикреплено кадров: " + photos.length) : "", photos.length ? "good" : "");
-
-  $("backBtn").hidden = idx === 0;
-  $("nextBtn").textContent = idx === cur.length - 1 ? "Завершить и отправить чек-лист" : "Следующая задача →";
-  drawSteps();
-  validate();
-  window.scrollTo(0, 0);
-}
-
-function setPhotoUI() {
-  photo = photos[0] || "";
-  const isV = /^data:video/.test(photo);
-  $("photoPreview").hidden = !photo || isV;
-  if (photo && !isV) $("photoPreview").src = photo;
-  $("vidPreview").hidden = !isV;
-  if (isV) { if ($("vidPreview").getAttribute("src") !== photo) $("vidPreview").src = photo; } else $("vidPreview").removeAttribute("src");
-  $("camIco").style.display = photo ? "none" : "";
-  $("drop").classList.toggle("has", photos.length > 0);
-  $("photoPrompt").textContent = photos.length ? ("Снято кадров: " + photos.length + " (нажмите, чтобы снять ещё)") : "Открыть камеру";
-  if ($("addMorePhotoBtn")) $("addMorePhotoBtn").hidden = photos.length === 0;
-
-  const gal = $("multiPhotoGallery");
-  if (gal) {
-    gal.hidden = photos.length === 0;
-    gal.innerHTML = photos.map((src, i) => {
-      const v = /^data:video/.test(src);
-      return '<div class="mp-item">' +
-        (v ? '<video src="' + src + '" muted playsinline></video>' : '<img src="' + src + '" alt="Кадр ' + (i + 1) + '">') +
-        '<button type="button" class="mp-del" data-delphoto="' + i + '" title="Удалить кадр">×</button>' +
-        '<span class="mp-lbl">Кадр ' + (i + 1) + '</span>' +
-      '</div>';
-    }).join("");
-  }
-  $("backBtn").disabled = photoBusy;
-}
-
-if ($("multiPhotoGallery")) {
-  $("multiPhotoGallery").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-delphoto]");
-    if (!b) return;
-    const rmIdx = Number(b.dataset.delphoto);
-    photos.splice(rmIdx, 1);
-    photo = photos[0] || "";
-    setPhotoUI();
-    validate();
-    saveAnswer();
-  });
-}
-if ($("addMorePhotoBtn")) {
-  $("addMorePhotoBtn").onclick = () => openCamera();
-}
-
-/* Быстрый штамп-снимок для тестирования или при блокировке камеры браузером */
-function makeStampedFallbackPhoto() {
-  const c = document.createElement("canvas");
-  c.width = 800; c.height = 500;
-  const x = c.getContext("2d");
-  const g = x.createLinearGradient(0, 0, c.width, c.height);
-  g.addColorStop(0, "#2e1b11"); g.addColorStop(1, "#5a3a29");
-  x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
-  x.strokeStyle = "rgba(224,167,106,.45)"; x.lineWidth = 3;
-  x.strokeRect(22, 22, c.width - 44, c.height - 44);
-  x.fillStyle = "#e0a76a"; x.font = "700 22px system-ui,sans-serif";
-  x.fillText("📸 ФОТОФИКСАЦИЯ ПУНКТА · КАДР №" + (photos.length + 1), 44, 90);
-  x.fillStyle = "#fff"; x.font = "700 26px system-ui,sans-serif";
-  x.fillText(String((cur[idx] && cur[idx].title) || "Проверка").slice(0, 40), 44, 150);
-  x.fillStyle = "#f6ece2"; x.font = "500 19px system-ui,sans-serif";
-  x.fillText("Блок: " + block + " · Сотрудник: " + userName, 44, 205);
-  x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(0, c.height - 54, c.width, 54);
-  x.fillStyle = "#fff"; x.font = "600 17px system-ui,sans-serif";
-  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION, 24, c.height - 20);
-  return c.toDataURL("image/jpeg", 0.8);
-}
-
-if ($("simPhotoBtn")) {
-  $("simPhotoBtn").onclick = () => {
-    const dataUrl = makeStampedFallbackPhoto();
-    photos.push(dataUrl);
-    photo = photos[0];
-    setPhotoUI();
-    photoMsg("✓ Добавлен контрольный снимок (всего кадров: " + photos.length + ")", "good");
-    validate();
-    saveAnswer();
-  };
-}
-
-/* Модальное окно «Как правильно выполнить (фотообразец)» */
-if ($("btnSampleModal")) {
-  $("btnSampleModal").onclick = () => {
-    const t = cur[idx];
-    if (!t) return;
-    $("sampleDlgTitle").textContent = "📖 Стандарт: " + (t.title || "");
-    $("sampleDlgInstr").textContent = t.instruction || "Выполните операцию согласно регламенту смены.";
-    const samples = window.coffeeGetSamplePhotos ? window.coffeeGetSamplePhotos(t) : [];
-    $("sampleDlgPhotos").innerHTML = samples.map((s) => (
-      '<div style="border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--bg)">' +
-        '<div style="font-weight:700;font-size:13.5px;margin-bottom:6px">' + s.label + '</div>' +
-        '<img src="' + s.url + '" alt="' + s.label + '" style="width:100%;border-radius:10px;display:block">' +
-        '<div class="muted" style="font-size:12.5px;margin-top:6px">' + (s.caption || '') + '</div>' +
-      '</div>'
-    )).join("");
-    $("sampleDlg").showModal();
-  };
-}
-if ($("sampleDlgClose")) $("sampleDlgClose").onclick = () => $("sampleDlg").close();
-
-function setStatus(isInc) {
-  choiceMade = true;
-  incident = isInc;
-  $("incidentBox").hidden = !isInc;
-  const t = cur[idx];
-  const pMode = getTaskPhotoMode(t);
-  if (t && $("photoBlock")) {
-    $("photoBlock").hidden = !(pMode === "да" || isInc);
-    const lbl = $("photoBlockLabel") || $("photoBlock").querySelector(".label");
-    if (lbl) lbl.textContent = isInc ? "📸 Фото или видео неисправности (можно несколько ракурсов)" : "Фото или видео — можно прикрепить несколько снимков";
-  }
-  $("btnOk").className = !isInc ? "ok" : "";
-  $("btnInc").className = isInc ? "bad" : "";
-  if ($("choiceHint")) {
-    $("choiceHint").textContent = isInc
-      ? "Укажите тип проблемы и описание — карточка сразу сохранится в реестре инцидентов"
-      : "✓ Нормальное состояние подтверждено";
-    $("choiceHint").style.color = isInc ? "var(--bad)" : "var(--good)";
-  }
-  validate();
-  saveAnswer();
-}
-function setPriority(p) {
-  priority = p;
-  $("prLow").className = p === "Терпит" ? "warn" : "";
-  $("prHigh").className = p === "Критично" ? "bad" : "";
-}
-function validate() {
-  const t = cur[idx]; if (!t) return;
-  const pMode = getTaskPhotoMode(t);
-  const needPhoto = (pMode === "да") || (incident && pMode === "при проблеме");
-  const hasPhoto = photos.length > 0 || !!photo;
-  const commentOk = !incident || $("incidentComment").value.trim().length > 2;
-  $("nextBtn").disabled = !(choiceMade && (!needPhoto || hasPhoto) && !photoBusy && commentOk);
-  $("backBtn").disabled = photoBusy;
-}
-
-/* ---------- камера: живой снимок или видео, без чёрного экрана + мульти-фото ---------- */
-function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
-const VID_MAX = 15;
-let camFacing = "environment", camMode = "photo", camT = null, recT = null, rec = null, recChunks = [], armed = false;
-document.addEventListener("pointerdown", () => { armed = true; }, { once: true });
-function stopStream() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; }
-async function startStream() {
-  stopStream(); $("camShot").disabled = true;
-  const v = $("camVideo"), tries = [{ video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }, { video: true, audio: false }];
-  let s = null, err;
-  for (const c of tries) { try { s = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) { err = e; if (e && /NotAllowed|Permission|Security/i.test(e.name)) break; } }
-  if (!s) throw err || new Error("no camera");
-  stream = s; v.srcObject = s; v.style.transform = camFacing === "user" ? "scaleX(-1)" : "";
-  try { await v.play(); } catch (e) {}
-  await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 2500); });
-  await new Promise((r) => setTimeout(r, 300));
-  $("camShot").disabled = !v.videoWidth;
-}
-function camError(e) {
-  const n = (e && e.name) || "";
-  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере — нажмите «📸 Контрольный снимок со штампом» ниже." : "Камера недоступна — нажмите «📸 Контрольный снимок со штампом».", "bad");
-}
-async function openCamera() {
-  if (photoBusy || !$("cam").hidden) return;
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-    if ($("simPhotoBtn")) $("simPhotoBtn").click();
-    return;
-  }
-  $("cam").hidden = false; setMode("photo"); photoMsg("");
-  try { await startStream(); }
-  catch (e) { closeCamera(); camError(e); }
-}
-function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
-function cancelAuto() { clearInterval(camT); $("camCount").hidden = true; }
-function closeCamera() {
-  cancelAuto(); clearInterval(recT);
-  if (rec && rec.state === "recording") { rec.onstop = null; try { rec.stop(); } catch (e) {} }
-  rec = null; $("camRec").hidden = true; $("camShot").classList.remove("rec"); stopStream(); $("cam").hidden = true;
-}
-function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 10; }
-function shot(n) {
-  const v = $("camVideo"); if (!v.videoWidth) return;
-  const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
-  c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
-  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-  if (isBlack(c) && n < 3) return void setTimeout(() => shot(n + 1), 350);
-  closeCamera(); gotPhoto(c);
-}
-function pickMime() { if (!window.MediaRecorder) return null; for (const m of ["video/webm;codecs=vp8", "video/webm", "video/mp4"]) if (MediaRecorder.isTypeSupported(m)) return m; return ""; }
-function toggleRec() {
-  if (rec && rec.state === "recording") { rec.stop(); return; }
-  const mime = pickMime(); if (mime === null) { toast("Запись видео не поддерживается — снимите фото"); return; }
-  recChunks = [];
-  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 1200000 }, mime ? { mimeType: mime } : {})); } catch (e) { toast("Не удалось начать запись видео"); return; }
-  const r = rec;
-  r.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
-  r.onstop = () => {
-    const blob = new Blob(recChunks, { type: (r.mimeType || mime || "video/webm").split(";")[0] }); closeCamera();
-    if (!blob.size) { photoMsg("Видео не записалось — попробуйте ещё раз", "bad"); return; }
-    const fr = new FileReader();
-    fr.onload = () => {
-      photos.push(fr.result);
-      photo = photos[0];
-      photoUrl = "";
-      setPhotoUI();
-      uploadNow(fr.result);
-      saveAnswer();
-    };
-    fr.readAsDataURL(blob);
-  };
-  r.start(500); const t0 = Date.now(); $("camRec").hidden = false; $("camShot").classList.add("rec"); $("camTime").textContent = "0:00";
-  recT = setInterval(() => { const sec = Math.floor((Date.now() - t0) / 1000); $("camTime").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); if (sec >= VID_MAX && r.state === "recording") r.stop(); }, 250);
-}
-$("drop").onclick = openCamera;
-$("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
-$("camCancel").onclick = closeCamera;
-$("camShot").onclick = () => { cancelAuto(); if (camMode === "video") toggleRec(); else shot(0); };
-$("mPhoto").onclick = () => { if (!(rec && rec.state === "recording")) setMode("photo"); };
-$("mVideo").onclick = () => { if (!(rec && rec.state === "recording")) setMode("video"); };
-$("camFlip").onclick = async () => {
-  if (rec && rec.state === "recording") return;
-  cancelAuto(); const prev = camFacing; camFacing = prev === "user" ? "environment" : "user";
-  try { await startStream(); } catch (e) { camFacing = prev; try { await startStream(); } catch (x) { closeCamera(); camError(x); return; } toast("Вторая камера недоступна"); }
-};
-function gotPhoto(c) {
-  const x = c.getContext("2d"), h = Math.max(16, Math.round(c.width / 45));
-  x.fillStyle = "rgba(0,0,0,.58)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
-  x.fillStyle = "#fff"; x.font = "600 " + h + "px system-ui,sans-serif";
-  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION + " · " + userName + " · " + (cur[idx] ? cur[idx].title : ""), h * .6, c.height - h * .6);
-  const newShot = c.toDataURL("image/jpeg", 0.74);
-  photos.push(newShot);
-  photo = photos[0];
-  photoUrl = "";
-  setPhotoUI();
-  uploadNow(newShot);
-  saveAnswer();
-}
-async function uploadNow(targetShot) {
-  const my = targetShot || photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
-  photoBusy = true; setPhotoUI(); validate();
-  try {
-    const d = await api({ action: "upload_photo", block, step, photo: my, kind: /^data:video/.test(my) ? "video" : "photo" });
-    photoUrl = d.url || "";
-    photoMsg("✓ Сохранено кадров: " + photos.length, "good");
-  } catch (e) {
-    photoMsg("✓ Кадров прикреплено: " + photos.length + " (отправятся с отчётом)", "good");
-  }
-  photoBusy = false; setPhotoUI(); validate();
-}
-$("photoState").onclick = () => { if (!photos.length && !photoBusy) openCamera(); };
-$("btnOk").onclick = () => { tap(); setStatus(false); };
-$("btnInc").onclick = () => { tap(); setStatus(true); };
-$("prLow").onclick = () => { setPriority("Терпит"); saveAnswer(); };
-$("prHigh").onclick = () => { setPriority("Критично"); saveAnswer(); };
-if ($("incidentType")) $("incidentType").addEventListener("change", saveAnswer);
-$("incidentComment").addEventListener("input", () => { validate(); saveAnswer(); });
-
-function saveAnswer() {
-  const t = cur[idx];
-  if (!t) return;
-  const nowHm = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  answers[idx] = {
-    id: t.id,
-    title: t.title,
-    choiceMade,
-    isIncident: incident,
-    incType: incident && $("incidentType") ? $("incidentType").value : "",
-    comment: incident ? $("incidentComment").value.trim() : "",
-    priority: incident ? priority : "",
-    photos: photos.slice(),
-    photo_url: photoUrl || photos[0] || "",
-    preview: photos[0] || "",
-    completedAt: nowHm,
-    responsible: t.responsible
-  };
-  saveShiftDraft();
-}
-$("backBtn").onclick = () => {
-  if (stepNavLock || idx <= 0) return;
-  stepNavLock = true;
-  setTimeout(() => { stepNavLock = false; }, 220);
-  saveAnswer();
-  idx--;
-  renderStep();
-};
-$("nextBtn").onclick = async () => {
-  if (stepNavLock || $("nextBtn").disabled) return;
-  if (!updateDeadlineUI()) {
-    toast("🔒 Время вышло! Доступ к чек-листу закрыт.");
-    return;
-  }
-  stepNavLock = true;
-  setTimeout(() => { stepNavLock = false; }, 320);
-  tap();
-  saveAnswer();
-  if (idx < cur.length - 1) { idx++; renderStep(); return; }
-  $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
-  const win = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow(block) : { deadline: "08:30", isOverdue: false };
-  const items = answers.map((a) => Object.assign({}, a, {
-    photo_url: a.photo_url || a.preview || "",
-    photo_base64: a.photo_url ? "" : (a.preview || "")
-  }));
-  const ok = await post({
-    action: "submit_checklist",
-    sid: uid(),
-    location: LOCATION,
-    userName,
-    block,
-    startedAt: checklistStartedAt,
-    deadline: win.deadline,
-    isLate: win.isOverdue,
-    items
-  });
-  clearShiftDraft();
-  if (ok) { markDone(block); drawTabs(); }
-  const n = answers.filter((a) => a && a.isIncident).length;
-  const lateNote = win.isOverdue ? " · ⚠️ Статус: Выполнено с опозданием (после " + win.deadline + ")" : " · ✓ Выполнено в срок";
-  finish(ok, (n ? "Зарегистрировано проблем: " + n : "Все пункты в норме") + lateNote);
-  $("toDash").hidden = true;
-};
-
-/* ---------- Вкладка 3.2: Информирование и кнопка «Ознакомлен» ---------- */
-function renderInfoView() {
-  const list = (META && Array.isArray(META.announcements) && META.announcements.length)
-    ? META.announcements
-    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(isoToday())) || []);
-  const box = $("infoCardsList");
-  if (!box) return;
-  const filtered = list.filter((a) => {
-    const acks = Array.isArray(a.acks) ? a.acks : [];
-    const isAcked = acks.some((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
-    if (infoFilter === "unread") return !isAcked;
-    return true;
-  });
-  if (!filtered.length) {
-    box.innerHTML = '<div class="panel center"><h2>Все материалы прочитаны ✓</h2><p class="muted">Непрочитанных объявлений для сотрудника «' + userName + '» нет.</p></div>';
-    return;
-  }
-  box.innerHTML = filtered.map((a) => {
-    const acks = Array.isArray(a.acks) ? a.acks : [];
-    const myAck = acks.find((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
-    const targetList = Array.isArray(a.targetStaff) && a.targetStaff.length ? a.targetStaff : ["Соня", "Алина", "Настя"];
-    return '<div class="info-card ' + (myAck ? "acked" : "unread") + '">' +
-      (a.calendarDate ? '<div class="cal-pill">📅 Событие календаря: ' + a.calendarDate.split("-").reverse().join(".") + (a.calendarEventTitle ? ' — ' + a.calendarEventTitle : '') + '</div>' : '') +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--brew)">' + (a.category || "Объявление") + '</span>' +
-        '<span class="muted" style="font-size:12px">Опубликовано: ' + String(a.publishedAt || isoToday()).split("-").reverse().join(".") + (a.validTo ? ' · Актуально до ' + String(a.validTo).split("-").reverse().join(".") : '') + '</span>' +
-      '</div>' +
-      '<h3 style="font-size:18px;margin:8px 0">' + (a.title || "") + '</h3>' +
-      '<p class="instr" style="margin:0 0 12px">' + (a.text || "") + '</p>' +
-      (a.mediaUrl ? '<div style="margin-bottom:12px">' + (window.coffeeMediaHtml ? window.coffeeMediaHtml(a.mediaUrl, a.title) : '') + '</div>' : '') +
-      '<div class="muted" style="font-size:12.5px;margin-bottom:12px">👥 Кому назначено: <b>' + targetList.join(", ") + '</b> · Ознакомились: <b>' + (acks.length ? acks.map((k) => k.name + ' (' + k.at + ')').join(", ") : "пока никто") + '</b></div>' +
-      (myAck
-        ? '<div style="padding:10px 14px;border-radius:12px;background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good);font-weight:700;font-size:14px;text-align:center">✓ Вы ознакомились (' + myAck.name + ' · ' + myAck.at + ')</div>'
-        : '<button type="button" class="btn" data-ackinfo="' + a.id + '" style="min-height:48px;font-size:15px">✅ Ознакомлен (' + userName + ')</button>') +
-    '</div>';
-  }).join("");
-}
-
-if ($("infoFilterSeg")) {
-  $("infoFilterSeg").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-iflt]");
-    if (!b) return;
-    infoFilter = b.dataset.iflt;
-    document.querySelectorAll("#infoFilterSeg button").forEach((x) => x.className = x.dataset.iflt === infoFilter ? "ok" : "");
-    renderInfoView();
-  });
-}
-
-if ($("infoCardsList")) {
-  $("infoCardsList").addEventListener("click", async (e) => {
-    const b = e.target.closest("[data-ackinfo]");
-    if (!b) return;
-    const infoId = b.dataset.ackinfo;
-    b.disabled = true;
-    b.textContent = "Сохраняем подтверждение…";
-    await post({ action: "ack_announcement", id: infoId, userName });
-    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1");
-    if (d && d.announcements) META.announcements = d.announcements;
-    drawTabs();
-    renderInfoView();
-    toast("✓ Подтверждение ознакомления сохранено (" + userName + ")");
-  });
-}
-
-if ($("quickIncidentBtn")) {
-  $("quickIncidentBtn").onclick = () => {
-    $("qiStep").value = "";
-    $("qiText").value = "";
-    $("quickIncDlg").showModal();
-  };
-}
-if ($("qiCancel")) $("qiCancel").onclick = () => $("quickIncDlg").close();
-if ($("quickIncForm")) {
-  $("quickIncForm").onsubmit = async (e) => {
-    e.preventDefault();
-    const txt = $("qiText").value.trim();
-    if (txt.length < 3) { toast("Опишите проблему (минимум 3 символа)"); return; }
-    await post({
-      action: "report_standalone_incident",
-      userName,
-      incType: $("qiType").value,
-      step: $("qiStep").value.trim() || $("qiType").value,
-      text: txt,
-      priority: $("qiPriority").value
-    });
-    $("quickIncDlg").close();
-    toast("🚨 Инцидент зарегистрирован и отправлен в Telegram!");
-  };
-}
-
-
-/* ---------- отправка с очередью на случай offline ---------- */
-function getQ() { try { return JSON.parse(localStorage.getItem("coffee_illy_queue") || "[]"); } catch (e) { return []; } }
-function setQ(q) { try { localStorage.setItem("coffee_illy_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
-async function api(p) {
-  const d = await coffeeFetch(API_URL, { method: "POST", body: JSON.stringify(p) }, 45000);
-  if (!d || d.ok === false) throw new Error((d && d.error) || "ошибка сервера"); return d;
-}
-const sendRaw = api;
-async function post(p) {
-  try { await sendRaw(p); return true; }
-  catch (e) {
-    const q = getQ(); q.push(p);
-    if (!setQ(q)) {
-      q.pop(); const light = JSON.parse(JSON.stringify(p));
-      if (light.items) light.items.forEach((i) => i.photo_base64 = "");
-      q.push(light); setQ(q);
-    }
-    queueUI(); return false;
-  }
-}
-async function flush() {
-  const q = getQ(); if (!q.length) return;
-  const rest = [];
-  for (const p of q) { try { await sendRaw(p); } catch (e) { rest.push(p); } }
-  setQ(rest); queueUI();
-}
-function queueUI() {
-  const n = getQ().length;
-  $("queueNote").hidden = !n;
-  $("queueText").textContent = "Не отправлено отчётов: " + n;
-}
-$("queueBtn").onclick = flush;
-window.addEventListener("online", flush);
-
-/* Реактивное обновление терминала при любых изменениях в разделе «Управление» */
-async function syncFromAdminChanges() {
-  try {
-    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1");
-    if (d && d.ok !== false && Array.isArray(d.tasks)) {
-      tasks = d.tasks;
-      META = d;
-      if (d.plan > 0) PLAN = d.plan;
-      if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
-      if (d.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = d.initCounter;
-      syncStaffSelector();
-      drawTabs();
-      if (block === "ИНФО") {
-        renderInfoView();
-      } else if (block === "КАССА") {
-        renderCash();
-      } else {
-        cur = tasks.filter((t) => t.block === block && t.active !== "нет");
-        if (idx >= cur.length) idx = Math.max(0, cur.length - 1);
-        updateDeadlineUI();
-        if (cur.length && !$("taskStepWrap").hidden) renderStep();
-      }
-    }
-  } catch (_) {}
-}
-if (window.coffeeBus) {
-  window.coffeeBus.on((msg) => {
-    if (msg && msg.type === "mutation") syncFromAdminChanges();
-  });
-}
-window.addEventListener("storage", (e) => {
-  if (e && (e.key === "coffee_unified_hybrid_db_v3" || e.key === "coffee_sync_signal" || e.key === "coffee_illy_tasks")) {
-    syncFromAdminChanges();
-  }
-});
-window.addEventListener("focus", syncFromAdminChanges);
-
-
-function finish(ok, text) {
-  tgt(() => tg.HapticFeedback.notificationOccurred(ok ? "success" : "warning"));
-  $("steps").hidden = true; show("doneView");
-  $("doneTitle").textContent = ok ? "Отправлено!" : "Сохранено на телефоне";
-  $("doneText").textContent = ok ? text : "Нет связи — отчёт уйдёт автоматически, когда появится интернет.";
-}
-
-/* ---------- касса: CSV ---------- */
-async function readText(file) {
-  const buf = await file.arrayBuffer();
-  let s;
-  try { s = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
-  catch (e) { s = new TextDecoder("windows-1251").decode(buf); }
-  return s.replace(/^\uFEFF/, "");
-}
-function parseCsv(text) {
-  const first = text.split("\n")[0] || "";
-  const d = first.split(";").length >= first.split(",").length ? ";" : ",";
-  return text.split(/\r?\n/).filter((l) => l.trim()).map((l) => {
-    const out = []; let c = "", q = false;
-    for (const ch of l) {
-      if (ch === '"') q = !q;
-      else if (ch === d && !q) { out.push(c); c = ""; }
-      else c += ch;
-    }
-    out.push(c); return out.map((s) => s.trim());
-  });
-}
-const num = (s) => parseFloat(String(s || "0").replace(/\s/g, "").replace(",", ".")) || 0;
-
-const SAMPLE_FILES_DB = {"30_10": {"label": "Пт 30.10 · Настя (Продажи)", "salesName": "Пятница Настя 30.10.2026 - Продажи (1).csv", "salesCsv": "Номенклатура,,,,,Ед изм,Цена,Количество,Сумма\n,,,,,,,,\nАмерикано,,,,,шт,12,38,456\n,,,,,,,,\nFlat white,,,,,шт,25,1,25\n,,,,,,,,\nIce latte,,,,,шт,28,1,28\n,,,,,,,,\nБез Лактозное молоко,,,,,шт,5,1,5\n,,,,,,,,\nВанильно апельсиновый Лате,,,,,шт,30,1,30\n,,,,,,,,\nДесерт от бариста,,,,,шт,1,10,10\n,,,,,,,,\nДикая вишня,,,,,шт,30,1,30\n,,,,,,,,\nДлинный черный,,,,,,17,3,51\n,,,,,,,,\nКакао,,,,,шт,15,2,30\n,,,,,,,,\nКакао (бол),,,,,шт,25,2,50\n,,,,,,,,\nКапучино,,,,,шт,19,23,437\n,,,,,,,,\nКофе по турецки,,,,,шт,18,3,54\n,,,,,,,,\nЛатте (бол),,,,,шт,25,2,50\n,,,,,,,,\nЛатте (мал),,,,,шт,20,12,240\n,,,,,,,,\nМаршмеллоу,,,,,шт,8,1,8\n,,,,,,,,\nМёд . 15 г,,,,,шт,5,1,5\n,,,,,,,,\nМеренговый рулет,,,,,шт,40,3,120\n,,,,,,,,\nМолоко .... 50 мл,,,,,шт,5,13,65\n,,,,,,,,\n\"Напитки (кола, спрайт, фанта)\",,,,,бут,20,1,20\n,,,,,,,,\nОткрытка - Мотивашка,,,,,шт,10,1,10\n,,,,,,,,\nСироп 15 мл.,,,,,шт,5,24,120\n,,,,,,,,\nСливки 10 мл.,,,,,шт,5,1,5\n,,,,,,,,\nФрукты,,,,,шт,5,2,10\n,,,,,,,,\nЧай в ассоортименте 15,,,,,шт,15,5,75\n,,,,,,,,\nЧизкейк,,,,,шт,40,1,40\n,,,,,,,,\nШоколад 10 руб,,,,,шт,10,2,20\n,,,,,,,,\nШоколад 20 руб,,,,,шт,20,3,60\n,,,,,,,,\nШоколад 25 руб,,,,,шт,25,1,25\n,,,,,,,,\nЭспрессо,,,,,шт,12,11,132\n,,,,,,,,\nЭспрессо Макиато,,,,,шт,17,3,51\n,,,,,,,,\nЯгодный / фруктовый чай ... 400 мл.,,,,,шт,20,2,40\n,,,,,,,,\n,,,,,,,175,2302", "transName": "", "transCsv": ""}, "31_10": {"label": "Сб 31.10 · Настя (Касса + Продажи)", "transName": "Настя Суббота 31.10.2026 - Транзакции.csv", "transCsv": "Дата,Номер,Способ оплаты,Сумма документа,Пользователь\n31.10.2026 11:48:55,17925,Наличный,17,Молокова С.С.\n31.10.2026 11:49:56,17926,Мобильный платеж,50,Молокова С.С.\n31.10.2026 11:55:30,17927,Наличный,30,Молокова С.С.\n31.10.2026 12:02:12,17928,Наличный,25,Молокова С.С.\n31.10.2026 12:10:26,17929,Наличный,58,Молокова С.С.\n31.10.2026 12:11:04,17930,Наличный,24,Молокова С.С.\n31.10.2026 12:15:57,17931,Наличный,24,Молокова С.С.\n31.10.2026 12:22:19,17932,Наличный,24,Молокова С.С.\n31.10.2026 12:33:56,17933,Наличный,69,Молокова С.С.\n31.10.2026 12:34:45,17934,Наличный,42,Молокова С.С.\n31.10.2026 12:49:59,17935,Наличный,43,Молокова С.С.\n31.10.2026 12:52:06,17936,Наличный,45,Молокова С.С.\n31.10.2026 12:55:51,17937,Наличный,17,Молокова С.С.\n31.10.2026 13:15:37,17938,Наличный,29,Молокова С.С.\n31.10.2026 13:20:19,17939,Мобильный платеж,104,Молокова С.С.\n31.10.2026 13:37:05,17940,Наличный,19,Молокова С.С.\n31.10.2026 13:42:32,17941,Наличный,54,Молокова С.С.\n31.10.2026 13:46:05,17942,Наличный,37,Молокова С.С.\n31.10.2026 13:48:19,17943,Наличный,15,Молокова С.С.\n31.10.2026 14:00:19,17944,Наличный,63,Молокова С.С.\n31.10.2026 14:16:07,17945,Наличный,15,Молокова С.С.\n31.10.2026 14:17:46,17946,Наличный,12,Молокова С.С.\n31.10.2026 14:27:01,17947,Наличный,65,Молокова С.С.\n31.10.2026 14:32:10,17948,Наличный,99,Молокова С.С.\n31.10.2026 14:44:15,17949,Наличный,19,Молокова С.С.\n31.10.2026 15:10:54,17950,Наличный,22,Молокова С.С.\n31.10.2026 15:28:49,17951,Наличный,12,Молокова С.С.\n31.10.2026 15:37:36,17952,Наличный,24,Молокова С.С.\n31.10.2026 15:44:43,17953,Мобильный платеж,127,Молокова С.С.\n31.10.2026 16:07:29,17954,Наличный,43,Молокова С.С.\n31.10.2026 17:09:46,17955,Наличный,25,Молокова С.С.\n31.10.2026 17:14:19,17956,Мобильный платеж,12,Молокова С.С.\n31.10.2026 17:34:21,17957,Мобильный платеж,54,Молокова С.С.\n31.10.2026 17:41:27,17958,Наличный,12,Молокова С.С.\n31.10.2026 18:25:17,17959,Наличный,39,Молокова С.С.\n31.10.2026 18:26:18,17960,Наличный,29,Молокова С.С.\n31.10.2026 18:28:28,17961,Наличный,40,Молокова С.С.\n31.10.2026 18:40:38,17962,Мобильный платеж,120,Молокова С.С.\n31.10.2026 18:45:44,17963,Наличный,33,Молокова С.С.\n31.10.2026 18:46:55,17964,Мобильный платеж,33,Молокова С.С.\n31.10.2026 18:50:20,17965,Наличный,30,Молокова С.С.\n31.10.2026 18:50:48,17966,Мобильный платеж,20,Молокова С.С.\n31.10.2026 18:51:09,17967,Мобильный платеж,20,Молокова С.С.\n31.10.2026 19:13:40,17968,Мобильный платеж,30,Молокова С.С.\n31.10.2026 19:21:46,17969,Наличный,58,Молокова С.С.\n31.10.2026 19:22:22,17970,Наличный,12,Молокова С.С.\n31.10.2026 19:24:45,17971,Мобильный платеж,30,Молокова С.С.\n31.10.2026 19:33:14,17972,Наличный,17,Молокова С.С.\n31.10.2026 19:34:38,17973,Мобильный платеж,98,Молокова С.С.\n31.10.2026 19:37:33,17974,Наличный,20,Молокова С.С.\n31.10.2026 19:48:43,17975,Наличный,30,Молокова С.С.\n31.10.2026 21:46:32,17976,Наличный,22,Молокова С.С.\n31.10.2026 21:46:57,17977,Мобильный платеж,12,Молокова С.С.", "salesName": "Настя Суббота 31.10.2026 - Продажи.csv", "salesCsv": "Номиенклатура,Цена,Количество,Сумма\nАмерикано шт,12,22,264\nМолоко .... 50 мл шт,5,10,50\nСироп 15 мл. шт,5,26,130\nЛатте (мал) шт,20,11,220\nЛатте (бол) шт,25,6,150\n\"Чай \"\"Ягодный микс\"\" 400 мл. шт\",20,4,80\nКакао (ср) шт,20,4,80\nМаршмеллоу шт,8,1,8\nКапучино шт,19,16,304\nКакао «Баунти» шт,30,1,30\nЧизкейк шт,40,6,240\nВода / минеральная бут,15,1,15\nДлинный черный,17,3,51\nФрукты шт,5,1,5\nЧай в ассоортименте 15 шт,15,1,15\nШоколад 20 руб шт,20,2,40\nГлинтвейн 340 мл шт,30,2,60\n\"Чай \"\"Пряное яблоко\"\" 400 мл. шт\",25,1,25\nИмбирный чай 400 мл. шт,18,1,18\nЭспрессо шт,12,3,36\nБез Лактозное молоко шт,5,2,10\nМеренговый рулет шт,40,1,40\nСтимер (бол) шт,22,1,22\nIce latte шт,28,2,56\nCherry кола шт,30,1,30\nАльтернативное молоко. 50 мл шт,10,1,10\nДвойной капучино шт,29,1,29\nСливки 10 мл. шт,5,1,5\n,,132,2 023"}, "01_11": {"label": "Вс 01.11 · Соня (Касса + Продажи)", "transName": "Соня_Вокскресенье_1_11_2026_Транзакции.csv", "transCsv": "Дата,Номер,Способ оплаты,Сумма документа,Пользователь\n01.11.2026 9:04:40,17978,Наличный,24,Молокова С.С.\n01.11.2026 9:10:36,17979,Мобильный платеж,40,Молокова С.С.\n01.11.2026 9:21:49,17980,Наличный,12,Молокова С.С.\n01.11.2026 9:40:24,17981,Наличный,12,Молокова С.С.\n01.11.2026 9:43:23,17982,Наличный,24,Молокова С.С.\n01.11.2026 9:55:45,17983,Наличный,25,Молокова С.С.\n01.11.2026 9:55:56,17984,Наличный,12,Молокова С.С.\n01.11.2026 10:14:07,17985,Наличный,17,Молокова С.С.\n01.11.2026 10:21:28,17986,Наличный,20,Молокова С.С.\n01.11.2026 10:32:36,17987,Мобильный платеж,36,Молокова С.С.\n01.11.2026 10:34:24,17988,Наличный,12,Молокова С.С.\n01.11.2026 10:46:15,17989,Наличный,38,Молокова С.С.\n01.11.2026 11:33:40,17990,Наличный,38,Молокова С.С.\n01.11.2026 11:36:56,17991,Наличный,35,Молокова С.С.\n01.11.2026 11:38:04,17992,Наличный,35,Молокова С.С.\n01.11.2026 11:42:06,17993,Мобильный платеж,30,Молокова С.С.\n01.11.2026 12:14:31,17994,Наличный,72,Молокова С.С.\n01.11.2026 12:21:05,17995,Наличный,17,Молокова С.С.\n01.11.2026 12:24:19,17996,Наличный,54,Молокова С.С.\n01.11.2026 13:12:28,17997,Мобильный платеж,42,Молокова С.С.\n01.11.2026 13:33:51,17998,Наличный,50,Молокова С.С.\n01.11.2026 13:39:43,17999,Наличный,27,Молокова С.С.\n01.11.2026 13:43:51,18000,Наличный,40,Молокова С.С.\n01.11.2026 14:09:22,18001,Наличный,24,Молокова С.С.\n01.11.2026 14:25:22,18002,Наличный,44,Молокова С.С.\n01.11.2026 14:25:34,18003,Наличный,19,Молокова С.С.\n01.11.2026 14:36:13,18004,Наличный,32,Молокова С.С.\n01.11.2026 14:42:01,18005,Наличный,44,Молокова С.С.\n01.11.2026 14:51:57,18006,Мобильный платеж,12,Молокова С.С.\n01.11.2026 14:56:45,18007,Наличный,39,Молокова С.С.\n01.11.2026 15:14:17,18008,Наличный,39,Молокова С.С.\n01.11.2026 15:23:43,18009,Мобильный платеж,36,Молокова С.С.\n01.11.2026 15:26:27,18010,Наличный,50,Молокова С.С.\n01.11.2026 15:30:17,18011,Наличный,20,Молокова С.С.\n01.11.2026 15:47:05,18012,Мобильный платеж,20,Молокова С.С.\n01.11.2026 15:52:02,18013,Мобильный платеж,24,Молокова С.С.\n01.11.2026 15:59:50,18014,Наличный,12,Молокова С.С.\n01.11.2026 16:33:11,18015,Наличный,44,Молокова С.С.\n01.11.2026 16:36:46,18016,Наличный,17,Молокова С.С.\n01.11.2026 16:37:31,18017,Наличный,10,Молокова С.С.\n01.11.2026 17:08:06,18018,Мобильный платеж,54,Молокова С.С.\n01.11.2026 17:08:55,18019,Наличный,24,Молокова С.С.\n01.11.2026 17:11:00,18020,Наличный,22,Молокова С.С.\n01.11.2026 17:19:50,18021,Мобильный платеж,36,Молокова С.С.\n01.11.2026 17:20:30,18022,Наличный,35,Молокова С.С.\n01.11.2026 17:25:58,18023,Мобильный платеж,25,Молокова С.С.\n01.11.2026 17:28:13,18024,Мобильный платеж,20,Молокова С.С.\n01.11.2026 17:47:12,18025,Наличный,33,Молокова С.С.\n01.11.2026 17:50:54,18026,Наличный,30,Молокова С.С.\n01.11.2026 18:37:52,18027,Наличный,63,Молокова С.С.\n01.11.2026 18:38:32,18028,Наличный,32,Молокова С.С.\n01.11.2026 18:38:50,18029,Наличный,19,Молокова С.С.\n01.11.2026 18:54:58,18030,Наличный,33,Молокова С.С.\n01.11.2026 19:02:44,18031,Мобильный платеж,40,Молокова С.С.\n01.11.2026 19:04:31,18032,Мобильный платеж,19,Молокова С.С.\n01.11.2026 20:13:13,18033,Наличный,17,Молокова С.С.\n01.11.2026 20:13:33,18034,Наличный,38,Молокова С.С.\n01.11.2026 20:21:20,18035,Наличный,67,Молокова С.С.\n01.11.2026 20:39:48,18036,Мобильный платеж,25,Молокова С.С.\n01.11.2026 22:09:34,18037,Наличный,104,Молокова С.С.", "salesName": "Соня Вокскресенье 1.11.2026 - Продажи.csv", "salesCsv": "Номиенклатура,Цена,Количество,Сумма\nАмерикано шт,12,28,336\nАльтернативное молоко. 50 мл шт,10,1,10\nFlat white шт,25,2,50\nСироп 15 мл. шт,5,21,105\nСливки 10 мл. шт,5,2,10\nЛатте (мал) шт,20,8,160\nДлинный черный,17,5,85\nДополнительный эспрессо ILLY шт,7,2,14\nКапучино шт,19,16,304\nГорячий шоколад шт,35,1,35\nДесерт от бариста шт,1,175,175\nБез Лактозное молоко шт,5,2,10\nЯгодный / фруктовый чай ... 400 мл. шт,20,7,140\nМолоко .... 50 мл шт,5,8,40\nЛатте (бол) шт,25,6,150\nЧай в ассоортименте 15 шт,15,3,45\nШоколад 10 руб шт,10,3,30\nФрукты шт,5,1,5\nЭспрессо шт,12,1,12\nШоколад 20 руб шт,20,1,20\nЯгодный / фруктовый чай ... 800 мл. шт,40,1,40\nМохито (малина/клубника) шт,33,1,33\nCherry кола шт,30,1,30\nIce latte шт,28,2,56\nРаф классический (бол) шт,39,1,39\n,,299,1 934"}, "shift_text": "Среда 4.11.2026 Алина Соня\nСчетчик Алина 735\nсписание 1\nНаличные 1450\n\nСЧетчик Соня 777\nсписание 1\nналичные 909  вторник 3.11.2026 Соня Алина\nАлина \nсчетчик 648\nсписано 3\nналичные 1019\n\nСоня \nсчетчик 679\nсписано 3\nналичные 644"};
-const COFFEE_ITEM_RE = /американо|капучино|латте|лате|flat\s*white|флэт|длинный\s*черный|эспрессо|ice\s*latte|айс\s*латте|раф|кофе\s*по/i;
-const WEEKDAY_STOP_RE = /^(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|вокскресенье|продажи|транзакции|отчет|отчёт|касса|csv|шт|день)$/i;
-let lastParsedShiftDays = [];
-let activeShiftCounterCups = null;
-
-function extractMetaFromFilename(fname) {
-  const s = String(fname || "").replace(/\.csv$/i, "");
-  let dateIso = "";
-  const dm = /(\d{1,2})[._-](\d{1,2})[._-](\d{4})/.exec(s);
-  if (dm) dateIso = dm[3] + "-" + String(dm[2]).padStart(2, "0") + "-" + String(dm[1]).padStart(2, "0");
-  const words = s.match(/[А-ЯЁа-яё]{3,}/g) || [];
-  const names = words.filter((w) => !WEEKDAY_STOP_RE.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-  return { date: dateIso, barista: Array.from(new Set(names)).join(", "), isSales: /продаж/i.test(s), isTrans: /транзакц/i.test(s) };
-}
-
-function fileDate(rows) {
-  const c = {};
-  for (let i = 1; i < rows.length; i++) {
-    const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(rows[i][0] || "");
-    if (m) { const k = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); c[k] = (c[k] || 0) + 1; }
-  }
-  return Object.keys(c).sort((a, b) => c[b] - c[a])[0] || "";
-}
-
-function detectCsvKind(rows, fname) {
-  const head = (rows[0] || []).join(" ").toLowerCase();
-  if (/способ оплаты|сумма документа/.test(head)) return "trans";
-  if (/номенклатура|номиенклатура|количество/.test(head)) return "sales";
-  const meta = extractMetaFromFilename(fname);
-  if (meta.isTrans) return "trans";
-  if (meta.isSales) return "sales";
-  return "sales";
-}
-
-function cleanProductName(raw) {
-  return String(raw || "").replace(/^["']+|["']+$/g, "").replace(/""/g, '"').replace(/\s+(шт\.?|бут\.?)$/i, "").replace(/\s{2,}/g, " ").trim();
-}
-
-function calcTrans(rows, fname) {
-  let cash = 0, card = 0, checks = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i]; if (!r || r.length < 4) continue;
-    const method = r[2] || "", amt = num(r[3]);
-    if (amt <= 0) continue;
-    if (/налич/i.test(method)) cash += amt;
-    else if (/мобил|карт|безнал/i.test(method)) card += amt;
-    else cash += amt;
-    checks++;
-  }
-  if (!checks && !cash && !card) throw new Error("empty");
-  const meta = extractMetaFromFilename(fname);
-  return { cash: Math.round(cash), card: Math.round(card), checks, date: meta.date || fileDate(rows), barista: meta.barista };
-}
-
-function calcSales(rows, fname) {
-  const head = rows[0] || [];
-  let qtyCol = head.findIndex((h) => /кол/i.test(h));
-  let sumCol = head.findIndex((h) => /сумм|выруч/i.test(h));
-  if (qtyCol < 0) qtyCol = head.length >= 9 ? 7 : 2;
-  if (sumCol < 0) sumCol = head.length >= 9 ? 8 : 3;
-  const map = {};
-  let total = 0, calcSum = 0, totalQty = 0, coffeeCups = 0, addonsSum = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r || !r.some((c) => c && c.trim())) continue;
-    const rawName = (r[0] || "").trim();
-    const sum = num(r[sumCol]), qty = qtyCol >= 0 ? num(r[qtyCol]) : 1;
-    if (!rawName && sum > 0) { total = Math.round(sum); if (qty > 0) totalQty = Math.round(qty); continue; }
-    if (!rawName || rawName === "nan") continue;
-    const name = cleanProductName(rawName);
-    if (sum <= 0 && qty <= 0) continue;
-    calcSum += sum;
-    if (COFFEE_ITEM_RE.test(name) && !ADDON.test(name)) coffeeCups += Math.round(qty);
-    if (ADDON.test(name)) { addonsSum += Math.round(sum); continue; }
-    const m = map[name] || (map[name] = { name, qty: 0, sum: 0 });
-    m.qty += qty; m.sum += sum;
-  }
-  const list = Object.values(map).map((x) => ({ name: x.name, qty: Math.round(x.qty), sum: Math.round(x.sum) }));
-  if (!list.length && !calcSum) throw new Error("empty");
-  list.sort((a, b) => b.qty - a.qty || b.sum - a.sum);
-  const meta = extractMetaFromFilename(fname);
-  const top = list.slice(0, 10);
-  top.total = total || Math.round(calcSum);
-  top.totalQty = totalQty || Math.round(list.reduce((s, x) => s + x.qty, 0));
-  top.coffeeCups = coffeeCups;
-  top.addonsSum = addonsSum;
-  top.date = meta.date;
-  top.barista = meta.barista;
-  return top;
-}
-
-function applyParsedCsv(kind, data, labelName) {
-  if (kind === "trans") {
-    trans = data;
-    $("fTrans").classList.add("ok");
-    $("transState").textContent = "✓ " + labelName + " · нал " + rub(data.cash) + " + моб. " + rub(data.card) + " (" + data.checks + " чеков)";
-    if (data.date && data.date <= isoToday()) setReportDate(data.date);
-    if (data.barista) { $("shiftBaristaIn").value = data.barista; $("who").textContent = data.barista; }
-  } else {
-    sales = data;
-    $("fSales").classList.add("ok");
-    $("salesState").textContent = "✓ " + labelName + " · сумма " + rub(data.total) + " · кофе по кассе: " + data.coffeeCups + " чашек";
-    if (data.date && data.date <= isoToday() && (!trans || !trans.date)) setReportDate(data.date);
-    if (data.barista && !$("shiftBaristaIn").value) { $("shiftBaristaIn").value = data.barista; $("who").textContent = data.barista; }
-    if (!trans && data.total > 0) {
-      trans = { cash: data.total, card: 0, checks: data.totalQty || data.coffeeCups || 1, date: data.date || reportDate, fromSalesOnly: true };
-    }
-  }
-  renderCash();
-}
-
-let batchDaysMap = {};
-
-function mergeIntoBatchDay(dateStr, baristaName, part) {
-  const d = dateStr || reportDate || isoToday();
-  const sumMode = !$("sumModeChk") || $("sumModeChk").checked;
-  if (!batchDaysMap[d] || !sumMode) {
-    batchDaysMap[d] = {
-      date: d,
-      baristas: baristaName ? [baristaName] : [],
-      shifts: [],
-      cash: 0, card: 0, checks: 0, writeoff: 0, coffeeCups: 0,
-      salesTotal: 0,
-      productsMap: {},
-      files: []
-    };
-  }
-  const rec = batchDaysMap[d];
-  if (baristaName) {
-    baristaName.split(",").map((s) => s.trim()).filter(Boolean).forEach((n) => {
-      if (!rec.baristas.includes(n)) rec.baristas.push(n);
-    });
-  }
-  if (part.fileName && !rec.files.includes(part.fileName)) rec.files.push(part.fileName);
-
-  if (part.kind === "trans") {
-    rec.cash += part.cash || 0;
-    rec.card += part.card || 0;
-    rec.checks += part.checks || 0;
-    rec.shifts.push({ name: baristaName || "Бариста", cash: part.cash || 0, card: part.card || 0, checks: part.checks || 0, writeoff: 0, cups: part.checks || 0 });
-  } else if (part.kind === "sales") {
-    rec.salesTotal += part.total || 0;
-    rec.coffeeCups += part.coffeeCups || 0;
-    (part.items || []).forEach((it) => {
-      const pm = rec.productsMap[it.name] || (rec.productsMap[it.name] = { name: it.name, qty: 0, sum: 0 });
-      pm.qty += it.qty || 0;
-      pm.sum += it.sum || 0;
-    });
-  } else if (part.kind === "shift") {
-    rec.cash += part.cash || 0;
-    rec.card += part.card || 0;
-    rec.checks += part.checks || 0;
-    rec.writeoff += part.writeoff || 0;
-    rec.coffeeCups += part.cups || 0;
-    if (Array.isArray(part.shifts)) rec.shifts = rec.shifts.concat(part.shifts);
-  }
-}
-
-function finalizeBatchDay(dObj) {
-  const products = Object.values(dObj.productsMap || {}).sort((a, b) => b.qty - a.qty);
-  const cash = dObj.cash || (dObj.salesTotal && !dObj.card ? dObj.salesTotal : 0);
-  const card = dObj.card || 0;
-  const checks = dObj.checks || dObj.coffeeCups || products.reduce((s, x) => s + x.qty, 0) || 1;
-  return {
-    date: dObj.date,
-    barista: dObj.baristas.join(", ") || "Бариста",
-    shifts: dObj.shifts.length ? dObj.shifts : [{ name: dObj.baristas.join(", ") || "Бариста", cash, card, checks, writeoff: dObj.writeoff || 0, cups: dObj.coffeeCups || checks }],
-    cash,
-    card,
-    revenue: cash + card,
-    checks,
-    writeoff: dObj.writeoff || 0,
-    coffeeCups: dObj.coffeeCups || checks,
-    salesTotal: dObj.salesTotal || 0,
-    products: products.slice(0, 12),
-    topItems: products.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
-    files: dObj.files || []
-  };
-}
-
-function renderBatchSummaryUI() {
-  const box = $("batchSummaryBox");
-  const keys = Object.keys(batchDaysMap).sort();
-  if (!keys.length) { box.hidden = true; return; }
-  const list = keys.map((k) => finalizeBatchDay(batchDaysMap[k]));
-  const grandRev = list.reduce((s, x) => s + x.revenue, 0);
-  const grandWo = list.reduce((s, x) => s + x.writeoff, 0);
-  const grandCups = list.reduce((s, x) => s + x.coffeeCups, 0);
-
-  box.hidden = false;
-  box.innerHTML =
-    '<div style="background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:14px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
-        '<b>📊 Автоматическая сводка по загруженным данным (' + list.length + ' дн.)</b>' +
-        '<span style="font-size:13px"><b style="color:var(--good)">Доход: ' + rub(grandRev) + '</b> · <b style="color:var(--bad)">Списания: ' + grandWo + '</b> · ☕ Чашек: <b>' + grandCups + '</b></span>' +
-      '</div>' +
-      list.map((d) => (
-        '<div style="padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">' +
-          '<div>' +
-            '<b>📅 ' + d.date.split("-").reverse().join(".") + '</b> · 👤 <b>' + d.barista + '</b>' +
-            (d.shifts.length > 1 ? ' <span style="font-size:11.5px;padding:1px 6px;border-radius:99px;background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good);font-weight:700">Сумма ' + d.shifts.length + ' смен</span>' : '') +
-            '<div class="muted" style="font-size:12px">Нал: ' + rub(d.cash) + ' · Безнал: ' + rub(d.card) + ' · Чеков/чашек: ' + d.checks + (d.topItems ? ' · Хиты: ' + d.topItems : '') + '</div>' +
-          '</div>' +
-          '<div style="text-align:right">' +
-            '<b style="color:var(--good);font-size:15px">' + rub(d.revenue) + '</b>' +
-            (d.writeoff ? '<div style="color:var(--bad);font-size:12px;font-weight:700">Списания: ' + d.writeoff + '</div>' : '') +
-          '</div>' +
-        '</div>'
-      )).join("") +
-      '<button type="button" class="btn" id="saveAllBatchBtn" style="margin-top:12px;min-height:46px;font-size:15px">💾 Записать все распознанные дни (' + list.length + ') в систему</button>' +
-    '</div>';
-
-  /* Подставляем последний распознанный день в основную карточку Кассы */
-  const last = list[list.length - 1];
-  if (last) {
-    setReportDate(last.date);
-    $("shiftBaristaIn").value = last.barista;
-    $("who").textContent = last.barista;
-    $("writeOffs").value = last.writeoff;
-    activeShiftCounterCups = last.coffeeCups;
-    trans = { cash: last.cash, card: last.card, checks: last.checks, date: last.date, barista: last.barista, shifts: last.shifts };
-    if (last.products && last.products.length) {
-      sales = last.products.slice();
-      sales.total = last.salesTotal || last.revenue;
-      sales.coffeeCups = last.coffeeCups;
-      sales.totalQty = last.checks;
-    }
-    renderCash();
-  }
-
-  $("saveAllBatchBtn").onclick = async () => {
-    const mergeMode = (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace";
-    await post({ action: "batch_submit_cash", mergeMode, days: list });
-    markDone("КАССА"); drawTabs();
-    finish(true, "Сохранено дней: " + list.length + " · Общий доход " + rub(grandRev) + " · все смены просуммированы и доступны на Дашборде и в Отчётах.");
-    $("toDash").hidden = true;
-  };
-}
-
-$("unifiedFilesIn").addEventListener("change", async (e) => {
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
-  if (!$("sumModeChk") || !$("sumModeChk").checked) batchDaysMap = {};
-  for (const f of files) {
-    try {
-      const txt = await readText(f);
-      if (/сч[её]тчик/i.test(txt) && !/способ оплаты|номенклатура|номиенклатура/i.test(txt)) {
-        const sDays = parseShiftCounterText(txt, Number($("initCounterIn").value) || 600);
-        sDays.forEach((sd) => {
-          mergeIntoBatchDay(sd.date, sd.baristas.join(", "), {
-            kind: "shift", fileName: f.name, cash: sd.totalCash, card: 0,
-            checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoff: sd.totalWoQty,
-            shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoff: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
-          });
-        });
-      } else {
-        const rows = parseCsv(txt);
-        const kind = detectCsvKind(rows, f.name);
-        if (kind === "trans") {
-          const td = calcTrans(rows, f.name);
-          mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: f.name, cash: td.cash, card: td.card, checks: td.checks });
-          applyParsedCsv("trans", td, f.name);
-        } else {
-          const sd = calcSales(rows, f.name);
-          mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: f.name, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
-          applyParsedCsv("sales", sd, f.name);
-        }
-      }
-    } catch (err) {
-      toast("Не удалось обработать " + f.name);
-    }
-  }
-  $("fUnified").classList.add("ok");
-  $("unifiedState").textContent = "✓ Обработано файлов: " + files.length + " · разбито по датам и бариста";
-  renderBatchSummaryUI();
-});
-
-document.querySelectorAll("[data-preset]").forEach((btn) => btn.addEventListener("click", () => {
-  const key = btn.dataset.preset;
-  if (key === "all_batch") {
-    batchDaysMap = {};
-    ["30_10", "31_10", "01_11"].forEach((k) => {
-      const p = SAMPLE_FILES_DB[k];
-      if (p.transCsv) {
-        const td = calcTrans(parseCsv(p.transCsv), p.transName);
-        mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, cash: td.cash, card: td.card, checks: td.checks });
-      }
-      if (p.salesCsv) {
-        const sd = calcSales(parseCsv(p.salesCsv), p.salesName);
-        mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
-      }
-    });
-    const sDays = parseShiftCounterText(SAMPLE_FILES_DB.shift_text, 600);
-    sDays.forEach((sd) => {
-      mergeIntoBatchDay(sd.date, sd.baristas.join(", "), {
-        kind: "shift", fileName: "Смены 3.11 и 4.11", cash: sd.totalCash, card: 0,
-        checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoff: sd.totalWoQty,
-        shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoff: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
-      });
-    });
-    $("fUnified").classList.add("ok");
-    $("unifiedState").textContent = "✓ Загружен пакет за 5 дней (Пт 30.10 – Ср 04.11) с суммированием смен Алины и Сони";
-    renderBatchSummaryUI();
-    toast("Все 5 дней распознаны, разбиты по датам и бариста и просуммированы!");
-    return;
-  }
-  const p = SAMPLE_FILES_DB[key];
-  if (!p) return;
-  batchDaysMap = {};
-  trans = null; sales = null; activeShiftCounterCups = null;
-  if (p.transCsv) {
-    const td = calcTrans(parseCsv(p.transCsv), p.transName);
-    mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, cash: td.cash, card: td.card, checks: td.checks });
-    applyParsedCsv("trans", td, p.transName);
-  }
-  if (p.salesCsv) {
-    const sd = calcSales(parseCsv(p.salesCsv), p.salesName);
-    mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
-    applyParsedCsv("sales", sd, p.salesName);
-  }
-  $("fUnified").classList.add("ok");
-  $("unifiedState").textContent = "✓ " + p.label;
-  renderBatchSummaryUI();
-  toast("Загружен пример: " + p.label);
-}));
-
-function parseShiftCounterText(rawText, initialCounterValue) {
-  const text = String(rawText || "").trim();
-  if (!text) return [];
-  const dateRe = /(?:(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|вокскресенье)\s+)?(\d{1,2})[._/-](\d{1,2})[._/-](\d{4})([^\n]*)/gi;
-  const matches = [];
-  let m;
-  while ((m = dateRe.exec(text)) !== null) {
-    matches.push({ index: m.index, end: dateRe.lastIndex, d: m[2], mo: m[3], y: m[4], tail: m[5] || "" });
-  }
-  const chunks = [];
-  if (!matches.length) {
-    chunks.push({ date: reportDate || isoToday(), headerNames: [], body: text });
-  } else {
-    matches.forEach((mt, idx) => {
-      const nextStart = idx + 1 < matches.length ? matches[idx + 1].index : text.length;
-      const isoD = mt.y + "-" + String(mt.mo).padStart(2, "0") + "-" + String(mt.d).padStart(2, "0");
-      const words = (mt.tail.match(/[А-ЯЁа-яёA-Za-z]{2,}/g) || []).filter(
-        (w) => !/^(счетчик|счётчик|списание|списано|наличные|нал|безнал|карта)$/i.test(w)
-      ).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-      chunks.push({ date: isoD, headerNames: words, body: text.slice(mt.end, nextStart).trim() });
-    });
-  }
-  const parsedDays = chunks.map((ch) => {
-    const shifts = [];
-    let cur = null;
-    for (const rawLine of ch.body.split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (!line) continue;
-      const mCnt = /сч[её]тчик\s*(?:([А-ЯЁа-яёA-Za-z]+)\s+)?(\d+)/i.exec(line);
-      if (mCnt) {
-        const nm = mCnt[1] ? (mCnt[1].charAt(0).toUpperCase() + mCnt[1].slice(1).toLowerCase()) : "";
-        const val = parseInt(mCnt[2], 10);
-        if (nm) { cur = { name: nm, counter: val, writeoffQty: 0, cash: 0, card: 0 }; shifts.push(cur); }
-        else if (!cur || cur.counter !== null) { cur = { name: ch.headerNames[shifts.length] || ("Смена " + (shifts.length + 1)), counter: val, writeoffQty: 0, cash: 0, card: 0 }; shifts.push(cur); }
-        else cur.counter = val;
-        continue;
-      }
-      const mWo = /списан\w*\s+(\d+(?:[.,]\d+)?)/i.exec(line);
-      if (mWo) {
-        if (!cur) { cur = { name: ch.headerNames[0] || "Смена 1", counter: null, writeoffQty: 0, cash: 0, card: 0 }; shifts.push(cur); }
-        cur.writeoffQty = Math.round(parseFloat(mWo[1].replace(",", ".")) || 0);
-        continue;
-      }
-      const mCash = /(?:наличн\w*|нал)\s+(\d+(?:[.,]\d+)?)/i.exec(line);
-      if (mCash) {
-        if (!cur) { cur = { name: ch.headerNames[0] || "Смена 1", counter: null, writeoffQty: 0, cash: 0, card: 0 }; shifts.push(cur); }
-        cur.cash = Math.round(parseFloat(mCash[1].replace(",", ".")) || 0);
-        continue;
-      }
-      const mName = /^([А-ЯЁа-яёA-Za-z]{2,20})$/.exec(line);
-      if (mName && !/^(счетчик|счётчик|списание|списано|наличные|нал|безнал)$/i.test(mName[1])) {
-        cur = { name: mName[1].charAt(0).toUpperCase() + mName[1].slice(1).toLowerCase(), counter: null, writeoffQty: 0, cash: 0, card: 0 };
-        shifts.push(cur);
-      }
-    }
-    const baristas = Array.from(new Set(shifts.map((s) => s.name).concat(ch.headerNames)));
-    return { date: ch.date, baristas, shifts };
-  }).filter((d) => d.shifts.length > 0);
-
-  parsedDays.sort((a, b) => a.date.localeCompare(b.date));
-  let prevCnt = ($("initCounterIn") && $("initCounterIn").value !== "") ? Number($("initCounterIn").value) : initialCounterValue;
-  parsedDays.forEach((d) => {
-    d.startCounter = prevCnt;
-    d.shifts.forEach((s) => {
-      s.prevCounter = prevCnt;
-      if (s.counter !== null && prevCnt !== null && s.counter >= prevCnt) {
-        s.cupsTotal = s.counter - prevCnt;
-        s.cupsSold = Math.max(0, s.cupsTotal - s.writeoffQty);
-      } else { s.cupsTotal = null; s.cupsSold = null; }
-      if (s.counter !== null) prevCnt = s.counter;
-    });
-    d.endCounter = prevCnt;
-    d.totalCash = d.shifts.reduce((a, s) => a + (s.cash || 0), 0);
-    d.totalWoQty = d.shifts.reduce((a, s) => a + (s.writeoffQty || 0), 0);
-    d.totalCups = d.shifts.reduce((a, s) => a + (s.cupsTotal || 0), 0);
-    d.totalSoldCups = d.shifts.reduce((a, s) => a + (s.cupsSold || 0), 0);
-  });
-  return parsedDays;
-}
-
-function applyShiftDayToForm(d) {
-  if (!d) return;
-  if (d.date && d.date <= isoToday()) setReportDate(d.date);
-  const bNames = d.baristas.join(", ");
-  $("shiftBaristaIn").value = bNames;
-  $("who").textContent = bNames || userName;
-  $("writeOffs").value = d.totalWoQty;
-  activeShiftCounterCups = d.totalCups;
-  trans = {
-    cash: d.totalCash,
-    card: (trans && !trans.fromShiftText && trans.date === d.date) ? trans.card : 0,
-    checks: d.totalSoldCups || d.totalCups || 1,
-    date: d.date,
-    barista: bNames,
-    fromShiftText: true
-  };
-  renderCash();
-}
-
-$("fillShiftSampleBtn").onclick = () => {
-  $("shiftTextIn").value = SAMPLE_FILES_DB.shift_text;
-  $("initCounterIn").value = "600";
-  $("calcShiftBtn").click();
-};
-
-$("calcShiftBtn").onclick = () => {
-  const days = parseShiftCounterText($("shiftTextIn").value, 600);
-  lastParsedShiftDays = days;
-  const box = $("shiftCalcResult");
-  if (!days.length) {
-    box.hidden = false;
-    box.innerHTML = '<p class="muted" style="color:var(--bad)">Не удалось распознать данные. Укажите «Счетчик Имя Число», «списание Число», «Наличные Число».</p>';
-    return;
-  }
-  box.hidden = false;
-  box.innerHTML = days.map((d, di) => {
-    const dNice = d.date.split("-").reverse().join(".");
-    return '<div style="background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
-        '<b>📅 ' + dNice + ' · ' + d.baristas.join(", ") + '</b>' +
-        '<button type="button" data-pickshift="' + di + '" style="border:1px solid var(--brew);background:var(--surface);color:var(--brew);border-radius:8px;padding:4px 10px;font-size:12.5px;font-weight:700;cursor:pointer">Подставить этот день в отчёт</button>' +
-      '</div>' +
-      d.shifts.map((s) => (
-        '<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0;border-top:1px dashed var(--line)">' +
-          '<span>👤 <b>' + s.name + '</b>: счётчик ' + (s.prevCounter != null ? s.prevCounter + ' → ' : '') + '<b>' + (s.counter ?? '—') + '</b>' +
-          (s.cupsTotal != null ? ' (<b>+' + s.cupsTotal + '</b> чашек, списано <b>' + s.writeoffQty + '</b>, продано <b>' + s.cupsSold + '</b>)' : ' (списано ' + s.writeoffQty + ')') + '</span>' +
-          '<b>Нал: ' + rub(s.cash) + '</b>' +
-        '</div>'
-      )).join("") +
-      '<div style="display:flex;justify-content:space-between;font-size:14px;padding-top:7px;margin-top:4px;border-top:1px solid var(--line);font-weight:700">' +
-        '<span>Итого по счётчику: ' + d.totalCups + ' чашек (списано ' + d.totalWoQty + ', чистых ' + d.totalSoldCups + ')</span>' +
-        '<span style="color:var(--good)">Итого наличные: ' + rub(d.totalCash) + '</span>' +
-      '</div>' +
-    '</div>';
-  }).join("");
-  applyShiftDayToForm(days[days.length - 1]);
-  toast("Рассчитано дней: " + days.length + " — данные подставлены в кассовый отчёт");
-};
-
-$("shiftCalcResult").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-pickshift]");
-  if (!b) return;
-  const d = lastParsedShiftDays[Number(b.dataset.pickshift)];
-  if (d) { applyShiftDayToForm(d); toast("Выбран день " + d.date.split("-").reverse().join(".")); }
-});
-
-function renderCash() {
-  const t = trans, total = t ? t.cash + t.card : 0, pct = Math.round(total / PLAN * 100);
-  $("cTotal").textContent = rub(total);
-  $("cMeter").style.width = Math.min(pct, 100) + "%";
-  $("cPlan").textContent = t ? "План " + rub(PLAN) + " · выполнено " + pct + "%" : "План " + rub(PLAN);
-  $("cCash").textContent = t ? rub(t.cash) : "—";
-  $("cCard").textContent = t ? rub(t.card) : "—";
-  $("cChecks").textContent = t ? (t.checks + (sales && sales.totalQty ? " (" + sales.totalQty + " поз.)" : "")) : "—";
-  const coffeeInfo = sales && sales.coffeeCups ? (sales.coffeeCups + " чаш. · ") : (activeShiftCounterCups ? (activeShiftCounterCups + " чаш. · ") : "");
-  $("cAvg").textContent = t && t.checks ? (coffeeInfo + rub(Math.round(total / t.checks))) : "—";
-  const top = sales ? sales.slice(0, 5) : [];
-  $("topPanel").hidden = !top.length;
-  const m = top.length ? (top[0].qty || 1) : 1;
-  $("topList").innerHTML = top.map((x) => '<div class="bar"><b></b><span>' + x.qty + " шт." + (x.sum ? " · " + rub(x.sum) : "") + '</span><div class="t"><i style="width:' + (x.qty / m * 100) + '%"></i></div></div>').join("");
-  $("topList").querySelectorAll("b").forEach((b, i) => b.textContent = top[i].name);
-  const sum = sales && sales.total, diff = t && !t.fromSalesOnly && sum ? Math.abs(sum - total) : 0;
-  let checkMsg = "";
-  if (t && sum && !t.fromSalesOnly) {
-    checkMsg = diff <= 1 ? "✓ Сверка: «Продажи» (" + rub(sum) + ") точно совпадают с «Транзакциями»" : "⚠️ «Продажи» на " + rub(sum) + ", а «Транзакции» на " + rub(total) + " (разница " + rub(diff) + ")";
-  } else if (t && t.fromSalesOnly) {
-    checkMsg = "ℹ️ Выручка рассчитана по «Продажи.csv» (" + rub(sum) + ", кофейных напитков: " + (sales.coffeeCups || 0) + " шт.)";
-  } else if (t && t.fromShiftText) {
-    checkMsg = "✓ Рассчитано по счётчикам смен бариста (" + (t.barista || "") + ")";
-  }
-  $("cCheck").textContent = checkMsg;
-  $("cCheck").style.color = diff > 1 ? "var(--bad)" : "";
-  $("submitCashBtn").disabled = !t;
-  $("submitCashBtn").textContent = t ? "Отправить кассовый отчёт (" + rub(total) + ")" : "Загрузите CSV или рассчитайте смены по счётчику";
-}
-
-$("submitCashBtn").onclick = async () => {
-  if (!trans) return;
-  tap();
-  $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
-  const top = sales || [];
-  const ok = await post({
-    action: "submit_cash", mergeMode: (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace", shifts: (trans && trans.shifts) || undefined, sid: uid(), location: LOCATION, userName: ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName, date: reportDate,
-    cash: trans.cash, card: trans.card, checks: trans.checks,
-    writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
-    topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
-    products: top
-  });
-  if (reportDate === isoToday()) { markDone("КАССА"); drawTabs(); }
-  finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks + (reportDate === isoToday() ? "" : " · за " + reportDate.slice(8) + "." + reportDate.slice(5, 7)));
-  $("toDash").hidden = true;
-};
-
-/* ---------- старт ---------- */
-const inProgress = () => block !== "КАССА" && !$("checklistView").hidden && (idx > 0 || !!photo || answers.some(Boolean));
-document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
-  tap();
-  if (b.dataset.b !== block && inProgress()) { toast("Сначала завершите «" + block + "»: на каждом шаге нужно новое фото"); return; }
-  if (!$("loader").hidden) return;
-  if (!$("errorView").hidden && b.dataset.b !== "КАССА") return;
-  selectBlock(b.dataset.b);
-});
-$("retryBtn").onclick = loadTasks;
-(function () {
-  const qp = new URLSearchParams(location.search), qd = qp.get("date");
-  if (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd) && qd <= isoToday()) reportDate = qd;
-  if (qp.get("tab") === "cash") block = "КАССА";
-  const qb = qp.get("block"); if (qb && ["Открытие","День","Закрытие","КАССА"].includes(qb)) block = qb;
-  setReportDate(reportDate);
-})();
-if (window.coffeeSettings) { const cs = window.coffeeSettings.get(); if (cs.location) { LOCATION = cs.location; $("loc").textContent = LOCATION; } if (cs.plan > 0) PLAN = cs.plan; if (cs.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = cs.initCounter; }
-
-/* Поддержка перетаскивания файлов мышкой (Drag & Drop) на ПК */
-document.querySelectorAll('label.file').forEach((lbl) => {
-  const inp = lbl.querySelector('input[type="file"]');
-  if (!inp) return;
-  ['dragenter', 'dragover'].forEach((ev) => lbl.addEventListener(ev, (e) => {
-    e.preventDefault(); e.stopPropagation(); lbl.classList.add('dragover');
-  }));
-  ['dragleave', 'drop'].forEach((ev) => lbl.addEventListener(ev, (e) => {
-    e.preventDefault(); e.stopPropagation(); lbl.classList.remove('dragover');
-  }));
-  lbl.addEventListener('drop', (e) => {
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-      inp.files = e.dataTransfer.files;
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
-});
-
-queueUI(); flush(); loadTasks();
-</script>
+<script src="js/page-terminal.js"></script>
 <script src="app.js" defer></script>
+
+<dialog id="staffPinDlg" style="border:1px solid var(--line);border-radius:20px;background:var(--surface,#fff);color:var(--ink);padding:20px;width:min(360px,92vw);box-shadow:0 24px 50px rgba(0,0,0,.45)">
+  <form id="staffPinForm" method="dialog">
+    <h3 id="staffPinTitle" style="margin:0 0 6px;font-size:18px">🔑 Код доступа сотрудника</h3>
+    <p id="staffPinSub" class="muted" style="margin:0 0 12px;font-size:13.5px">Введите личный код сотрудника для переключения профиля в терминале:</p>
+    <input type="password" id="staffPinInput" inputmode="numeric" autocomplete="off" placeholder="Личный код (например: 1111)" style="width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:16px;font-weight:700">
+    <div id="staffPinErr" style="color:var(--bad);font-size:13px;min-height:18px;margin:6px 0"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button type="button" class="btn ghost" id="staffPinCancelBtn" style="min-height:42px;padding:8px 14px">Отмена</button>
+      <button type="submit" class="btn" style="min-height:42px;padding:8px 16px">Подтвердить</button>
+    </div>
+  </form>
+</dialog>
+
 </body>
 </html>

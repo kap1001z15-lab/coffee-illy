@@ -4,279 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кофейня — отчёты</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
-<script src="config.js">window.addEventListener('storage', (e) => { if (e && (e.key === 'coffee_unified_hybrid_db_v3' || e.key === 'coffee_sync_signal')) load(true, true); });
-window.addEventListener('focus', () => load(true, true));
-</script>
-<style>html.gate body>*:not(#gate){display:none!important}</style><script>try{if(localStorage.getItem("coffee_admin_ok")!=="1"||!localStorage.getItem("coffee_illy_pin"))document.documentElement.classList.add("gate")}catch(e){}</script>
+
+<script>try{if(!window.coffeeAuth||!window.coffeeAuth.isAuthorized('admin'))document.documentElement.classList.add('gate')}catch(e){}</script>
 
 <script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg:#e6ecee; --surface:#f7f9fa; --ink:#172326; --muted:#5b6d72; --line:#d3dde0;
-    --brew:#5a3a29; --crema:#c98b4f; --good:#1b8a57; --bad:#c23b22; --warn:#b7791f;
-    --espresso:#2e1b11; --cream:#f6ece2;
-    --shadow:0 1px 2px rgba(23,35,38,.05), 0 16px 32px -20px rgba(23,35,38,.4);
-    --font-d:"Bricolage Grotesque",system-ui,sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
-      --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d;
-      --shadow:0 1px 0 rgba(255,255,255,.03), 0 16px 32px -20px rgba(0,0,0,.75); }
-  }
-  :root { color-scheme:light; }
-  :root[data-theme="dark"] { color-scheme:dark; --bg:#12191b; --surface:#1b2528; --ink:#e8eff0; --muted:#8fa3a8; --line:#2c3a3e;
-    --brew:#b98a64; --crema:#e0a76a; --good:#4cc38a; --bad:#ff7a5f; --warn:#e5b04d;
-    --shadow:0 1px 0 rgba(255,255,255,.03), 0 16px 32px -20px rgba(0,0,0,.75); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme:dark; } }
-  .imp { display:inline-flex; align-items:center; height:40px; text-decoration:none; color:var(--ink); white-space:nowrap; }
-  .srow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:10px 0; border-top:1px solid var(--line); font-size:14px; }
-  .hint a { color:#f6d7ad; }
-  code { background:var(--bg); padding:1px 6px; border-radius:6px; font-size:13px; }
-  * { box-sizing:border-box; }
-  [hidden] { display:none !important; }
-  body { margin:0; color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:radial-gradient(1100px 420px at 50% -160px, color-mix(in srgb, var(--crema) 20%, transparent), transparent), var(--bg);
-    padding-bottom:env(safe-area-inset-bottom,0); }
-  h1,h2,h3,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
-  h2 { font-size:18px; margin-bottom:14px; }
-  .muted { color:var(--muted); font-size:14px; }
-  a { color:var(--brew); font-weight:600; }
-  button, input { font:inherit; color:var(--ink); }
-  button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline:3px solid var(--crema); outline-offset:2px; }
 
-  .nav { position:relative; z-index:20; border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top,0);
-    background:color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
-  .nav .in { max-width:1120px; margin:0 auto; padding:10px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:space-between; }
-  .logo { display:flex; align-items:center; gap:10px; }
-  .logo svg { width:30px; height:30px; }
-  .logo b { font-family:var(--font-d); font-size:18px; display:block; line-height:1.1; }
-  .pills { display:flex; gap:4px; background:var(--bg); padding:4px; border-radius:14px; }
-  .pills a { text-decoration:none; color:var(--muted); font-size:14px; padding:7px 14px; border-radius:10px; }
-  .pills a.on { background:var(--brew); color:var(--surface); }
-  .dp { display:flex; gap:6px; align-items:center; }
-  .dp button, .dp input { height:40px; border-radius:12px; border:1px solid var(--line); background:var(--surface); padding:0 12px; font-weight:600; cursor:pointer; }
-  .dp button { min-width:40px; }
-
-  main { max-width:1120px; margin:0 auto; padding:20px 16px 48px; transition:opacity .2s; }
-  main.loading { opacity:.55; }
-  .alert { border:1px solid var(--bad); background:color-mix(in srgb, var(--bad) 10%, var(--surface)); border-radius:16px; padding:14px 16px; margin-bottom:16px; }
-  .alert code { background:var(--bg); padding:1px 6px; border-radius:6px; }
-  .panel { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:22px; box-shadow:var(--shadow); }
-  .grid { display:grid; gap:16px; margin-top:16px; }
-  .g4 { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
-  .g21 { grid-template-columns:minmax(0,2fr) minmax(0,1fr); } .g11 { grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); }
-  @media (max-width:820px) { .g21 { grid-template-columns:1fr; } }
-
-  .hero { color:var(--cream); border:0; position:relative; overflow:hidden;
-    background:radial-gradient(600px 300px at 90% -20%, rgba(224,167,106,.35), transparent), linear-gradient(135deg,#2e1b11,#5a3a29 65%,#7a4e32);
-    display:grid; grid-template-columns:minmax(170px,240px) 1fr; gap:28px; align-items:center; }
-  @media (max-width:640px) { .hero { grid-template-columns:1fr; justify-items:center; text-align:center; } .hero > div:last-child { width:100%; } }
-  .hero .muted { color:rgba(246,236,226,.7); }
-  .cup { width:100%; max-width:230px; }
-  .big { font-size:clamp(40px,8vw,68px); font-weight:700; line-height:1.02; display:block; margin:2px 0 8px; }
-  .chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
-  @media (max-width:640px) { .chips { justify-content:center; } }
-  .chip { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; padding:4px 10px; border-radius:99px; background:rgba(255,255,255,.14); }
-  .chip.up { background:rgba(76,195,138,.22); color:#7fe0ac; } .chip.down { background:rgba(255,122,95,.22); color:#ffae9b; }
-  .plan { height:10px; border-radius:99px; background:rgba(255,255,255,.16); overflow:hidden; }
-  .plan i { display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#e0a76a,#f6d7ad); transition:width 1.2s cubic-bezier(.2,.8,.2,1); }
-  .plan-l { display:flex; justify-content:space-between; font-size:13px; margin-top:6px; color:rgba(246,236,226,.75); }
-  .hint { margin-top:14px; font-size:14px; color:rgba(246,236,226,.8); }
-
-  .kpi .num { font-size:30px; font-weight:700; display:block; margin:2px 0; }
-  .kpi .sub { font-size:13px; color:var(--muted); }
-  .tag { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:99px; }
-  .tag.ok { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); }
-  .tag.no { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
-  .tag.mid { background:color-mix(in srgb, var(--warn) 20%, transparent); color:var(--warn); }
-
-  #chart svg { width:100%; height:auto; display:block; }
-  #chart text { fill:var(--muted); font-size:11px; font-family:system-ui,sans-serif; }
-  #chart .b { fill:var(--line); cursor:pointer; transition:fill .15s; }
-  #chart .b.met { fill:color-mix(in srgb, var(--good) 55%, var(--line)); }
-  #chart .b.sel { fill:var(--brew); }
-  #chart .b:hover, #chart .b:focus { opacity:.75; outline:none; }
-  .readout { min-height:24px; margin-top:8px; font-weight:600; }
-  .empty { padding:28px 8px; text-align:center; color:var(--muted); }
-  .empty b { display:block; color:var(--ink); font-family:var(--font-d); font-size:18px; margin-bottom:4px; }
-
-  .donut { display:grid; grid-template-columns:130px 1fr; gap:18px; align-items:center; }
-  .donut svg { width:130px; height:130px; transform:rotate(-90deg); }
-  .leg div { display:flex; align-items:center; gap:8px; font-size:14px; margin:6px 0; }
-  .leg i { width:12px; height:12px; border-radius:4px; display:inline-block; }
-
-  .rank { display:grid; grid-template-columns:28px 1fr auto; gap:2px 12px; margin-bottom:14px; align-items:center; }
-  .rank .n { width:28px; height:28px; border-radius:9px; background:var(--bg); display:grid; place-items:center; font-weight:700; font-size:13px; }
-  .rank .t { grid-column:2/-1; height:8px; border-radius:99px; background:var(--line); overflow:hidden; }
-  .rank .t i { display:block; height:100%; background:linear-gradient(90deg,var(--crema),var(--brew)); border-radius:99px; }
-
-  .wk { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:18px; }
-  .wk .num { font-size:26px; font-weight:700; display:block; }
-  .dchip { font-size:12px; font-weight:700; padding:2px 8px; border-radius:99px; margin-left:4px; }
-  .dchip.up { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); }
-  .dchip.down { background:color-mix(in srgb, var(--bad) 18%, transparent); color:var(--bad); }
-
-  .scrollx { overflow-x:auto; }
-  .tbl { width:100%; border-collapse:collapse; font-size:14px; white-space:nowrap; font-variant-numeric:tabular-nums; }
-  .tbl th, .tbl td { text-align:right; padding:10px 12px; border-bottom:1px solid var(--line); }
-  .tbl th:first-child, .tbl td:first-child { text-align:left; }
-  .tbl th { color:var(--muted); font-weight:600; }
-  .tbl tbody tr { cursor:pointer; } .tbl tbody tr:hover { background:var(--bg); }
-  .tbl tr.sel td:first-child { box-shadow:inset 3px 0 var(--brew); }
-
-  .ih { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
-  .seg { display:flex; gap:4px; background:var(--bg); padding:4px; border-radius:12px; }
-  .seg button { border:0; background:transparent; padding:6px 14px; border-radius:9px; font-weight:600; font-size:14px; cursor:pointer; color:var(--muted); }
-  .seg button.on { background:var(--surface); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.15); }
-  .inc { display:grid; grid-template-columns:5px 1fr auto; gap:14px; padding:14px 0; border-top:1px solid var(--line); align-items:start; }
-  .inc:first-child { border-top:0; }
-  .inc .rail { align-self:stretch; border-radius:99px; background:var(--warn); }
-  .inc .rail.hi { background:var(--bad); } .inc .rail.res { background:var(--good); }
-  .inc .meta { font-size:13px; color:var(--muted); margin-top:2px; }
-  .inc .act { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
-  .btn-s { border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:6px 12px; font-weight:600; font-size:13px; cursor:pointer; }
-  .btn-s:hover { border-color:var(--good); color:var(--good); }
-
-  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--espresso); color:var(--cream); padding:10px 18px; border-radius:99px; font-size:14px; box-shadow:0 12px 30px -10px rgba(0,0,0,.6); z-index:50; }
-  @media (prefers-reduced-motion: no-preference) { #liquid { transition:transform 1.4s cubic-bezier(.2,.8,.2,1); } }
-
-  .presets { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-  .presets .seg { flex-wrap:wrap; }
-  .range { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-  .range input, .fm input, .fm select { height:40px; border-radius:12px; border:1px solid var(--line); background:var(--surface); padding:0 12px; }
-  .fm { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; align-items:end; }
-  .fm label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
-  .fm input, .fm select { width:100%; }
-  .btn-p { height:40px; border:0; border-radius:12px; background:var(--brew); color:var(--surface); font-weight:700; padding:0 18px; cursor:pointer; }
-  .btn-p:disabled { opacity:.5; cursor:wait; }
-  .k6 { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
-  .pos { color:var(--good); } .neg { color:var(--bad); }
-  .lg { display:flex; gap:14px; font-size:13px; color:var(--muted); margin-top:6px; }
-  .lg i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; }
-  .xrow { display:grid; grid-template-columns:1fr auto auto; gap:12px; padding:10px 0; border-top:1px solid var(--line); align-items:center; font-size:14px; }
-  .xrow:first-child { border-top:0; }
-  .tbl tbody tr { cursor:default; }
-  @media print { .nav, .app-header, .noprint, .toast { display:none !important; } body { background:#fff; } .panel { box-shadow:none; } }
-  .okc{color:var(--good);font-weight:700}.miss{color:var(--muted)}.miss.bad{color:var(--bad);font-weight:700}
-  .tbl:has(#tasks) th,.tbl:has(#whoB) th{text-align:left}#tasks td,#whoB td{vertical-align:top}#tasks td:not(:first-child){text-align:left;white-space:normal;min-width:130px}
-
-  /* --- единая шапка: как в приложении сотрудников --- */
-  .app-header { position:relative; z-index:20; color:var(--cream); background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
-    padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
-  .app-header .wrap { max-width:var(--w,1120px); margin:0 auto; }
-  .app-header .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-  .app-header h1 { font-size:20px; display:flex; align-items:center; gap:8px; color:var(--cream); }
-  .app-header h1 svg { width:26px; height:26px; }
-  .app-header .sub { color:rgba(246,236,226,.68); font-size:13px; }
-  .app-header .theme-btn { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); border-radius:12px; width:42px; height:42px; font-size:18px; cursor:pointer; }
-  .app-header .tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; background:rgba(255,255,255,.1); padding:4px; border-radius:16px; margin-top:14px; max-width:480px; }
-  .app-header .tabs a { display:flex; align-items:center; justify-content:center; min-height:44px; border-radius:12px; color:rgba(246,236,226,.8); font-weight:600; font-size:14px; text-decoration:none; }
-  .app-header .tabs a.on { background:var(--cream); color:var(--espresso); }
-  .app-header .dp { display:flex; gap:6px; margin-top:12px; max-width:480px; }
-  .app-header .dp button, .app-header .dp input { height:42px; border-radius:12px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1); color:var(--cream); padding:0 12px; font-weight:600; cursor:pointer; color-scheme:dark; }
-  .app-header .dp input { flex:1; min-width:0; }
-  .app-header .dp button { min-width:42px; }
-  .app-header .tabs a { font-size:13px; } @media (max-width:400px) { .app-header .tabs a { font-size:12px; } }
-
-  /* === АДАПТИВНЫЙ USER-FRIENDLY ИНТЕРФЕЙС ДЛЯ ПК И ТЕЛЕФОНА (v8) === */
-  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
-  ::-webkit-scrollbar { width:8px; height:8px; }
-  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:99px; }
-
-  /* Карточки и кнопки: плавный отклик на ПК и телефоне */
-  .card, .panel { transition:box-shadow .2s ease, border-color .2s ease; }
-  button, .b, .p, .btn, .btn-s, .btn-p, .file, .drop {
-    transition:transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
-  }
-  @media (hover:hover) and (pointer:fine) {
-    .b:hover, .btn-s:hover { transform:translateY(-1px); box-shadow:0 4px 12px -4px rgba(0,0,0,.12); }
-    .p:hover, .btn-p:hover, .btn:not(:disabled):hover { filter:brightness(1.06); transform:translateY(-1px); }
-    .file:hover, .drop:hover { border-color:var(--brew); background:color-mix(in srgb, var(--crema) 8%, var(--bg)); }
-  }
-  .file.dragover, .drop.dragover {
-    border-style:solid !important;
-    border-color:var(--good) !important;
-    background:color-mix(in srgb, var(--good) 12%, var(--bg)) !important;
-    transform:scale(1.01);
-  }
-
-  /* Таблицы: закреплённый первый столбец на узких экранах + удобный скролл */
-  .scrollx, .sx { -webkit-overflow-scrolling:touch; scrollbar-width:thin; border-radius:12px; }
-  .tbl th:first-child, .tbl td:first-child {
-    position:sticky; left:0; z-index:2;
-    background:var(--surface);
-  }
-  .tbl tr:hover td:first-child { background:var(--bg); }
-
-  /* Поле быстрого поиска задач */
-  .task-search {
-    width:100%; height:42px; border-radius:12px; border:1px solid var(--line);
-    background:var(--bg); padding:0 14px; font-size:14px; margin:8px 0 12px;
-  }
-
-  /* --- Широкие экраны ПК (Desktop >= 900px) --- */
-  @media (min-width:900px) {
-    :root { --w:1120px; }
-    main { padding:26px 24px 64px; }
-    .card, .panel { padding:24px 26px; border-radius:24px; }
-    .app-header { padding:16px 24px; border-radius:0 0 28px 28px; }
-    .app-header .wrap {
-      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px;
-    }
-    .app-header .brand { flex:1 1 auto; }
-    .app-header .tabs, .app-header .nav-bar { margin-top:0; }
-    .app-header .dp, .app-header .sub-bar { margin-top:0; width:auto; }
-    .k, .k4 { grid-template-columns:repeat(4, 1fr) !important; gap:16px; }
-    .dash-two-col { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
-    .dash-two-col > .card { margin-top:16px; }
-    .settings-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px 22px; }
-    .settings-grid .set, .settings-grid .set-item {
-      border:1px solid var(--line); border-radius:16px; padding:16px; background:var(--bg); margin:0;
-    }
-    .narrow-view { max-width:780px; }
-    #tCashView, #cashView {
-      display:grid; grid-template-columns:1.1fr 0.9fr; gap:18px; align-items:start;
-    }
-    #tCashView > *, #cashView > * { margin-top:0 !important; }
-    #tCashView > .panel:first-child, #cashView > .panel:first-child,
-    #tSubmitCashBtn, #submitCashBtn { grid-column:1 / -1; }
-  }
-
-  /* --- Мобильные телефоны (Mobile <= 640px) --- */
-  @media (max-width:640px) {
-    .app-header, header {
-      padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 10px;
-      border-radius:0 0 20px 20px;
-    }
-    .app-header h1, header h1 { font-size:18px; }
-    .app-header .tabs, .main-tabs, .term-tabs, .owner-nav {
-      margin-top:8px; padding:3px; border-radius:13px;
-    }
-    .app-header .tabs a, .main-tabs button, .term-tabs button, .owner-nav a {
-      min-height:38px; font-size:12px; padding:0 4px; border-radius:10px;
-    }
-    .app-header .dp, .sub-bar { margin-top:8px; }
-    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size:13px; }
-    main { padding:12px 10px calc(36px + env(safe-area-inset-bottom,0px)); }
-    .card, .panel { padding:15px 14px; border-radius:18px; margin-top:10px; }
-    .big, .total { font-size:clamp(30px, 9vw, 40px); }
-    .k, .k4 { grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:10px; }
-    .k .card, .k4 .card { padding:13px; }
-    .k b, .k4 b { font-size:21px; }
-    .k6 { grid-template-columns:repeat(2, 1fr); gap:10px; }
-    .kpi .num { font-size:21px; }
-    .seg, .seg-bar { scrollbar-width:none; -ms-overflow-style:none; }
-    .seg::-webkit-scrollbar, .seg-bar::-webkit-scrollbar { display:none; }
-    .adm-row, .inc-row, .row { grid-template-columns:1fr; gap:8px; }
-    .adm-row .acts, .inc-row .acts, .row .acts { justify-content:flex-start; }
-    .set .line, .set-item .line { flex-direction:column; }
-    .set .line button, .set-item .line button { width:100%; min-height:42px; }
-  }
-
-</style>
+<link rel="stylesheet" href="css/report.css">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="config.js"></script>
+<script src="js/defaults.js"></script>
+<script src="js/security.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/telegram.js"></script>
 </head>
 <body>
 <header class="app-header"><div class="wrap">
@@ -312,6 +57,31 @@ window.addEventListener('focus', () => load(true, true));
 
   <section class="panel" style="margin-top:16px"><h2>Прибыль и убытки</h2><div class="wk" id="pnl"></div></section>
 
+  <section class="panel noprint" id="smartSimPanel" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h2 style="margin:0">🎛️ Умный симулятор прибыли «Что если» и Точка безубыточности</h2>
+      <span class="kpi-pill ok" id="simBreakEvenBadge">Точка безубыточности: —</span>
+    </div>
+    <p class="muted" style="margin:4px 0 8px">Двигайте ползунки, чтобы смоделировать рост прибыли на основе вашей фактической выручки, среднего чека и списаний:</p>
+    <div class="sim-controls">
+      <div class="sim-slider-wrap">
+        <label for="simAvgSlider"><b>1. Рост среднего чека (Upsell):</b> <span id="simAvgVal">+5 руб.</span></label>
+        <input type="range" id="simAvgSlider" min="0" max="25" step="1" value="5">
+      </div>
+      <div class="sim-slider-wrap">
+        <label for="simChkSlider"><b>2. Прирост чеков / гостей в день:</b> <span id="simChkVal">+10%</span></label>
+        <input type="range" id="simChkSlider" min="0" max="40" step="2" value="10">
+      </div>
+      <div class="sim-slider-wrap">
+        <label for="simWoSlider"><b>3. Снижение списаний:</b> <span id="simWoVal">-30%</span></label>
+        <input type="range" id="simWoSlider" min="0" max="80" step="5" value="30">
+      </div>
+    </div>
+    <div class="smart-grid" id="simResultGrid"></div>
+    <h3 style="font-size:15.5px;margin:16px 0 6px">📅 Матрица эффективности по дням недели и рекомендация по сменам (1 или 2 бариста)</h3>
+    <div class="dow-grid" id="dowHeatmapGrid"></div>
+  </section>
+
   <section class="panel" style="margin-top:16px"><h2>Доход (зелёный) и Расходы со списаниями (красный)</h2><div id="chart"></div>
     <div class="lg"><span><i style="background:var(--good)"></i>Доход (выручка)</span><span><i style="background:var(--bad)"></i>Расходы и списания</span><span id="grpNote"></span></div></section>
 
@@ -331,7 +101,7 @@ window.addEventListener('focus', () => load(true, true));
     <div class="fm">
       <div><label for="xDate">Дата</label><input type="date" id="xDate"></div>
       <div><label for="xCat">Статья</label><select id="xCat"></select></div>
-      <div><label for="xAmt">Сумма, ₽</label><input type="number" id="xAmt" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+      <div><label for="xAmt">Сумма, руб.</label><input type="number" id="xAmt" min="0" step="any" inputmode="decimal" placeholder="0"></div>
       <div><label for="xCom">Комментарий</label><input type="text" id="xCom" maxlength="200" placeholder="Необязательно"></div>
       <div><button class="btn-p" id="xAdd" type="button" style="width:100%">Добавить расход</button></div>
     </div>
@@ -341,7 +111,7 @@ window.addEventListener('focus', () => load(true, true));
 
   <section class="panel" style="margin-top:16px"><h2>Автоматическая сводка по сотрудникам (смены, выручка, чашки, списания)</h2>
     <p class="muted" style="margin:-6px 0 12px">Если в один день работали 2 бариста (например, Алина и Соня), система суммирует их вклад в общую выручку дня и считает персональную статистику каждого сотрудника.</p>
-    <div class="scrollx"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Смен</th><th>Доход (всего)</th><th>Наличные</th><th>Безнал</th><th>Чашек / Чеков</th><th>Списания</th></tr></thead><tbody id="staffSummaryB"></tbody></table></div>
+    <div class="scrollx"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Смен</th><th>Дисциплина (7.1)</th><th>Качество сервиса (7.2)</th><th>Доход (7.3)</th><th>Ср. чек</th><th>Чашек / Чеков</th><th>Списания</th><th>Рейтинг KPI</th><th>Премия по KPI</th></tr></thead><tbody id="staffSummaryB"></tbody></table></div>
   </section>
 
   <section class="panel" style="margin-top:16px"><h2>Дисциплина, поломки и фото/видео фиксация замечаний</h2>
@@ -357,247 +127,7 @@ window.addEventListener('focus', () => load(true, true));
 </main>
 <div class="toast" id="toast" hidden></div>
 
-<script>
-const API_URL = window.COFFEE.API_URL;
-const PIN_KEY = 'coffee_illy_pin';
-const $ = (id) => document.getElementById(id);
-const rub = (n) => Math.round(Number(n || 0)).toLocaleString('ru-RU') + ' ₽';
-const dm = (s) => s.slice(8) + '.' + s.slice(5, 7);
-const dmy = (s) => dm(s) + '.' + s.slice(0, 4);
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-const shift = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
-const getPin = () => { try { return localStorage.getItem(PIN_KEY) || ''; } catch (e) { return ''; } };
-const signed = (n) => (n > 0 ? '+' : '') + n;
-let R = null;
-
-function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2800); }
-async function apiGet(q) {
-  const d = await coffeeFetch(API_URL + '?' + q + '&pin=' + encodeURIComponent(getPin()));
-  if (d && d.ok === false && /PIN_REQUIRED/.test(d.error || '')) { const e = new Error('Введите код доступа администратора'); e.pin = true; throw e; }
-  return d;
-}
-async function apiPost(p) {
-  const d = await coffeeFetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ pin: getPin() }, p)) }, 30000);
-  if (!d || d.ok === false) throw new Error((d && d.error) || 'ошибка сервера');
-  return d;
-}
-
-/* ---------- период ---------- */
-function preset(p) {
-  const t = iso(new Date()), d = new Date();
-  let a = t, b = t;
-  if (p === 'yest') a = b = shift(t, -1);
-  else if (p === '7') a = shift(t, -6);
-  else if (p === '30') a = shift(t, -29);
-  else if (p === 'month') a = iso(new Date(d.getFullYear(), d.getMonth(), 1));
-  else if (p === 'pmonth') { a = iso(new Date(d.getFullYear(), d.getMonth() - 1, 1)); b = iso(new Date(d.getFullYear(), d.getMonth(), 0)); }
-  $('from').value = a; $('to').value = b;
-  document.querySelectorAll('#presets button').forEach((x) => x.classList.toggle('on', x.dataset.p === p));
-  load();
-}
-document.querySelectorAll('#presets button').forEach((b) => b.onclick = () => preset(b.dataset.p));
-$('apply').onclick = () => {
-  let a = $('from').value, b = $('to').value, t = iso(new Date());
-  if (!a || !b) { toast('Укажите обе даты'); return; }
-  if (a > b) { const x = a; a = b; b = x; $('from').value = a; $('to').value = b; }
-  if (b > t) { b = t; $('to').value = t; }
-  if (new Date(b) - new Date(a) > 399 * 864e5) { toast('Период не больше 13 месяцев'); return; }
-  document.querySelectorAll('#presets button').forEach((x) => x.classList.remove('on'));
-  load(true);
-};
-
-async function load(fresh) {
-  const from = $('from').value, to = $('to').value, ck = 'rep:' + from + ':' + to, saved = coffeeCache.get(ck);
-  $('err').hidden = true;
-  if (saved && saved.finance) { R = saved; render(saved); } else $('main').classList.add('loading');
-  try {
-    const d = await apiGet('action=report&from=' + from + '&to=' + to + (fresh ? '&nocache=1' : ''));
-    if (!d || d.ok === false || !d.finance) throw new Error((d && d.error) || 'сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
-    coffeeCache.set(ck, d); R = d; render(d);
-  } catch (e) {
-    $('err').hidden = false;
-    if (!e.pin && saved && saved.finance) { $('err').innerHTML = '<b>Нет связи.</b> Показаны сохранённые данные.'; return; }
-    $('err').innerHTML = e.pin
-      ? '<b>' + esc(e.message) + '</b><div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" autocomplete="current-password" placeholder="Код" style="height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);padding:0 12px"><button class="btn-s" id="pinOk" type="button">Войти</button></div>'
-      : '<b>Не удалось загрузить отчёт.</b> ' + esc(e.message);
-  } finally { $('main').classList.remove('loading'); }
-}
-$('err').addEventListener('click', (e) => { if (e.target.id !== 'pinOk') return; try { localStorage.setItem(PIN_KEY, $('pinIn').value.trim()); localStorage.setItem('coffee_admin_ok', '1'); } catch (x) {} load(); });
-$('err').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'pinIn') $('pinOk').click(); });
-
-/* ---------- отрисовка ---------- */
-function delta(cur, prev) { return prev ? Math.round((cur - prev) / Math.abs(prev) * 100) : null; }
-function render(d) {
-  if (d.location && $('sub')) $('sub').textContent = 'Отчёты владельца · ' + d.location;
-  if (d.categories && d.categories.length) { const c = $('xCat').value; $('xCat').innerHTML = d.categories.map((x) => '<option' + (x === c ? ' selected' : '') + '>' + esc(x) + '</option>').join(''); }
-  const f = d.finance, t = d.totals;
-  $('periodLbl').textContent = d.from === d.to ? dmy(d.from) : dmy(d.from) + ' — ' + dmy(d.to) + ' · ' + d.days + ' дн., с выручкой: ' + t.days;
-  $('kRev').textContent = rub(f.revenue);
-  const dv = d.delta; $('kRevS').innerHTML = dv == null ? 'нет данных за прошлый период' : '<span class="dchip ' + (dv >= 0 ? 'up' : 'down') + '">' + signed(dv) + '%</span> к прошлому периоду';
-  $('kExp').textContent = rub(f.expenses); $('kExpS').textContent = f.revenue ? Math.round(f.expenses / f.revenue * 100) + '% от выручки' : '\u00a0';
-  $('kPro').textContent = rub(f.profit); $('kPro').className = 'num ' + (f.profit >= 0 ? 'pos' : 'neg');
-  const pd = delta(f.profit, f.prevProfit);
-  $('kProS').innerHTML = 'маржа ' + f.margin + '%' + (pd == null ? '' : ' · <span class="dchip ' + (pd >= 0 ? 'up' : 'down') + '">' + signed(pd) + '%</span>');
-  $('kChk').textContent = t.checks + ' · ' + rub(t.avg);
-  $('kChkS').textContent = t.days ? 'в среднем ' + rub(t.revenue / t.days) + ' в день' : '\u00a0';
-  $('kPlan').textContent = d.pct + '%'; $('kPlanS').textContent = 'план ' + rub(d.plan) + ' (' + t.days + ' дн.)';
-  $('kWo').textContent = rub(f.writeoff);
-  drawPnl(d); drawChart(d); drawCats(f); drawTop(d); drawExps(f); drawDisc(d); drawTable(d); drawTasks(d);
-}
-
-function bucket(series) {
-  if (series.length <= 31) return { rows: series.map((x) => ({ label: dm(x.date), rev: x.revenue, exp: (Number(x.expenses) || 0) + (Number(x.writeoff) || 0), wo: Number(x.writeoff) || 0 })), grouped: false };
-  const out = [];
-  for (let i = 0; i < series.length; i += 7) {
-    const g = series.slice(i, i + 7);
-    out.push({ label: dm(g[0].date), rev: g.reduce((a, x) => a + x.revenue, 0), exp: g.reduce((a, x) => a + (Number(x.expenses) || 0) + (Number(x.writeoff) || 0), 0), wo: g.reduce((a, x) => a + (Number(x.writeoff) || 0), 0) });
-  }
-  return { rows: out, grouped: true };
-}
-function drawChart(d) {
-  const b = bucket(d.series); $('grpNote').textContent = b.grouped ? 'столбец = неделя' : '';
-  if (!b.rows.some((x) => x.rev || x.exp)) { $('chart').innerHTML = '<div class="empty"><b>За этот период данных нет</b>Выберите другие даты или загрузите кассовый отчёт в терминале.</div>'; return; }
-  const W = 720, H = 260, pad = 28, base = H - 28, max = Math.max(...b.rows.map((x) => Math.max(x.rev, x.exp)), 1) * 1.1, n = b.rows.length, bw = (W - pad * 2) / n;
-  const y = (v) => base - v / max * (base - 18), step = Math.ceil(n / 12);
-  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Доход, расходы и списания"><line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
-  b.rows.forEach((x, i) => {
-    const cx = pad + i * bw, w = bw * .36;
-    s += '<rect x="' + (cx + bw * .1) + '" y="' + y(x.rev) + '" width="' + w + '" height="' + Math.max(base - y(x.rev), x.rev ? 3 : 0) + '" rx="3" fill="var(--good)"><title>' + x.label + ': доход ' + rub(x.rev) + '</title></rect>';
-    s += '<rect x="' + (cx + bw * .1 + w + 2) + '" y="' + y(x.exp) + '" width="' + w + '" height="' + Math.max(base - y(x.exp), x.exp ? 4 : 0) + '" rx="3" fill="var(--bad)"><title>' + x.label + ': расходы и списания ' + rub(x.exp) + '</title></rect>';
-    if (i % step === 0) s += '<text x="' + (cx + bw / 2) + '" y="' + (H - 9) + '" text-anchor="middle" style="font-size:10px">' + x.label + '</text>';
-  });
-  $('chart').innerHTML = s + '</svg>';
-}
-function drawCats(f) {
-  if (!f.byCategory.length) { $('cats').innerHTML = '<div class="empty"><b>Расходов за период нет</b>Добавьте их в форме ниже — прибыль пересчитается.</div>'; return; }
-  const m = f.byCategory[0].sum || 1;
-  $('cats').innerHTML = f.byCategory.map((x, i) => '<div class="rank"><span class="n">' + (i + 1) + '</span><b>' + esc(x.category) + '</b><span>' + rub(x.sum) + ' · ' + Math.round(x.sum / f.expenses * 100) + '%</span><div class="t"><i style="width:' + x.sum / m * 100 + '%"></i></div></div>').join('');
-}
-function drawTop(d) {
-  const p = d.products || [], tot = p.reduce((a, x) => a + x.qty, 0) || 1;
-  $('top').innerHTML = p.length ? p.map((x) => '<tr><td>' + esc(x.name) + '</td><td><b>' + x.qty + '</b></td><td>' + (x.sum ? rub(x.sum) : '—') + '</td><td>' + Math.round(x.qty / tot * 100) + '%</td></tr>').join('')
-    : '<tr><td colspan="4" style="text-align:left;color:var(--muted)">Позиций нет — они считаются из «Продажи.csv» при закрытии кассы</td></tr>';
-}
-function drawPnl(d) {
-  const f = d.finance, act = d.series.filter((x) => x.revenue || x.expenses), loss = act.filter((x) => x.profit < 0);
-  const best = act.slice().sort((a, b) => b.profit - a.profit)[0], worst = act.slice().sort((a, b) => a.profit - b.profit)[0];
-  const cell = (l, v, sub, cls) => '<div><span class="muted">' + l + '</span><span class="num ' + (cls || '') + '">' + v + '</span><span class="muted">' + (sub || '') + '</span></div>';
-  $('pnl').innerHTML = cell(f.profit >= 0 ? 'Прибыль за период' : 'Убыток за период', rub(Math.abs(f.profit)), 'выручка ' + rub(f.revenue) + ' − расходы ' + rub(f.expenses), f.profit >= 0 ? 'pos' : 'neg') +
-    cell('Убыточных дней', loss.length, 'из ' + act.length + ' · на сумму ' + rub(loss.reduce((a, x) => a - x.profit, 0)), loss.length ? 'neg' : '') +
-    cell('Лучший день', best ? rub(best.profit) : '—', best ? dm(best.date) : '', 'pos') +
-    cell('Худший день', worst ? rub(worst.profit) : '—', worst ? dm(worst.date) : '', worst && worst.profit < 0 ? 'neg' : '');
-}
-function drawTasks(d) {
-  const T = d.tasks || [], rev = {}; d.series.forEach((x) => rev[x.date] = x.revenue);
-  const names = {}, add = (a, k) => a.forEach((e) => { const n = e.who || 'не указан'; (names[n] = names[n] || { open: 0, day: 0, close: 0 })[k]++; });
-  T.forEach((t) => { add(t.open, 'open'); add(t.day, 'day'); add(t.close, 'close'); });
-  const nm = Object.keys(names).sort((a, b) => (names[b].open + names[b].close) - (names[a].open + names[a].close));
-  $('whoB').innerHTML = nm.length ? nm.map((n) => '<tr><td>' + esc(n) + '</td><td>' + names[n].open + '</td><td>' + names[n].day + '</td><td>' + names[n].close + '</td></tr>').join('') : '<tr><td colspan="4" style="text-align:left;color:var(--muted)">Отметок за период нет</td></tr>';
-  const c = (a, need) => a.length ? '<span class="okc">✓ ' + a.map((x) => x.time).join(', ') + '</span><div class="muted">' + Array.from(new Set(a.map((x) => x.who).filter(Boolean))).map(esc).join(', ') + (a.some((x) => x.problems) ? ' · проблем: ' + a.reduce((s, x) => s + x.problems, 0) : '') + '</div>' : '<span class="miss' + (need ? ' bad' : '') + '">—</span>';
-  const rows = T.filter((t) => t.open.length || t.day.length || t.close.length || rev[t.date]).reverse();
-  $('tasks').innerHTML = rows.length ? rows.map((t) => { const need = rev[t.date] > 0; return '<tr><td>' + dm(t.date) + '</td><td>' + c(t.open, need) + '</td><td>' + c(t.day, need) + '</td><td>' + c(t.close, need) + '</td></tr>'; }).join('')
-    : '<tr><td colspan="4" style="text-align:left;color:var(--muted)">нет данных</td></tr>';
-}
-function drawExps(f) {
-  $('exps').innerHTML = f.list.length ? f.list.map((x) => '<div class="xrow"><div><b>' + esc(x.category) + '</b><div class="muted">' + dmy(x.date) + (x.comment ? ' · ' + esc(x.comment) : '') + ' · ' + esc(x.id) + '</div></div><b>' + rub(x.amount) + '</b><button class="btn-s noprint" data-del="' + esc(x.id) + '" aria-label="Удалить расход ' + esc(x.id) + '">Удалить</button></div>').join('')
-    : '<div class="empty"><b>Нет расходов за период</b></div>';
-}
-function drawDisc(d) {
-  const i = d.incidents, c = d.discipline, mvpD = d.mvpDiscipline || (window.coffeeCalcDiscipline ? window.coffeeCalcDiscipline(null, d.from, d.to) : { overallPct: 100, totalOnTime: 0, totalAssigned: 0 });
-  const cell = (l, v, s) => '<div><span class="muted">' + l + '</span><span class="num">' + v + '</span><span class="muted">' + (s || '') + '</span></div>';
-  $('disc').innerHTML =
-    cell('Дисциплина (ТЗ 7.1)', mvpD.overallPct + '%', 'в срок ' + mvpD.totalOnTime + ' из ' + mvpD.totalAssigned + ' задач') +
-    cell('Открытий смены', c.openings, 'просрочено: ' + c.late) +
-    cell('Пропущено чек-листов', c.missed, 'при наличии выручки') +
-    cell('Чек-листов сдано', c.checklists, 'проблемных шагов: ' + c.problemSteps) +
-    cell('Инцидентов (5 статусов)', i.total, 'в работе ' + i.open + ' · закрыто ' + i.resolved) +
-    cell('Критичных', i.critical);
-
-  if ($('staffSummaryB')) {
-    const st = d.staffSummary || [];
-    $('staffSummaryB').innerHTML = st.length
-      ? st.map((s) => '<tr><td><b>' + esc(s.name) + '</b></td><td>' + s.shifts + '</td><td class="pos"><b>' + rub(s.revenue) + '</b></td><td>' + rub(s.cash) + '</td><td>' + rub(s.card) + '</td><td>' + s.cups + '</td><td class="neg"><b>' + rub(s.writeoff) + '</b></td></tr>').join('')
-      : '<tr><td colspan="7" style="text-align:left;color:var(--muted)">Нет данных по сменам сотрудников за этот период</td></tr>';
-  }
-
-  if ($('incMediaList')) {
-    const list = d.incidentList || [];
-    $('incMediaList').innerHTML = list.length
-      ? list.map((inc) => {
-          const media = window.coffeeMediaHtml ? window.coffeeMediaHtml(inc.photo, inc.step) : '';
-          const isOp = window.coffeeIsIncActive ? window.coffeeIsIncActive(inc.status) : (inc.status === 'Open' || inc.status === 'Открыта');
-          const normSt = window.coffeeNormIncStatus ? window.coffeeNormIncStatus(inc.status) : (isOp ? 'Новая проблема' : 'Решена');
-          return '<div class="xrow" style="grid-template-columns:1fr auto;align-items:start">' +
-            '<div>' +
-              (inc.incType ? '<span class="tag" style="margin-right:6px">' + esc(inc.incType) + '</span>' : '') +
-              '<b>' + esc(inc.step || 'Замечание') + '</b> ' +
-              '<span class="tag ' + (isOp ? 'no' : 'ok') + '">' + esc(normSt) + '</span> ' +
-              (inc.priority === 'Критично' ? '<span class="tag no">критично</span>' : '') +
-              '<div style="margin-top:4px">' + esc(inc.text) + '</div>' +
-              '<div class="muted">' + dmy(inc.date || '') + (inc.time ? ' ' + esc(inc.time) : '') + (inc.who ? ' · Сотрудник: ' + esc(inc.who) : '') + (inc.owner && inc.owner !== '—' ? ' · Отв.: ' + esc(inc.owner) : '') + '</div>' +
-              media +
-            '</div>' +
-            '<div><a href="admin.html?tab=inc" class="btn-s" style="text-decoration:none;display:inline-block">В поломки →</a></div>' +
-          '</div>';
-        }).join('')
-      : '<p class="muted">Замечаний и поломок нет.</p>';
-  }
-}
-function drawTable(d) {
-  const rows = d.series.filter((x) => x.revenue || x.expenses || x.writeoff).reverse();
-  $('tbl').innerHTML = rows.length ? rows.map((x) => '<tr style="cursor:pointer" onclick="location.href=\'dashboard.html?date=' + x.date + '\'" title="Открыть этот день на Дашборде"><td><b>' + dm(x.date) + '</b>' + (x.barista ? '<div class="muted" style="font-size:11.5px">' + esc(x.barista) + '</div>' : '') + '</td><td class="pos"><b>' + rub(x.revenue) + '</b></td><td class="neg">' + rub(x.expenses) + '</td><td class="' + (x.profit >= 0 ? 'pos' : 'neg') + '"><b>' + rub(x.profit) + '</b></td><td>' + x.checks + '</td><td>' + rub(x.avg) + '</td><td>' + rub(x.cash) + '</td><td>' + rub(x.card) + '</td><td class="neg"><b>' + rub(x.writeoff) + '</b></td></tr>').join('')
-    : '<tr><td colspan="9" style="text-align:left;color:var(--muted)">нет данных</td></tr>';
-}
-
-/* ---------- расходы ---------- */
-$('xAdd').onclick = async () => {
-  const amt = parseFloat($('xAmt').value);
-  if (!(amt > 0)) { toast('Введите сумму больше нуля'); $('xAmt').focus(); return; }
-  $('xAdd').disabled = true;
-  try {
-    await apiPost({ action: 'add_expense', date: $('xDate').value, category: $('xCat').value, amount: amt, comment: $('xCom').value.trim() });
-    $('xAmt').value = ''; $('xCom').value = ''; toast('Расход добавлен'); await load();
-  } catch (e) { toast(/PIN_REQUIRED/.test(e.message) ? 'Неверный код доступа' : 'Не удалось добавить: ' + e.message); }
-  $('xAdd').disabled = false;
-};
-$('exps').addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-del]'); if (!b) return;
-  if (!confirm('Удалить расход ' + b.dataset.del + '?')) return;
-  b.disabled = true;
-  try { await apiPost({ action: 'delete_expense', id: b.dataset.del }); toast('Расход удалён'); await load(); }
-  catch (err) { b.disabled = false; toast('Не удалось удалить: ' + err.message); }
-});
-
-/* ---------- экспорт ---------- */
-$('csv').onclick = () => {
-  if (!R) return;
-  const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
-  const lines = [['Дата', 'Выручка', 'Расходы', 'Прибыль', 'Чеков', 'Средний чек', 'Наличные', 'Безнал', 'Списания'].map(q).join(';')]
-    .concat(R.series.filter((x) => x.revenue || x.expenses).map((x) => [x.date, x.revenue, x.expenses, x.profit, x.checks, x.avg, x.cash, x.card, x.writeoff].join(';')));
-  lines.push('', ['Итого', R.finance.revenue, R.finance.expenses, R.finance.profit, R.totals.checks, R.totals.avg, R.totals.cash, R.totals.card, R.totals.writeoff].join(';'));
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
-  a.download = 'кофейня_' + R.from + '_' + R.to + '.csv'; document.body.appendChild(a); a.click(); a.remove();
-};
-$('print').onclick = () => window.print();
-
-/* ---------- тема ---------- */
-const curTheme = () => document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-function paintTheme() { const k = curTheme() === 'dark'; $('theme').textContent = k ? '☀️' : '🌙'; $('theme').setAttribute('aria-label', k ? 'Светлая тема' : 'Тёмная тема'); }
-$('theme').onclick = () => { const n = curTheme() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('coffee_illy_theme', n); } catch (e) {} paintTheme(); };
-paintTheme();
-
-/* ---------- старт ---------- */
-(function () {
-  const t = iso(new Date());
-  $('xDate').value = t; $('xDate').max = t; $('from').max = t; $('to').max = t;
-  const cats = ['Закупка продуктов', 'Аренда', 'Зарплата', 'Коммунальные', 'Реклама', 'Ремонт и оборудование', 'Прочее'];
-  $('xCat').innerHTML = cats.map((c) => '<option>' + esc(c) + '</option>').join('');
-  preset('7');
-})();
-$('xCat').addEventListener('focus', () => { if (R && R.categories) { const cur = $('xCat').value; $('xCat').innerHTML = R.categories.map((c) => '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>').join(''); } }, { once: true });
-</script>
+<script src="js/page-report.js"></script>
 <script src="app.js" defer></script>
 </body>
 </html>

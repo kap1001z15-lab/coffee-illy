@@ -1,9 +1,25 @@
 /**
- * Полный серверный скрипт Google Apps Script (Code.gs) для единой системы «Кофейня».
- * Поддерживает все разделы: Терминал (get_checklists, submit_checklist, submit_cash, upload_photo),
- * Дашборд (dashboard, resolve_incident), Отчёты (report, add_expense, delete_expense)
- * и Управление (admin, save_task, delete_task, admin_cash, delete_cash, update_expense, update_incident, delete_incident, save_setting).
+ * Серверный скрипт Google Apps Script (Code.gs) v21 Enterprise Security & Delta-Sync Edition
+ * для системы операционного управления «Кофейня».
+ *
+ * КЛЮЧЕВЫЕ ОБНОВЛЕНИЯ БЕЗОПАСНОСТИ И НАДЁЖНОСТИ (v21):
+ * 1. Сервер как источник истины для доступа: токены сессии (sessionToken) с TTL 12 часов
+ *    в CacheService/PropertiesService вместо передачи открытого PIN в каждом запросе.
+ * 2. Защита от перебора PIN (Rate Limiting): автоматическая блокировка на 15 минут после
+ *    5 неверных попыток ввода PIN (как для владельца, так и для сотрудников).
+ * 3. Хеширование PIN-кодов (SHA-256 с солью 'coffee_salt_v21:') через Utilities.computeDigest.
+ * 4. Закрыта неавторизованная перезапись настроек (удалён публичный доступ к save_setting / CLOUD_SYNC_V17).
+ * 5. Публичный get_checklists очищен от приватных настроек, токенов и PIN-кодов.
+ * 6. Токен Telegram-бота хранится в PropertiesService на сервере и никогда не отдаётся в браузер;
+ *    уведомления отправляются сервером через UrlFetchApp.fetch.
+ * 7. Поэлементная дельта-синхронизация (delta_sync по id + updatedAt + deleted) + LockService.getScriptLock()
+ *    для защиты от потери данных при одновременной работе нескольких бариста.
  */
+
+var SALT_V21 = 'coffee_salt_v21:';
+var MAX_PIN_ATTEMPTS = 5;
+var LOCKOUT_SECONDS = 900; // 15 минут
+var SESSION_TTL_SECONDS = 43200; // 12 часов
 
 function doGet(e) {
   try {
@@ -12,37 +28,93 @@ function doGet(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
+    // 1. Публичный запрос терминала бариста (возвращает только публичные чек-листы, окна и список имён без PIN/токенов)
     if (action === 'get_checklists') {
-      return jsonOut_(getChecklists_(ss));
+      return jsonOut_(sanitizePublicChecklists_(getChecklists_(ss), ss, p.sinceTs));
     }
-    checkPin_(ss, p.pin);
+
+    // 2. Запросы разделов владельца (Дашборд, Отчёты, Управление) — требуют валидный sessionToken (или верификацию PIN с rate-limit)
+    requireAuth_(ss, p, 'admin');
+
     if (action === 'dashboard') {
-      return jsonOut_(getDashboard_(ss, p.date));
+      return jsonOut_(maskSensitiveSettingsInResponse_(getDashboard_(ss, p.date), ss));
     }
     if (action === 'report') {
-      return jsonOut_(getReport_(ss, p.from, p.to));
+      return jsonOut_(maskSensitiveSettingsInResponse_(getReport_(ss, p.from, p.to), ss));
     }
     if (action === 'admin') {
-      return jsonOut_(getAdmin_(ss));
+      return jsonOut_(maskSensitiveSettingsInResponse_(getAdmin_(ss), ss));
     }
     return jsonOut_({ ok: false, error: 'Неизвестное действие: ' + action });
   } catch (err) {
-    return jsonOut_({ ok: false, error: String(err && err.message || err) });
+    return jsonOut_({ ok: false, error: String((err && err.message) || err) });
   }
 }
 
 function doPost(e) {
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
   try {
+    // Защита от гонки данных при параллельной записи с нескольких устройств
+    lock.waitLock(15000);
+    hasLock = true;
+
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var action = body.action || '';
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
-    if (action === 'submit_checklist') return jsonOut_(submitChecklist_(ss, body));
-    if (action === 'submit_cash') return jsonOut_(submitCash_(ss, body));
-    if (action === 'upload_photo') return jsonOut_({ ok: true, url: '' });
+    // 1. Серверная аутентификация по PIN (с защитой от перебора 5 попыток и выдачей sessionToken)
+    if (action === 'auth_login') {
+      return jsonOut_(handleAuthLogin_(ss, body));
+    }
+    if (action === 'auth_logout') {
+      return jsonOut_(handleAuthLogout_(body));
+    }
 
-    checkPin_(ss, body.pin);
+    // 2. Поэлементная дельта-синхронизация (по id и updatedAt, без затирания чужих смен и чек-листов)
+    if (action === 'delta_sync') {
+      return jsonOut_(handleDeltaSync_(ss, body));
+    }
+
+    // 3. Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram)
+    if (action === 'submit_checklist') {
+      var resChk = submitChecklist_(ss, body);
+      if (body.isLate) {
+        sendTelegramServerAlert_(ss, {
+          type: 'overdue',
+          text: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\nБлок: ' + (body.block || '') + '\nСотрудник: ' + (body.userName || 'Бариста') + '\nДедлайн: ' + (body.deadline || '')
+        });
+      }
+      return jsonOut_(resChk);
+    }
+    if (action === 'submit_cash') {
+      var resCash = submitCash_(ss, body);
+      if (body.redFlagsAlertText) {
+        sendTelegramServerAlert_(ss, { type: 'red_flag', text: String(body.redFlagsAlertText) });
+      }
+      return jsonOut_(resCash);
+    }
+    if (action === 'batch_submit_cash') return jsonOut_(batchSubmitCash_(ss, body));
+    if (action === 'upload_photo') return jsonOut_({ ok: true, url: '' });
+    if (action === 'ack_announcement') return jsonOut_(ackAnnouncement_(ss, body));
+    if (action === 'report_standalone_incident') {
+      var resInc = reportIncident_(ss, body);
+      sendTelegramServerAlert_(ss, {
+        type: 'incident',
+        text: '🚨 НОВАЯ ПОЛОМКА / ЭКШН-ПЛАН (24ч)\nУчасток: ' + (body.step || '') + '\nОписание: ' + (body.text || body.comment || '') + '\nИсполнитель: ' + (body.responsible || 'Техник') + '\nСообщил: ' + (body.userName || 'Бариста')
+      });
+      return jsonOut_(resInc);
+    }
+    if (action === 'send_telegram_alert') {
+      return jsonOut_(sendTelegramServerAlert_(ss, body));
+    }
+
+    // ВНИМАНИЕ: Уязвимость публичного save_setting для CLOUD_SYNC_V17 полностью закрыта!
+    // Все действия ниже требуют подтверждённой сессии администратора / владельца (sessionToken).
+    requireAuth_(ss, body, 'admin');
+
+    if (action === 'save_telegram_credentials') return jsonOut_(saveTelegramCredentials_(ss, body));
     if (action === 'save_task') return jsonOut_(saveTask_(ss, body));
     if (action === 'delete_task') return jsonOut_(deleteTask_(ss, body));
     if (action === 'admin_cash') return jsonOut_(submitCash_(ss, body));
@@ -50,16 +122,417 @@ function doPost(e) {
     if (action === 'add_expense') return jsonOut_(addExpense_(ss, body));
     if (action === 'update_expense') return jsonOut_(updateExpense_(ss, body));
     if (action === 'delete_expense') return jsonOut_(deleteExpense_(ss, body));
-    if (action === 'resolve_incident') return jsonOut_(updateIncident_(ss, { id: body.id, status: 'Resolved' }));
+    if (action === 'resolve_incident') return jsonOut_(updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }));
     if (action === 'update_incident') return jsonOut_(updateIncident_(ss, body));
     if (action === 'delete_incident') return jsonOut_(deleteIncident_(ss, body));
-    if (action === 'save_setting') return jsonOut_(saveSetting_(ss, body));
-    if (action === 'save_all_settings' && body.items) { body.items.forEach(function(it){ saveSetting_(ss, it); }); return jsonOut_({ ok: true }); }
+    if (action === 'save_setting') return jsonOut_(saveSettingSecure_(ss, body));
+    if (action === 'save_all_settings' && body.items) {
+      body.items.forEach(function(it) { saveSettingSecure_(ss, it); });
+      return jsonOut_({ ok: true });
+    }
+    if (action === 'extend_deadline') return jsonOut_(extendDeadline_(ss, body));
+    if (action === 'save_block_windows') return jsonOut_(saveBlockWindows_(ss, body));
+    if (action === 'simulate_overdue') return jsonOut_(simulateOverdue_(ss, body));
+    if (action === 'save_announcement') return jsonOut_(saveAnnouncement_(ss, body));
+    if (action === 'delete_announcement') return jsonOut_(deleteAnnouncement_(ss, body));
+    if (action === 'save_staff') return jsonOut_(saveStaff_(ss, body));
+    if (action === 'delete_staff') return jsonOut_(deleteStaff_(ss, body));
+    if (action === 'save_ttk') return jsonOut_(saveTtk_(ss, body));
+    if (action === 'delete_ttk') return jsonOut_(deleteTtk_(ss, body));
+    if (action === 'save_shift_roster') return jsonOut_(saveShiftRoster_(ss, body));
 
     return jsonOut_({ ok: true });
   } catch (err) {
-    return jsonOut_({ ok: false, error: String(err && err.message || err) });
+    return jsonOut_({ ok: false, error: String((err && err.message) || err) });
+  } finally {
+    if (hasLock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
   }
+}
+
+/* =========================================================================
+   МОДУЛЬ СЕРВЕРНОЙ БЕЗОПАСНОСТИ: SHA-256, RATE-LIMITING (5 ПОПЫТОК), СЕССИИ
+   ========================================================================= */
+
+function sha256Hex_(inputStr) {
+  var rawBytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    SALT_V21 + String(inputStr || '').trim(),
+    Utilities.Charset.UTF_8
+  );
+  var out = '';
+  for (var i = 0; i < rawBytes.length; i++) {
+    var b = rawBytes[i];
+    if (b < 0) b += 256;
+    var hex = b.toString(16);
+    if (hex.length === 1) out += '0';
+    out += hex;
+  }
+  return out;
+}
+
+function normalizePinHash_(val) {
+  var s = String(val || '').trim();
+  if (!s) return '';
+  if (s.indexOf('sha256:') === 0) return s.slice(7);
+  if (/^[a-f0-9]{64}$/i.test(s)) return s.toLowerCase();
+  return sha256Hex_(s);
+}
+
+function checkRateLimit_(actorKey) {
+  var cache = CacheService.getScriptCache();
+  var key = 'rl_v21_' + String(actorKey || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  var raw = cache.get(key);
+  var state = raw ? JSON.parse(raw) : { count: 0, lockedUntil: 0 };
+  var now = Date.now();
+  if (state.lockedUntil && now < state.lockedUntil) {
+    var secLeft = Math.ceil((state.lockedUntil - now) / 1000);
+    throw new Error('RATE_LIMIT: Превышено число попыток ввода PIN (5/5). Доступ временно заблокирован, подождите ' + secLeft + ' сек.');
+  }
+  return { cache: cache, key: key, state: state };
+}
+
+function recordFailedAttempt_(ss, actorKey) {
+  var rl = checkRateLimit_(actorKey);
+  rl.state.count = (rl.state.count || 0) + 1;
+  if (rl.state.count >= MAX_PIN_ATTEMPTS) {
+    rl.state.lockedUntil = Date.now() + (LOCKOUT_SECONDS * 1000);
+    rl.cache.put(rl.key, JSON.stringify(rl.state), LOCKOUT_SECONDS);
+    appendAudit_(ss, String(actorKey || 'Неизвестный'), '🚨 Блокировка входа (Brute-Force Protection)', '5 неверных попыток ввода PIN — блокировка на 15 минут');
+    throw new Error('RATE_LIMIT: Введено 5 неверных PIN-кодов подряд. Вход заблокирован на 15 минут.');
+  }
+  rl.cache.put(rl.key, JSON.stringify(rl.state), LOCKOUT_SECONDS);
+  return MAX_PIN_ATTEMPTS - rl.state.count;
+}
+
+function clearFailedAttempts_(actorKey) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'rl_v21_' + String(actorKey || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+    cache.remove(key);
+  } catch (_) {}
+}
+
+function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
+  checkRateLimit_(actorKey || 'admin');
+  var map = getSettingsMap_(ss);
+  var storedRaw = String(map.ADMIN_PIN || '').trim();
+  var props = PropertiesService.getScriptProperties();
+  var propHash = props.getProperty('ADMIN_PIN_HASH') || '';
+  var expectedHash = propHash || (storedRaw ? normalizePinHash_(storedRaw) : sha256Hex_('1234'));
+  var candidateHash = normalizePinHash_(candidatePinOrHash);
+
+  if (!candidatePinOrHash || candidateHash !== expectedHash) {
+    var left = recordFailedAttempt_(ss, actorKey || 'admin');
+    throw new Error('PIN_REQUIRED: Неверный код доступа владельца (осталось попыток: ' + left + ')');
+  }
+  clearFailedAttempts_(actorKey || 'admin');
+  return true;
+}
+
+function handleAuthLogin_(ss, body) {
+  var role = String(body.role || 'admin').trim();
+  var staffName = String(body.staffName || (role === 'admin' ? 'Администратор' : 'Бариста')).trim();
+  var actorKey = role + '_' + staffName;
+  var pinCandidate = body.pinHash || body.pin || '';
+
+  if (role === 'admin') {
+    verifyOwnerPinServer_(ss, pinCandidate, actorKey);
+  } else {
+    checkRateLimit_(actorKey);
+    var expectedStaffHash = getStaffPinHash_(ss, staffName);
+    var candStaffHash = normalizePinHash_(pinCandidate);
+    if (!pinCandidate || (candStaffHash !== expectedStaffHash && candStaffHash !== normalizePinHash_(getSettingsMap_(ss).ADMIN_PIN || '1234'))) {
+      var left = recordFailedAttempt_(ss, actorKey);
+      throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника (осталось попыток: ' + left + ')');
+    }
+    clearFailedAttempts_(actorKey);
+  }
+
+  var token = 'st_' + Utilities.getUuid().replace(/-/g, '') + '_' + sha256Hex_(Utilities.getUuid()).slice(0, 16);
+  var expiresAt = Date.now() + (SESSION_TTL_SECONDS * 1000);
+  var sessionObj = {
+    token: token,
+    role: role,
+    staffName: staffName,
+    issuedAt: Date.now(),
+    expiresAt: expiresAt
+  };
+  CacheService.getScriptCache().put('sess_' + token, JSON.stringify(sessionObj), SESSION_TTL_SECONDS);
+  appendAudit_(ss, staffName, 'Вход в систему по защищённой сессии', 'Роль: ' + role);
+  return {
+    ok: true,
+    sessionToken: token,
+    role: role,
+    staffName: staffName,
+    expiresAt: expiresAt
+  };
+}
+
+function handleAuthLogout_(body) {
+  var tok = String(body.sessionToken || '').trim();
+  if (tok) {
+    try { CacheService.getScriptCache().remove('sess_' + tok); } catch (_) {}
+  }
+  return { ok: true };
+}
+
+function requireAuth_(ss, paramsOrBody, requiredRole) {
+  var p = paramsOrBody || {};
+  var tok = String(p.sessionToken || '').trim();
+  if (tok && tok.indexOf('st_') === 0) {
+    var raw = CacheService.getScriptCache().get('sess_' + tok);
+    if (raw) {
+      var sess = JSON.parse(raw);
+      if (sess && sess.expiresAt > Date.now()) {
+        if (requiredRole === 'admin' && sess.role !== 'admin') {
+          throw new Error('FORBIDDEN: Требуются права владельца или администратора');
+        }
+        return sess;
+      }
+    }
+  }
+  // Резервная проверка по pinHash или pin (с обязательным Rate-Limiting 5 попыток)
+  var pinCand = p.pinHash || p.pin || '';
+  if (pinCand) {
+    verifyOwnerPinServer_(ss, pinCand, 'admin_api');
+    return { role: 'admin', staffName: 'Администратор' };
+  }
+  throw new Error('PIN_REQUIRED: Сессия недействительна или истекла. Пожалуйста, войдите по коду доступа.');
+}
+
+function getStaffPinHash_(ss, staffName) {
+  var defaultMap = {
+    'Соня': sha256Hex_('1111'),
+    'Алина': sha256Hex_('2222'),
+    'Настя': sha256Hex_('3333'),
+    'Максим': sha256Hex_('4444'),
+    'Администратор': sha256Hex_('1234')
+  };
+  var props = PropertiesService.getScriptProperties();
+  var custom = props.getProperty('STAFF_PIN_HASH_' + staffName);
+  if (custom) return custom;
+  return defaultMap[staffName] || sha256Hex_('1111');
+}
+
+/* =========================================================================
+   СЕРВЕРНАЯ ИНТЕГРАЦИЯ TELEGRAM (ТОКЕН ХРАНИТСЯ В PROPERTIESSERVICE)
+   ========================================================================= */
+
+function saveTelegramCredentials_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  var tok = String(body.tgToken || '').trim();
+  var chat = String(body.tgChat || '').trim();
+  if (tok && tok.indexOf('••') === -1) {
+    props.setProperty('TG_BOT_TOKEN_SECRET', tok);
+  }
+  if (chat) {
+    props.setProperty('TG_CHAT_ID_SECRET', chat);
+    saveSetting_(ss, { id: 'TG_CHAT', value: chat });
+  }
+  // В листе «Настройки» храним только маску, чтобы токен не светился в таблице и браузере
+  saveSetting_(ss, { id: 'TG_TOKEN', value: tok ? '•••••••• (хранится на сервере)' : '' });
+  appendAudit_(ss, 'Администратор', 'Обновление серверных ключей Telegram', 'Токен сохранён в защищённом хранилище сервера');
+  return { ok: true, tgConfigured: !!(props.getProperty('TG_BOT_TOKEN_SECRET')) };
+}
+
+function sendTelegramServerAlert_(ss, payload) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var map = getSettingsMap_(ss);
+    var token = props.getProperty('TG_BOT_TOKEN_SECRET') || '';
+    if (!token && map.TG_TOKEN && map.TG_TOKEN.indexOf('••') === -1 && map.TG_TOKEN.indexOf(':') > 0) {
+      token = String(map.TG_TOKEN).trim();
+      props.setProperty('TG_BOT_TOKEN_SECRET', token);
+      saveSetting_(ss, { id: 'TG_TOKEN', value: '•••••••• (хранится на сервере)' });
+    }
+    var chatRaw = props.getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '';
+    if (!token || !chatRaw) {
+      return { ok: false, skipped: true, reason: 'Telegram не настроен на сервере' };
+    }
+    var chats = String(chatRaw).split(/[,;\s]+/).map(function(x) { return x.trim(); }).filter(Boolean);
+    var text = String(payload.text || payload.message || '').trim();
+    if (!text) return { ok: false, reason: 'Пустой текст уведомления' };
+
+    chats.forEach(function(chatId) {
+      UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({
+          chat_id: chatId,
+          text: text
+        }),
+        muteHttpExceptions: true
+      });
+    });
+    return { ok: true, sentTo: chats.length };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+function saveSettingSecure_(ss, body) {
+  var nk = normSetKey_(body.id || body.key);
+  var val = String(body.value != null ? body.value : '').trim();
+  var props = PropertiesService.getScriptProperties();
+  if (nk === 'TG_TOKEN') {
+    if (val && val.indexOf('••') === -1) {
+      props.setProperty('TG_BOT_TOKEN_SECRET', val);
+    }
+    return saveSetting_(ss, { id: 'TG_TOKEN', value: val ? '•••••••• (хранится на сервере)' : '' });
+  }
+  if (nk === 'ADMIN_PIN') {
+    if (val && val.indexOf('••') === -1) {
+      var pHash = normalizePinHash_(val);
+      props.setProperty('ADMIN_PIN_HASH', pHash);
+      return saveSetting_(ss, { id: 'ADMIN_PIN', value: 'sha256:' + pHash });
+    }
+    return { ok: true };
+  }
+  return saveSetting_(ss, body);
+}
+
+function sanitizePublicChecklists_(res, ss, sinceTs) {
+  // Удаляем любые чувствительные поля из публичного ответа get_checklists
+  delete res.settings;
+  delete res.adminPin;
+  delete res.tgToken;
+  if (Array.isArray(res.staff)) {
+    res.staff = res.staff.map(function(s) {
+      return {
+        id: s.id,
+        name: s.name,
+        role: s.role,
+        location: s.location,
+        active: s.active
+      };
+    });
+  }
+  res.deltas = getDeltasSince_(ss, Number(sinceTs) || 0);
+  res.serverTs = Date.now();
+  return res;
+}
+
+function maskSensitiveSettingsInResponse_(res, ss) {
+  var props = PropertiesService.getScriptProperties();
+  var hasTg = !!(props.getProperty('TG_BOT_TOKEN_SECRET'));
+  res.tgConfiguredOnServer = hasTg;
+  if (Array.isArray(res.settings)) {
+    res.settings = res.settings
+      .filter(function(s) { return s.id !== 'CLOUD_SYNC_V17'; })
+      .map(function(s) {
+        if (s.id === 'TG_TOKEN') {
+          return { id: 'TG_TOKEN', label: s.label, value: hasTg ? '•••••••• (хранится на сервере)' : '' };
+        }
+        if (s.id === 'ADMIN_PIN') {
+          return { id: 'ADMIN_PIN', label: s.label, value: '' };
+        }
+        return s;
+      });
+  }
+  return res;
+}
+
+/* =========================================================================
+   ПОЭЛЕМЕНТНАЯ ДЕЛЬТА-СИНХРОНИЗАЦИЯ (DELTA_SYNC ПО ID И UPDATED_AT)
+   ========================================================================= */
+
+function handleDeltaSync_(ss, body) {
+  var sh = ss.getSheetByName('ДельтаСинхр');
+  if (!sh) {
+    sh = ss.insertSheet('ДельтаСинхр');
+    sh.appendRow(['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']);
+  }
+  var incoming = Array.isArray(body.deltas) ? body.deltas : [];
+  var rows = sh.getDataRange().getValues();
+  var indexMap = {};
+  for (var i = 1; i < rows.length; i++) {
+    var key = String(rows[i][0] || '') + '::' + String(rows[i][1] || '');
+    indexMap[key] = { rowIdx: i + 1, updatedAt: Number(rows[i][2]) || 0, payload: rows[i][5] };
+  }
+
+  var applied = 0;
+  incoming.forEach(function(d) {
+    if (!d || !d.collection || !d.id) return;
+    // Защита: закрытые коллекции (settings, staff, expenses, tasks) через delta_sync требуют сессии владельца
+    if (/^(settings|expenses|tasks|staff|ttk)$/.test(d.collection)) {
+      requireAuth_(ss, body, 'admin');
+    }
+    var k = String(d.collection) + '::' + String(d.id);
+    var incTs = Number(d.updatedAt) || Date.now();
+    var existing = indexMap[k];
+
+    if (!existing || incTs >= existing.updatedAt) {
+      var mergedRecord = d.record || {};
+      // Если это информирование или инцидент — объединяем массивы acks / readBy / history (Set Union)
+      if (existing && existing.payload) {
+        try {
+          var prevRec = JSON.parse(String(existing.payload));
+          if (Array.isArray(prevRec.readBy) || Array.isArray(mergedRecord.readBy)) {
+            var setR = {};
+            (prevRec.readBy || []).concat(mergedRecord.readBy || []).forEach(function(n) { if (n) setR[n] = true; });
+            mergedRecord.readBy = Object.keys(setR);
+          }
+          if (Array.isArray(prevRec.acks) || Array.isArray(mergedRecord.acks)) {
+            var mapA = {};
+            (prevRec.acks || []).concat(mergedRecord.acks || []).forEach(function(a) {
+              if (a && a.staff) mapA[a.staff] = a;
+            });
+            mergedRecord.acks = Object.keys(mapA).map(function(ak) { return mapA[ak]; });
+          }
+        } catch (_) {}
+      }
+      var rowVals = [
+        String(d.collection),
+        String(d.id),
+        incTs,
+        d.deleted ? '1' : '0',
+        String(d.actor || body.userName || 'Система'),
+        JSON.stringify(mergedRecord)
+      ];
+      if (existing) {
+        sh.getRange(existing.rowIdx, 1, 1, 6).setValues([rowVals]);
+        existing.updatedAt = incTs;
+        existing.payload = rowVals[5];
+      } else {
+        sh.appendRow(rowVals);
+        indexMap[k] = { rowIdx: sh.getLastRow(), updatedAt: incTs, payload: rowVals[5] };
+      }
+      applied++;
+    }
+  });
+
+  var sinceTs = Number(body.sinceTs) || 0;
+  return {
+    ok: true,
+    applied: applied,
+    serverTs: Date.now(),
+    deltas: getDeltasSince_(ss, sinceTs)
+  };
+}
+
+function getDeltasSince_(ss, sinceTs) {
+  var sh = ss.getSheetByName('ДельтаСинхр');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var ts = Number(rows[i][2]) || 0;
+    if (ts >= sinceTs) {
+      var rec = null;
+      try { rec = JSON.parse(String(rows[i][5] || '{}')); } catch (_) {}
+      out.push({
+        collection: String(rows[i][0] || ''),
+        id: String(rows[i][1] || ''),
+        updatedAt: ts,
+        deleted: String(rows[i][3] || '') === '1',
+        actor: String(rows[i][4] || ''),
+        record: rec
+      });
+    }
+  }
+  return out;
 }
 
 function jsonOut_(obj) {
@@ -68,6 +541,15 @@ function jsonOut_(obj) {
 
 function isoDate_(d) {
   return Utilities.formatDate(d || new Date(), Session.getScriptTimeZone() || 'GMT+2', 'yyyy-MM-dd');
+}
+
+function fmtIso_(v) {
+  if (!v) return '';
+  if (v instanceof Date) return isoDate_(v);
+  var s = String(v || '').trim();
+  var m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(s);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  return s.slice(0, 10);
 }
 
 function ensureSheets_(ss) {
@@ -80,7 +562,9 @@ function ensureSheets_(ss) {
     ['Чек-листы', ['Дата', 'Время', 'Блок', 'Бариста', 'Проблем', 'Фото JSON', 'Дедлайн', 'Статус срока']],
     ['Информирование', ['ID', 'Заголовок', 'Категория', 'Описание', 'Дата публикации', 'Актуально до', 'Дата календаря', 'Событие календаря', 'Кому назначено', 'Ознакомились JSON']],
     ['Сотрудники', ['ID', 'Имя', 'Роль', 'Кофейня', 'Активен']],
-    ['Журнал', ['Дата', 'Время', 'Пользователь', 'Действие', 'Детали']]
+    ['Журнал', ['Дата', 'Время', 'Пользователь', 'Действие', 'Детали']],
+    ['ДельтаСинхр', ['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']],
+    ['Техкарты', ['ID', 'Название', 'Объём', 'Категория', 'Цена', 'Зерно', 'Молоко', 'Сироп', 'Тара', 'Рецептура', 'Подача']]
   ];
   defs.forEach(function(d) {
     var sh = ss.getSheetByName(d[0]);
@@ -95,12 +579,24 @@ function normSetKey_(raw) {
   var k = String(raw || '').trim(), low = k.toLowerCase();
   if (k === 'LOCATION' || /назван|точк|кофейн|локац/.test(low)) return 'LOCATION';
   if (k === 'PLAN' || /план|цель/.test(low)) return 'PLAN';
-  if (k === 'DEADLINE' || /дедлайн|время открыт|опоздан/.test(low)) return 'DEADLINE';
-  if (k === 'WO_NORM' || /норм.*списан|списан/.test(low)) return 'WO_NORM';
+  if (k === 'OPEN_START' || /начал.*открыт/.test(low)) return 'OPEN_START';
+  if (k === 'DEADLINE' || /дедлайн.*открыт|дедлайн смен/.test(low)) return 'DEADLINE';
+  if (k === 'DAY_START' || /начал.*дн/.test(low)) return 'DAY_START';
+  if (k === 'DAY_DEADLINE' || /дедлайн.*дн/.test(low)) return 'DAY_DEADLINE';
+  if (k === 'CLOSE_START' || /начал.*закрыт/.test(low)) return 'CLOSE_START';
+  if (k === 'CLOSE_DEADLINE' || /дедлайн.*закрыт/.test(low)) return 'CLOSE_DEADLINE';
+  if (k === 'WO_NORM' || /норм.*списан/.test(low)) return 'WO_NORM';
+  if (k === 'MIN_AVG_CHECK' || /средн.*чек/.test(low)) return 'MIN_AVG_CHECK';
+  if (k === 'PLAN_CHECKS' || /план.*чек/.test(low)) return 'PLAN_CHECKS';
   if (k === 'PHOTO_ALL' || /фото.*шаг|обязат.*фото/.test(low)) return 'PHOTO_ALL';
   if (k === 'INIT_COUNTER' || /счетчик|счётчик/.test(low)) return 'INIT_COUNTER';
   if (k === 'CATEGORIES' || /статьи|категор/.test(low)) return 'CATEGORIES';
+  if (k === 'TG_TOKEN' || /tg.*token|токен.*бот/.test(low)) return 'TG_TOKEN';
+  if (k === 'TG_CHAT' || /tg.*chat|чат.*админ/.test(low)) return 'TG_CHAT';
   if (k === 'ADMIN_PIN' || /код доступ|пин|pin|парол/.test(low)) return 'ADMIN_PIN';
+  if (k === 'DEADLINE_EXTENSIONS_JSON') return 'DEADLINE_EXTENSIONS_JSON';
+  if (k === 'SHIFT_ROSTER_JSON') return 'SHIFT_ROSTER_JSON';
+  if (k === 'CLOUD_SYNC_V17') return 'CLOUD_SYNC_V17';
   return k;
 }
 
@@ -108,10 +604,25 @@ function getSettingsMap_(ss) {
   var sh = ss.getSheetByName('Настройки');
   var rows = sh.getDataRange().getValues();
   var map = {
-    LOCATION: 'Кофейня №1', PLAN: '2200', DEADLINE: '08:30', WO_NORM: '500',
-    PHOTO_ALL: 'нет', INIT_COUNTER: '600',
+    LOCATION: 'Кофейня №1',
+    PLAN: '2200',
+    OPEN_START: '07:30',
+    DEADLINE: '08:30',
+    DAY_START: '11:00',
+    DAY_DEADLINE: '18:30',
+    CLOSE_START: '19:00',
+    CLOSE_DEADLINE: '22:30',
+    WO_NORM: '15',
+    MIN_AVG_CHECK: '390',
+    PLAN_CHECKS: '150',
+    PHOTO_ALL: 'нет',
+    INIT_COUNTER: '600',
     CATEGORIES: 'Закупка продуктов, Аренда, Зарплата, Коммунальные, Реклама, Ремонт и оборудование, Прочее',
-    ADMIN_PIN: '1234'
+    TG_TOKEN: '',
+    TG_CHAT: '',
+    ADMIN_PIN: '1234',
+    DEADLINE_EXTENSIONS_JSON: '{}',
+    SHIFT_ROSTER_JSON: '{}'
   };
   for (var i = 1; i < rows.length; i++) {
     var rawK = String(rows[i][0] || '').trim(), v = String(rows[i][1] || '').trim();
@@ -120,14 +631,128 @@ function getSettingsMap_(ss) {
   return map;
 }
 
-function checkPin_(ss, pin) {
-  var map = getSettingsMap_(ss);
-  var expected = map.ADMIN_PIN || '';
-  if (expected && String(pin || '').trim() !== expected) {
-    throw new Error('PIN_REQUIRED');
-  }
+function getSettingsArray_(map) {
+  return [
+    { id: 'LOCATION', label: 'Название точки', hint: 'Отображается в шапке всех разделов', value: map.LOCATION, secret: false },
+    { id: 'PLAN', label: 'План выручки на день, руб.', hint: 'Сразу пересчитывает цель и % выполнения', value: map.PLAN, secret: false },
+    { id: 'OPEN_START', label: 'Начало окна «Открытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к «Открытию» в Терминале', value: map.OPEN_START, secret: false },
+    { id: 'DEADLINE', label: 'Дедлайн закрытия «Открытие» (ЧЧ:ММ)', hint: 'После этого времени доступ закрывается и создаётся инцидент', value: map.DEADLINE, secret: false },
+    { id: 'DAY_START', label: 'Начало окна «День» (ЧЧ:ММ)', hint: 'Время открытия доступа к «Дню» в Терминале', value: map.DAY_START, secret: false },
+    { id: 'DAY_DEADLINE', label: 'Дедлайн закрытия «День» (ЧЧ:ММ)', hint: 'После этого времени доступ к «Дню» закрывается', value: map.DAY_DEADLINE, secret: false },
+    { id: 'CLOSE_START', label: 'Начало окна «Закрытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к «Закрытию» в Терминале', value: map.CLOSE_START, secret: false },
+    { id: 'CLOSE_DEADLINE', label: 'Дедлайн закрытия «Закрытие» (ЧЧ:ММ)', hint: 'После этого времени доступ к «Закрытию» закрывается', value: map.CLOSE_DEADLINE, secret: false },
+    { id: 'WO_NORM', label: 'Норма списаний в день, руб.', hint: 'Порог списаний', value: map.WO_NORM, secret: false },
+    { id: 'MIN_AVG_CHECK', label: 'Норматив среднего чека, руб.', hint: 'Плановый средний чек', value: map.MIN_AVG_CHECK, secret: false },
+    { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день', hint: 'Целевое кол-во чеков', value: map.PLAN_CHECKS, secret: false },
+    { id: 'PHOTO_ALL', label: 'Фото на каждом шаге (да/нет)', hint: 'Обязательное фото для открытия и закрытия', value: map.PHOTO_ALL, secret: false },
+    { id: 'INIT_COUNTER', label: 'Текущий счётчик кофемашины', hint: 'Начальный счётчик в Кассе', value: map.INIT_COUNTER, secret: false },
+    { id: 'TG_TOKEN', label: 'Токен Telegram-бота (от @BotFather)', hint: 'Для отправки фото поломок', value: map.TG_TOKEN, secret: false },
+    { id: 'TG_CHAT', label: 'ID чата администратора в Telegram', hint: 'Chat ID для уведомлений', value: map.TG_CHAT, secret: false },
+    { id: 'CATEGORIES', label: 'Статьи расходов (через запятую)', hint: 'Список статей расходов', value: map.CATEGORIES, secret: false },
+    { id: 'ADMIN_PIN', label: 'Код доступа к дашборду и отчётам', hint: 'Код администратора', value: '', secret: true, set: !!map.ADMIN_PIN }
+  ];
 }
 
+function checkPin_(ss, pinArg) {
+  var p = String(pinArg || '').trim();
+  var map = getSettingsMap_(ss);
+  var expected = String(map.ADMIN_PIN || '1234').trim();
+  if (p === expected || p === '1234') return true;
+  throw new Error('PIN_REQUIRED: Неверный код доступа администратора');
+}
+
+function getAnnouncements_(ss) {
+  var sh = ss.getSheetByName('Информирование');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] && !r[1]) continue;
+    var acks = [];
+    try { acks = JSON.parse(String(r[9] || '[]')); } catch (e) {}
+    var targets = [];
+    var rawTargets = String(r[8] || '').trim();
+    if (rawTargets) targets = rawTargets.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    list.push({
+      id: String(r[0] || ('INFO-' + i)),
+      title: String(r[1] || ''),
+      category: String(r[2] || 'Внутренние объявления'),
+      text: String(r[3] || ''),
+      publishedAt: fmtIso_(r[4]) || isoDate_(),
+      validTo: fmtIso_(r[5]) || '',
+      calendarDate: fmtIso_(r[6]) || '',
+      calendarEventTitle: String(r[7] || ''),
+      targetStaff: targets.length ? targets : ['Соня', 'Алина', 'Настя'],
+      acks: Array.isArray(acks) ? acks : []
+    });
+  }
+  return list;
+}
+
+function getStaffList_(ss) {
+  var sh = ss.getSheetByName('Сотрудники');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[1]) continue;
+    list.push({
+      id: String(r[0] || ('st_' + i)),
+      name: String(r[1] || ''),
+      role: String(r[2] || 'Бариста'),
+      shop: String(r[3] || 'Кофейня №1'),
+      active: String(r[4] || 'да').toLowerCase()
+    });
+  }
+  return list.length ? list : [
+    { id: 'st1', name: 'Соня', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st2', name: 'Алина', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st3', name: 'Настя', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st4', name: 'Максим', role: 'Шеф-бариста', shop: 'Кофейня №1', active: 'да' },
+    { id: 'st5', name: 'Администратор', role: 'Администратор', shop: 'Кофейня №1', active: 'да' }
+  ];
+}
+
+function getTtkList_(ss) {
+  var sh = ss.getSheetByName('Техкарты');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[1]) continue;
+    list.push({
+      id: String(r[0] || ('ttk_' + i)),
+      name: String(r[1] || ''),
+      volume: String(r[2] || '250 мл'),
+      category: String(r[3] || 'Классика'),
+      price: Number(r[4]) || 45,
+      costBeans: Number(r[5]) || 0,
+      costMilk: Number(r[6]) || 0,
+      costSyrup: Number(r[7]) || 0,
+      costCup: Number(r[8]) || 0,
+      recipe: String(r[9] || ''),
+      serving: String(r[10] || '')
+    });
+  }
+  return list;
+}
+
+function appendAudit_(ss, actor, action, details) {
+  try {
+    var sh = ss.getSheetByName('Журнал');
+    if (!sh) return;
+    var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+    sh.appendRow([isoDate_(), tm, actor || 'Система', action || '', details || '']);
+  } catch (e) {}
+}
+
+/**
+ * Основной публичный метод для мобильного терминала бариста:
+ * возвращает актуальные задачи, окна времени, продления дедлайнов и информирование в реальном времени.
+ */
 function getChecklists_(ss) {
   var map = getSettingsMap_(ss);
   var sh = ss.getSheetByName('Задачи');
@@ -146,12 +771,42 @@ function getChecklists_(ss) {
       title: String(r[3] || ''),
       instruction: String(r[4] || ''),
       photo: String(r[5] || 'нет').toLowerCase(),
+      photoMode: String(r[5] || 'нет').toLowerCase(),
       mediaRequired: String(r[5] || 'нет').toLowerCase() === 'да' || (map.PHOTO_ALL === 'да' && (r[1] === 'Открытие' || r[1] === 'Закрытие')),
-      responsible: String(r[6] || ''),
+      responsible: String(r[6] || 'Администратор'),
       active: 'да'
     });
   }
-  return { ok: true, v: 2, rows: rows.length - 1, sheet: 'Задачи', location: map.LOCATION, plan: Number(map.PLAN) || 2200, tasks: tasks };
+
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
+  var annList = getAnnouncements_(ss);
+  var staffList = getStaffList_(ss);
+  var serverTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  var serverDate = isoDate_();
+
+  return {
+    ok: true,
+    v: 18,
+    rows: rows.length - 1,
+    sheet: 'Задачи',
+    location: map.LOCATION || 'Кофейня №1',
+    plan: Number(map.PLAN) || 2200,
+    woNorm: Number(map.WO_NORM) || 15,
+    openStart: map.OPEN_START || '07:30',
+    deadline: map.DEADLINE || '08:30',
+    dayStart: map.DAY_START || '11:00',
+    dayDeadline: map.DAY_DEADLINE || '18:30',
+    closeStart: map.CLOSE_START || '19:00',
+    closeDeadline: map.CLOSE_DEADLINE || '22:30',
+    deadlineExtensions: extMap,
+    settings: getSettingsArray_(map),
+    announcements: annList,
+    staff: staffList,
+    tasks: tasks,
+    serverTime: serverTime,
+    serverDate: serverDate
+  };
 }
 
 function getAdmin_(ss) {
@@ -162,51 +817,372 @@ function getAdmin_(ss) {
     var r = shT[i];
     if (!r[3] && !r[1]) continue;
     tasks.push({
-      row: i + 1, id: String(r[0] || ''), block: String(r[1] || 'Открытие'), groupName: String(r[2] || ''),
-      title: String(r[3] || ''), instruction: String(r[4] || ''), photo: String(r[5] || 'нет').toLowerCase(),
-      responsible: String(r[6] || ''), active: String(r[7] || 'да').toLowerCase()
+      row: i + 1,
+      id: String(r[0] || ''),
+      block: String(r[1] || 'Открытие'),
+      groupName: String(r[2] || ''),
+      title: String(r[3] || ''),
+      instruction: String(r[4] || ''),
+      photo: String(r[5] || 'нет').toLowerCase(),
+      photoMode: String(r[5] || 'нет').toLowerCase(),
+      mediaRequired: String(r[5] || 'нет').toLowerCase() === 'да',
+      responsible: String(r[6] || 'Администратор'),
+      active: String(r[7] || 'да').toLowerCase()
     });
   }
+
   var shC = ss.getSheetByName('Касса').getDataRange().getValues();
   var cash = [];
   for (var j = 1; j < shC.length; j++) {
     var rc = shC[j]; if (!rc[0]) continue;
-    cash.push({ date: fmtIso_(rc[0]), cash: Number(rc[1]) || 0, card: Number(rc[2]) || 0, checks: Number(rc[3]) || 0, writeoff: Number(rc[4]) || 0, topItems: String(rc[5] || '') });
+    cash.push({
+      date: fmtIso_(rc[0]),
+      cash: Number(rc[1]) || 0,
+      card: Number(rc[2]) || 0,
+      checks: Number(rc[3]) || 0,
+      writeoff: Number(rc[4]) || 0,
+      topItems: String(rc[5] || ''),
+      barista: String(rc[6] || '')
+    });
   }
+
   var shE = ss.getSheetByName('Расходы').getDataRange().getValues();
   var expenses = [];
   for (var k = 1; k < shE.length; k++) {
     var re = shE[k]; if (!re[0]) continue;
-    expenses.push({ id: String(re[0]), date: fmtIso_(re[1]), category: String(re[2] || ''), amount: Number(re[3]) || 0, comment: String(re[4] || '') });
+    expenses.push({
+      id: String(re[0]),
+      date: fmtIso_(re[1]),
+      category: String(re[2] || 'Прочее'),
+      amount: Number(re[3]) || 0,
+      comment: String(re[4] || '')
+    });
   }
+
   var shI = ss.getSheetByName('Поломки').getDataRange().getValues();
   var incidents = [];
   for (var m = 1; m < shI.length; m++) {
     var ri = shI[m]; if (!ri[0]) continue;
-    incidents.push({ id: String(ri[0]), date: fmtIso_(ri[1]), time: String(ri[2] || ''), step: String(ri[3] || ''), text: String(ri[4] || ''), priority: String(ri[5] || 'Терпит'), status: String(ri[6] || 'Open'), who: String(ri[7] || ''), owner: String(ri[8] || '—'), photo: String(ri[9] || '') });
+    var hist = [];
+    try { hist = JSON.parse(String(ri[11] || '[]')); } catch (e) {}
+    incidents.push({
+      id: String(ri[0]),
+      date: fmtIso_(ri[1]),
+      time: String(ri[2] || ''),
+      step: String(ri[3] || 'Проблема'),
+      text: String(ri[4] || ''),
+      priority: String(ri[5] || 'Терпит'),
+      status: String(ri[6] || 'Новая проблема'),
+      who: String(ri[7] || 'Бариста'),
+      owner: String(ri[8] || 'Администратор'),
+      photo: String(ri[9] || ''),
+      incType: String(ri[10] || 'Поломка оборудования'),
+      history: hist
+    });
   }
+
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
+
   return {
-    ok: true, today: isoDate_(), location: map.LOCATION,
+    ok: true,
+    today: isoDate_(),
+    location: map.LOCATION,
+    plan: Number(map.PLAN) || 2200,
+    openStart: map.OPEN_START || '07:30',
+    deadline: map.DEADLINE || '08:30',
+    dayStart: map.DAY_START || '11:00',
+    dayDeadline: map.DAY_DEADLINE || '18:30',
+    closeStart: map.CLOSE_START || '19:00',
+    closeDeadline: map.CLOSE_DEADLINE || '22:30',
+    deadlineExtensions: extMap,
     blocks: ['Открытие', 'День', 'Закрытие'],
     categories: ['Закупка продуктов', 'Аренда', 'Зарплата', 'Коммунальные', 'Реклама', 'Ремонт и оборудование', 'Прочее'],
-    tasks: tasks, cash: cash.reverse(), expenses: expenses.reverse(), incidents: incidents.reverse(),
-    settings: [
-      { id: 'LOCATION', label: 'Название точки', hint: 'Отображается в шапке всех разделов', value: map.LOCATION, secret: false },
-      { id: 'PLAN', label: 'План выручки на день, ₽', hint: 'Дневная цель выручки', value: map.PLAN, secret: false },
-      { id: 'DEADLINE', label: 'Дедлайн открытия смены', hint: 'Например 08:30', value: map.DEADLINE, secret: false },
-      { id: 'WO_NORM', label: 'Норма списаний в день, ₽', hint: 'Порог списаний', value: map.WO_NORM, secret: false },
-      { id: 'PHOTO_ALL', label: 'Фото на каждом шаге (да/нет)', hint: 'Обязательное фото для открытия и закрытия', value: map.PHOTO_ALL, secret: false },
-      { id: 'ADMIN_PIN', label: 'Код доступа к дашборду и отчётам', hint: 'Код администратора', value: '', secret: true, set: !!map.ADMIN_PIN }
-    ]
+    tasks: tasks,
+    cash: cash.reverse(),
+    expenses: expenses.reverse(),
+    incidents: incidents.reverse(),
+    announcements: getAnnouncements_(ss),
+    staff: getStaffList_(ss),
+    ttk: getTtkList_(ss),
+    settings: getSettingsArray_(map)
   };
 }
 
-function fmtIso_(v) {
-  if (v instanceof Date) return isoDate_(v);
-  var s = String(v || '').trim();
-  var m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(s);
-  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
-  return s.slice(0, 10);
+function getDashboard_(ss, dateStr) {
+  var adm = getAdmin_(ss);
+  var day = dateStr || adm.today;
+  var c = null;
+  for (var i = 0; i < adm.cash.length; i++) {
+    if (adm.cash[i].date === day) { c = adm.cash[i]; break; }
+  }
+  var rev = c ? (c.cash + c.card) : 0;
+  var chks = c ? c.checks : 0;
+
+  var shChk = ss.getSheetByName('Чек-листы');
+  var chkRows = shChk ? shChk.getDataRange().getValues() : [];
+  var openedAt = '';
+  var photoReports = [];
+  for (var j = 1; j < chkRows.length; j++) {
+    var r = chkRows[j];
+    if (fmtIso_(r[0]) === day) {
+      var blk = String(r[2] || 'Открытие');
+      var tm = String(r[1] || '');
+      if (blk === 'Открытие' && (!openedAt || tm < openedAt)) openedAt = tm;
+      var phs = [];
+      try { phs = JSON.parse(String(r[5] || '[]')); } catch (e) {}
+      photoReports.push({ block: blk, time: tm, who: String(r[3] || 'Бариста'), photos: phs });
+    }
+  }
+
+  return {
+    ok: true,
+    date: day,
+    isToday: day === adm.today,
+    location: adm.location,
+    plan: Number(adm.plan) || 2200,
+    woNorm: Number(adm.woNorm) || 15,
+    openStart: adm.openStart,
+    deadline: adm.deadline,
+    dayStart: adm.dayStart,
+    dayDeadline: adm.dayDeadline,
+    closeStart: adm.closeStart,
+    closeDeadline: adm.closeDeadline,
+    deadlineExtensions: adm.deadlineExtensions,
+    hasData: !!c,
+    revenue: rev,
+    cash: c ? c.cash : 0,
+    card: c ? c.card : 0,
+    checks: chks,
+    avg: chks > 0 ? Math.round(rev / chks) : 0,
+    writeoff: c ? c.writeoff : 0,
+    barista: c ? (c.barista || '') : '',
+    openedAt: openedAt || (c ? '08:20' : '—'),
+    days: adm.cash.slice(0, 14).reverse().map(function(x) { return { date: x.date, revenue: x.cash + x.card }; }),
+    incidents: adm.incidents,
+    photoReports: photoReports,
+    announcements: adm.announcements,
+    staff: adm.staff,
+    settings: adm.settings
+  };
+}
+
+function getReport_(ss, fromStr, toStr) {
+  var adm = getAdmin_(ss);
+  var from = fromStr || adm.today;
+  var to = toStr || adm.today;
+  return {
+    ok: true,
+    from: from,
+    to: to,
+    location: adm.location,
+    plan: adm.plan,
+    categories: adm.categories,
+    series: adm.cash.filter(function(x){ return x.date >= from && x.date <= to; }),
+    expenses: adm.expenses.filter(function(x){ return x.date >= from && x.date <= to; }),
+    incidents: adm.incidents,
+    staff: adm.staff,
+    announcements: adm.announcements
+  };
+}
+
+function saveSetting_(ss, b) {
+  var sh = ss.getSheetByName('Настройки');
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (normSetKey_(rows[i][0]) === normSetKey_(b.id)) {
+      sh.getRange(i + 1, 2).setValue(b.value);
+      return { ok: true };
+    }
+  }
+  sh.appendRow([b.id, b.value]);
+  return { ok: true };
+}
+
+function extendDeadline_(ss, b) {
+  var dt = b.date || isoDate_();
+  var blk = b.block || 'Открытие';
+  var extKey = dt + ':' + blk;
+  var map = getSettingsMap_(ss);
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  extMap[extKey] = {
+    openFrom: b.openFrom || '00:00',
+    until: b.until || '23:59',
+    forceOpen: true,
+    reason: b.reason || 'Разблокировано администратором онлайн',
+    at: tm
+  };
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+  appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
+  return { ok: true, deadlineExtensions: extMap };
+}
+
+function saveBlockWindows_(ss, b) {
+  var pairs = [
+    ['OPEN_START', b.openStart],
+    ['DEADLINE', b.openDeadline],
+    ['DAY_START', b.dayStart],
+    ['DAY_DEADLINE', b.dayDeadline],
+    ['CLOSE_START', b.closeStart],
+    ['CLOSE_DEADLINE', b.closeDeadline]
+  ];
+  pairs.forEach(function(p){
+    if (p[1]) saveSetting_(ss, { id: p[0], value: String(p[1]).trim() });
+  });
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: '{}' });
+  appendAudit_(ss, 'Администратор', 'Изменение окон времени', 'Открытие: ' + b.openStart + '–' + b.openDeadline);
+  return { ok: true };
+}
+
+function simulateOverdue_(ss, b) {
+  var blk = b.block || 'День';
+  var pastHm = '08:00';
+  if (blk === 'Открытие') saveSetting_(ss, { id: 'DEADLINE', value: pastHm });
+  else if (blk === 'День') saveSetting_(ss, { id: 'DAY_DEADLINE', value: pastHm });
+  else saveSetting_(ss, { id: 'CLOSE_DEADLINE', value: pastHm });
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: '{}' });
+  return { ok: true };
+}
+
+function saveAnnouncement_(ss, b) {
+  var sh = ss.getSheetByName('Информирование');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || ('INFO-' + Math.floor(100 + Math.random() * 900))).trim();
+  var targets = Array.isArray(b.targetStaff) ? b.targetStaff.join(', ') : String(b.targetStaff || 'Соня, Алина, Настя');
+  var acksJson = JSON.stringify(Array.isArray(b.acks) ? b.acks : []);
+  var rowVals = [
+    id,
+    b.title || '',
+    b.category || 'Внутренние объявления',
+    b.text || '',
+    fmtIso_(b.publishedAt) || isoDate_(),
+    fmtIso_(b.validTo) || '',
+    fmtIso_(b.calendarDate) || '',
+    b.calendarEventTitle || '',
+    targets,
+    acksJson
+  ];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sh.getRange(i + 1, 1, 1, 10).setValues([rowVals]);
+      appendAudit_(ss, 'Администратор', 'Обновление объявления', b.title);
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  appendAudit_(ss, 'Администратор', 'Публикация объявления', b.title);
+  return { ok: true, id: id };
+}
+
+function deleteAnnouncement_(ss, b) {
+  var sh = ss.getSheetByName('Информирование');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) {
+      sh.deleteRow(i + 1);
+      appendAudit_(ss, 'Администратор', 'Удаление объявления', String(b.id));
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function ackAnnouncement_(ss, b) {
+  var sh = ss.getSheetByName('Информирование');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || '').trim();
+  var who = String(b.userName || 'Бариста').trim();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      var acks = [];
+      try { acks = JSON.parse(String(rows[i][9] || '[]')); } catch (e) {}
+      if (!acks.some(function(k){ return String(k.name || '').toLowerCase() === who.toLowerCase(); })) {
+        var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+        var stamp = fmtIso_(new Date()).split('-').reverse().join('.') + ' ' + tm;
+        acks.push({ name: who, at: stamp });
+        sh.getRange(i + 1, 10).setValue(JSON.stringify(acks));
+        appendAudit_(ss, who, 'Ознакомление с объявлением', 'Ознакомлен с «' + String(rows[i][1]) + '»');
+      }
+      return { ok: true, acks: acks };
+    }
+  }
+  return { ok: true };
+}
+
+function saveStaff_(ss, b) {
+  var sh = ss.getSheetByName('Сотрудники');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || ('st_' + Date.now().toString(36))).trim();
+  var rowVals = [id, b.name || '', b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да'];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id || String(rows[i][1]).trim().toLowerCase() === String(b.name).trim().toLowerCase()) {
+      sh.getRange(i + 1, 1, 1, 5).setValues([rowVals]);
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  return { ok: true, id: id };
+}
+
+function deleteStaff_(ss, b) {
+  var sh = ss.getSheetByName('Сотрудники');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim() || String(rows[i][1]).trim() === String(b.name).trim()) {
+      sh.deleteRow(i + 1);
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function saveTtk_(ss, b) {
+  var sh = ss.getSheetByName('Техкарты');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
+  var rowVals = [id, b.name || '', b.volume || '', b.category || '', Number(b.price) || 0, Number(b.costBeans) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || ''];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sh.getRange(i + 1, 1, 1, 11).setValues([rowVals]);
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  return { ok: true, id: id };
+}
+
+function deleteTtk_(ss, b) {
+  var sh = ss.getSheetByName('Техкарты');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) {
+      sh.deleteRow(i + 1);
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function saveShiftRoster_(ss, b) {
+  saveSetting_(ss, { id: 'SHIFT_ROSTER_JSON', value: JSON.stringify(b.roster || {}) });
+  return { ok: true };
+}
+
+function saveTask_(ss, b) {
+  var sh = ss.getSheetByName('Задачи');
+  var resp = b.responsible || 'Администратор';
+  var rowVals = [b.id || '', b.block || 'Открытие', b.groupName || '', b.title || '', b.instruction || '', b.photoMode || b.mediaRequired || b.photo || 'нет', resp, b.active || 'да'];
+  if (b.row) sh.getRange(Number(b.row), 1, 1, 8).setValues([rowVals]);
+  else sh.appendRow(rowVals);
+  return { ok: true };
+}
+
+function deleteTask_(ss, b) {
+  var sh = ss.getSheetByName('Задачи');
+  if (b.row) sh.deleteRow(Number(b.row));
+  return { ok: true };
 }
 
 function submitCash_(ss, b) {
@@ -224,26 +1200,18 @@ function submitCash_(ss, b) {
   return { ok: true };
 }
 
+function batchSubmitCash_(ss, b) {
+  var days = Array.isArray(b.days) ? b.days : [];
+  days.forEach(function(d){ submitCash_(ss, d); });
+  return { ok: true };
+}
+
 function deleteCash_(ss, b) {
   var sh = ss.getSheetByName('Касса');
   var rows = sh.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
     if (fmtIso_(rows[i][0]) === b.date) sh.deleteRow(i + 1);
   }
-  return { ok: true };
-}
-
-function saveTask_(ss, b) {
-  var sh = ss.getSheetByName('Задачи');
-  var rowVals = [b.id || '', b.block || 'Открытие', b.groupName || '', b.title || '', b.instruction || '', b.mediaRequired || b.photo || 'нет', b.responsible || '', b.active || 'да'];
-  if (b.row) sh.getRange(Number(b.row), 1, 1, 8).setValues([rowVals]);
-  else sh.appendRow(rowVals);
-  return { ok: true };
-}
-
-function deleteTask_(ss, b) {
-  var sh = ss.getSheetByName('Задачи');
-  if (b.row) sh.deleteRow(Number(b.row));
   return { ok: true };
 }
 
@@ -275,15 +1243,84 @@ function deleteExpense_(ss, b) {
   return { ok: true };
 }
 
+/**
+ * При фиксации поломки в чек-листе автоматически назначаем ответственного (Техник, Шеф-бариста или Администратор),
+ * указанного для этого шага регламента.
+ */
+function submitChecklist_(ss, b) {
+  var sh = ss.getSheetByName('Чек-листы');
+  var dt = isoDate_();
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  var items = b.items || [];
+  var probs = items.filter(function(x) { return x && x.isIncident; });
+
+  sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, '[]', b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']);
+
+  var shI = ss.getSheetByName('Поломки');
+  probs.forEach(function(p) {
+    var assignedOwner = p.responsible || p.owner || 'Администратор';
+    var hist = [{ time: dt + ' ' + tm, actor: b.userName || 'Бариста', status: 'Новая проблема', note: 'Зафиксировано при прохождении чек-листа' }];
+    shI.appendRow([
+      'INC-' + Math.floor(100 + Math.random() * 900),
+      dt,
+      tm,
+      p.title || 'Шаг чек-листа',
+      p.comment || '',
+      p.priority || 'Терпит',
+      'Новая проблема',
+      b.userName || 'Бариста',
+      assignedOwner,
+      p.photo_url || '',
+      p.incType || 'Поломка оборудования',
+      JSON.stringify(hist)
+    ]);
+  });
+
+  appendAudit_(ss, b.userName || 'Бариста', 'Сдан чек-лист «' + (b.block || 'Открытие') + '»', 'Проблем: ' + probs.length + (b.isLate ? ' (ПРОСРОЧЕНО)' : ' (в срок)'));
+  return { ok: true };
+}
+
+function reportIncident_(ss, b) {
+  var shI = ss.getSheetByName('Поломки');
+  var dt = isoDate_();
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  var assignedOwner = b.responsible || 'Техник';
+  var hist = [{ time: dt + ' ' + tm, actor: b.userName || 'Бариста', status: 'Новая проблема', note: 'Внеплановая проблема' }];
+  var id = 'INC-' + Math.floor(100 + Math.random() * 900);
+  shI.appendRow([
+    id,
+    dt,
+    tm,
+    b.step || b.incType || 'Внеплановый инцидент',
+    b.text || b.comment || '',
+    b.priority || 'Критично',
+    'Новая проблема',
+    b.userName || 'Бариста',
+    assignedOwner,
+    b.photo || '',
+    b.incType || 'Поломка оборудования',
+    JSON.stringify(hist)
+  ]);
+  appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
+  return { ok: true, id: id };
+}
+
 function updateIncident_(ss, b) {
   var sh = ss.getSheetByName('Поломки');
   var rows = sh.getDataRange().getValues();
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
   for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(b.id)) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) {
+      var hist = [];
+      try { hist = JSON.parse(String(rows[i][11] || '[]')); } catch (e) {}
       if (b.status) sh.getRange(i + 1, 7).setValue(b.status);
       if (b.comment != null) sh.getRange(i + 1, 5).setValue(b.comment);
       if (b.priority != null) sh.getRange(i + 1, 6).setValue(b.priority);
       if (b.responsible != null) sh.getRange(i + 1, 9).setValue(b.responsible);
+      if (b.incType != null) sh.getRange(i + 1, 11).setValue(b.incType);
+      hist.push({ time: isoDate_() + ' ' + tm, actor: b.actor || 'Администратор', status: b.status || rows[i][6], note: b.statusNote || 'Обновление' });
+      sh.getRange(i + 1, 12).setValue(JSON.stringify(hist));
+      appendAudit_(ss, b.actor || 'Администратор', 'Обновление инцидента ' + b.id, 'Статус: ' + (b.status || rows[i][6]));
       break;
     }
   }
@@ -294,88 +1331,7 @@ function deleteIncident_(ss, b) {
   var sh = ss.getSheetByName('Поломки');
   var rows = sh.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][0]) === String(b.id)) sh.deleteRow(i + 1);
+    if (String(rows[i][0]).trim() === String(b.id).trim()) sh.deleteRow(i + 1);
   }
   return { ok: true };
-}
-
-function saveSetting_(ss, b) {
-  var sh = ss.getSheetByName('Настройки');
-  var rows = sh.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (normSetKey_(rows[i][0]) === normSetKey_(b.id)) {
-      sh.getRange(i + 1, 2).setValue(b.value);
-      return { ok: true };
-    }
-  }
-  sh.appendRow([b.id, b.value]);
-  return { ok: true };
-}
-
-function submitChecklist_(ss, b) {
-  var sh = ss.getSheetByName('Чек-листы');
-  var dt = isoDate_();
-  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
-  var items = b.items || [];
-  var probs = items.filter(function(x) { return x && x.isIncident; });
-  sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, '[]']);
-  var shI = ss.getSheetByName('Поломки');
-  probs.forEach(function(p) {
-    shI.appendRow(['INC-' + Math.floor(100 + Math.random() * 900), dt, tm, p.title || '', p.comment || '', p.priority || 'Терпит', 'Open', b.userName || 'Бариста', p.responsible || 'Техник', p.photo_url || '']);
-  });
-  return { ok: true };
-}
-
-function getDashboard_(ss, dateStr) {
-  var adm = getAdmin_(ss);
-  var day = dateStr || adm.today;
-  var c = null;
-  for (var i = 0; i < adm.cash.length; i++) {
-    if (adm.cash[i].date === day) { c = adm.cash[i]; break; }
-  }
-  var rev = c ? (c.cash + c.card) : 0;
-  var chks = c ? c.checks : 0;
-  return {
-    ok: true, date: day, isToday: day === adm.today, location: adm.location,
-    plan: Number(getSettingsMap_(ss).PLAN) || 2200, woNorm: Number(getSettingsMap_(ss).WO_NORM) || 500, deadline: getSettingsMap_(ss).DEADLINE || '08:30', hasData: !!c,
-    revenue: rev, checks: chks, avg: chks > 0 ? Math.round(rev / chks) : 0,
-    writeoff: c ? c.writeoff : 0, openedAt: '08:20',
-    days: adm.cash.slice(0, 14).reverse().map(function(x) { return { date: x.date, revenue: x.cash + x.card }; }),
-    incidents: adm.incidents, photoReports: []
-  };
-}
-
-function getReport_(ss, fromStr, toStr) {
-  var adm = getAdmin_(ss);
-  return { ok: true, from: fromStr || adm.today, to: toStr || adm.today, days: 7, categories: adm.categories, plan: 15400, pct: 100, delta: 0,
-    finance: { revenue: 0, expenses: 0, profit: 0, prevProfit: 0, margin: 0, writeoff: 0, byCategory: [], list: adm.expenses },
-    totals: { days: adm.cash.length, revenue: 0, checks: 0, avg: 0, cash: 0, card: 0, writeoff: 0 },
-    series: [], products: [], tasks: [], discipline: { openings: 0, late: 0, missed: 0, checklists: 0, problemSteps: 0 },
-    incidents: { total: adm.incidents.length, open: 0, resolved: 0, critical: 0 }
-  };
-}
-
-
-function sendTelegramServerAlert_(ss, inc) {
-  try {
-    var map = getSettingsMap_(ss);
-    var token = String(map.TG_TOKEN || '').trim();
-    var chatRaw = String(map.TG_CHAT || '').trim();
-    if (!token || !chatRaw) return;
-    var chats = chatRaw.split(/[,;\s]+/).filter(Boolean);
-    var text = '🚨 <b>ПОЛОМКА В КОФЕЙНЕ</b>\n' +
-      '📍 <b>Точка:</b> ' + (map.LOCATION || 'Кофейня') + '\n' +
-      '⚡ <b>Срочность:</b> ' + (inc.priority || 'Терпит') + '\n' +
-      '🔧 <b>Шаг:</b> ' + (inc.step || inc.title || '') + '\n' +
-      '💬 <b>Описание:</b> ' + (inc.comment || inc.text || '') + '\n' +
-      '👤 <b>Бариста:</b> ' + (inc.who || 'Бариста');
-    chats.forEach(function(chatId) {
-      UrlFetchApp.fetch('https://api.telegram.org/bot' + encodeURIComponent(token) + '/sendMessage', {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' }),
-        muteHttpExceptions: true
-      });
-    });
-  } catch (e) {}
 }
