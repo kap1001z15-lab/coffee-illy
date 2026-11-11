@@ -64,17 +64,21 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
+    // Идемпотентность: повтор сетевого запроса с тем же operationId не выполняет мутацию второй раз.
+    var replay = getIdempotentResult_(ss, body);
+    if (replay) return jsonOut_(replay);
+
     // 1. Серверная аутентификация по PIN (с защитой от перебора 5 попыток и выдачей sessionToken)
     if (action === 'auth_login') {
-      return jsonOut_(handleAuthLogin_(ss, body));
+      return idempotentJsonOut_(ss, body, handleAuthLogin_(ss, body));
     }
     if (action === 'auth_logout') {
-      return jsonOut_(handleAuthLogout_(body));
+      return idempotentJsonOut_(ss, body, handleAuthLogout_(body));
     }
 
     // 2. Поэлементная дельта-синхронизация (по id и updatedAt, без затирания чужих смен и чек-листов)
     if (action === 'delta_sync') {
-      return jsonOut_(handleDeltaSync_(ss, body));
+      return idempotentJsonOut_(ss, body, handleDeltaSync_(ss, body));
     }
 
     // 3. Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram)
@@ -86,64 +90,69 @@ function doPost(e) {
           text: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\nБлок: ' + (body.block || '') + '\nСотрудник: ' + (body.userName || 'Бариста') + '\nДедлайн: ' + (body.deadline || '')
         });
       }
-      return jsonOut_(resChk);
+      // Инциденты из чек-листа отправляем с сервера, чтобы не зависеть от открытого клиентского Telegram API.
+      (Array.isArray(body.items) ? body.items : []).filter(function(x) { return x && x.isIncident; }).forEach(function(x) {
+        sendTelegramServerAlert_(ss, {
+          type: 'incident',
+          text: '🚨 ПРОБЛЕМА ПО ЧЕК-ЛИСТУ\nБлок: ' + String(body.block || '').slice(0, 100) + '\nУчасток: ' + String(x.title || '').slice(0, 150) + '\nСотрудник: ' + String(body.userName || 'Бариста').slice(0, 100) + '\nОписание: ' + String(x.comment || '').slice(0, 700)
+        });
+      });
+      return idempotentJsonOut_(ss, body, resChk);
     }
     if (action === 'submit_cash') {
-      var resCash = submitCash_(ss, body);
-      if (body.redFlagsAlertText) {
-        sendTelegramServerAlert_(ss, { type: 'red_flag', text: String(body.redFlagsAlertText) });
-      }
-      return jsonOut_(resCash);
+      // Публичная кассовая отправка не должна принимать произвольный текст для Telegram.
+      // Красные флаги остаются в аналитике; серверные уведомления требуют отдельного доверенного события.
+      return idempotentJsonOut_(ss, body, submitCash_(ss, body));
     }
-    if (action === 'batch_submit_cash') return jsonOut_(batchSubmitCash_(ss, body));
-    if (action === 'upload_photo') return jsonOut_({ ok: true, url: '' });
-    if (action === 'ack_announcement') return jsonOut_(ackAnnouncement_(ss, body));
+    if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body));
+    // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
+    if (action === 'upload_photo') return idempotentJsonOut_(ss, body, { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: фото будет передано вместе с отчётом' });
+    if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
       sendTelegramServerAlert_(ss, {
         type: 'incident',
         text: '🚨 НОВАЯ ПОЛОМКА / ЭКШН-ПЛАН (24ч)\nУчасток: ' + (body.step || '') + '\nОписание: ' + (body.text || body.comment || '') + '\nИсполнитель: ' + (body.responsible || 'Техник') + '\nСообщил: ' + (body.userName || 'Бариста')
       });
-      return jsonOut_(resInc);
+      return idempotentJsonOut_(ss, body, resInc);
     }
-    if (action === 'send_telegram_alert') {
-      return jsonOut_(sendTelegramServerAlert_(ss, body));
-    }
-
     // ВНИМАНИЕ: Уязвимость публичного save_setting для CLOUD_SYNC_V17 полностью закрыта!
     // Все действия ниже требуют подтверждённой сессии администратора / владельца (sessionToken).
     requireAuth_(ss, body, 'admin');
 
-    if (action === 'save_telegram_credentials') return jsonOut_(saveTelegramCredentials_(ss, body));
-    if (action === 'save_task') return jsonOut_(saveTask_(ss, body));
-    if (action === 'delete_task') return jsonOut_(deleteTask_(ss, body));
-    if (action === 'admin_cash') return jsonOut_(submitCash_(ss, body));
-    if (action === 'delete_cash') return jsonOut_(deleteCash_(ss, body));
-    if (action === 'add_expense') return jsonOut_(addExpense_(ss, body));
-    if (action === 'update_expense') return jsonOut_(updateExpense_(ss, body));
-    if (action === 'delete_expense') return jsonOut_(deleteExpense_(ss, body));
-    if (action === 'resolve_incident') return jsonOut_(updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }));
-    if (action === 'update_incident') return jsonOut_(updateIncident_(ss, body));
-    if (action === 'delete_incident') return jsonOut_(deleteIncident_(ss, body));
-    if (action === 'save_setting') return jsonOut_(saveSettingSecure_(ss, body));
+    // Произвольная отправка сообщений в Telegram доступна только владельцу/администратору.
+    if (action === 'send_telegram_alert') return idempotentJsonOut_(ss, body, sendTelegramServerAlert_(ss, body));
+
+    if (action === 'save_telegram_credentials') return idempotentJsonOut_(ss, body, saveTelegramCredentials_(ss, body));
+    if (action === 'save_task') return idempotentJsonOut_(ss, body, saveTask_(ss, body));
+    if (action === 'delete_task') return idempotentJsonOut_(ss, body, deleteTask_(ss, body));
+    if (action === 'admin_cash') return idempotentJsonOut_(ss, body, submitCash_(ss, body));
+    if (action === 'delete_cash') return idempotentJsonOut_(ss, body, deleteCash_(ss, body));
+    if (action === 'add_expense') return idempotentJsonOut_(ss, body, addExpense_(ss, body));
+    if (action === 'update_expense') return idempotentJsonOut_(ss, body, updateExpense_(ss, body));
+    if (action === 'delete_expense') return idempotentJsonOut_(ss, body, deleteExpense_(ss, body));
+    if (action === 'resolve_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }));
+    if (action === 'update_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, body));
+    if (action === 'delete_incident') return idempotentJsonOut_(ss, body, deleteIncident_(ss, body));
+    if (action === 'save_setting') return idempotentJsonOut_(ss, body, saveSettingSecure_(ss, body));
     if (action === 'save_all_settings' && body.items) {
       body.items.forEach(function(it) { saveSettingSecure_(ss, it); });
-      return jsonOut_({ ok: true });
+      return idempotentJsonOut_(ss, body, { ok: true });
     }
-    if (action === 'extend_deadline') return jsonOut_(extendDeadline_(ss, body));
-    if (action === 'save_block_windows') return jsonOut_(saveBlockWindows_(ss, body));
-    if (action === 'simulate_overdue') return jsonOut_(simulateOverdue_(ss, body));
-    if (action === 'save_announcement') return jsonOut_(saveAnnouncement_(ss, body));
-    if (action === 'delete_announcement') return jsonOut_(deleteAnnouncement_(ss, body));
-    if (action === 'save_staff') return jsonOut_(saveStaff_(ss, body));
-    if (action === 'delete_staff') return jsonOut_(deleteStaff_(ss, body));
-    if (action === 'save_ttk') return jsonOut_(saveTtk_(ss, body));
-    if (action === 'delete_ttk') return jsonOut_(deleteTtk_(ss, body));
-    if (action === 'save_shift_roster') return jsonOut_(saveShiftRoster_(ss, body));
+    if (action === 'extend_deadline') return idempotentJsonOut_(ss, body, extendDeadline_(ss, body));
+    if (action === 'save_block_windows') return idempotentJsonOut_(ss, body, saveBlockWindows_(ss, body));
+    if (action === 'simulate_overdue') return idempotentJsonOut_(ss, body, simulateOverdue_(ss, body));
+    if (action === 'save_announcement') return idempotentJsonOut_(ss, body, saveAnnouncement_(ss, body));
+    if (action === 'delete_announcement') return idempotentJsonOut_(ss, body, deleteAnnouncement_(ss, body));
+    if (action === 'save_staff') return idempotentJsonOut_(ss, body, saveStaff_(ss, body));
+    if (action === 'delete_staff') return idempotentJsonOut_(ss, body, deleteStaff_(ss, body));
+    if (action === 'save_ttk') return idempotentJsonOut_(ss, body, saveTtk_(ss, body));
+    if (action === 'delete_ttk') return idempotentJsonOut_(ss, body, deleteTtk_(ss, body));
+    if (action === 'save_shift_roster') return idempotentJsonOut_(ss, body, saveShiftRoster_(ss, body));
 
-    return jsonOut_({ ok: true });
+    return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action });
   } catch (err) {
-    return jsonOut_({ ok: false, error: String((err && err.message) || err) });
+    return idempotentJsonOut_(ss, body, { ok: false, error: String((err && err.message) || err) });
   } finally {
     if (hasLock) {
       try { lock.releaseLock(); } catch (_) {}
@@ -533,6 +542,61 @@ function getDeltasSince_(ss, sinceTs) {
     }
   }
   return out;
+}
+
+
+/** Возвращает сохранённый результат операции, если клиент повторил запрос после таймаута. */
+function getIdempotentResult_(ss, body) {
+  var id = String(body && body.operationId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{12,80}$/.test(id)) return null;
+  var cache = CacheService.getScriptCache();
+  try {
+    var cached = cache.get('op_' + id);
+    if (cached) return JSON.parse(cached);
+  } catch (_) {}
+  // Постоянный журнал нужен, чтобы повтор после истечения CacheService не выполнил операцию второй раз.
+  try {
+    var sh = ss.getSheetByName('API_OPERATIONS');
+    if (!sh) {
+      sh = ss.insertSheet('API_OPERATIONS');
+      sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON']);
+    }
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      var found = sh.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
+      if (found) {
+        var raw = String(sh.getRange(found.getRow(), 3).getValue() || '');
+        if (raw) {
+          var result = JSON.parse(raw);
+          try { cache.put('op_' + id, raw, 21600); } catch (_) {}
+          return result;
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function idempotentJsonOut_(ss, body, result) {
+  if (result && result.ok === true) {
+    var id = String(body && body.operationId || '').trim();
+    if (/^[a-zA-Z0-9_-]{12,80}$/.test(id)) {
+      var raw = JSON.stringify(result);
+      try { CacheService.getScriptCache().put('op_' + id, raw, 21600); } catch (_) {}
+      try {
+        var sh = ss.getSheetByName('API_OPERATIONS');
+        if (!sh) {
+          sh = ss.insertSheet('API_OPERATIONS');
+          sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON']);
+        }
+        sh.appendRow([id, Date.now(), raw]);
+        // Ограничиваем рост журнала, сохраняя последние 5000 подтверждённых операций.
+        var last = sh.getLastRow();
+        if (last > 5001) sh.deleteRows(2, last - 5001);
+      } catch (_) {}
+    }
+  }
+  return jsonOut_(result);
 }
 
 function jsonOut_(obj) {

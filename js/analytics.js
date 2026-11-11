@@ -639,12 +639,6 @@ window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
         appendAudit(db, 'Система автоконтроля', 'Просрочка чек-листа «' + blk + '»', 'Создан инцидент ' + incId + ' (Ответственный: Администратор)');
         newlyCreated.push(newInc);
         changed = true;
-        if (window.coffeeTelegram && window.coffeeTelegram.sendOverdueAlert) {
-          window.coffeeTelegram.sendOverdueAlert({
-            incId, block: blk, openTime: win.openTime, deadline: win.deadline,
-            time: win.currentTime, who: activeBarista, location: db.location || 'Кофейня №1'
-          }).catch(() => {});
-        }
       }
     }
   });

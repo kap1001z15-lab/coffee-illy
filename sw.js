@@ -1,5 +1,5 @@
-/* Service Worker v21 — Offline-First PWA с раздельным кэшированием модулей JS, CSS, HTML и иконок */
-const CACHE_NAME = 'kofeinya-enterprise-v21';
+/* Service Worker v22 — Offline-First PWA с раздельным кэшированием модулей JS, CSS, HTML и иконок */
+const CACHE_NAME = 'kofeinya-enterprise-v22';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,10 @@ const STATIC_ASSETS = [
   './report.html',
   './admin.html',
   './css/styles.css',
+  './css/terminal.css',
+  './css/dashboard.css',
+  './css/report.css',
+  './css/admin.css',
   './config.js',
   './app.js',
   './js/defaults.js',
@@ -52,7 +56,7 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.includes('script.google.com') || url.hostname.includes('googleusercontent.com')) {
     event.respondWith(
       fetch(req).catch(() =>
-        new Response(JSON.stringify({ ok: false, offline: true, error: 'Офлайн-режим: данные сохранены локально в очередь дельта-синхронизации' }), {
+        new Response(JSON.stringify({ ok: false, offline: true, error: 'Офлайн-режим: запрос к серверу недоступен; локальная очередь API используется приложением' }), {
           headers: { 'Content-Type': 'application/json; charset=utf-8' }
         })
       )

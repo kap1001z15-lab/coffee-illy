@@ -1123,9 +1123,6 @@ function applyLocalMutation(payload) {
     };
     db.incidents.unshift(newInc);
     appendAudit(db, newInc.who, 'Регистрация проблемы ' + newInc.id, newInc.step + ': ' + newInc.text);
-    if (window.coffeeTelegram) {
-      window.coffeeTelegram.sendIncidentAlert(newInc).catch(() => {});
-    }
   } else if (a === 'delete_incident') {
     db.deletedIncidents[payload.id] = true;
     db.incidents = db.incidents.filter((x) => x.id !== payload.id);
@@ -1170,15 +1167,6 @@ function applyLocalMutation(payload) {
       'Сдан чек-лист «' + blk + '»',
       (isLate ? '⚠️ ПРОСРОЧЕНО (сдан в ' + tStr + ', дедлайн ' + winInfo.deadline + ')' : '✓ В срок (' + tStr + ', до ' + winInfo.deadline + ')') + ' · Шагов: ' + items.length + ' · Проблем: ' + probs.length
     );
-    if (isLate && window.coffeeTelegram && window.coffeeTelegram.sendOverdueAlert) {
-      window.coffeeTelegram.sendOverdueAlert({
-        block: blk,
-        time: tStr,
-        deadline: winInfo.deadline,
-        who: payload.userName || 'Бариста',
-        location: db.location
-      }).catch(() => {});
-    }
     probs.forEach((p) => {
       const pPhotos = Array.isArray(p.photos) && p.photos.length ? p.photos : ((p.photo_url || p.preview || p.photo_base64) ? [p.photo_url || p.preview || p.photo_base64] : []);
       const newInc = {
@@ -1201,9 +1189,6 @@ function applyLocalMutation(payload) {
         ]
       };
       db.incidents.unshift(newInc);
-      if (window.coffeeTelegram) {
-        window.coffeeTelegram.sendIncidentAlert(newInc).catch(() => {});
-      }
     });
   }
   saveUDB(db);
@@ -1443,66 +1428,103 @@ window.coffeeGetInstantReport = function (fromStr, toStr) {
 let _lastBgSyncAt = 0;
 let _bgSyncInFlight = false;
 
-/* CORS-безопасная отправка POST в Google Apps Script (text/plain не вызывает блокирующий OPTIONS preflight!) */
-function _sendCorsSafePost(url, bodyObj) {
-  try {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 10000);
-    return fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(bodyObj),
-      signal: ac.signal
-    }).then((r) => { clearTimeout(t); return r.json().catch(() => ({ ok: true })); })
-      .catch(() => { clearTimeout(t); return { ok: false }; });
-  } catch (_) {
-    return Promise.resolve({ ok: false });
+/* Единый транспорт GAS. Успех возвращается только после JSON-подтверждения сервера. */
+function _sendCorsSafePost(url, bodyObj, timeoutMs) {
+  const timeout = Math.max(3000, Number(timeoutMs) || 15000);
+  if (typeof fetch !== 'function') return Promise.resolve({ ok: false, networkError: true, error: 'FETCH_UNAVAILABLE' });
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (ac) timer = setTimeout(() => ac.abort(), timeout);
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(bodyObj || {}),
+    signal: ac ? ac.signal : undefined
+  }).then(async (response) => {
+    if (timer) clearTimeout(timer);
+    let data;
+    try { data = await response.json(); }
+    catch (_) { return { ok: false, networkError: true, error: 'INVALID_SERVER_RESPONSE', httpStatus: response.status }; }
+    if (!response.ok) return Object.assign({}, data || {}, { ok: false, httpStatus: response.status });
+    if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
+      return { ok: false, networkError: true, error: 'INVALID_SERVER_RESPONSE', httpStatus: response.status };
+    }
+    return data;
+  }).catch((error) => {
+    if (timer) clearTimeout(timer);
+    return { ok: false, networkError: true, error: error && error.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR' };
+  });
+}
+
+const COFFEE_OUTBOX_KEY = 'coffee_api_outbox_v1';
+let _outboxFlushPromise = null;
+function _readCoffeeOutbox() {
+  try { const q = JSON.parse(localStorage.getItem(COFFEE_OUTBOX_KEY) || '[]'); return Array.isArray(q) ? q : []; }
+  catch (_) { return []; }
+}
+function _writeCoffeeOutbox(q) {
+  try { localStorage.setItem(COFFEE_OUTBOX_KEY, JSON.stringify(q)); } catch (_) {}
+}
+function _newCoffeeOperationId() {
+  try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+  return 'op_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+}
+function _enqueueCoffeeOperation(url, payload) {
+  const q = _readCoffeeOutbox();
+  if (!q.some((x) => x.operationId === payload.operationId)) {
+    if (q.length >= 250) return { queued: false, pending: q.length };
+    q.push({ operationId: payload.operationId, url, payload, createdAt: Date.now(), attempts: 0 });
+    _writeCoffeeOutbox(q);
+  }
+  return { queued: true, pending: q.length };
+}
+async function coffeeFlushOutbox() {
+  if (_outboxFlushPromise) return _outboxFlushPromise;
+  _outboxFlushPromise = (async () => {
+    let sent = 0;
+    let queue = _readCoffeeOutbox();
+    while (queue.length) {
+      const item = queue[0];
+      const result = await _sendCorsSafePost(item.url, item.payload, 20000);
+      if (result.networkError) break;
+      if (result.ok !== true) {
+        item.attempts = (Number(item.attempts) || 0) + 1;
+        item.lastError = String(result.error || 'SERVER_REJECTED');
+        item.failedAt = Date.now();
+        _writeCoffeeOutbox(queue);
+        // Не удаляем и не пропускаем отклонённую операцию: это сохраняет порядок изменений.
+        if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
+        break;
+      }
+      queue.shift();
+      _writeCoffeeOutbox(queue);
+      sent++;
+    }
+    if (sent && window.coffeeBus) window.coffeeBus.emit('outbox_synced', { sent, pending: queue.length });
+    return { sent, pending: queue.length };
+  })().finally(() => { _outboxFlushPromise = null; });
+  return _outboxFlushPromise;
+}
+window.coffeeFlushOutbox = coffeeFlushOutbox;
+window.coffeeApiPost = _sendCorsSafePost;
+window.coffeeGetOutboxStatus = function () { const q = _readCoffeeOutbox(); return { pending: q.length, oldestAt: q.length ? q[0].createdAt : null, blocked: q.length ? (q[0].lastError || '') : '' }; };
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('online', () => { coffeeFlushOutbox(); });
+  const flushAtStartup = () => { if (typeof navigator === 'undefined' || navigator.onLine !== false) coffeeFlushOutbox(); };
+  if (typeof document !== 'undefined' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', flushAtStartup, { once: true });
+  } else {
+    Promise.resolve().then(flushAtStartup);
   }
 }
 
-/* Отправка облачного конверта синхронизации в лист Настройки, чтобы данные Терминала и Дашборда
-   мгновенно синхронизировались между разными телефонами и ПК даже без ручного обновления Code.gs */
-function _pushCloudSyncToSheet(pinArg) {
-  try {
-    const db = getUDB();
-    window.coffeeEnsureV19Schema(db);
-    const activePin = pinArg || db.adminPin || (function(){ try { return localStorage.getItem('coffee_illy_pin') || '1234'; } catch(e){ return '1234'; } })() || '1234';
-    const env = _buildCloudSyncEnvelope(db);
-    const envJson = JSON.stringify(env);
-    /* 1. Записываем в лист Настройки */
-    _sendCorsSafePost(window.COFFEE.API_URL, {
-      action: 'save_setting',
-      pin: activePin,
-      id: 'CLOUD_SYNC_V17',
-      value: envJson
-    });
-    /* 2. Записываем в системную строку __SYS_CONFIG_V19__ листа Задачи (читается всеми терминалами через get_checklists без PIN!) */
-    const sysTaskPayload = {
-      action: 'save_task',
-      pin: activePin,
-      id: '__SYS_CONFIG_V19__',
-      block: 'Открытие',
-      groupName: '__SYS__',
-      title: '__SYS_SYNC__',
-      instruction: envJson,
-      photo: 'нет',
-      responsible: activePin,
-      active: 'да'
-    };
-    if (db.sysSyncRow && Number(db.sysSyncRow) >= 2) {
-      sysTaskPayload.row = Number(db.sysSyncRow);
-    }
-    _sendCorsSafePost(window.COFFEE.API_URL, sysTaskPayload);
-  } catch (_) {}
-}
-
+/* Legacy CLOUD_SYNC_V17 is read-only for backward compatibility. New writes go through the shared API. */
 /* Извлечение системного пакета синхронизации __SYS_CONFIG_V19__ из массива задач, возвращаемого get_checklists или admin */
 function _extractAndAbsorbSysTaskRow(tasksArr, db) {
   if (!Array.isArray(tasksArr)) return [];
   const cleanTasks = [];
   let sysEnv = null;
   let sysRow = null;
-  let syncPin = null;
   tasksArr.forEach((t) => {
     if (!t) return;
     if (t.id === '__SYS_CONFIG_V19__' || t.title === '__SYS_SYNC__') {
@@ -1513,7 +1535,7 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
       if (parsed && (!sysEnv || Number(parsed.ts || 0) >= Number(sysEnv.ts || 0))) {
         sysEnv = parsed;
         if (t.row) sysRow = Number(t.row);
-        if (t.responsible) syncPin = String(t.responsible).trim();
+        /* PIN больше не извлекается из поля responsible системной задачи. */
       } else if (!sysRow && t.row) {
         sysRow = Number(t.row);
       }
@@ -1522,7 +1544,6 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
     cleanTasks.push(t);
   });
   if (sysRow && db) db.sysSyncRow = sysRow;
-  if (syncPin && db) db.adminPin = syncPin;
   if (sysEnv && typeof sysEnv === 'object' && db) {
     const now = Date.now();
     const recentlyMutated = db.lastLocalMutationAt && (now - db.lastLocalMutationAt < 5000);
@@ -1623,58 +1644,62 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate) {
 
 window.coffeeFetch = async function (url, opt, ms, tries) {
   opt = opt || {};
-  const isPost = opt.method === 'POST';
+  const isPost = String(opt.method || 'GET').toUpperCase() === 'POST';
 
   if (isPost) {
     let payload = {};
-    try { payload = JSON.parse(opt.body || '{}'); } catch (_) {}
+    try { payload = JSON.parse(opt.body || '{}'); } catch (_) {
+      return { ok: false, error: 'INVALID_REQUEST_JSON' };
+    }
     if (OWNER_MUTATION_ACTIONS.test(payload.action || '')) {
       const activePin = payload.pin || (function(){ try { return localStorage.getItem('coffee_illy_pin') || ''; } catch(e){ return ''; } })();
       if (!isPinAuthorized(activePin)) {
         return { ok: false, error: 'PIN_REQUIRED: Доступ к изменению данных разрешён только владельцу по коду' };
       }
     }
-    /* 1. Мгновенно сохраняем изменение в локальном Permanent Owner Vault (< 1 мс) и оповещаем все вкладки */
-    applyLocalMutation(payload);
-    window.coffeeCache.invalidate('all');
-    window.coffeeBus.emit('mutation', { action: payload.action || '' });
 
-    /* 2. Отправляем в Google Apps Script в совместимом формате text/plain (без CORS-блокировки) + пушим конверт синхронизации */
-    const a = payload.action || '';
-    if (a === 'batch_submit_cash' && Array.isArray(payload.days)) {
-      payload.days.forEach((dItem) => {
-        _sendCorsSafePost(url, Object.assign({ action: 'submit_cash' }, dItem, { writeOffs: dItem.writeoff || dItem.writeOffs || 0 }));
-      });
-    } else if (a === 'report_standalone_incident') {
-      _sendCorsSafePost(url, {
-        action: 'submit_checklist',
-        block: payload.block || 'Инфо',
-        userName: payload.userName || 'Бариста',
-        items: [{
-          title: payload.step || payload.incType || 'Проблема',
-          comment: payload.text || '',
-          priority: payload.priority || 'Критично',
-          responsible: payload.responsible || 'Техник',
-          isIncident: true,
-          photo_url: payload.photo || ''
-        }]
-      });
-    } else if (a === 'submit_checklist') {
-      /* Очищаем тяжёлые дубликаты base64 перед сетевой отправкой, чтобы Apps Script не сбрасывал по лимиту размера */
-      const netPayload = Object.assign({}, payload, {
-        items: (payload.items || []).map((it) => ({
-          id: it.id, title: it.title, status: it.status, isIncident: !!it.isIncident,
-          incType: it.incType || '', priority: it.priority || 'Терпит',
-          comment: it.comment || '', responsible: it.responsible || '',
-          photo_url: it.photo_url || ''
-        }))
-      });
-      _sendCorsSafePost(url, netPayload);
-    } else {
-      _sendCorsSafePost(url, payload);
+    const sessionToken = window.coffeeAuth && window.coffeeAuth.getSessionToken
+      ? window.coffeeAuth.getSessionToken() : '';
+    const operation = Object.assign({}, payload, {
+      operationId: payload.operationId || _newCoffeeOperationId()
+    });
+    if (sessionToken && !operation.sessionToken) operation.sessionToken = sessionToken;
+
+    // Сохраняем совместимость с серверным контрактом чек-листа, но не отправляем base64-фото.
+    if (operation.action === 'submit_checklist' && Array.isArray(operation.items)) {
+      operation.items = operation.items.map((it) => ({
+        id: it.id, title: it.title, status: it.status, isIncident: !!it.isIncident,
+        incType: it.incType || '', priority: it.priority || 'Терпит',
+        comment: it.comment || '', responsible: it.responsible || '',
+        photo_url: it.photo_url || ''
+      }));
     }
-    _pushCloudSyncToSheet(payload.pin);
-    return { ok: true, local: true };
+
+    const result = await _sendCorsSafePost(url, operation, ms || 20000);
+    if (result.ok === true) {
+      applyLocalMutation(operation);
+      window.coffeeCache.invalidate('all');
+      window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: true, operationId: operation.operationId });
+      return Object.assign({}, result, { confirmed: true, operationId: operation.operationId });
+    }
+
+    if (result.networkError) {
+      // Офлайн: фиксируем локально и в устойчивой очереди. UI получает отдельный pending-флаг.
+      const queued = _enqueueCoffeeOperation(url, operation);
+      if (!queued.queued) return { ok: false, local: false, pending: false, error: 'OUTBOX_FULL: Очередь офлайн-операций заполнена. Подключите сеть и повторите действие.' };
+      applyLocalMutation(operation);
+      const pending = queued.pending;
+      window.coffeeCache.invalidate('all');
+      window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, pending: true, operationId: operation.operationId });
+      return {
+        ok: true, local: true, pending: true, confirmed: false,
+        operationId: operation.operationId, pendingCount: pending,
+        message: 'Сохранено на устройстве. Ожидает подтверждения сервера.'
+      };
+    }
+
+    // Сервер явно отклонил запрос: не выдаём успех и не меняем локальную копию.
+    return Object.assign({ ok: false, confirmed: false, operationId: operation.operationId }, result);
   }
 
   let act = '', qDate = '', qFrom = '', qTo = '', qPin = '';
