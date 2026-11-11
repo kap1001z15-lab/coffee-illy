@@ -1512,7 +1512,20 @@ async function coffeeFlushOutbox() {
     let queue = _readCoffeeOutbox();
     while (queue.length) {
       const item = queue[0];
-      const result = await _sendCorsSafePost(item.url, item.payload, 20000);
+      const payload = Object.assign({}, item.payload || {});
+      // Offline-local tokens are not server credentials. Rebind only when the same
+      // employee (or an administrator) has explicitly authenticated online again.
+      const activeSession = window.coffeeAuth && window.coffeeAuth.getSession
+        ? window.coffeeAuth.getSession() : null;
+      if (payload.sessionToken && String(payload.sessionToken).indexOf('st_local_') === 0 &&
+          activeSession && activeSession.token && String(activeSession.token).indexOf('st_local_') !== 0) {
+        const staffAction = ['submit_checklist', 'submit_cash', 'batch_submit_cash', 'upload_photo', 'ack_announcement', 'report_standalone_incident'].indexOf(payload.action) >= 0;
+        const sameStaff = activeSession.role === 'staff' &&
+          String(payload.userName || payload.barista || '').trim() === String(activeSession.staffName || '').trim();
+        const sameAdmin = activeSession.role === 'admin' && !staffAction;
+        if (sameStaff || sameAdmin) payload.sessionToken = activeSession.token;
+      }
+      const result = await _sendCorsSafePost(item.url, payload, 20000);
       if (result.networkError) break;
       if (result.ok !== true) {
         item.attempts = (Number(item.attempts) || 0) + 1;

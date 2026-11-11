@@ -204,6 +204,15 @@ check('1. Серверная аутентификация владельца и 
 
   const newPinTry = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
   assert(newPinTry.ok === true && newPinTry.sessionToken, 'Новый индивидуальный PIN владельца 8492 должен приниматься');
+
+  const savedHash = propStore.ADMIN_PIN_HASH;
+  delete propStore.ADMIN_PIN_HASH;
+  gasContext.saveSetting_(mockSS, { id: 'ADMIN_PIN', value: '1234' });
+  let fallbackRejected = false;
+  try { gasContext.verifyOwnerPinServer_(mockSS, '1234', 'admin_fallback_test'); }
+  catch (e) { fallbackRejected = /SECURITY_NOT_CONFIGURED/.test(String(e.message || e)); }
+  propStore.ADMIN_PIN_HASH = savedHash;
+  assert(fallbackRejected, 'При FACTORY_PINS_DISABLED старый открытый ADMIN_PIN в таблице не должен включать заводской PIN');
 });
 
 check('2. Серверная сессия бариста (Staff Session) и защита от подмены имени сотрудника', () => {
@@ -225,28 +234,39 @@ check('2. Серверная сессия бариста (Staff Session) и за
   const chkRows = sheetsStore['Чек-листы']._rows;
   const lastRow = chkRows[chkRows.length - 1];
   assert(lastRow[3] === 'Соня', 'Сервер обязан записать имя из проверенной сессии (Соня), а не подменённое (Алина)');
+
+  const unauth = callPost({ action: 'submit_checklist', userName: 'Соня', block: 'Закрытие', items: [] });
+  assert(unauth.ok === false && /STAFF_SESSION_REQUIRED/.test(unauth.error), 'Чек-лист без серверной staff-сессии должен отклоняться');
 });
 
 check('3. Серверная валидация входных данных кассы и расходов (отклонение отрицательных сумм и неверных дат)', () => {
-  const badDate = callPost({ action: 'submit_cash', date: '11-11-2026', cash: 1000, card: 500, checks: 40 });
+  const staff = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  const badDate = callPost({ action: 'submit_cash', sessionToken: staff.sessionToken, date: '11-11-2026', cash: 1000, card: 500, checks: 40 });
   assert(badDate.ok === false && /VALIDATION_FAILED/.test(badDate.error), 'Неверный формат даты должен отклоняться VALIDATION_FAILED');
 
-  const negCash = callPost({ action: 'submit_cash', date: '2026-11-11', cash: -500, card: 500, checks: 40 });
+  const negCash = callPost({ action: 'submit_cash', sessionToken: staff.sessionToken, date: '2026-11-11', cash: -500, card: 500, checks: 40 });
   assert(negCash.ok === false && /VALIDATION_FAILED/.test(negCash.error), 'Отрицательная сумма наличных должна отклоняться VALIDATION_FAILED');
+
+  const impossibleDate = callPost({ action: 'submit_cash', sessionToken: staff.sessionToken, date: '2026-02-31', cash: 500, card: 500, checks: 40 });
+  assert(impossibleDate.ok === false && /VALIDATION_FAILED/.test(impossibleDate.error), 'Несуществующая календарная дата должна отклоняться');
+  const noSession = callPost({ action: 'submit_cash', date: '2026-11-11', cash: 500, card: 500, checks: 40, userName: 'Соня' });
+  assert(noSession.ok === false && /STAFF_SESSION_REQUIRED/.test(noSession.error), 'Касса без серверной staff-сессии должна отклоняться');
 });
 
 check('4. Серверная идемпотентность (operationId предотвращает дублирование записи в Кассу)', () => {
   const opId = 'op_test_idempotency_20261111_0001';
-  const r1 = callPost({ action: 'submit_cash', operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня' });
+  const staff = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  const r1 = callPost({ action: 'submit_cash', sessionToken: staff.sessionToken, operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня' });
   const rowsAfterFirst = sheetsStore['Касса']._rows.length;
-  const r2 = callPost({ action: 'submit_cash', operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня' });
+  const r2 = callPost({ action: 'submit_cash', sessionToken: staff.sessionToken, operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня' });
   const rowsAfterSecond = sheetsStore['Касса']._rows.length;
   assert(r1.ok === true && r2.ok === true && rowsAfterFirst === rowsAfterSecond, 'Повторный запрос с тем же operationId не должен дублировать строку');
 });
 
 check('5. Серверное сохранение фотографий в Google Drive (upload_photo -> DriveApp + лист Медиафайлы)', () => {
   const validPngB64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-  const upRes = callPost({ action: 'upload_photo', block: 'Открытие', userName: 'Соня', dataUri: validPngB64 });
+  const staff = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  const upRes = callPost({ action: 'upload_photo', sessionToken: staff.sessionToken, block: 'Открытие', userName: 'Соня', dataUri: validPngB64 });
   assert(upRes.ok === true && upRes.fileId && upRes.url.indexOf('https://drive.google.com/') === 0, 'upload_photo должен сохранять файл в DriveApp и возвращать URL');
   assert(sheetsStore['Медиафайлы'] && sheetsStore['Медиафайлы']._rows.length >= 2, 'Запись о медиафайле со сроком хранения должна добавляться в лист Медиафайлы');
 });

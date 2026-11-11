@@ -1,7 +1,7 @@
 /* Клиентский модуль страницы admin.html (v21 Enterprise) */
 const API_URL=window.COFFEE.API_URL,PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
 const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
-const setPin=(v)=>{try{localStorage.setItem(PIN_KEY,v)}catch(e){}};
+const setPin=(v)=>{try{const hash=window.coffeeHashPin?window.coffeeHashPin(v):String(v||'');localStorage.setItem(PIN_KEY,hash?'sha256:'+hash:'')}catch(e){}};
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' руб.';
 const dmy=(s)=>s?s.slice(8)+'.'+s.slice(5,7)+'.'+s.slice(0,4):'';
@@ -32,7 +32,7 @@ async function load(){
     }
   }
   try{
-    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&pin='+encodeURIComponent(getPin()));
+    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&sessionToken='+encodeURIComponent(window.coffeeAuth&&window.coffeeAuth.getSessionToken?window.coffeeAuth.getSessionToken():''));
     if(d&&d.ok===false)throw new Error(d.error||'');
     if(!d||!d.tasks)throw new Error('сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
     coffeeCache.set('admin',d);D=d;$('content').hidden=false;if(d.location)$('sub').textContent='Управление · '+d.location;render();
@@ -40,7 +40,7 @@ async function load(){
     $('content').hidden=true;$('err').hidden=false;const pin=/PIN_REQUIRED/.test(e.message||'');
     $('err').innerHTML='<b>'+esc(errText(e))+'</b>'+(pin?'<div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" autocomplete="current-password" placeholder="Код" style="height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)"><button class="b" id="pinOk" type="button">Войти</button></div>':'');
   }}
-$('err').addEventListener('click',(e)=>{if(e.target.id==='pinOk'){window.coffeeAuth.loginOwner($('pinIn').value.trim()).then(()=>load());}});
+$('err').addEventListener('click',async (e)=>{if(e.target.id==='pinOk'){const auth=await window.coffeeAuth.loginOwner($('pinIn').value.trim());if(!auth||!auth.ok){$('err').querySelector('b').textContent=(auth&&auth.error)||'Не удалось войти';return;}load();}});
 $('err').addEventListener('keydown',(e)=>{if(e.key==='Enter'&&e.target.id==='pinIn')$('pinOk').click()});
 
 /* ----- форма в окне ----- */

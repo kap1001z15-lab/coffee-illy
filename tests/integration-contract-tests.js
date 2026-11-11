@@ -13,6 +13,9 @@ function read(p) { return fs.readFileSync(path.join(root, p), 'utf8'); }
 const sync = read('js/sync.js');
 const gas = read('Code.gs');
 const pages = ['js/page-terminal.js', 'js/page-admin.js', 'js/page-dashboard.js', 'js/page-report.js'].map(read).join('\n');
+const security = read('js/security.js');
+const ownerHtml = read('owner.html');
+const baristaHtml = read('barista.html');
 
 check('POST transport waits for server response and validates JSON contract', () => {
   if (!/const result = await _sendCorsSafePost\(url, operation/.test(sync)) throw new Error('coffeeFetch does not await server transport');
@@ -41,4 +44,33 @@ check('PIN is no longer copied from system task responsible field into local adm
   if (/if \(t\.responsible\) syncPin = String\(t\.responsible\)/.test(sync)) throw new Error('legacy PIN extraction remains');
 });
 
-process.stdout.write(`\nИТОГО КОНТРАКТНЫХ ПРОВЕРОК: ${passed}/6 успешно.\n`);
+check('Staff write endpoints require server-issued staff sessions and bind identity to session', () => {
+  ['submit_checklist', 'submit_cash', 'batch_submit_cash', 'upload_photo', 'ack_announcement', 'report_standalone_incident'].forEach((action) => {
+    const i = gas.indexOf("action === '" + action + "'");
+    if (i < 0 || !gas.slice(i, i + 500).includes('resolveVerifiedStaffSession_')) throw new Error(action + ' is not guarded by staff session');
+  });
+  if (!/STAFF_SESSION_REQUIRED/.test(gas) || !/body\.userName = sess\.staffName/.test(gas)) throw new Error('staff session does not enforce session identity');
+});
+check('Online owner and staff login await server authentication', () => {
+  if (!/const response = await fetch\(apiUrl/.test(security)) throw new Error('login does not await server response');
+  if (!/serverAuthenticated: true/.test(security)) throw new Error('server-authenticated session marker missing');
+  if (!/async loginStaff/.test(security)) throw new Error('staff login is not asynchronous');
+});
+check('Owner-facing GET requests use sessionToken instead of PIN query strings', () => {
+  ['js/page-admin.js', 'js/page-dashboard.js', 'js/page-report.js'].forEach((file) => {
+    if (/\&pin=/.test(read(file))) throw new Error(file + ' still sends PIN in URL');
+    if (!/sessionToken/.test(read(file))) throw new Error(file + ' does not send sessionToken');
+  });
+  if (/\?action=(admin|dashboard).*\&pin=/.test(ownerHtml)) throw new Error('owner.html still sends PIN in URL');
+});
+check('Owner page no longer creates an admin session automatically; barista modal uses server login', () => {
+  if (/createLocalSession\('admin', 'Администратор', expectedHash\)/.test(ownerHtml)) throw new Error('automatic owner session remains');
+  if (!/await window\.coffeeAuth\.loginStaff\(targetName, entered\)/.test(baristaHtml)) throw new Error('barista PIN modal bypasses server login');
+});
+check('Offline outbox rebinds local tokens only after the same user authenticates online', () => {
+  if (!sync.includes("indexOf('st_local_') === 0")) throw new Error('local session tokens are not detected');
+  if (!sync.includes('activeSession.role === \'staff\'') || !sync.includes('activeSession.staffName')) throw new Error('staff identity matching missing');
+  if (!sync.includes('sameAdmin')) throw new Error('admin outbox re-authentication missing');
+});
+
+process.stdout.write(`\nИТОГО КОНТРАКТНЫХ ПРОВЕРОК: ${passed}/11 успешно.\n`);

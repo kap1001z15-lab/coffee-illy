@@ -52,3 +52,13 @@ The journal is capped to the latest 5,000 successful operations. The script lock
 - Runtime transport tests: server rejection, offline queue, and confirmed flush pass.
 - JavaScript syntax checks: pass.
 - `Code.gs` parsed as JavaScript with Node's syntax parser; this is not a substitute for Google Apps Script execution.
+
+
+## v23 security delta
+
+- Staff-facing write endpoints now require a server-issued `role: staff` session token.
+- The server overwrites the supplied employee name with the name stored in the session.
+- Owner and staff login wait for the server response before treating an online login as authenticated.
+- Owner GET requests use `sessionToken`; PINs are no longer appended to dashboard/report/admin query strings.
+- Factory PIN fallbacks are disabled after `FACTORY_PINS_DISABLED=1`.
+- See `RELEASE_NOTES_V23.md` and `DEPLOYMENT_MIGRATION_V23.md` for exact changes and rollout checks.

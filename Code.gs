@@ -83,6 +83,7 @@ function doPost(e) {
 
     // 3. Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram)
     if (action === 'submit_checklist') {
+      resolveVerifiedStaffSession_(ss, body);
       validateChecklistPayload_(ss, body);
       var resChk = submitChecklist_(ss, body);
       if (body.isLate) {
@@ -101,14 +102,31 @@ function doPost(e) {
       return idempotentJsonOut_(ss, body, resChk);
     }
     if (action === 'submit_cash') {
+      resolveVerifiedStaffSession_(ss, body);
       validateCashPayload_(ss, body);
       return idempotentJsonOut_(ss, body, submitCash_(ss, body));
     }
-    if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body));
-    // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
-    if (action === 'upload_photo') return idempotentJsonOut_(ss, body, uploadPhotoToDrive_(ss, body));
-    if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
+    if (action === 'batch_submit_cash') {
+      var batchStaff = resolveVerifiedStaffSession_(ss, body);
+      var days = Array.isArray(body.days) ? body.days : [];
+      if (!days.length || days.length > 31) throw new Error('VALIDATION_FAILED: Пакет кассы должен содержать от 1 до 31 дня');
+      days.forEach(function(day) {
+        day.sessionToken = body.sessionToken;
+        day.userName = batchStaff.staffName;
+        validateCashPayload_(ss, day);
+      });
+      return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body));
+    }
+    if (action === 'upload_photo') {
+      resolveVerifiedStaffSession_(ss, body);
+      return idempotentJsonOut_(ss, body, uploadPhotoToDrive_(ss, body));
+    }
+    if (action === 'ack_announcement') {
+      resolveVerifiedStaffSession_(ss, body);
+      return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
+    }
     if (action === 'report_standalone_incident') {
+      resolveVerifiedStaffSession_(ss, body);
       var resInc = reportIncident_(ss, body);
       sendTelegramServerAlert_(ss, {
         type: 'incident',
@@ -192,7 +210,7 @@ function isValidIsoDate_(str) {
   var s = String(str || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   var d = new Date(s + 'T12:00:00Z');
-  return !isNaN(d.getTime());
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
 function validateFiniteNumber_(val, minVal, maxVal, fieldName) {
@@ -205,29 +223,19 @@ function validateFiniteNumber_(val, minVal, maxVal, fieldName) {
 
 function resolveVerifiedStaffSession_(ss, body) {
   var tok = String((body && body.sessionToken) || '').trim();
-  if (tok && tok.indexOf('st_') === 0) {
-    try {
-      var raw = CacheService.getScriptCache().get('sess_' + tok);
-      if (raw) {
-        var sess = JSON.parse(raw);
-        if (sess && sess.expiresAt > Date.now() && sess.staffName) {
-          body.userName = sess.staffName;
-          if (!body.barista) body.barista = sess.staffName;
-          return sess;
-        }
-      }
-    } catch (_) {}
+  if (!tok || tok.indexOf('st_') !== 0) {
+    throw new Error('STAFF_SESSION_REQUIRED: Войдите в терминал по персональному PIN-коду');
   }
-  var staffName = String((body && (body.userName || body.barista)) || '').trim();
-  if (staffName && body && (body.staffPinHash || body.pinHash)) {
-    var expectedHash = getStaffPinHash_(ss, staffName);
-    var candHash = normalizePinHash_(body.staffPinHash || body.pinHash);
-    if (candHash === expectedHash) {
-      return { role: 'staff', staffName: staffName, verifiedByPin: true };
-    }
-    throw new Error('PIN_INVALID: Подпись PIN сотрудника «' + staffName + '» не прошла серверную проверку');
+  var raw = CacheService.getScriptCache().get('sess_' + tok);
+  if (!raw) throw new Error('STAFF_SESSION_EXPIRED: Сессия сотрудника истекла. Войдите повторно');
+  var sess;
+  try { sess = JSON.parse(raw); } catch (_) { sess = null; }
+  if (!sess || sess.expiresAt <= Date.now() || sess.role !== 'staff' || !sess.staffName) {
+    throw new Error('STAFF_SESSION_INVALID: Недействительная сессия сотрудника');
   }
-  return null;
+  body.userName = sess.staffName;
+  body.barista = sess.staffName;
+  return sess;
 }
 
 function validateCashPayload_(ss, b) {
@@ -398,7 +406,12 @@ function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
   var storedRaw = String(map.ADMIN_PIN || '').trim();
   var props = PropertiesService.getScriptProperties();
   var propHash = props.getProperty('ADMIN_PIN_HASH') || '';
-  var expectedHash = propHash || (storedRaw ? normalizePinHash_(storedRaw) : sha256Hex_('1234'));
+  var factoryDisabled = props.getProperty('FACTORY_PINS_DISABLED') === '1';
+  var storedIsHash = /^sha256:[a-f0-9]{64}$/i.test(storedRaw) || /^[a-f0-9]{64}$/i.test(storedRaw);
+  if (factoryDisabled && !propHash && !storedIsHash) {
+    throw new Error('SECURITY_NOT_CONFIGURED: Заводские PIN отключены, но индивидуальный ADMIN_PIN_HASH не настроен');
+  }
+  var expectedHash = propHash || (storedIsHash ? normalizePinHash_(storedRaw) : (factoryDisabled ? '' : (storedRaw ? normalizePinHash_(storedRaw) : sha256Hex_('1234'))));
   var candidateHash = normalizePinHash_(candidatePinOrHash);
 
   if (!candidatePinOrHash || candidateHash !== expectedHash) {
@@ -422,8 +435,7 @@ function handleAuthLogin_(ss, body) {
     checkRateLimit_(actorKey);
     var expectedStaffHash = getStaffPinHash_(ss, staffName);
     var candStaffHash = normalizePinHash_(pinCandidate);
-    var ownerExpected = PropertiesService.getScriptProperties().getProperty('ADMIN_PIN_HASH') || normalizePinHash_(getSettingsMap_(ss).ADMIN_PIN || '1234');
-    if (!pinCandidate || (candStaffHash !== expectedStaffHash && candStaffHash !== ownerExpected)) {
+    if (!expectedStaffHash || !pinCandidate || candStaffHash !== expectedStaffHash) {
       var left = recordFailedAttempt_(ss, actorKey);
       throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника (осталось попыток: ' + left + ')');
     }
@@ -483,6 +495,11 @@ function requireAuth_(ss, paramsOrBody, requiredRole) {
 }
 
 function getStaffPinHash_(ss, staffName) {
+  var props = PropertiesService.getScriptProperties();
+  var custom = props.getProperty('STAFF_PIN_HASH_' + staffName);
+  if (custom) return custom;
+  // После первичной настройки заводские PIN не являются резервным способом входа.
+  if (props.getProperty('FACTORY_PINS_DISABLED') === '1') return '';
   var defaultMap = {
     'Соня': sha256Hex_('1111'),
     'Алина': sha256Hex_('2222'),
@@ -490,10 +507,7 @@ function getStaffPinHash_(ss, staffName) {
     'Максим': sha256Hex_('4444'),
     'Администратор': sha256Hex_('1234')
   };
-  var props = PropertiesService.getScriptProperties();
-  var custom = props.getProperty('STAFF_PIN_HASH_' + staffName);
-  if (custom) return custom;
-  return defaultMap[staffName] || sha256Hex_('1111');
+  return defaultMap[staffName] || '';
 }
 
 /* =========================================================================

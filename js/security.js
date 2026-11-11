@@ -296,77 +296,97 @@
     },
     async loginOwner(pinInput) {
       const rl = window.coffeeRateLimiter.check('owner_admin');
-      if (rl.locked) {
-        return { ok: false, locked: true, error: rl.message };
-      }
-      if (!this.verifyOwnerPin(pinInput)) {
-        const st = window.coffeeRateLimiter.check('owner_admin');
-        return {
-          ok: false,
-          locked: st.locked,
-          remainingAttempts: st.remainingAttempts,
-          error: st.locked
-            ? st.message
-            : 'Неверный код доступа владельца (осталось попыток: ' + st.remainingAttempts + ' из ' + MAX_ATTEMPTS + ')'
-        };
-      }
+      if (rl.locked) return { ok: false, locked: true, error: rl.message };
       const pinHash = window.coffeeHashPin(pinInput);
-      const sess = this.createLocalSession('admin', 'Администратор', pinHash);
-      // Фоновое получение серверного sessionToken от Code.gs
-      try {
-        if (window.COFFEE && window.COFFEE.API_URL && typeof fetch === 'function') {
-          fetch(window.COFFEE.API_URL, {
+      if (!pinHash) return { ok: false, error: 'Введите код доступа' };
+      const apiUrl = window.COFFEE && window.COFFEE.API_URL;
+      if (apiUrl && typeof fetch === 'function') {
+        try {
+          const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pinHash })
-          })
-            .then((r) => r.json())
-            .then((res) => {
-              if (res && res.ok && res.sessionToken) {
-                this.createLocalSession('admin', 'Администратор', pinHash, res.sessionToken);
-              }
-            })
-            .catch(() => {});
+          });
+          const result = await response.json();
+          if (!result || result.ok !== true || !result.sessionToken) {
+            const failed = window.coffeeRateLimiter.recordFailure('owner_admin');
+            return { ok: false, locked: failed.locked, error: (result && result.error) || 'Неверный код доступа владельца' };
+          }
+          window.coffeeRateLimiter.reset('owner_admin');
+          // Keep the local UI cache aligned with the server-confirmed PIN hash (never plaintext).
+          try {
+            if (typeof getUDB === 'function' && typeof saveUDB === 'function') {
+              const db = getUDB();
+              db.adminPin = 'sha256:' + pinHash;
+              db.settings = Array.isArray(db.settings) ? db.settings : [];
+              let pinRow = db.settings.find((x) => x && x.id === 'ADMIN_PIN');
+              if (!pinRow) { pinRow = { id: 'ADMIN_PIN', label: 'Код доступа владельца', value: '', secret: true }; db.settings.push(pinRow); }
+              pinRow.value = 'sha256:' + pinHash;
+              saveUDB(db);
+            }
+          } catch (_) {}
+          const sess = this.createLocalSession('admin', 'Администратор', pinHash, result.sessionToken);
+          if (window.coffeeFlushOutbox) window.coffeeFlushOutbox();
+          return { ok: true, sessionToken: sess.token, pinHash, serverAuthenticated: true };
+        } catch (e) {
+          // Только при сетевой недоступности допускается локальный режим; серверные изменения останутся заблокированы.
+          if (!this.verifyOwnerPin(pinInput)) {
+            const failed = window.coffeeRateLimiter.check('owner_admin');
+            return { ok: false, locked: failed.locked, error: 'Сервер недоступен, а локальный PIN не подтверждён' };
+          }
+          const sess = this.createLocalSession('admin', 'Администратор', pinHash);
+          return { ok: true, sessionToken: sess.token, pinHash, offline: true, warning: 'Сервер недоступен. Для отправки изменений потребуется повторный вход онлайн.' };
         }
-      } catch (_) {}
-      return { ok: true, sessionToken: sess.token, pinHash };
+      }
+      if (!this.verifyOwnerPin(pinInput)) {
+        const failed = window.coffeeRateLimiter.check('owner_admin');
+        return { ok: false, locked: failed.locked, error: failed.message || 'Неверный код доступа владельца' };
+      }
+      const sess = this.createLocalSession('admin', 'Администратор', pinHash);
+      return { ok: true, sessionToken: sess.token, pinHash, offline: true };
     },
     async loginStaff(staffName, pinInput, dbOpt) {
       const cleanName = String(staffName || 'Бариста').trim();
       const actorKey = 'staff_' + cleanName;
       const rl = window.coffeeRateLimiter.check(actorKey);
-      if (rl.locked) {
-        return { ok: false, locked: true, error: rl.message };
-      }
-      const okLocal = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(cleanName, pinInput, dbOpt) : false;
-      if (!okLocal) {
-        const st = window.coffeeRateLimiter.check(actorKey);
-        return {
-          ok: false,
-          locked: st.locked,
-          remainingAttempts: st.remainingAttempts,
-          error: st.locked ? st.message : ('Неверный персональный PIN сотрудника (осталось попыток: ' + st.remainingAttempts + ')')
-        };
-      }
+      if (rl.locked) return { ok: false, locked: true, error: rl.message };
       const pinHash = window.coffeeHashPin(pinInput);
-      const sess = this.createLocalSession('staff', cleanName, pinHash);
-      try {
-        if (window.COFFEE && window.COFFEE.API_URL && typeof fetch === 'function') {
-          fetch(window.COFFEE.API_URL, {
+      if (!pinHash) return { ok: false, error: 'Введите персональный PIN сотрудника' };
+      const apiUrl = window.COFFEE && window.COFFEE.API_URL;
+      if (apiUrl && typeof fetch === 'function') {
+        try {
+          const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'auth_login', role: 'staff', staffName: cleanName, pinHash })
-          })
-            .then((r) => r.json())
-            .then((res) => {
-              if (res && res.ok && res.sessionToken) {
-                this.createLocalSession('staff', cleanName, pinHash, res.sessionToken);
-              }
-            })
-            .catch(() => {});
+          });
+          const result = await response.json();
+          if (!result || result.ok !== true || !result.sessionToken) {
+            const failed = window.coffeeRateLimiter.recordFailure(actorKey);
+            return { ok: false, locked: failed.locked, error: (result && result.error) || 'Неверный персональный PIN сотрудника' };
+          }
+          window.coffeeRateLimiter.reset(actorKey);
+          const sess = this.createLocalSession('staff', cleanName, pinHash, result.sessionToken);
+          if (window.coffeeFlushOutbox) window.coffeeFlushOutbox();
+          return { ok: true, sessionToken: sess.token, staffName: cleanName, pinHash, serverAuthenticated: true };
+        } catch (e) {
+          // В офлайн-режиме локальный профиль не получает серверных прав до повторной онлайн-аутентификации.
+          const okLocal = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(cleanName, pinInput, dbOpt) : false;
+          if (!okLocal) {
+            const failed = window.coffeeRateLimiter.check(actorKey);
+            return { ok: false, locked: failed.locked, error: 'Сервер недоступен, а локальный PIN не подтверждён' };
+          }
+          const sess = this.createLocalSession('staff', cleanName, pinHash);
+          return { ok: true, sessionToken: sess.token, staffName: cleanName, pinHash, offline: true, warning: 'Сервер недоступен. Для отправки изменений потребуется повторный вход онлайн.' };
         }
-      } catch (_) {}
-      return { ok: true, sessionToken: sess.token, staffName: cleanName, pinHash };
+      }
+      const okLocal = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(cleanName, pinInput, dbOpt) : false;
+      if (!okLocal) {
+        const failed = window.coffeeRateLimiter.check(actorKey);
+        return { ok: false, locked: failed.locked, error: failed.message || 'Неверный персональный PIN сотрудника' };
+      }
+      const sess = this.createLocalSession('staff', cleanName, pinHash);
+      return { ok: true, sessionToken: sess.token, staffName: cleanName, pinHash, offline: true };
     },
     async setupInitialCredentials(newAdminPin, staffPinsMap) {
       const db = typeof getUDB === 'function' ? getUDB() : {};
