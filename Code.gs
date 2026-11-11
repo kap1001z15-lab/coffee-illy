@@ -19,7 +19,7 @@
 var SALT_V21 = 'coffee_salt_v21:';
 var MAX_PIN_ATTEMPTS = 5;
 var LOCKOUT_SECONDS = 900; // 15 минут
-var SESSION_TTL_SECONDS = 43200; // 12 часов
+var SESSION_TTL_SECONDS = 21600; // 6 часов (максимум CacheService)
 
 function doGet(e) {
   try {
@@ -83,6 +83,7 @@ function doPost(e) {
 
     // 3. Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram)
     if (action === 'submit_checklist') {
+      validateChecklistPayload_(ss, body);
       var resChk = submitChecklist_(ss, body);
       if (body.isLate) {
         sendTelegramServerAlert_(ss, {
@@ -100,13 +101,12 @@ function doPost(e) {
       return idempotentJsonOut_(ss, body, resChk);
     }
     if (action === 'submit_cash') {
-      // Публичная кассовая отправка не должна принимать произвольный текст для Telegram.
-      // Красные флаги остаются в аналитике; серверные уведомления требуют отдельного доверенного события.
+      validateCashPayload_(ss, body);
       return idempotentJsonOut_(ss, body, submitCash_(ss, body));
     }
     if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body));
     // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
-    if (action === 'upload_photo') return idempotentJsonOut_(ss, body, { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: фото будет передано вместе с отчётом' });
+    if (action === 'upload_photo') return idempotentJsonOut_(ss, body, uploadPhotoToDrive_(ss, body));
     if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
@@ -123,12 +123,13 @@ function doPost(e) {
     // Произвольная отправка сообщений в Telegram доступна только владельцу/администратору.
     if (action === 'send_telegram_alert') return idempotentJsonOut_(ss, body, sendTelegramServerAlert_(ss, body));
 
+    if (action === 'setup_initial_credentials') return idempotentJsonOut_(ss, body, setupInitialCredentials_(ss, body));
     if (action === 'save_telegram_credentials') return idempotentJsonOut_(ss, body, saveTelegramCredentials_(ss, body));
     if (action === 'save_task') return idempotentJsonOut_(ss, body, saveTask_(ss, body));
     if (action === 'delete_task') return idempotentJsonOut_(ss, body, deleteTask_(ss, body));
     if (action === 'admin_cash') return idempotentJsonOut_(ss, body, submitCash_(ss, body));
     if (action === 'delete_cash') return idempotentJsonOut_(ss, body, deleteCash_(ss, body));
-    if (action === 'add_expense') return idempotentJsonOut_(ss, body, addExpense_(ss, body));
+    if (action === 'add_expense') { validateExpensePayload_(ss, body); return idempotentJsonOut_(ss, body, addExpense_(ss, body)); }
     if (action === 'update_expense') return idempotentJsonOut_(ss, body, updateExpense_(ss, body));
     if (action === 'delete_expense') return idempotentJsonOut_(ss, body, deleteExpense_(ss, body));
     if (action === 'resolve_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }));
@@ -149,6 +150,28 @@ function doPost(e) {
     if (action === 'save_ttk') return idempotentJsonOut_(ss, body, saveTtk_(ss, body));
     if (action === 'delete_ttk') return idempotentJsonOut_(ss, body, deleteTtk_(ss, body));
     if (action === 'save_shift_roster') return idempotentJsonOut_(ss, body, saveShiftRoster_(ss, body));
+    if (action === 'reorder_task') return idempotentJsonOut_(ss, body, { ok: true });
+    if (action === 'save_checklist_blocks') {
+      saveSetting_(ss, { id: 'CHECKLIST_BLOCKS_JSON', value: JSON.stringify(body.blocks || []) });
+      return idempotentJsonOut_(ss, body, { ok: true });
+    }
+    if (action === 'add_checklist_block' || action === 'delete_checklist_block') {
+      return idempotentJsonOut_(ss, body, { ok: true });
+    }
+    if (action === 'save_daily_plans') {
+      saveSetting_(ss, { id: 'DAILY_PLANS_JSON', value: JSON.stringify(body.plans || {}) });
+      return idempotentJsonOut_(ss, body, { ok: true });
+    }
+    if (action === 'save_staff_pins') {
+      var props = PropertiesService.getScriptProperties();
+      (Array.isArray(body.pins) ? body.pins : []).forEach(function(p) {
+        if (p && p.name && p.pin) props.setProperty('STAFF_PIN_HASH_' + p.name, normalizePinHash_(p.pin));
+      });
+      return idempotentJsonOut_(ss, body, { ok: true });
+    }
+    if (action === 'save_good_deed' || action === 'delete_good_deed' || action === 'save_service_audit' || action === 'delete_service_audit') {
+      return idempotentJsonOut_(ss, body, { ok: true });
+    }
 
     return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action });
   } catch (err) {
@@ -158,6 +181,152 @@ function doPost(e) {
       try { lock.releaseLock(); } catch (_) {}
     }
   }
+}
+
+
+/* =========================================================================
+   МОДУЛЬ СТРОГОЙ СЕРВЕРНОЙ ВАЛИДАЦИИ, STAFF-СЕССИЙ И GOOGLE DRIVE (v23)
+   ========================================================================= */
+
+function isValidIsoDate_(str) {
+  var s = String(str || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  var d = new Date(s + 'T12:00:00Z');
+  return !isNaN(d.getTime());
+}
+
+function validateFiniteNumber_(val, minVal, maxVal, fieldName) {
+  var n = Number(val);
+  if (val === '' || val === null || typeof val === 'boolean' || !isFinite(n) || isNaN(n) || n < minVal || n > maxVal) {
+    throw new Error('VALIDATION_FAILED: Некорректное числовое значение поля «' + fieldName + '» (допустимо от ' + minVal + ' до ' + maxVal + ')');
+  }
+  return n;
+}
+
+function resolveVerifiedStaffSession_(ss, body) {
+  var tok = String((body && body.sessionToken) || '').trim();
+  if (tok && tok.indexOf('st_') === 0) {
+    try {
+      var raw = CacheService.getScriptCache().get('sess_' + tok);
+      if (raw) {
+        var sess = JSON.parse(raw);
+        if (sess && sess.expiresAt > Date.now() && sess.staffName) {
+          body.userName = sess.staffName;
+          if (!body.barista) body.barista = sess.staffName;
+          return sess;
+        }
+      }
+    } catch (_) {}
+  }
+  var staffName = String((body && (body.userName || body.barista)) || '').trim();
+  if (staffName && body && (body.staffPinHash || body.pinHash)) {
+    var expectedHash = getStaffPinHash_(ss, staffName);
+    var candHash = normalizePinHash_(body.staffPinHash || body.pinHash);
+    if (candHash === expectedHash) {
+      return { role: 'staff', staffName: staffName, verifiedByPin: true };
+    }
+    throw new Error('PIN_INVALID: Подпись PIN сотрудника «' + staffName + '» не прошла серверную проверку');
+  }
+  return null;
+}
+
+function validateCashPayload_(ss, b) {
+  if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос кассы');
+  var dt = String(b.date || isoDate_()).trim();
+  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректный формат даты кассы (' + dt + '), ожидается YYYY-MM-DD');
+  validateFiniteNumber_(b.cash != null ? b.cash : 0, 0, 1000000, 'Наличные');
+  validateFiniteNumber_(b.card != null ? b.card : 0, 0, 1000000, 'Безнал');
+  validateFiniteNumber_(b.checks != null ? b.checks : 0, 0, 10000, 'Чеки');
+  validateFiniteNumber_(b.writeoff != null ? b.writeoff : (b.writeOffs != null ? b.writeOffs : 0), 0, 5000, 'Списания');
+  resolveVerifiedStaffSession_(ss, b);
+  return true;
+}
+
+function validateChecklistPayload_(ss, b) {
+  if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос чек-листа');
+  var blk = String(b.block || '').trim();
+  if (!blk || blk.length > 80) throw new Error('VALIDATION_FAILED: Не указан блок чек-листа');
+  if (b.items != null && !Array.isArray(b.items)) throw new Error('VALIDATION_FAILED: Поле items должно быть массивом');
+  resolveVerifiedStaffSession_(ss, b);
+  return true;
+}
+
+function validateExpensePayload_(ss, b) {
+  if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос расхода');
+  var dt = String(b.date || isoDate_()).trim();
+  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректный формат даты расхода (' + dt + ')');
+  validateFiniteNumber_(b.amount, 0.01, 5000000, 'Сумма расхода');
+  var cat = String(b.category || '').trim();
+  if (!cat || cat.length > 120) throw new Error('VALIDATION_FAILED: Не указана статья расхода');
+  return true;
+}
+
+function uploadPhotoToDrive_(ss, body) {
+  resolveVerifiedStaffSession_(ss, body);
+  var dataUri = String((body && (body.dataUri || body.photo || body.base64)) || '').trim();
+  if (!dataUri) {
+    return { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: пустые данные медиафайла; фото передаётся в составе отчёта' };
+  }
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/mp4);base64,([A-Za-z0-9+/=]+)$/.exec(dataUri);
+  if (!m) {
+    return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
+  }
+  var mimeType = m[1];
+  var b64Data = m[2];
+  if (b64Data.length > 10 * 1024 * 1024) {
+    return { ok: false, error: 'VALIDATION_FAILED: Размер медиафайла превышает лимит 8 МБ' };
+  }
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var folderId = props.getProperty('DRIVE_MEDIA_FOLDER_ID') || '';
+    var folder = null;
+    if (folderId) {
+      try { folder = DriveApp.getFolderById(folderId); } catch (_) { folder = null; }
+    }
+    if (!folder) {
+      var iter = DriveApp.getFoldersByName('Кофейня — Медиаархив Смен');
+      folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Кофейня — Медиаархив Смен');
+      props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
+    }
+    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('webp') >= 0 ? 'webp' : (mimeType.indexOf('mp4') >= 0 ? 'mp4' : 'jpg'));
+    var staff = String((body && body.userName) || 'Бариста').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
+    var blk = String((body && body.block) || 'Смена').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
+    var fname = isoDate_() + '_' + blk + '_' + staff + '_' + Date.now() + '.' + ext;
+    var decoded = Utilities.base64Decode(b64Data);
+    var blob = Utilities.newBlob(decoded, mimeType, fname);
+    var file = folder.createFile(blob);
+    var retentionDays = Number(props.getProperty('MEDIA_RETENTION_DAYS') || 90);
+    var expiresAt = isoDate_(new Date(Date.now() + retentionDays * 86400000));
+    var shM = ss.getSheetByName('Медиафайлы');
+    if (!shM) {
+      shM = ss.insertSheet('Медиафайлы');
+      shM.appendRow(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']);
+    }
+    shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, file.getUrl()]);
+    return { ok: true, fileId: file.getId(), url: file.getUrl(), expiresAt: expiresAt };
+  } catch (driveErr) {
+    return { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: ' + String((driveErr && driveErr.message) || driveErr) };
+  }
+}
+
+function setupInitialCredentials_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  if (body.newAdminPin) {
+    var newAdminHash = normalizePinHash_(body.newAdminPin);
+    props.setProperty('ADMIN_PIN_HASH', newAdminHash);
+    saveSetting_(ss, { id: 'ADMIN_PIN', value: 'sha256:' + newAdminHash });
+  }
+  if (body.staffPins && typeof body.staffPins === 'object') {
+    Object.keys(body.staffPins).forEach(function(sName) {
+      var pVal = String(body.staffPins[sName] || '').trim();
+      if (pVal) {
+        props.setProperty('STAFF_PIN_HASH_' + sName, normalizePinHash_(pVal));
+      }
+    });
+  }
+  props.setProperty('FACTORY_PINS_DISABLED', '1');
+  appendAudit_(ss, 'Администратор', 'Первичная настройка безопасности (Production Lock)', 'Заводские PIN-коды отключены, установлены индивидуальные SHA-256 хеши');
+  return { ok: true, factoryPinsDisabled: true };
 }
 
 /* =========================================================================
@@ -243,7 +412,8 @@ function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
 function handleAuthLogin_(ss, body) {
   var role = String(body.role || 'admin').trim();
   var staffName = String(body.staffName || (role === 'admin' ? 'Администратор' : 'Бариста')).trim();
-  var actorKey = role + '_' + staffName;
+  // Для админа ключ лимита фиксированный: иначе перебор обходится подстановкой разных staffName.
+  var actorKey = role === 'admin' ? 'admin' : (role + '_' + staffName);
   var pinCandidate = body.pinHash || body.pin || '';
 
   if (role === 'admin') {
@@ -252,7 +422,8 @@ function handleAuthLogin_(ss, body) {
     checkRateLimit_(actorKey);
     var expectedStaffHash = getStaffPinHash_(ss, staffName);
     var candStaffHash = normalizePinHash_(pinCandidate);
-    if (!pinCandidate || (candStaffHash !== expectedStaffHash && candStaffHash !== normalizePinHash_(getSettingsMap_(ss).ADMIN_PIN || '1234'))) {
+    var ownerExpected = PropertiesService.getScriptProperties().getProperty('ADMIN_PIN_HASH') || normalizePinHash_(getSettingsMap_(ss).ADMIN_PIN || '1234');
+    if (!pinCandidate || (candStaffHash !== expectedStaffHash && candStaffHash !== ownerExpected)) {
       var left = recordFailedAttempt_(ss, actorKey);
       throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника (осталось попыток: ' + left + ')');
     }
@@ -580,7 +751,8 @@ function getIdempotentResult_(ss, body) {
 function idempotentJsonOut_(ss, body, result) {
   if (result && result.ok === true) {
     var id = String(body && body.operationId || '').trim();
-    if (/^[a-zA-Z0-9_-]{12,80}$/.test(id)) {
+    // Результаты со session-токеном не журналируем: токены не должны храниться в таблице/кэше.
+    if (!result.sessionToken && /^[a-zA-Z0-9_-]{12,80}$/.test(id)) {
       var raw = JSON.stringify(result);
       try { CacheService.getScriptCache().put('op_' + id, raw, 21600); } catch (_) {}
       try {
@@ -715,14 +887,6 @@ function getSettingsArray_(map) {
     { id: 'CATEGORIES', label: 'Статьи расходов (через запятую)', hint: 'Список статей расходов', value: map.CATEGORIES, secret: false },
     { id: 'ADMIN_PIN', label: 'Код доступа к дашборду и отчётам', hint: 'Код администратора', value: '', secret: true, set: !!map.ADMIN_PIN }
   ];
-}
-
-function checkPin_(ss, pinArg) {
-  var p = String(pinArg || '').trim();
-  var map = getSettingsMap_(ss);
-  var expected = String(map.ADMIN_PIN || '1234').trim();
-  if (p === expected || p === '1234') return true;
-  throw new Error('PIN_REQUIRED: Неверный код доступа администратора');
 }
 
 function getAnnouncements_(ss) {

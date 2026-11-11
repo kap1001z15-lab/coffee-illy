@@ -259,7 +259,7 @@ $('xAdd').onclick = async () => {
 };
 $('exps').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-del]'); if (!b) return;
-  if (!confirm('Удалить расход ' + b.dataset.del + '?')) return;
+  if (window.coffeeConfirm) { window.coffeeConfirm('Удалить расход ' + b.dataset.del + '?', async () => { b.disabled = true; try { await apiPost({ action: 'delete_expense', id: b.dataset.del }); toast('Расход удалён'); load(true); } catch (x) { toast('Ошибка: ' + x.message); b.disabled = false; } }); return; }
   b.disabled = true;
   try { await apiPost({ action: 'delete_expense', id: b.dataset.del }); toast('Расход удалён'); await load(); }
   catch (err) { b.disabled = false; toast('Не удалось удалить: ' + err.message); }

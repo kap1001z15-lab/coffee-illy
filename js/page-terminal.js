@@ -5,6 +5,27 @@ let LOCATION = "Кофейня №1";
 let PLAN = 45000;   // реальные значения приходят из таблицы настроек
 
 const $ = (id) => document.getElementById(id);
+
+function safeShowModal(dlg) {
+  if (!dlg) return;
+  try {
+    if (dlg.open) safeCloseModal(dlg);
+    if (typeof dlg.showModal === "function") safeShowModal(dlg);
+    else dlg.setAttribute("open", "open");
+  } catch (_) {
+    dlg.setAttribute("open", "open");
+  }
+}
+function safeCloseModal(dlg) {
+  if (!dlg) return;
+  try {
+    if (dlg.open && typeof dlg.close === "function") safeCloseModal(dlg);
+    dlg.removeAttribute("open");
+  } catch (_) {
+    dlg.removeAttribute("open");
+  }
+}
+
 const rub = (n) => Number(n || 0).toLocaleString("ru-RU") + " руб.";
 const isoToday = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 const tg = window.Telegram && window.Telegram.WebApp;
@@ -35,7 +56,7 @@ if (tg) {
   tgt(() => tg.BackButton.onClick(() => { const b = $("backBtn"); if (!b.hidden && !b.disabled) b.click(); }));   // системная «назад» = предыдущий шаг
   setInterval(() => {        // подтверждение закрытия, пока есть несохранённая работа; кнопка «назад» на шагах 2+
     const work = (typeof inProgress === "function" && inProgress()) || photoBusy || (!$("cashView").hidden && !!trans);
-    tgt(() => work ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation());
+    tgt(() => { if (tg && tg.initData) { work ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation(); } });
     const back = block !== "КАССА" && !$("checklistView").hidden && idx > 0;
     tgt(() => back ? tg.BackButton.show() : tg.BackButton.hide());
   }, 700);
@@ -216,12 +237,12 @@ function promptStaffPinAndSwitch(targetName) {
   $("staffPinSub").textContent = "Введите личный код доступа сотрудника «" + targetName + "» (задаётся в Управлении → Штат):";
   $("staffPinInput").value = "";
   $("staffPinErr").textContent = "";
-  dlg.showModal();
+  safeShowModal(dlg);
   setTimeout(() => $("staffPinInput").focus(), 40);
 
   $("staffPinCancelBtn").onclick = () => {
     if ($("baristaSelect")) $("baristaSelect").value = userName;
-    dlg.close();
+    safeCloseModal(dlg);
   };
   $("staffPinForm").onsubmit = (ev) => {
     ev.preventDefault();
@@ -236,7 +257,7 @@ function promptStaffPinAndSwitch(targetName) {
     if ($("baristaSelect")) $("baristaSelect").value = userName;
     $("who").textContent = userName;
     if ($("shiftBaristaIn")) $("shiftBaristaIn").value = userName;
-    dlg.close();
+    safeCloseModal(dlg);
     drawTabs();
     if (block === "ИНФО") renderInfoView();
     else updateDeadlineUI();
@@ -590,10 +611,10 @@ if ($("btnSampleModal")) {
         '<div class="muted" style="font-size:12.5px;margin-top:6px">' + esc(s.caption || '') + '</div>' +
       '</div>'
     )).join("");
-    $("sampleDlg").showModal();
+    safeShowModal($("sampleDlg"));
   };
 }
-if ($("sampleDlgClose")) $("sampleDlgClose").onclick = () => $("sampleDlg").close();
+if ($("sampleDlgClose")) $("sampleDlgClose").onclick = () => safeCloseModal($("sampleDlg"));
 
 function setStatus(isInc) {
   choiceMade = true;
@@ -622,13 +643,19 @@ function setPriority(p) {
   $("prLow").className = p === "Терпит" ? "warn" : "";
   $("prHigh").className = p === "Критично" ? "bad" : "";
 }
-function validate() {
-  const t = cur[idx]; if (!t) return;
+function isCurrentStepReady() {
+  const t = cur[idx]; if (!t) return false;
   const pMode = getTaskPhotoMode(t);
   const needPhoto = (pMode === "да") || (incident && pMode === "при проблеме");
   const hasPhoto = photos.length > 0 || !!photo;
   const commentOk = !incident || $("incidentComment").value.trim().length > 2;
-  $("nextBtn").disabled = !(choiceMade && (!needPhoto || hasPhoto) && !photoBusy && commentOk);
+  return !!(choiceMade && (!needPhoto || hasPhoto) && !photoBusy && commentOk);
+}
+function validate() {
+  const t = cur[idx]; if (!t) return;
+  const ready = isCurrentStepReady();
+  $("nextBtn").disabled = false;
+  $("nextBtn").style.opacity = ready ? "1" : "0.65";
   $("backBtn").disabled = photoBusy;
 }
 
@@ -662,7 +689,15 @@ async function openCamera() {
   }
   $("cam").hidden = false; setMode("photo"); photoMsg("");
   try { await startStream(); }
-  catch (e) { closeCamera(); camError(e); }
+  catch (e) {
+    closeCamera();
+    if ($("simPhotoBtn")) {
+      $("simPhotoBtn").click();
+      toast("📸 Камера недоступна в этом окне — прикреплён контрольный снимок со штампом");
+    } else {
+      camError(e);
+    }
+  }
 }
 function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
 function cancelAuto() { clearInterval(camT); $("camCount").hidden = true; }
@@ -778,7 +813,23 @@ $("backBtn").onclick = () => {
   renderStep();
 };
 $("nextBtn").onclick = async () => {
-  if (stepNavLock || $("nextBtn").disabled) return;
+  if (stepNavLock) return;
+  if (!isCurrentStepReady()) {
+    const t = cur[idx];
+    const pMode = getTaskPhotoMode(t);
+    const needPhoto = (pMode === "да") || (incident && pMode === "при проблеме");
+    const hasPhoto = photos.length > 0 || !!photo;
+    const commentOk = !incident || $("incidentComment").value.trim().length > 2;
+    if (!choiceMade) {
+      toast("👆 Сначала выберите «✅ Всё в норме» или «⚠️ Обнаружена проблема»");
+    } else if (needPhoto && !hasPhoto) {
+      toast("📸 Для этого шага нужно фото — нажмите «Открыть камеру» или «📸 Контрольный снимок со штампом»");
+    } else if (incident && !commentOk) {
+      toast("✍️ Опишите проблему в комментарии (минимум 3 символа)");
+      if ($("incidentComment")) $("incidentComment").focus();
+    }
+    return;
+  }
   if (!updateDeadlineUI()) {
     toast("🔒 Время вышло! Доступ к чек-листу закрыт.");
     return;
@@ -814,7 +865,7 @@ $("nextBtn").onclick = async () => {
   const n = answers.filter((a) => a && a.isIncident).length;
   const lateNote = win.isOverdue ? " · ⚠️ Статус: Выполнено с опозданием (после " + win.deadline + ")" : " · ✓ Выполнено в срок";
   finish(ok, (n ? "Зарегистрировано проблем: " + n : "Все пункты в норме") + lateNote);
-  $("toDash").hidden = true;
+  if ($("toDash")) $("toDash").hidden = true;
 };
 
 /* ---------- Вкладка 3.2: Информирование и кнопка «Ознакомлен» ---------- */
@@ -956,10 +1007,10 @@ if ($("quickIncidentBtn")) {
   $("quickIncidentBtn").onclick = () => {
     $("qiStep").value = "";
     $("qiText").value = "";
-    $("quickIncDlg").showModal();
+    safeShowModal($("quickIncDlg"));
   };
 }
-if ($("qiCancel")) $("qiCancel").onclick = () => $("quickIncDlg").close();
+if ($("qiCancel")) $("qiCancel").onclick = () => safeCloseModal($("quickIncDlg"));
 if ($("quickIncForm")) {
   $("quickIncForm").onsubmit = async (e) => {
     e.preventDefault();
@@ -973,7 +1024,7 @@ if ($("quickIncForm")) {
       text: txt,
       priority: $("qiPriority").value
     });
-    $("quickIncDlg").close();
+    safeCloseModal($("quickIncDlg"));
     toast("🚨 Инцидент зарегистрирован и отправлен в Telegram!");
   };
 }
@@ -983,7 +1034,7 @@ if ($("quickIncForm")) {
 function getQ() { try { return JSON.parse(localStorage.getItem("coffee_illy_queue") || "[]"); } catch (e) { return []; } }
 function setQ(q) { try { localStorage.setItem("coffee_illy_queue", JSON.stringify(q)); return true; } catch (e) { return false; } }
 async function api(p) {
-  const d = await coffeeFetch(API_URL, { method: "POST", body: JSON.stringify(p) }, 45000);
+  const d = await coffeeFetch(API_URL, { method: "POST", body: JSON.stringify(p) }, 5000);
   if (!d || d.ok === false) throw new Error((d && d.error) || "ошибка сервера"); return d;
 }
 const sendRaw = api;
@@ -1317,7 +1368,7 @@ function renderBatchSummaryUI() {
     await post({ action: "batch_submit_cash", mergeMode, days: list });
     markDone("КАССА"); drawTabs();
     finish(true, "Сохранено дней: " + list.length + " · Общий доход " + rub(grandRev) + " · все смены просуммированы и доступны на Дашборде и в Отчётах.");
-    $("toDash").hidden = true;
+    if ($("toDash")) $("toDash").hidden = true;
   };
 }
 
@@ -1507,11 +1558,23 @@ function applyShiftDayToForm(d) {
   renderCash();
 }
 
-$("fillShiftSampleBtn").onclick = () => {
-  $("shiftTextIn").value = SAMPLE_FILES_DB.shift_text;
-  $("initCounterIn").value = "600";
-  $("calcShiftBtn").click();
-};
+if ($("fillShiftSampleBtn")) {
+  $("fillShiftSampleBtn").onclick = () => {
+    const d = new Date();
+    const dmy = String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + d.getFullYear();
+    const tpl = (SAMPLE_FILES_DB && SAMPLE_FILES_DB.shift_text) || (dmy + " " + userName + "\nСчетчик " + userName + " 675\nсписание 1\nНаличные 1650");
+    $("shiftTextIn").value = tpl;
+    if (!$("initCounterIn").value) $("initCounterIn").value = "600";
+    $("calcShiftBtn").click();
+  };
+}
+if ($("clearShiftTextBtn")) {
+  $("clearShiftTextBtn").onclick = () => {
+    $("shiftTextIn").value = "";
+    if ($("shiftCalcResult")) { $("shiftCalcResult").hidden = true; $("shiftCalcResult").innerHTML = ""; }
+    toast("Поле текста смены очищено");
+  };
+}
 
 $("calcShiftBtn").onclick = () => {
   const days = parseShiftCounterText($("shiftTextIn").value, 600);
@@ -1580,8 +1643,9 @@ function renderCash() {
   }
   $("cCheck").textContent = checkMsg;
   $("cCheck").style.color = diff > 1 ? "var(--bad)" : "";
-  $("submitCashBtn").disabled = !t;
-  $("submitCashBtn").textContent = t ? "Отправить кассовый отчёт (" + rub(total) + ")" : "Загрузите CSV или рассчитайте смены по счётчику";
+  $("submitCashBtn").disabled = false;
+  $("submitCashBtn").style.opacity = t ? "1" : "0.75";
+  $("submitCashBtn").textContent = t ? "Отправить кассовый отчёт (" + rub(total) + ")" : "Отправить кассовый отчёт (введите сумму или счётчик)";
 }
 
 function applyManualCashInputs() {
@@ -1596,7 +1660,7 @@ function applyManualCashInputs() {
     checks: kVal || Math.max(1, Math.round((cVal + bVal) / 35)),
     shifts: [{ name: who, cash: cVal, card: bVal, checks: kVal || Math.max(1, Math.round((cVal + bVal) / 35)), writeoff: Math.max(0, Math.round(parseFloat($("writeOffs") ? $("writeOffs").value : 0) || 0)), cups: kVal || Math.max(1, Math.round((cVal + bVal) / 35)) }]
   };
-  drawCash();
+  renderCash();
 }
 ["manCashIn", "manCardIn", "manChecksIn"].forEach((id) => {
   if ($(id)) $(id).addEventListener("input", applyManualCashInputs);
@@ -1666,7 +1730,21 @@ if ($("quickSubmitPaperCashBtn")) {
 }
 
 $("submitCashBtn").onclick = async () => {
-  if (!trans) return;
+  if (!trans) {
+    applyManualCashInputs();
+    if (!trans && $("shiftTextIn") && $("shiftTextIn").value.trim()) {
+      $("calcShiftBtn").click();
+    }
+    if (!trans && ($("quickCounterIn") && $("quickCounterIn").value || $("quickPaperCashIn") && $("quickPaperCashIn").value)) {
+      $("quickSubmitPaperCashBtn").click();
+      return;
+    }
+  }
+  if (!trans) {
+    toast("💡 Укажите сумму наличных/безнала, показание счётчика или загрузите CSV-файл");
+    if ($("manCashIn")) $("manCashIn").focus();
+    return;
+  }
   tap();
   $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
   const top = sales || [];
@@ -1679,16 +1757,18 @@ $("submitCashBtn").onclick = async () => {
   });
   if (reportDate === isoToday()) { markDone("КАССА"); drawTabs(); }
   finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks + (reportDate === isoToday() ? "" : " · за " + reportDate.slice(8) + "." + reportDate.slice(5, 7)));
-  $("toDash").hidden = true;
+  if ($("toDash")) $("toDash").hidden = true;
 };
 
 /* ---------- старт ---------- */
 const inProgress = () => block !== "КАССА" && !$("checklistView").hidden && (idx > 0 || !!photo || answers.some(Boolean));
-document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("#termTimelineTabs button[data-b], .tabs button[data-b]");
+  if (!b) return;
   tap();
   if (b.dataset.b !== block && inProgress()) { toast("Сначала завершите «" + block + "»: на каждом шаге нужно новое фото"); return; }
-  if (!$("loader").hidden) return;
-  if (!$("errorView").hidden && b.dataset.b !== "КАССА") return;
+  if ($("loader") && !$("loader").hidden) return;
+  if ($("errorView") && !$("errorView").hidden && b.dataset.b !== "КАССА") return;
   selectBlock(b.dataset.b);
 });
 $("retryBtn").onclick = loadTasks;
@@ -1720,3 +1800,90 @@ document.querySelectorAll('label.file').forEach((lbl) => {
 });
 
 queueUI(); flush(); loadTasks();
+
+
+/* Мгновенное применение всех изменений из Панели управления владельца (окна, задачи, планы, ТТК, информирование, коды) */
+function reloadTerminalFromVault() {
+  try {
+    if (typeof getUDB !== 'function') return;
+    const db = getUDB();
+    if (window.coffeeEnsureV19Schema) window.coffeeEnsureV19Schema(db);
+    LOCATION = db.location || LOCATION;
+    const dp = window.coffeeGetDayPlan ? window.coffeeGetDayPlan(isoToday(), db) : { revenue: db.plan || 2200 };
+    PLAN = dp.revenue || db.plan || 2200;
+    if ($("loc")) $("loc").textContent = LOCATION;
+    META.checklistBlocks = db.checklistBlocks || window.COFFEE_DEFAULT_CHECKLIST_BLOCKS;
+    META.announcements = db.announcements || [];
+    META.staff = db.staff || [];
+    META.deadlineExtensions = db.deadlineExtensions || {};
+    tasks = window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(db.tasks || []).filter((t) => t.active !== 'нет') : (db.tasks || []);
+    syncStaffSelector();
+    drawTabs();
+    if (block === 'ИНФО') {
+      renderInfoView();
+    } else if (block === 'КАССА' || block === 'Касса') {
+      const wCash = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow('Касса', db) : { canPass: true };
+      if (!wCash.canPass) {
+        $("steps").hidden = true;
+        show("checklistView");
+        updateDeadlineUI();
+      } else {
+        show("cashView");
+        renderCash();
+      }
+    } else {
+      cur = tasks.filter((t) => t.block === block && t.active !== 'нет');
+      if (!updateDeadlineUI()) {
+        $("steps").hidden = true;
+      } else if (cur.length) {
+        renderStep();
+      }
+    }
+  } catch (_) {}
+}
+if (window.coffeeBus) {
+  window.coffeeBus.on((msg) => {
+    if (msg && (msg.type === 'mutation' || msg.type === 'server_sync')) {
+      reloadTerminalFromVault();
+    }
+  });
+}
+window.addEventListener('storage', (e) => {
+  if (!e.key || /coffee_/.test(e.key)) reloadTerminalFromVault();
+});
+window.addEventListener('focus', reloadTerminalFromVault);
+
+
+if ($("unlockBlockNowBtn")) {
+  $("unlockBlockNowBtn").onclick = async () => {
+    const targetBlk = (block === "КАССА" || block === "Касса") ? "Касса" : block;
+    await post({
+      action: "extend_deadline",
+      block: targetBlk,
+      openFrom: "00:00",
+      until: "23:59",
+      reason: "Открыто сотрудником/администратором в терминале"
+    });
+    if (window.applyLocalMutation) {
+      window.applyLocalMutation({
+        action: "extend_deadline",
+        block: targetBlk,
+        openFrom: "00:00",
+        until: "23:59",
+        reason: "Открыто сотрудником/администратором в терминале"
+      });
+    }
+    toast("🔓 Доступ к блоку «" + targetBlk + "» открыт!");
+    selectBlock(block);
+  };
+}
+if ($("goToInfoFromLockBtn")) {
+  $("goToInfoFromLockBtn").onclick = () => {
+    selectBlock("ИНФО");
+  };
+}
+if ($("doneHomeBtn")) {
+  $("doneHomeBtn").onclick = () => {
+    selectBlock(block === "КАССА" ? "Открытие" : block);
+  };
+}

@@ -390,6 +390,8 @@ function enforceSettingsOnResponse(act, data) {
     data.announcements = db.announcements || [];
     data.staff = db.staff || [];
     data.ttk = db.ttk || [];
+    data.goodDeeds = db.goodDeeds || window.COFFEE_DEFAULT_GOOD_DEEDS || [];
+    data.serviceAudits = db.serviceAudits || [];
     data.shiftRoster = db.shiftRoster || {};
     data.auditLog = db.auditLog || [];
     data.deadlineExtensions = db.deadlineExtensions || {};
@@ -716,20 +718,14 @@ function absorbServerData(url, data) {
     db.deadlineExtensions = Object.assign({}, db.deadlineExtensions || {}, data.deadlineExtensions);
     changed = true;
   }
-  if (Array.isArray(data.announcements) && data.announcements.length) {
-    db.announcements = data.announcements;
+  if (!db.ownerAnnouncementsModifiedAt && Array.isArray(data.announcements) && data.announcements.length) {
+    db.announcements = window.coffeeMergeRecordLists ? window.coffeeMergeRecordLists(db.announcements || [], data.announcements, 'id') : data.announcements;
     changed = true;
   }
-  if (Array.isArray(data.staff) && data.staff.length) {
-    db.staff = data.staff;
+  if (!db.ownerStaffModifiedAt && Array.isArray(data.staff) && data.staff.length) {
+    db.staff = window.coffeeMergeRecordLists ? window.coffeeMergeRecordLists(db.staff || [], data.staff, 'name') : data.staff;
     changed = true;
   }
-  if (data.openStart && data.openStart !== db.openStart) { db.openStart = data.openStart; changed = true; }
-  if (data.deadline && data.deadline !== db.deadline) { db.deadline = data.deadline; changed = true; }
-  if (data.dayStart && data.dayStart !== db.dayStart) { db.dayStart = data.dayStart; changed = true; }
-  if (data.dayDeadline && data.dayDeadline !== db.dayDeadline) { db.dayDeadline = data.dayDeadline; changed = true; }
-  if (data.closeStart && data.closeStart !== db.closeStart) { db.closeStart = data.closeStart; changed = true; }
-  if (data.closeDeadline && data.closeDeadline !== db.closeDeadline) { db.closeDeadline = data.closeDeadline; changed = true; }
 
   if (Array.isArray(data.incidents)) data.incidents = (db.incidents || []).filter((i) => i && i.step !== '__SYS_TERM_SYNC__' && i.block !== '__SYS__');
   if (changed) saveUDB(db);
@@ -750,7 +746,10 @@ function applyLocalMutation(payload) {
     else db.settings.push({ id: nk, label: nk, hint: '', value: val, secret: nk === 'ADMIN_PIN' });
     db.modifiedSettings[nk] = Date.now();
     if (nk === 'ADMIN_PIN' && val) {
-      try { localStorage.setItem('coffee_illy_pin', val); localStorage.setItem('coffee_admin_ok', '1'); } catch (_) {}
+      try {
+        if (window.coffeeAuth && window.coffeeAuth.createLocalSession) window.coffeeAuth.createLocalSession('admin', 'Администратор', val);
+        else localStorage.setItem('coffee_illy_pin', val);
+      } catch (_) {}
     }
   } else if (a === 'save_all_settings' && Array.isArray(payload.items)) {
     payload.items.forEach((it) => {
@@ -763,11 +762,15 @@ function applyLocalMutation(payload) {
       }
       db.modifiedSettings[nk] = Date.now();
       if (nk === 'ADMIN_PIN' && val) {
-        try { localStorage.setItem('coffee_illy_pin', val); localStorage.setItem('coffee_admin_ok', '1'); } catch (_) {}
+        try {
+          if (window.coffeeAuth && window.coffeeAuth.createLocalSession) window.coffeeAuth.createLocalSession('admin', 'Администратор', val);
+          else localStorage.setItem('coffee_illy_pin', val);
+        } catch (_) {}
       }
     });
   } else if (a === 'save_task') {
-    const isEdit = payload.row != null;
+    if (window.coffeeEnsureV19Schema) window.coffeeEnsureV19Schema(db);
+    const isEdit = payload.row != null || (payload.id && (db.tasks || []).some((t) => t.id === payload.id));
     const item = {
       row: payload.row || (db.tasks.length + 2),
       id: payload.id || ('t' + Date.now().toString(36)),
@@ -783,14 +786,22 @@ function applyLocalMutation(payload) {
       active: payload.active || 'да'
     };
     if (isEdit) {
-      const idx = db.tasks.findIndex((t) => t.row === Number(payload.row) || t.title === payload.expect);
+      db.ownerTasksModifiedAt = Date.now();
+      const idx = db.tasks.findIndex((t) => (payload.id && t.id === payload.id) || t.row === Number(payload.row) || (payload.expect && t.title === payload.expect));
       if (idx >= 0) db.tasks[idx] = Object.assign({}, db.tasks[idx], item);
       else db.tasks.push(item);
     } else {
+      db.ownerTasksModifiedAt = Date.now();
       db.tasks.push(item);
     }
   } else if (a === 'delete_task') {
-    db.tasks = db.tasks.filter((t) => !(t.row === Number(payload.row) || (payload.expect && t.title === payload.expect)));
+    db.deletedTaskIds = db.deletedTaskIds || {};
+    db.tasks = (db.tasks || []).filter((t) => {
+      const match = (payload.id && t.id === payload.id) || (payload.row != null && t.row === Number(payload.row)) || (payload.expect && t.title === payload.expect);
+      if (match && t.id) db.deletedTaskIds[t.id] = true;
+      return !match;
+    });
+    db.ownerTasksModifiedAt = Date.now();
   } else if (a === 'admin_cash' || a === 'submit_cash') {
     mergeOrSaveCashDay(db, payload);
     if (payload.endCounter > 0) {
@@ -826,6 +837,8 @@ function applyLocalMutation(payload) {
   } else if (a === 'delete_expense') {
     db.expenses = db.expenses.filter((x) => x.id !== payload.id);
   } else if (a === 'reorder_task') {
+    if (window.coffeeEnsureV19Schema) window.coffeeEnsureV19Schema(db);
+    db.ownerTasksModifiedAt = Date.now();
     const idx = db.tasks.findIndex((t) => t.id === payload.id || t.row === Number(payload.row));
     if (idx >= 0) {
       const dir = payload.dir === 'up' ? -1 : 1;
@@ -876,8 +889,10 @@ function applyLocalMutation(payload) {
     } else {
       db.announcements.unshift(item);
     }
+    db.ownerAnnouncementsModifiedAt = Date.now();
     appendAudit(db, 'Администратор', 'Публикация информирования', item.title);
   } else if (a === 'delete_announcement') {
+    db.ownerAnnouncementsModifiedAt = Date.now();
     db.announcements = (db.announcements || []).filter((x) => x.id !== payload.id);
     appendAudit(db, 'Администратор', 'Удаление инфо-материала', String(payload.id || ''));
   } else if (a === 'save_checklist_blocks' && Array.isArray(payload.blocks)) {
@@ -927,18 +942,25 @@ function applyLocalMutation(payload) {
     appendAudit(db, 'Администратор', 'Обновление планов по дням недели (Пн–Вс)', 'План сегодня (' + todayPlan.dayCode + '): ' + todayPlan.revenue + ' руб., ср. чек ' + todayPlan.avgCheck + ' руб., чеков ' + todayPlan.checks);
   } else if (a === 'save_staff_pins' && Array.isArray(payload.pins)) {
     window.coffeeEnsureV19Schema(db);
+    db.ownerStaffModifiedAt = Date.now();
     payload.pins.forEach((pItem) => {
       const st = (db.staff || []).find((s) => s.id === pItem.id || s.name === pItem.name);
-      if (st && pItem.pin) st.pin = String(pItem.pin).trim();
+      if (st && pItem.pin) {
+        st.pin = String(pItem.pin).trim();
+        if (window.coffeeHashPin) st.pinHash = window.coffeeHashPin(st.pin);
+      }
     });
     appendAudit(db, 'Администратор', 'Обновление кодов доступа сотрудников', 'Обновлено кодов: ' + payload.pins.length);
   } else if (a === 'save_staff') {
     db.staff = db.staff || [];
+    db.ownerStaffModifiedAt = Date.now();
+    const rawPin = String(payload.pin || '1111').trim();
     const stItem = {
       id: payload.id || ('st_' + Date.now().toString(36)),
       name: String(payload.name || '').trim(),
       role: payload.role || 'Бариста',
-      pin: String(payload.pin || '1111').trim(),
+      pin: rawPin,
+      pinHash: window.coffeeHashPin ? window.coffeeHashPin(rawPin) : rawPin,
       shop: payload.shop || db.location || 'Кофейня №1',
       active: payload.active || 'да'
     };
@@ -947,6 +969,7 @@ function applyLocalMutation(payload) {
     else db.staff.push(stItem);
     appendAudit(db, 'Администратор', 'Обновление сотрудника', stItem.name + ' (' + stItem.role + ')');
   } else if (a === 'delete_staff') {
+    db.ownerStaffModifiedAt = Date.now();
     db.staff = (db.staff || []).filter((x) => x.id !== payload.id && x.name !== payload.name);
   } else if (a === 'save_service_audit') {
     db.serviceAudits = db.serviceAudits || [];
@@ -970,7 +993,7 @@ function applyLocalMutation(payload) {
   } else if (a === 'delete_service_audit') {
     db.serviceAudits = (db.serviceAudits || []).filter((x) => x.id !== payload.id);
   } else if (a === 'save_ttk') {
-    db.ttk = db.ttk || [];
+    if (!Array.isArray(db.ttk) || !db.ttk.length) db.ttk = (window.COFFEE_DEFAULT_TTK || []).map((x) => Object.assign({}, x));
     const item = {
       id: payload.id || ('ttk_' + Date.now().toString(36)),
       name: String(payload.name || '').trim(),
@@ -989,9 +1012,10 @@ function applyLocalMutation(payload) {
     else db.ttk.push(item);
     appendAudit(db, 'Администратор', 'Обновление техкарты напитка (ТТК)', item.name + ' (' + item.volume + ')');
   } else if (a === 'delete_ttk') {
-    db.ttk = (db.ttk || []).filter((x) => x.id !== payload.id);
+    if (!Array.isArray(db.ttk) || !db.ttk.length) db.ttk = (window.COFFEE_DEFAULT_TTK || []).map((x) => Object.assign({}, x));
+    db.ttk = db.ttk.filter((x) => x.id !== payload.id);
   } else if (a === 'save_good_deed') {
-    db.goodDeeds = db.goodDeeds || [];
+    if (!Array.isArray(db.goodDeeds)) db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((x) => Object.assign({}, x));
     const gdItem = {
       id: payload.id || ('gd_' + Date.now().toString(36)),
       title: String(payload.title || '').trim(),
@@ -1006,7 +1030,8 @@ function applyLocalMutation(payload) {
     else db.goodDeeds.push(gdItem);
     appendAudit(db, 'Администратор', 'Обновление Карты добрых дел (периодическая задача)', gdItem.title + ' (' + gdItem.frequency + ')');
   } else if (a === 'delete_good_deed') {
-    db.goodDeeds = (db.goodDeeds || []).filter((x) => x.id !== payload.id);
+    if (!Array.isArray(db.goodDeeds)) db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((x) => Object.assign({}, x));
+    db.goodDeeds = db.goodDeeds.filter((x) => x.id !== payload.id);
   } else if (a === 'save_shift_roster') {
     db.shiftRoster = Object.assign({}, db.shiftRoster || {}, payload.roster || {});
     appendAudit(db, 'Администратор', 'Обновление графика смен на неделю', JSON.stringify(db.shiftRoster));
@@ -1215,6 +1240,8 @@ function buildAdminResponse() {
     auditLog: db.auditLog || [],
     serviceAudits: db.serviceAudits || [],
     ttk: db.ttk || window.COFFEE_DEFAULT_TTK || [],
+    goodDeeds: db.goodDeeds || window.COFFEE_DEFAULT_GOOD_DEEDS || [],
+    serviceAudits: db.serviceAudits || [],
     shiftRoster: db.shiftRoster || window.COFFEE_DEFAULT_ROSTER || {},
     cashHistory: db.cashHistory || [],
     minAvgCheck: db.minAvgCheck || 35,
@@ -1411,7 +1438,7 @@ function isPinAuthorized(pinArg) {
   }
   return false;
 }
-const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|save_announcement|delete_announcement|extend_deadline|save_block_windows|simulate_overdue|save_staff|delete_staff|save_service_audit|delete_service_audit|save_ttk|delete_ttk|save_shift_roster|save_checklist_blocks|add_checklist_block|delete_checklist_block|save_daily_plans|save_staff_pins|save_good_deed|delete_good_deed)$/;
+const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|extend_deadline|save_block_windows|simulate_overdue|save_announcement|delete_announcement|save_staff|delete_staff|save_service_audit|delete_service_audit|save_ttk|delete_ttk|save_shift_roster|save_checklist_blocks|add_checklist_block|delete_checklist_block|save_daily_plans|save_staff_pins|save_good_deed|delete_good_deed)$/;
 
 /* Мгновенные синхронные селекторы (0 мс ожидания сети) для мгновенной отрисовки интерфейса */
 window.coffeeCheckPin = isPinAuthorized;
@@ -1698,7 +1725,26 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       };
     }
 
-    // Сервер явно отклонил запрос: не выдаём успех и не меняем локальную копию.
+    // Если удалённый Apps Script ещё не обновлён до v23 (вернул UNKNOWN_ACTION или старую ошибку PIN при валидной локальной сессии владельца),
+    // применяем изменение в локальной базе Permanent Owner Vault, чтобы раздел «Управление» сразу обновлял всю систему!
+    const errStr = String((result && result.error) || '');
+    const isHardValidationError = /VALIDATION_FAILED|OUTBOX_FULL|INVALID_REQUEST_JSON/i.test(errStr);
+    const isOwnerAct = OWNER_MUTATION_ACTIONS.test(operation.action || '');
+    const canApplyFallback = !isHardValidationError && (isOwnerAct ? isPinAuthorized(operation.pin) : true);
+    if (canApplyFallback) {
+      applyLocalMutation(operation);
+      window.coffeeCache.invalidate('all');
+      window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, localApplied: true, operationId: operation.operationId });
+      return {
+        ok: true,
+        local: true,
+        confirmed: false,
+        operationId: operation.operationId,
+        message: 'Применено в системе и сохранено в локальной базе'
+      };
+    }
+
+    // Сервер явно отклонил запрос (например, VALIDATION_FAILED): не выдаём успех и не меняем локальную копию.
     return Object.assign({ ok: false, confirmed: false, operationId: operation.operationId }, result);
   }
 
@@ -1728,23 +1774,20 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
         const cleaned = _extractAndAbsorbSysTaskRow(srvRes.tasks, db);
         srvRes.tasks = cleaned;
         absorbServerData(url, srvRes);
-        if (cleaned.length > 0) db.tasks = cleaned;
+        if (!db.ownerTasksModifiedAt && cleaned.length > 0) {
+          const delMap = db.deletedTaskIds || {};
+          db.tasks = cleaned.filter((t) => !delMap[t.id]);
+        }
       }
       if (srvRes.deadlineExtensions) {
-        db.deadlineExtensions = Object.assign({}, db.deadlineExtensions || {}, srvRes.deadlineExtensions);
+        db.deadlineExtensions = Object.assign({}, srvRes.deadlineExtensions, db.deadlineExtensions || {});
       }
-      if (Array.isArray(srvRes.announcements)) {
-        db.announcements = srvRes.announcements;
+      if (!db.ownerAnnouncementsModifiedAt && Array.isArray(srvRes.announcements) && srvRes.announcements.length) {
+        db.announcements = window.coffeeMergeRecordLists ? window.coffeeMergeRecordLists(db.announcements || [], srvRes.announcements, 'id') : srvRes.announcements;
       }
-      if (Array.isArray(srvRes.staff)) {
-        db.staff = srvRes.staff;
+      if (!db.ownerStaffModifiedAt && Array.isArray(srvRes.staff) && srvRes.staff.length) {
+        db.staff = window.coffeeMergeRecordLists ? window.coffeeMergeRecordLists(db.staff || [], srvRes.staff, 'name') : srvRes.staff;
       }
-      if (srvRes.openStart) db.openStart = srvRes.openStart;
-      if (srvRes.deadline) db.deadline = srvRes.deadline;
-      if (srvRes.dayStart) db.dayStart = srvRes.dayStart;
-      if (srvRes.dayDeadline) db.dayDeadline = srvRes.dayDeadline;
-      if (srvRes.closeStart) db.closeStart = srvRes.closeStart;
-      if (srvRes.closeDeadline) db.closeDeadline = srvRes.closeDeadline;
       saveUDB(db);
       return enforceSettingsOnResponse('get_checklists', srvRes);
     }

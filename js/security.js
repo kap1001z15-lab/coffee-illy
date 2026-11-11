@@ -238,8 +238,7 @@
       const cand = window.coffeeHashPin(pinOrHash);
       if (!cand) return false;
       const expected = this.getExpectedOwnerPinHash(dbOpt);
-      const defaultHash = window.COFFEE_DEFAULT_OWNER_PIN_HASH || window.coffeeHashPin('1234');
-      const ok = cand === expected || cand === defaultHash;
+      const ok = cand === expected;
       if (!ok) {
         window.coffeeRateLimiter.recordFailure('owner_admin');
         return false;
@@ -291,7 +290,7 @@
       const expectedOwner = this.getExpectedOwnerPinHash(dbOpt);
       const defaultHash = window.COFFEE_DEFAULT_OWNER_PIN_HASH || window.coffeeHashPin('1234');
       if (requiredRole === 'admin') {
-        return sess.role === 'admin' && (sess.pinHash === expectedOwner || sess.pinHash === defaultHash);
+        return sess.role === 'admin' && sess.pinHash === expectedOwner;
       }
       return true;
     },
@@ -331,6 +330,73 @@
         }
       } catch (_) {}
       return { ok: true, sessionToken: sess.token, pinHash };
+    },
+    async loginStaff(staffName, pinInput, dbOpt) {
+      const cleanName = String(staffName || 'Бариста').trim();
+      const actorKey = 'staff_' + cleanName;
+      const rl = window.coffeeRateLimiter.check(actorKey);
+      if (rl.locked) {
+        return { ok: false, locked: true, error: rl.message };
+      }
+      const okLocal = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(cleanName, pinInput, dbOpt) : false;
+      if (!okLocal) {
+        const st = window.coffeeRateLimiter.check(actorKey);
+        return {
+          ok: false,
+          locked: st.locked,
+          remainingAttempts: st.remainingAttempts,
+          error: st.locked ? st.message : ('Неверный персональный PIN сотрудника (осталось попыток: ' + st.remainingAttempts + ')')
+        };
+      }
+      const pinHash = window.coffeeHashPin(pinInput);
+      const sess = this.createLocalSession('staff', cleanName, pinHash);
+      try {
+        if (window.COFFEE && window.COFFEE.API_URL && typeof fetch === 'function') {
+          fetch(window.COFFEE.API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'auth_login', role: 'staff', staffName: cleanName, pinHash })
+          })
+            .then((r) => r.json())
+            .then((res) => {
+              if (res && res.ok && res.sessionToken) {
+                this.createLocalSession('staff', cleanName, pinHash, res.sessionToken);
+              }
+            })
+            .catch(() => {});
+        }
+      } catch (_) {}
+      return { ok: true, sessionToken: sess.token, staffName: cleanName, pinHash };
+    },
+    async setupInitialCredentials(newAdminPin, staffPinsMap) {
+      const db = typeof getUDB === 'function' ? getUDB() : {};
+      const adminHash = window.coffeeHashPin(newAdminPin);
+      if (adminHash) {
+        db.adminPin = 'sha256:' + adminHash;
+        const sRow = (db.settings || []).find((x) => x.id === 'ADMIN_PIN');
+        if (sRow) sRow.value = 'sha256:' + adminHash;
+      }
+      if (staffPinsMap && typeof staffPinsMap === 'object' && Array.isArray(db.staff)) {
+        db.staff.forEach((s) => {
+          if (s && staffPinsMap[s.name]) {
+            s.pinHash = window.coffeeHashPin(staffPinsMap[s.name]);
+            delete s.pin;
+          }
+        });
+      }
+      db.factoryPinsDisabled = true;
+      if (typeof saveUDB === 'function') saveUDB(db);
+      if (window.coffeeFetch && window.COFFEE && window.COFFEE.API_URL) {
+        return window.coffeeFetch(window.COFFEE.API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'setup_initial_credentials',
+            newAdminPin: adminHash ? ('sha256:' + adminHash) : '',
+            staffPins: staffPinsMap || {}
+          })
+        });
+      }
+      return { ok: true, factoryPinsDisabled: true };
     },
     logout() {
       try {

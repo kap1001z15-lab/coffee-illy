@@ -5,6 +5,25 @@
    где токен защищён в PropertiesService.getScriptProperties().
    ========================================================================= */
 window.coffeeTelegram = {
+  async detectChatId(tokenOpt) {
+    const cleanTok = String(tokenOpt || '').trim();
+    if (cleanTok && cleanTok.indexOf('••') === -1 && typeof fetch === 'function') {
+      try {
+        const r = await fetch('https://api.telegram.org/bot' + encodeURIComponent(cleanTok) + '/getUpdates?limit=10');
+        const d = await r.json();
+        if (d && d.ok && Array.isArray(d.result)) {
+          for (let i = d.result.length - 1; i >= 0; i--) {
+            const msg = d.result[i].message || d.result[i].channel_post || d.result[i].my_chat_member;
+            const ch = msg && msg.chat;
+            if (ch && ch.id) {
+              return { chatId: String(ch.id), title: ch.title || ch.username || ch.first_name || 'Чат Telegram' };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    throw new Error('Напишите любое сообщение вашему боту в Telegram и нажмите кнопку снова (или укажите Chat ID вручную)');
+  },
   getConfig() {
     const db = typeof getUDB === 'function' ? getUDB() : {};
     const sMap = {};

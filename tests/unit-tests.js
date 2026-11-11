@@ -313,7 +313,20 @@
       }
     },
     {
-      name: '18. Проверка отсутствия переопределений функций (единая версия coffeeGetBlockWindow)',
+      name: '18. Честная финансовая модель (COGS по ТТК + ФОТ смен + Расходы + CAC без подмены 35%)',
+      fn() {
+        const db = {
+          settings: [{ id: 'SHIFT_BASE_PAY', value: '250' }, { id: 'SHIFT_BONUS_PCT', value: '5' }],
+          cash: [{ date: '2026-11-10', cash: 1400, card: 1000, checks: 80, writeoff: 2, shifts: [{ name: 'Соня' }] }],
+          expenses: [{ id: 'e1', date: '2026-11-10', category: 'Реклама', amount: 160 }]
+        };
+        const fin = window.coffeeCalculateFinancialModel(db, '2026-11-01', '2026-11-30');
+        assert(fin.revenue === 2400 && fin.isEstimated === false, 'Выручка должна быть 2400 руб. без оценочных коэффициентов');
+        assert(fin.cogs > 0 && fin.effectivePayroll === 370 && fin.cac === 2, 'Должны точно считаться COGS по ТТК, ФОТ (250 + 5% от 2400 = 370) и CAC (160 / 80 = 2 руб.)');
+      }
+    },
+    {
+      name: '19. Проверка отсутствия переопределений функций (единая версия coffeeGetBlockWindow)',
       fn() {
         assert(typeof window.coffeeGetBlockWindow === 'function', 'coffeeGetBlockWindow должна быть функцией');
         assert(typeof window.coffeeEnforceOverdueChecklists === 'function', 'coffeeEnforceOverdueChecklists должна быть функцией');

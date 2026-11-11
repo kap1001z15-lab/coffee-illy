@@ -9,7 +9,13 @@ window.COFFEE = {
   SAMPLE_INC_PHOTO: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjQwIDQwMCI+CiAgPGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzNiMjMxNiIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzZiM2UyNiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPgogIDxyZWN0IHdpZHRoPSI2NDAiIGhlaWdodD0iNDAwIiBmaWxsPSJ1cmwoI2cpIi8+CiAgPHJlY3QgeD0iMjQiIHk9IjI0IiB3aWR0aD0iNTkyIiBoZWlnaHQ9IjMwMCIgcng9IjE2IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZjdhNWYiIHN0cm9rZS13aWR0aD0iMyIgc3Ryb2tlLWRhc2hhcnJheT0iOCA2Ii8+CiAgPGNpcmNsZSBjeD0iMzIwIiBjeT0iMTM1IiByPSI0NiIgZmlsbD0icmdiYSgyNTUsMTIyLDk1LDAuMikiIHN0cm9rZT0iI2ZmN2E1ZiIgc3Ryb2tlLXdpZHRoPSIzIi8+CiAgPHRleHQgeD0iMzIwIiB5PSIxNDgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZjdhNWYiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzNiIgZm9udC13ZWlnaHQ9IjcwMCI+4pqg77iPPC90ZXh0PgogIDx0ZXh0IHg9IjMyMCIgeT0iMjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZmZmIiBmb250LWZhbWlseT0ic3lzdGVtLXVpLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI3MDAiPtCk0L7RgtC+0YTQuNC60YHQsNGG0LjRjyDQv9C+0LvQvtC80LrQuCAo0KLQtdGA0LzQuNC90LDQuyk8L3RleHQ+CiAgPHRleHQgeD0iMzIwIiB5PSIyNTUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmNmVjZTIiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNyI+0JrQvtGE0LXQvNCw0YjQuNC90LA6INC/0L7QtNGC0LXQutCw0LXRgiDQv9GA0LDQstGL0Lkg0YHRgtC40LzQtdGAINC/0YDQuCDQv9GA0L7QtNGD0LLQutC1PC90ZXh0PgogIDxyZWN0IHg9IjAiIHk9IjM0NCIgd2lkdGg9IjY0MCIgaGVpZ2h0PSI1NiIgZmlsbD0icmdiYSgwLDAsMCwwLjY4KSIvPgogIDx0ZXh0IHg9IjI0IiB5PSIzNzgiIGZpbGw9IiNmZmYiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjYwMCI+MDQuMTEuMjAyNiAxNDoyMCDCtyDQmtC+0YTQtdC50L3RjyDCtyDQkdCw0YDQuNGB0YLQsDog0KHQvtC90Y8gwrcg0JrQvtC0INGI0LDQs9CwOiBvMDM8L3RleHQ+Cjwvc3ZnPg=="
 };
 
-window.SAMPLE_FILES_DB = {};
+window.SAMPLE_FILES_DB = {
+  get shift_text() {
+    const d = new Date();
+    const dmy = String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear();
+    return dmy + ' Соня\nСчетчик Соня 675\nсписание 1\nНаличные 1650';
+  }
+};
 
 window.COFFEE_STAFF_PIN_HASHES = {
   'Соня': '9bc15aadcaa6d8175bf37a1d498da565fdc2e4b3636511eb599a0eb2ac0ce40d',
@@ -30,8 +36,8 @@ const DEFAULT_SETTINGS_SCHEMA = [
   { id: 'CLOSE_START', label: 'Начало окна «Закрытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к чек-листу «Закрытие» в терминале', value: '19:00', secret: false },
   { id: 'CLOSE_DEADLINE', label: 'Дедлайн закрытия «Закрытие» (ЧЧ:ММ)', hint: 'После этого времени доступ к «Закрытию» закрывается и фиксируется инцидент просрочки', value: '22:30', secret: false },
   { id: 'WO_NORM', label: 'Норма списаний в день, руб.', hint: 'Пересчитывает индикатор списаний «в норме / выше нормы» на Дашборде', value: '15', secret: false },
-  { id: 'MIN_AVG_CHECK', label: 'Норматив среднего чека, руб. (ТЗ п. 8)', hint: 'Плановый минимальный средний чек для контроля выполнения плана', value: '390', secret: false },
-  { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день (ТЗ п. 8)', hint: 'Целевое количество гостей/чеков за смену', value: '150', secret: false },
+  { id: 'MIN_AVG_CHECK', label: 'Норматив среднего чека, руб. (ТЗ п. 8)', hint: 'Плановый минимальный средний чек для контроля выполнения плана', value: '35', secret: false },
+  { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день (ТЗ п. 8)', hint: 'Целевое количество гостей/чеков за смену', value: '75', secret: false },
   { id: 'PHOTO_ALL', label: 'Фото на каждом шаге (да/нет)', hint: 'Если «да», для всех шагов Открытия и Закрытия в Терминале фото обязательно', value: 'нет', secret: false },
   { id: 'INIT_COUNTER', label: 'Текущий счётчик кофемашины', hint: 'Автоматически подставляется как начальный счётчик при расчёте смен в Кассе', value: '600', secret: false },
   { id: 'TG_TOKEN', label: 'Токен Telegram-бота (от @BotFather)', hint: 'Например: 7123456789:AAH... Используется для мгновенной отправки фото и видео поломок администратору', value: '', secret: false },

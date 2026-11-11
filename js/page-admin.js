@@ -15,7 +15,7 @@ function errText(e){const m=String((e&&e.message)||e||'');
   return m.replace(/^Error:\s*/,'')||'неизвестная ошибка'}
 
 async function call(action,data){
-  const d=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify(Object.assign({action,pin:getPin()},data||{}))},40000);
+  const d=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify(Object.assign({action,pin:getPin()},data||{}))},5000);
   if(!d||d.ok===false)throw new Error((d&&d.error)||'ошибка сервера');return d}
 let admBlockFlt = 'all';
 async function load(){
@@ -45,18 +45,18 @@ $('err').addEventListener('keydown',(e)=>{if(e.key==='Enter'&&e.target.id==='pin
 
 /* ----- форма в окне ----- */
 function field(f,v){const id='f_'+f.k,val=v==null?'':v;let i;
-  if(f.type==='select')i='<select id="'+id+'">'+f.opts.map((o)=>'<option'+(String(o)===String(val)?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
-  else if(f.type==='area')i='<textarea id="'+id+'" rows="3">'+esc(val)+'</textarea>';
+  if(f.type==='select'||Array.isArray(f.opts))i='<select id="'+id+'">'+(f.opts||[]).map((o)=>'<option'+(String(o)===String(val)?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
+  else if(f.type==='area'||f.area)i='<textarea id="'+id+'" rows="3">'+esc(val)+'</textarea>';
   else i='<input id="'+id+'" type="'+(f.type||'text')+'" value="'+esc(val)+'"'+(f.type==='number'?' step="any" inputmode="decimal" min="0"':'')+(f.max?' max="'+f.max+'"':'')+(f.ro?' readonly':'')+(f.ph?' placeholder="'+esc(f.ph)+'"':'')+'>';
   return '<div class="fld"><label for="'+id+'">'+esc(f.label)+'</label>'+i+'</div>'}
 function openForm(title,fields,vals,onSave){
   $('dtitle').textContent=title;$('dfields').innerHTML=fields.map((f)=>field(f,vals[f.k])).join('');$('derr').textContent='';
   $('dform').onsubmit=async(e)=>{e.preventDefault();const o={};fields.forEach((f)=>o[f.k]=$('f_'+f.k).value);
     $('dsave').disabled=true;
-    try{await onSave(o);$('dlg').close();toast('Сохранено');await load()}catch(x){$('derr').textContent='Не удалось сохранить: '+errText(x)}
+    try{await onSave(o);try{if($('dlg').open&&typeof $('dlg').close==='function')$('dlg').close();$('dlg').removeAttribute('open')}catch(_){$('dlg').removeAttribute('open')};toast('Сохранено');await load()}catch(x){$('derr').textContent='Не удалось сохранить: '+errText(x)}
     $('dsave').disabled=false};
-  $('dlg').showModal()}
-$('dcancel').onclick=()=>$('dlg').close();
+  try{if($('dlg').open)try{if($('dlg').open&&typeof $('dlg').close==='function')$('dlg').close();$('dlg').removeAttribute('open')}catch(_){$('dlg').removeAttribute('open')};if(typeof $('dlg').showModal==='function')$('dlg').showModal();else $('dlg').setAttribute('open','open')}catch(_){$('dlg').setAttribute('open','open')}}
+$('dcancel').onclick=()=>{try{if($('dlg').open&&typeof $('dlg').close==='function')$('dlg').close();$('dlg').removeAttribute('open')}catch(_){$('dlg').removeAttribute('open')}};
 async function act(action,data,ok){try{await call(action,data);toast(ok||'Готово');await load()}catch(e){toast('Ошибка: '+errText(e))}}
 
 /* ----- отрисовка ----- */
@@ -106,7 +106,7 @@ function rTasksAndInfo(){
   const cBlocks = (window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks() : []).filter((b) => !b.isCash && b.name !== 'Касса').map((b) => b.name);
   D.blocks = cBlocks.length ? cBlocks : ['Открытие', 'Лайн Чек 1', 'Лайн Чек 2', 'Закрытие'];
 
-  const gDeeds = (typeof getUDB === 'function' && getUDB().goodDeeds) || window.COFFEE_DEFAULT_GOOD_DEEDS || [];
+  const gDeeds = (typeof getUDB === 'function' && Array.isArray(getUDB().goodDeeds)) ? getUDB().goodDeeds : (window.COFFEE_DEFAULT_GOOD_DEEDS || []);
   const gdHtml = '<div style="background:color-mix(in srgb,var(--good) 8%,var(--bg));border:1px solid color-mix(in srgb,var(--good) 40%,var(--line));border-radius:16px;padding:14px;margin-bottom:16px">' +
     '<div class="top" style="margin-bottom:8px"><h2 style="font-size:18px;margin:0">🗓 Карта добрых дел и периодические задачи (Daily / 1р в нед. / 2р в нед. / раз в 2 нед. / раз в 4 нед.)</h2><button class="p" type="button" data-a="gd-new">+ Добавить периодическую задачу</button></div>' +
     '<p class="mu" style="margin:0 0 10px">Задачи, не привязанные к ежедневному чек-листу: разморозка холодильника во вторник (тихий день 14:00–18:00), регенерация водоумягчителя солью раз в 4 недели при закрытии, уборка 2-го зала по Пт–Сб. Отображаются у бариста во вкладке «📢 Задачи + Информирование».</p>' +
@@ -257,7 +257,7 @@ function infoForm(a){
     (o)=>call('save_announcement',Object.assign(o,isNew?{}:{id:a.id})))}
 
 function rTtk(){
-  const list=D.ttk||window.COFFEE_DEFAULT_TTK||[];
+  const list=Array.isArray(D.ttk)?D.ttk:(window.COFFEE_DEFAULT_TTK||[]);
   let h='<div class="top"><h2 style="font-size:18px">☕ Технологические карты напитков и калькулятор себестоимости (Food Cost %)</h2><button class="p" data-a="ttk-new">+ Добавить техкарту (ТТК)</button></div>';
   h+='<p class="mu" style="margin:0 0 10px">Как в лучших HoReCa-системах (iiko / Poster / ServiceGuru): бариста видит граммовки и стандарт приготовления в Терминале, а владелец контролирует себестоимость чашки (Food Cost нормой до 28%) и маржинальность.</p>';
   h+='<div class="sx"><table class="tbl"><thead><tr><th>Напиток и объём</th><th>Цена</th><th>Себестоимость (Зерно+Молоко+Таpа)</th><th>Food Cost %</th><th>Маржа с чашки</th><th>Рецептура для бариста</th><th></th></tr></thead><tbody>'+list.map((t,i)=>{
@@ -345,6 +345,7 @@ function rInc(){
       (!isAct(x)?'<button class="b" data-a="inc-open" data-i="'+idx+'">Открыть снова</button>':'') +
       '<button class="b" data-a="inc-tg" data-i="'+idx+'" title="Отправить в Telegram">📲 В Telegram</button>' +
       '<button class="b" data-a="inc-edit" data-i="'+idx+'">Статус / Изменить</button>' +
+      '<button class="b del" data-a="inc-del" data-i="'+idx+'">Удалить</button>' +
     '</div></div>';
   };
   return h+'<h3>Активные проблемы (Новая / Принята в работу / Ожидает решения) · '+o.length+'</h3>'+(o.map(item).join('')||'<p class="mu">Активных проблем нет — всё в норме</p>')+'<h3>Решённые и Закрытые (в истории) · '+r.length+'</h3>'+(r.map(item).join('')||'<p class="mu">Нет завершённых инцидентов</p>')}
@@ -386,18 +387,23 @@ function rSet(){
     '<div class="mu" style="margin-bottom:8px">Задайте план на каждый день недели — Дашборд, Касса терминала и Отчёты автоматически подставляют план соответствующего дня (Пн–Вс):</div>' +
     '<div class="sx"><table class="tbl"><thead><tr><th>Показатель</th>' + days7.map((d) => '<th>' + d + '</th>').join('') + '</tr></thead><tbody>' +
       '<tr><td><b>💰 План выручки, руб.</b></td>' + days7.map((d) => '<td><input type="number" id="dp_rev_' + d + '" value="' + esc((dPlans[d] && dPlans[d].revenue) || D.plan || 2500) + '" style="width:78px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-weight:700"></td>').join('') + '</tr>' +
-      '<tr><td><b>☕ План ср. чека, руб.</b></td>' + days7.map((d) => '<td><input type="number" id="dp_avg_' + d + '" value="' + esc((dPlans[d] && dPlans[d].avgCheck) || 390) + '" style="width:78px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></td>').join('') + '</tr>' +
-      '<tr><td><b>🧾 План транзакций (чеков)</b></td>' + days7.map((d) => '<td><input type="number" id="dp_chk_' + d + '" value="' + esc((dPlans[d] && dPlans[d].checks) || 140) + '" style="width:78px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></td>').join('') + '</tr>' +
+      '<tr><td><b>☕ План ср. чека, руб.</b></td>' + days7.map((d) => '<td><input type="number" id="dp_avg_' + d + '" value="' + esc((dPlans[d] && dPlans[d].avgCheck) || 35) + '" style="width:78px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></td>').join('') + '</tr>' +
+      '<tr><td><b>🧾 План транзакций (чеков)</b></td>' + days7.map((d) => '<td><input type="number" id="dp_chk_' + d + '" value="' + esc((dPlans[d] && dPlans[d].checks) || 75) + '" style="width:78px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg)"></td>').join('') + '</tr>' +
     '</tbody></table></div></div>';
 
   const staffPinsBox = '<div style="background:color-mix(in srgb,var(--crema) 9%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px">' +
     '<div class="top" style="margin-bottom:8px"><b>🔑 Персональные коды доступа для всех сотрудников (вход в Терминал и Панель)</b><button class="p" type="button" data-a="staffpins-save">💾 Сохранить коды сотрудников</button></div>' +
     '<div class="dow-grid">' + (D.staff || []).map((s, idx) => (
       '<div class="dow-cell"><label style="font-weight:700;font-size:12.5px">👤 ' + esc(s.name) + ' (' + esc(s.role || 'Бариста') + ')</label>' +
-      '<input type="text" class="stpin-inp" data-sname="' + esc(s.name) + '" value="' + esc(s.pin || '1111') + '" placeholder="Код (напр. 1111)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-family:monospace;font-weight:700"></div>'
+      '<input type="text" class="stpin-inp" data-sname="' + esc(s.name) + '" value="' + esc(s.pin || '') + '" placeholder="Задан (введите новый код)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-family:monospace;font-weight:700"></div>'
     )).join('') + '</div></div>';
 
-  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
+  const secAuditBox = '<div style="background:color-mix(in srgb,var(--good) 10%,var(--bg));border:1.5px solid var(--good);border-radius:16px;padding:16px;margin-bottom:16px">' +
+    '<div class="top" style="margin-bottom:8px"><b>🛡️ Центр Безопасности и Автотестирования системы (v26)</b>' +
+    '<button type="button" class="p" id="runUnitTestsBtn" style="padding:7px 14px;font-size:13px">🧪 Запустить 19 автотестов</button></div>' +
+    '<div class="mu">Все изменения настроек, планов Пн–Вс, временных окон и кодов доступа мгновенно синхронизируются с Терминалом бариста, Дашбордом и Отчётами.</div>' +
+    '<div id="unitTestsResultBox" style="margin-top:10px" hidden></div></div>';
+  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+secAuditBox+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
 
 /* ----- действия ----- */
 $('panel').addEventListener('input',(e)=>{
@@ -410,20 +416,112 @@ $('panel').addEventListener('input',(e)=>{
 $('panel').addEventListener('click',(e)=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,i=+b.dataset.i;
   if(a==='task-flt'){taskFlt=b.dataset.g||'all';render();return;}
+  if(a==='blk-flt'){admBlockFlt=b.dataset.b||'all';render();return;}
   if(a==='win-save'){
-    const p={
-      openStart:$('win_open_start')?$('win_open_start').value:'07:30',
-      openDeadline:$('win_open_dl')?$('win_open_dl').value:'08:30',
-      dayStart:$('win_day_start')?$('win_day_start').value:'11:00',
-      dayDeadline:$('win_day_dl')?$('win_day_dl').value:'18:30',
-      closeStart:$('win_close_start')?$('win_close_start').value:'19:00',
-      closeDeadline:$('win_close_dl')?$('win_close_dl').value:'22:30'
-    };
-    call('save_block_windows',p).then(()=>{
+    const cBlocks = (window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks() : (D.checklistBlocks || [])).map((bObj) => Object.assign({}, bObj));
+    document.querySelectorAll('.chkblk-start').forEach((inp) => {
+      const bName = inp.dataset.bname;
+      const target = cBlocks.find((x) => x.name === bName);
+      if (target && inp.value) target.openTime = inp.value.trim();
+    });
+    document.querySelectorAll('.chkblk-dl').forEach((inp) => {
+      const bName = inp.dataset.bname;
+      const target = cBlocks.find((x) => x.name === bName);
+      if (target && inp.value) target.deadline = inp.value.trim();
+    });
+    call('save_checklist_blocks',{blocks:cBlocks}).then(()=>{
       if(window.coffeeEnforceOverdueChecklists)window.coffeeEnforceOverdueChecklists();
-      toast('✓ Временные окна сохранены и применены в Терминале!');
+      toast('✓ Временные окна всех чек-листов сохранены и применены в Терминале!');
       return load();
     }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='chkblk-new'){
+    openForm('➕ Добавить новый чек-лист в таймлайн',[
+      {k:'name',label:'Название чек-листа',ph:'Например: Лайн Чек 3 / Вечерний обход'},
+      {k:'openTime',label:'Время открытия доступа (ЧЧ:ММ)',type:'time'},
+      {k:'deadline',label:'Дедлайн закрытия доступа (ЧЧ:ММ)',type:'time'}
+    ],{name:'Лайн Чек 3',openTime:'17:00',deadline:'18:00'},(o)=>call('add_checklist_block',o));
+    return;
+  }
+  if(a==='chkblk-del'){
+    const blkName=b.dataset.b||'';
+    if(!blkName)return;
+    window.coffeeConfirm('Убрать чек-лист «'+blkName+'» из таймлайна?',()=>act('delete_checklist_block',{name:blkName},'Чек-лист «'+blkName+'» убран'));
+    return;
+  }
+  if(a==='gd-new'){
+    const freqs=window.COFFEE_PERIODIC_FREQUENCIES||['Каждый день (Daily)','Только Пт и Сб (2-й зал / пик)','1 раз в неделю (Воскресенье)','2 раза в неделю (Чт, Вс)','Раз в 2 недели (Вторник 14:00–18:00 — тихий день)','Раз в 4 недели (При закрытии — регенерация водоумягчителя)'];
+    const respOpts=getResponsibleOpts('Бариста');
+    openForm('🗓 Новая задача в «Карту добрых дел»',[
+      {k:'title',label:'Название периодической задачи',ph:'Например: Разморозка холодильника / Засыпать соль в умягчитель'},
+      {k:'frequency',label:'Периодичность / Цикл',type:'select',opts:freqs},
+      {k:'window',label:'Рекомендуемое окно времени',ph:'Например: 14:00 – 18:00 (тихие часы)'},
+      {k:'responsible',label:'Исполнитель',type:'select',opts:respOpts},
+      {k:'reviewer',label:'Проверяющий (Владелец задачи)',type:'select',opts:['Управляющий / Шеф-бариста','Администратор','Техник / Управляющий']},
+      {k:'instruction',label:'Подробная инструкция для сотрудника',type:'area'}
+    ],{title:'',frequency:freqs[0],window:'14:00 – 18:00',responsible:'Бариста',reviewer:'Управляющий / Шеф-бариста',instruction:''},(o)=>call('save_good_deed',o));
+    return;
+  }
+  if(a==='gd-del'){
+    const gdId=b.dataset.id||'';
+    window.coffeeConfirm('Удалить периодическую задачу из «Карты добрых дел»?',()=>act('delete_good_deed',{id:gdId},'Периодическая задача удалена'));
+    return;
+  }
+  if(a==='dplans-save'){
+    const days7=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    const plans={};
+    days7.forEach((d)=>{
+      plans[d]={
+        revenue:Math.max(1,Number($('dp_rev_'+d)&&$('dp_rev_'+d).value)||2200),
+        avgCheck:Math.max(1,Number($('dp_avg_'+d)&&$('dp_avg_'+d).value)||35),
+        checks:Math.max(1,Number($('dp_chk_'+d)&&$('dp_chk_'+d).value)||75)
+      };
+    });
+    call('save_daily_plans',{plans}).then(()=>{
+      toast('✓ Планы выручки, среднего чека и транзакций (Пн–Вс) сохранены и применены на Дашборде, в Кассе и Отчётах!');
+      return load();
+    }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='staffpins-save'){
+    const pins=[];
+    document.querySelectorAll('.stpin-inp').forEach((inp)=>{
+      const sName=inp.dataset.sname;
+      const val=inp.value.trim();
+      if(sName&&val)pins.push({name:sName,pin:val});
+    });
+    if(!pins.length){toast('✓ Текущие персональные коды сотрудников активны (введите новый код в поле, если нужно изменить)');return;}
+    call('save_staff_pins',{pins}).then(()=>{
+      toast('✓ Персональные коды доступа сотрудников сохранены и применены в Терминале!');
+      return load();
+    }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='ttk-new')return ttkForm();
+  if(a==='ttk-edit'){const list=Array.isArray(D.ttk)?D.ttk:(window.COFFEE_DEFAULT_TTK||[]);return ttkForm(list[i]);}
+  if(a==='ttk-del'){
+    const list=Array.isArray(D.ttk)?D.ttk:(window.COFFEE_DEFAULT_TTK||[]);
+    const item=list[i];
+    if(!item)return;
+    window.coffeeConfirm('Удалить техкарту напитка «'+item.name+'»?',()=>act('delete_ttk',{id:item.id},'Техкарта удалена'));
+    return;
+  }
+  if(a==='roster-save'){
+    const days7=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    const roster={};
+    days7.forEach((d)=>{if($('rost_'+d))roster[d]=$('rost_'+d).value.trim();});
+    call('save_shift_roster',{roster}).then(()=>{
+      toast('✓ График смен на неделю сохранён!');
+      return load();
+    }).catch((err)=>toast('Ошибка: '+errText(err)));
+    return;
+  }
+  if(a==='audit-new')return auditForm();
+  if(a==='audit-del'){
+    const item=(D.serviceAudits||[])[i];
+    if(!item)return;
+    window.coffeeConfirm('Удалить запись аудита сервиса?',()=>act('delete_service_audit',{id:item.id},'Запись аудита удалена'));
     return;
   }
   if(a==='win-unlock'){
@@ -445,7 +543,7 @@ $('panel').addEventListener('click',(e)=>{
   }
   if(a==='dl-extend'){
     openForm('Продлить дедлайн чек-листа (п. 19.2 ТЗ)',[
-      {k:'block',label:'Чек-лист',type:'select',opts:D.blocks},
+      {k:'block',label:'Чек-лист',type:'select',opts:(window.coffeeGetChecklistBlocks?window.coffeeGetChecklistBlocks().map((b)=>b.name):D.blocks)},
       {k:'until',label:'Разрешить выполнение до (ЧЧ:ММ)',type:'time'},
       {k:'reason',label:'Причина восстановления (в журнал аудита)',ph:'Например: Задержка поставки / Отключение света'}
     ],{block:'Открытие',until:'10:00',reason:'Согласовано руководителем'},(o)=>call('extend_deadline',o));
@@ -454,26 +552,26 @@ $('panel').addEventListener('click',(e)=>{
   if(a==='task-up'||a==='task-down')return act('reorder_task',{id:D.tasks[i].id,row:D.tasks[i].row,dir:a==='task-up'?'up':'down'},'Порядок задач обновлён');
   if(a==='info-new')return infoForm();
   if(a==='info-edit')return infoForm(D.announcements[i]);
-  if(a==='info-del')return act('delete_announcement',{id:D.announcements[i].id},'Материал удалён');
+  if(a==='info-del'){const item=D.announcements[i];if(!item)return;window.coffeeConfirm('Удалить материал «'+item.title+'»?',()=>act('delete_announcement',{id:item.id},'Материал удалён'));return;}
   if(a==='staff-new')return staffForm();
   if(a==='staff-edit')return staffForm(D.staff[i]);
-  if(a==='staff-del')return act('delete_staff',{id:D.staff[i].id,name:D.staff[i].name},'Сотрудник удалён');
+  if(a==='staff-del'){const s=D.staff[i];if(!s)return;window.coffeeConfirm('Удалить сотрудника «'+s.name+'»?',()=>act('delete_staff',{id:s.id,name:s.name},'Сотрудник удалён'));return;}
   if(a==='inc-work')return act('update_incident',{id:D.incidents[i].id,status:'Принята в работу',statusNote:'Принята в работу администратором'},'Статус: Принята в работу');
   if(a==='inc-close')return act('update_incident',{id:D.incidents[i].id,status:'Закрыта',statusNote:'Проверка выполнена, проблема закрыта'},'Статус: Закрыта');
   if(a==='task-new')return taskForm();
   if(a==='task-csv'){const q=(v)=>"\""+String(v==null?'':v).replace(/"/g,'""')+"\"";const rows=[['Код','Блок','Подгруппа','Название','Инструкция','Нужно фото','Ответственный','Активна'].map(q).join(',')].concat(D.tasks.map((t)=>[t.id||'',t.block,t.groupName||'',t.title,t.instruction,t.photo,t.responsible,t.active].map(q).join(',')));const el=document.createElement('a');el.href=URL.createObjectURL(new Blob(['\uFEFF'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'}));el.download='Задачи_91_инструкции.csv';document.body.appendChild(el);el.click();el.remove();return;}
   if(a==='task-edit')return taskForm(D.tasks[i]);
-  if(a==='task-del'){const t=D.tasks[i];if(window.coffeeConfirm?false:confirm('Удалить задачу «'+t.title+'»? Она исчезнет из терминала.'))act('delete_task',{row:t.row,expect:t.title},'Задача удалена');return}
+  if(a==='task-del'){const t=D.tasks[i];if(!t)return;window.coffeeConfirm('Удалить задачу «'+t.title+'»? Она исчезнет из терминала бариста.',()=>act('delete_task',{id:t.id,row:t.row,expect:t.title},'Задача удалена'));return;}
   if(a==='cash-new')return cashForm();
   if(a==='cash-edit')return cashForm(D.cash[i]);
-  if(a==='cash-del'){const r=D.cash[i];if(window.coffeeConfirm?false:confirm('Удалить данные за '+dmy(r.date)+'?'))act('delete_cash',{date:r.date},'День удалён');return}
+  if(a==='cash-del'){const r=D.cash[i];if(!r)return;window.coffeeConfirm('Удалить данные кассы за '+dmy(r.date)+'?',()=>act('delete_cash',{date:r.date},'День удалён'));return;}
   if(a==='exp-new')return expForm();
   if(a==='exp-edit')return expForm(D.expenses[i]);
-  if(a==='exp-del'){const x=D.expenses[i];if(window.coffeeConfirm?false:confirm('Удалить расход '+x.id+' ('+rub(x.amount)+')?'))act('delete_expense',{id:x.id},'Расход удалён');return}
+  if(a==='exp-del'){const x=D.expenses[i];if(!x)return;window.coffeeConfirm('Удалить расход '+x.id+' ('+rub(x.amount)+')?',()=>act('delete_expense',{id:x.id},'Расход удалён'));return;}
   if(a==='inc-res')return act('update_incident',{id:D.incidents[i].id,status:'Решена'},'Отмечено как решённое');
   if(a==='inc-open')return act('update_incident',{id:D.incidents[i].id,status:'Открыта'},'Поломка открыта снова');
   if(a==='inc-edit')return incForm(D.incidents[i]);
-  if(a==='inc-del'){const x=D.incidents[i];if(window.coffeeConfirm?false:confirm('Удалить поломку '+x.id+'?'))act('delete_incident',{id:x.id},'Поломка удалена');return}
+  if(a==='inc-del'){const x=D.incidents[i];if(!x)return;window.coffeeConfirm('Удалить поломку '+x.id+'?',()=>act('delete_incident',{id:x.id},'Поломка удалена'));return;}
   if(a==='inc-tg'){
     const x=D.incidents[i];if(!x||!window.coffeeTelegram)return;
     toast('Отправляем в Telegram…');
@@ -531,8 +629,27 @@ $('panel').addEventListener('click',(e)=>{
     return;
   }
   if(a==='set-save-all'){
-    const items=D.settings.map((s,idx)=>({id:s.id,value:$('s_'+idx).value.trim()}));
-    call('save_all_settings',{items}).then(()=>{toast('Все настройки сохранены и применены в системе');return load()}).catch((x)=>toast('Ошибка: '+errText(x)));
+    const items=D.settings.map((s,idx)=>({id:s.id,value:$('s_'+idx)?$('s_'+idx).value.trim():s.value}));
+    const days7=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    const plans={};
+    days7.forEach((d)=>{
+      if($('dp_rev_'+d)){
+        plans[d]={
+          revenue:Math.max(1,Number($('dp_rev_'+d).value)||2200),
+          avgCheck:Math.max(1,Number($('dp_avg_'+d)&&$('dp_avg_'+d).value)||35),
+          checks:Math.max(1,Number($('dp_chk_'+d)&&$('dp_chk_'+d).value)||75)
+        };
+      }
+    });
+    const pins=[];
+    document.querySelectorAll('.stpin-inp').forEach((inp)=>{
+      if(inp.dataset.sname&&inp.value.trim())pins.push({name:inp.dataset.sname,pin:inp.value.trim()});
+    });
+    Promise.all([
+      call('save_all_settings',{items}),
+      Object.keys(plans).length ? call('save_daily_plans',{plans}) : Promise.resolve(),
+      pins.length ? call('save_staff_pins',{pins}) : Promise.resolve()
+    ]).then(()=>{toast('✓ Все настройки, планы Пн–Вс и коды сотрудников сохранены и применены во всей системе!');return load()}).catch((x)=>toast('Ошибка: '+errText(x)));
     return;
   }
   if(a==='set-save'){const s=D.settings[i],v=$('s_'+i).value.trim();

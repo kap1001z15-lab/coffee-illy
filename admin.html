@@ -1,10 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Кофейня — управление</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
+<title>Кофейня — управление</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icons/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 
-<script>try{if(!window.coffeeAuth||!window.coffeeAuth.isAuthorized('admin'))document.documentElement.classList.add('gate')}catch(e){}</script>
-
-<script>window.COFFEE||alert("Не найден файл config.js — загрузите его в репозиторий рядом со страницами.")</script>
 <script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="stylesheet" href="css/admin.css">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -16,10 +13,11 @@
 <script src="js/analytics.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/telegram.js"></script>
+<script>try{if(!window.coffeeAuth||!window.coffeeAuth.isAuthorized('admin'))document.documentElement.classList.add('gate')}catch(e){}</script>
 </head><body>
 <header class="app-header"><div class="wrap">
   <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Управление</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
-  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html">Дашборд</a><a href="report.html">Отчёты</a><a href="admin.html" class="on" aria-current="page">Управление</a><a href="index.html">Терминал</a></nav>
+  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html">Дашборд</a><a href="report.html">Отчёты</a><a href="admin.html" class="on" aria-current="page">Управление</a></nav>
 </div></header>
 <main>
   <div id="err" class="al" hidden></div>

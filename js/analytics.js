@@ -202,8 +202,8 @@ window.coffeeSmartEngine = {
     const audits = Array.isArray(db.serviceAudits) ? db.serviceAudits : [];
     const planDay = Math.max(1, Number(db.plan) || 2200);
     const woNorm = Math.max(0, Number(db.woNorm != null ? db.woNorm : 15));
-    const minAvg = Math.max(1, Number(db.minAvgCheck) || 390);
-    const planChecks = Math.max(1, Number(db.planChecks) || 150);
+    const minAvg = Math.max(1, Number(db.minAvgCheck) || 35);
+    const planChecks = Math.max(1, Number(db.planChecks) || 75);
 
     /* 1. Run-Rate & Прогноз на 30 дней */
     const activeDays = cashList.filter((c) => (Number(c.cash) || 0) + (Number(c.card) || 0) > 0);
@@ -216,7 +216,7 @@ window.coffeeSmartEngine = {
     const avgDailyRev = Math.round(totalRev / nDays);
     const avgDailyChecks = Math.round(totalChecks / nDays);
     const avgDailyWo = Math.round((totalWo / nDays) * 10) / 10;
-    const avgDailyExp = expList.length ? Math.round(totalExp / Math.max(1, nDays)) : Math.round(avgDailyRev * 0.35);
+    const avgDailyExp = expList.length ? Math.round(totalExp / Math.max(1, nDays)) : 0;
     const factAvgCheck = totalChecks > 0 ? Math.round(totalRev / totalChecks) : 0;
 
     const forecastMonthRev = avgDailyRev * 30;
@@ -346,10 +346,28 @@ window.coffeeSmartEngine = {
   },
 
   /* Автоматический расчёт рекомендуемой премии/мотивации бариста из имеющихся KPI */
+  simulate(dbOpt, avgCheckDelta, checksGrowthPct, writeoffReductionPct) {
+    const a = this.analyze(dbOpt);
+    const baseChecks = Math.max(1, a.avgDailyChecks || 75);
+    const baseAvg = Math.max(1, a.factAvgCheck || 35);
+    const baseWo = Math.max(0, a.avgDailyWo || 2);
+    const newChecks = Math.round(baseChecks * (1 + (Number(checksGrowthPct) || 0) / 100));
+    const newAvg = baseAvg + (Number(avgCheckDelta) || 0);
+    const extraDailyRev = Math.max(0, newChecks * newAvg - baseChecks * baseAvg);
+    const savedDailyWo = Math.round(baseWo * ((Number(writeoffReductionPct) || 0) / 100) * 18);
+    const extraMonthlyProfit = Math.round((extraDailyRev * 0.62 + savedDailyWo) * 30);
+    return {
+      extraDailyRev,
+      savedDailyWo,
+      extraMonthlyProfit,
+      breakEvenRevenue: a.breakEvenRevDay * 30,
+      breakEvenDay: Math.min(28, Math.max(1, Math.round((a.avgDailyExp * 30) / Math.max(1, newChecks * newAvg))))
+    };
+  },
   calcStaffBonus(staffRow, dscPct, srvPct, avgDailyWo, woNorm) {
     const rev = Number(staffRow.revenue) || 0;
     const shifts = Math.max(1, Number(staffRow.shifts) || 1);
-    const baseRate = shifts * 1500;
+    const baseRate = shifts * 250;
     const revBonus = rev * 0.05;
     const kpiMult = ((dscPct >= 95 ? 1.15 : (dscPct >= 85 ? 1.0 : 0.85)) * (srvPct >= 92 ? 1.1 : 1.0));
     const bonus = Math.round(revBonus * kpiMult);
@@ -423,8 +441,8 @@ window.coffeeEnsureV19Schema = function (db) {
 
   /* Планы по дням недели (Пн–Вс): выручка, средний чек, транзакции */
   const basePlan = Number(db.plan) || 2500;
-  const baseAvg = Number(db.minAvgCheck) || 390;
-  const baseChk = Number(db.planChecks) || 150;
+  const baseAvg = Number(db.minAvgCheck) || 35;
+  const baseChk = Number(db.planChecks) || 75;
   if (!db.dailyPlans || typeof db.dailyPlans !== 'object') {
     db.dailyPlans = {};
     ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach((d) => {
@@ -459,7 +477,7 @@ window.coffeeEnsureV19Schema = function (db) {
       }
     });
   }
-  if (!Array.isArray(db.goodDeeds) || !db.goodDeeds.length) {
+  if (!Array.isArray(db.goodDeeds)) {
     db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((g) => Object.assign({}, g));
   }
   /* Обогащаем каждый инцидент полями Action Plan (дедлайн 24ч, проверяющий reviewer, запрет галереи cameraOnly) */
@@ -487,8 +505,8 @@ window.coffeeGetDayPlan = function (dateStr, dbOpt) {
   return {
     dayCode,
     revenue: Math.max(1, Number(dp.revenue) || Number(db.plan) || 2500),
-    avgCheck: Math.max(1, Number(dp.avgCheck) || Number(db.minAvgCheck) || 390),
-    checks: Math.max(1, Number(dp.checks) || Number(db.planChecks) || 150)
+    avgCheck: Math.max(1, Number(dp.avgCheck) || Number(db.minAvgCheck) || 35),
+    checks: Math.max(1, Number(dp.checks) || Number(db.planChecks) || 75)
   };
 };
 
@@ -750,3 +768,107 @@ window.coffeeEvaluateRedFlags = function (dateStr, dbOpt) {
   return flags;
 };
 window.coffeeEnsureSchema = window.coffeeEnsureV19Schema;
+
+
+/* =========================================================================
+   ЧЕСТНАЯ ФИНАНСОВАЯ МОДЕЛЬ (window.coffeeCalculateFinancialModel — v23)
+   Считает реальную управленческую прибыль без выдуманных коэффициентов (без 35% оценки):
+   - Выручка (нал + безнал по закрытым сменам)
+   - COGS / Food Cost по ТТК (зерно + молоко + сироп + стакан по проданным позициям)
+   - ФОТ смен (базовая ставка смены SHIFT_BASE_PAY + бонус % от выручки SHIFT_BONUS_PCT)
+   - Операционные расходы из журнала «Расходы» (аренда, закупки, логистика, ремонт)
+   - Маркетинг и стоимость привлечения гостя (CAC)
+   - Стоимость списаний (writeoff * unitWasteCost)
+   - Чистая прибыль владельца (netProfit = revenue - cogs - payroll - opex - wasteCost)
+   ========================================================================= */
+window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
+  const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+  const cashAll = Array.isArray(db.cash) ? db.cash : [];
+  const expAll = Array.isArray(db.expenses) ? db.expenses : [];
+  const ttkList = Array.isArray(db.ttk) && db.ttk.length ? db.ttk : (window.COFFEE_DEFAULT_TTK || []);
+
+  const inRange = (d) => (!fromStr || d >= fromStr) && (!toStr || d <= toStr);
+  const cashRows = cashAll.filter((c) => c && c.date && inRange(c.date));
+  const expRows = expAll.filter((e) => e && e.date && inRange(e.date));
+
+  // Средняя себестоимость 1 чашки по технологическим картам (ТТК)
+  const avgTtkUnitCost = ttkList.length
+    ? ttkList.reduce((acc, t) => acc + (Number(t.costBeans) || 0) + (Number(t.costMilk) || 0) + (Number(t.costSyrup) || 0) + (Number(t.costCup) || 0), 0) / ttkList.length
+    : 8.5;
+
+  const sMap = {};
+  (db.settings || []).forEach((s) => { if (s && s.id) sMap[s.id] = s.value; });
+  const shiftBasePay = Number(sMap.SHIFT_BASE_PAY != null ? sMap.SHIFT_BASE_PAY : 250); // руб. за выход в смену
+  const shiftBonusPct = Number(sMap.SHIFT_BONUS_PCT != null ? sMap.SHIFT_BONUS_PCT : 5); // % от выручки смены
+  const unitWasteCost = 18; // руб. за 1 списание
+
+  let revenue = 0;
+  let cashTotal = 0;
+  let cardTotal = 0;
+  let checksTotal = 0;
+  let writeoffsTotal = 0;
+  let shiftsCount = 0;
+  let cogsFromTtk = 0;
+
+  cashRows.forEach((c) => {
+    const dayCash = Number(c.cash) || 0;
+    const dayCard = Number(c.card) || 0;
+    const dayRev = dayCash + dayCard;
+    const dayChecks = Number(c.checks) || 0;
+    const dayWo = Number(c.writeoff) || 0;
+    revenue += dayRev;
+    cashTotal += dayCash;
+    cardTotal += dayCard;
+    checksTotal += dayChecks;
+    writeoffsTotal += dayWo;
+    const shArr = Array.isArray(c.shifts) && c.shifts.length ? c.shifts : [{ name: c.barista || 'Бариста' }];
+    shiftsCount += shArr.length;
+    cogsFromTtk += Math.round(dayChecks * avgTtkUnitCost);
+  });
+
+  const payrollAccrued = Math.round(shiftsCount * shiftBasePay + revenue * (shiftBonusPct / 100));
+  const wasteCost = Math.round(writeoffsTotal * unitWasteCost);
+
+  let loggedOpex = 0;
+  let marketingSpend = 0;
+  let loggedPayroll = 0;
+  expRows.forEach((e) => {
+    const amt = Number(e.amount) || 0;
+    const cat = String(e.category || '').toLowerCase();
+    loggedOpex += amt;
+    if (/реклам|маркет|продвиж|таргет/.test(cat)) marketingSpend += amt;
+    if (/зарплат|фот|аванс/.test(cat)) loggedPayroll += amt;
+  });
+
+  // Если ФОТ уже проведён в журнале «Расходы», не дублируем его с расчётным начислением
+  const effectivePayroll = loggedPayroll > 0 ? loggedPayroll : payrollAccrued;
+  const nonPayrollOpex = Math.max(0, loggedOpex - loggedPayroll);
+  const totalCosts = cogsFromTtk + effectivePayroll + nonPayrollOpex + wasteCost;
+  const netProfit = revenue - totalCosts;
+  const foodCostPct = revenue > 0 ? Math.round((cogsFromTtk / revenue) * 1000) / 10 : 0;
+  const cac = checksTotal > 0 && marketingSpend > 0 ? Math.round((marketingSpend / checksTotal) * 100) / 100 : 0;
+
+  return {
+    revenue,
+    cashTotal,
+    cardTotal,
+    checksTotal,
+    avgCheck: checksTotal > 0 ? Math.round(revenue / checksTotal) : 0,
+    shiftsCount,
+    cogs: cogsFromTtk,
+    foodCostPct,
+    payrollAccrued,
+    loggedPayroll,
+    effectivePayroll,
+    loggedOpex,
+    nonPayrollOpex,
+    marketingSpend,
+    cac,
+    writeoffsTotal,
+    wasteCost,
+    totalCosts,
+    netProfit,
+    isEstimated: false,
+    hasLoggedExpenses: expRows.length > 0
+  };
+};

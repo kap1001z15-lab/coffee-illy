@@ -27,7 +27,7 @@
     dlg.querySelector('#ccMsg').textContent = message;
     dlg.querySelector('#ccNo').onclick = () => dlg.close();
     dlg.querySelector('#ccYes').onclick = () => { dlg.close(); if (onConfirm) onConfirm(); };
-    dlg.showModal();
+    try { if (dlg.open) dlg.close(); if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', 'open'); } catch (_) { dlg.setAttribute('open', 'open'); }
   };
 
   async function verify(pin) {
@@ -43,7 +43,7 @@
   function logout() {
     if (window.coffeeAuth) window.coffeeAuth.logout();
     if (window.coffeeBus) window.coffeeBus.emit('auth', { ok: false });
-    location.href = 'index.html';
+    location.reload();
   }
   window.coffeeLogout = logout;
 
@@ -54,12 +54,9 @@
     g = document.createElement('div');
     g.id = 'gate';
     g.style.cssText = 'position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg,#12191b)';
-    g.innerHTML = '<form style="width:min(380px,100%);background:var(--surface,#1b2528);border:1px solid var(--line,#2c3a3e);border-radius:22px;padding:24px;box-shadow:var(--shadow)"><h2 style="margin:0 0 6px;font-family:var(--font-d)">🔒 Защищённый вход (SHA-256)</h2><p style="margin:0 0 14px;color:var(--muted);font-size:13.5px">Дашборд, отчёты и управление защищены токеном сессии и блокировкой перебора (макс. 5 попыток).</p><input id="gPin" type="password" autocomplete="current-password" placeholder="Код доступа администратора" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line,#2c3a3e);background:var(--bg);padding:0 14px;font:inherit;color:var(--ink)"><div id="gErr" style="color:var(--bad,#c23b22);font-size:13.5px;min-height:20px;margin:8px 0;font-weight:600" role="alert"></div><button id="gGo" type="submit" style="width:100%;min-height:50px;border:0;border-radius:14px;background:#5a3a29;color:#f6ece2;font:inherit;font-weight:700;cursor:pointer">Войти в панель управления</button><a href="index.html" id="gBackTerm" style="display:block;text-align:center;margin-top:12px;color:var(--muted);font-size:14px;text-decoration:none">← Вернуться в терминал бариста</a></form>';
+    g.innerHTML = '<form style="width:min(380px,100%);background:var(--surface,#1b2528);border:1px solid var(--line,#2c3a3e);border-radius:22px;padding:24px;box-shadow:var(--shadow)"><h2 style="margin:0 0 6px;font-family:var(--font-d)">🔒 Защищённый вход (SHA-256)</h2><p style="margin:0 0 14px;color:var(--muted);font-size:13.5px">Дашборд, отчёты и управление защищены токеном сессии и блокировкой перебора (макс. 5 попыток).</p><input id="gPin" type="password" autocomplete="current-password" placeholder="Код доступа администратора" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line,#2c3a3e);background:var(--bg);padding:0 14px;font:inherit;color:var(--ink)"><div id="gErr" style="color:var(--bad,#c23b22);font-size:13.5px;min-height:20px;margin:8px 0;font-weight:600" role="alert"></div><button id="gGo" type="submit" style="width:100%;min-height:50px;border:0;border-radius:14px;background:#5a3a29;color:#f6ece2;font:inherit;font-weight:700;cursor:pointer">Войти в панель управления</button></form>';
     document.body.appendChild(g);
-    const backLink = g.querySelector('#gBackTerm');
-    if (page === 'index') {
-      backLink.onclick = (e) => { e.preventDefault(); g.remove(); document.documentElement.classList.remove('gate'); };
-    }
+    
     const f = g.querySelector('form'), inp = g.querySelector('#gPin'), errBox = g.querySelector('#gErr');
     if (window.coffeeRateLimiter) {
       const st = window.coffeeRateLimiter.check('owner_admin');
@@ -95,10 +92,9 @@
     const openInc = parseInt(ls.get('coffee_meta_open_inc') || '0', 10);
 
     document.querySelectorAll('nav.tabs a').forEach((a) => {
-      const href = a.getAttribute('href').split('?')[0];
-      if (href === 'index.html') {
-        a.onclick = () => { if (window.coffeeAuth) window.coffeeAuth.logout(); };
-      }
+      const rawHref = a.getAttribute('href'); if (!rawHref) return;
+      const href = rawHref.split('?')[0];
+      /* Переход между окнами Дашборд, Отчёты, Управление и Терминал без сброса сессии владельца */
       if (sharedDate && href === 'dashboard.html') {
         a.setAttribute('href', href + '?date=' + encodeURIComponent(sharedDate));
       }
@@ -120,24 +116,11 @@
   function init() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-    if (page === 'index') {
-      if (window.coffeeAuth) window.coffeeAuth.logout();
+    if (page === 'index' || page === 'barista' || page === 'barista_terminal') {
       document.documentElement.classList.remove('gate');
       const oldOwnerNav = document.querySelector('.owner-nav');
       if (oldOwnerNav) oldOwnerNav.remove();
-      const th = document.getElementById('theme');
-      if (th && !document.getElementById('ownerLockBtn')) {
-        const b = document.createElement('button');
-        b.id = 'ownerLockBtn';
-        b.className = 'theme-btn';
-        b.type = 'button';
-        b.textContent = '🔒';
-        b.title = 'Вход для владельца (по коду)';
-        b.setAttribute('aria-label', 'Вход для владельца');
-        b.onclick = () => gate(() => { location.href = 'dashboard.html'; });
-        th.parentNode.insertBefore(b, th);
-      }
-      return;
+      return; /* Терминал бариста полностью отделён от приложения владельца/администратора */
     }
 
     if (isAdmin()) {
