@@ -294,7 +294,7 @@ $('next').onclick = () => { $('pick').value = shift($('pick').value, 1); load();
 $('pick').onchange = () => load();
 $('reload').onclick = () => load(false, true);
 
-const cur = () => document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+const cur = () => document.documentElement.getAttribute('data-theme') ||'light';
 const paint = () => { $('theme').textContent = cur() === 'dark' ? '☀️' : '🌙'; };
 $('theme').onclick = () => {
   const n = cur() === 'dark' ? 'light' : 'dark';

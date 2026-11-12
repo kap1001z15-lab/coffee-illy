@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#2e1b11">
+<meta name="theme-color" content="#fbf6ef">
 
-<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<title>Кофейня — терминал бариста</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icons/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
+<script>try{var t=localStorage.getItem('coffee_illy_theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}</script>
+<title>Кофейня — терминал бариста</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#fbf6ef"><link rel="apple-touch-icon" href="icons/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <link rel="stylesheet" href="css/terminal.css">
+<link rel="stylesheet" href="css/light.css">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <script src="config.js"></script>
@@ -39,6 +40,7 @@
           <option value="Настя">👤 Настя</option>
           <option value="Максим">👤 Максим</option>
         </select>
+        <button class="theme-btn sos-btn" id="quickIncidentTopBtn" type="button" aria-label="Сообщить о поломке" title="Сообщить о поломке">🚨</button>
         <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button>
       </div>
     </div>
@@ -146,7 +148,6 @@
         <div id="multiPhotoGallery" class="multi-photos" hidden></div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
           <button type="button" id="addMorePhotoBtn" hidden style="border:1px solid var(--crema);background:var(--bg);border-radius:10px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">➕ Добавить ещё фото</button>
-          <button type="button" id="simPhotoBtn" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer">📸 Контрольный снимок со штампом</button>
         </div>
         <p class="pstate" id="photoState" aria-live="polite"></p>
       </div>
@@ -263,16 +264,14 @@
         </div>
       </div>
       <div class="grid2" style="gap:10px;margin-bottom:10px">
-        <label class="file" style="padding:12px;min-height:64px;cursor:pointer">
+        <div class="file" id="inPhotoCounter" role="button" tabindex="0" style="padding:12px;min-height:64px;cursor:pointer">
           <span class="ico">📷</span>
           <span><b id="lblPhotoCounter">1. Фото счётчика кофемашины</b><span class="muted" style="display:block;font-size:11.5px">Только камера (без галереи)</span></span>
-          <input type="file" id="inPhotoCounter" accept="image/*" capture="environment">
-        </label>
-        <label class="file" style="padding:12px;min-height:64px;cursor:pointer">
+        </div>
+        <div class="file" id="inPhotoPaper" role="button" tabindex="0" style="padding:12px;min-height:64px;cursor:pointer">
           <span class="ico">📄</span>
-          <span><b id="lblPhotoPaper">2. Фото бумажного отчёта кассы</b><span class="muted" style="display:block;font-size:11.5px">Фото рукописного листа смены</span></span>
-          <input type="file" id="inPhotoPaper" accept="image/*" capture="environment">
-        </label>
+          <span><b id="lblPhotoPaper">2. Фото бумажного отчёта кассы</b><span class="muted" style="display:block;font-size:11.5px">Только камера (без галереи)</span></span>
+        </div>
       </div>
       <div id="quickCashPhotosPreview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" hidden></div>
       <button type="button" class="btn" id="quickSubmitPaperCashBtn" style="min-height:48px;font-size:15px">✅ Отправить счётчик и фото бумажного отчёта</button>
@@ -412,18 +411,16 @@
       <button type="button" id="qiCloseX" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 11px;font-weight:700;cursor:pointer">✕</button>
     </div>
     <div class="field">
-      <label class="label">Фото или видео поломки</label>
+      <label class="label">Фото или видео поломки <span class="muted" style="font-weight:400;font-size:12px">· только камера</span></label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <label class="qi-media-drop" style="min-height:82px;padding:10px">
+        <div class="qi-media-drop" id="qiPhotoBtn" role="button" tabindex="0" style="min-height:82px;padding:10px;cursor:pointer">
           <span style="font-size:24px">📷</span>
           <span style="font-weight:700;font-size:13px">Сделать фото</span>
-          <input type="file" id="qiPhotoIn" accept="image/*" capture="environment" multiple hidden>
-        </label>
-        <label class="qi-media-drop" style="min-height:82px;padding:10px">
+        </div>
+        <div class="qi-media-drop" id="qiVideoBtn" role="button" tabindex="0" style="min-height:82px;padding:10px;cursor:pointer">
           <span style="font-size:24px">📹</span>
           <span style="font-weight:700;font-size:13px">Снять видео</span>
-          <input type="file" id="qiVideoIn" accept="video/*" capture="environment" hidden>
-        </label>
+        </div>
       </div>
       <div id="qiMediaPreview" class="qi-media-grid" hidden></div>
     </div>
@@ -475,6 +472,7 @@
   </form>
 </dialog>
 
+<script src="js/camera.js"></script>
 <script src="js/page-terminal.js"></script>
 <script src="app.js" defer></script>
 </body>

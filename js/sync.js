@@ -1143,6 +1143,7 @@ function applyLocalMutation(payload) {
         window.coffeeNotify.push(db, {
           level: 'critical',
           type: 'incident',
+          incId: newInc.id,
           actor: newInc.who,
           title: '🚨 Поломка: ' + newInc.step + ' (' + newInc.priority + ')',
           text: newInc.text + ' · Сообщил: ' + newInc.who + (newInc.photos && newInc.photos.length ? (' · Фото/видео: ' + newInc.photos.length) : ''),
@@ -1204,6 +1205,7 @@ function applyLocalMutation(payload) {
       window.coffeeNotify.push(db, {
         level: probs.length > 0 ? 'warn' : (isLate ? 'warn' : 'ok'),
         type: 'checklist',
+        block: blk,
         actor: chkWho,
         title: (probs.length > 0 ? '⚠️ ' : '✅ ') + 'Чек-лист «' + blk + '» сдан (' + chkWho + ')',
         text: (isLate ? 'С опозданием в ' + tStr : 'Вовремя в ' + tStr) + ' · Проверено пунктов: ' + items.length + (probs.length ? (' · Замечаний: ' + probs.length) : ' · Всё в норме'),

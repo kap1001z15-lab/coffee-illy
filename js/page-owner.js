@@ -54,13 +54,135 @@ function renderOwnerNotificationsDrawer() {
     '</div>' +
     (list.length ? list.slice(0, 15).map((n) => {
       const col = n.level === 'critical' ? 'var(--bad)' : (n.level === 'warn' ? 'var(--warn)' : 'var(--good)');
-      return '<div class="row" style="grid-template-columns:1fr auto;border-left:4px solid ' + col + ';padding-left:10px">' +
+      const mediaCnt = ntfCollect(n, db).media.length;
+      return '<div class="row ntf-row" data-ntf-id="' + esc(n.id) + '" tabindex="0" role="button" title="Открыть фото и комментарии" style="grid-template-columns:1fr auto;border-left:4px solid ' + col + ';padding-left:10px;cursor:pointer">' +
         '<div><b>' + esc(n.title) + '</b> <span class="mu">(' + dmy(n.date) + ' ' + esc(n.time) + ' · ' + esc(n.actor) + ')</span>' +
-        '<div class="mu" style="margin-top:2px">' + esc(n.text) + '</div></div>' +
+        '<div class="mu" style="margin-top:2px">' + esc(n.text) + '</div>' +
+        '<div class="mu" style="margin-top:3px;font-size:12px">' + (mediaCnt ? '📷 ' + mediaCnt + ' · ' : '') + 'Нажмите, чтобы открыть ›</div></div>' +
         '<span class="tag ' + (n.level === 'critical' ? 'no' : (n.level === 'ok' ? 'ok' : '')) + '">' + (n.read ? 'Прочитано' : 'Новое') + '</span>' +
       '</div>';
     }).join('') : '<p class="mu" style="margin:0">Новых уведомлений нет.</p>');
 }
+
+/* ---------- Уведомление → сразу фото/видео и комментарии баристы ---------- */
+function ntfPhotoSrc(u) {
+  try { return String((window.CoffeeIDB ? window.CoffeeIDB.getPhotoSync(u) : u) || '').trim(); } catch (_) { return String(u || '').trim(); }
+}
+function ntfCollect(n, db) {
+  const res = { media: [], comments: [], inc: null };
+  if (!n || !db) return res;
+  const seen = {};
+  const addMedia = (url, label, comment) => {
+    const u = ntfPhotoSrc(url);
+    if (!u || seen[u]) return;
+    seen[u] = 1;
+    res.media.push({ url: u, label: label || '', comment: comment || '' });
+  };
+  const incs = Array.isArray(db.incidents) ? db.incidents : [];
+  const txt = String(n.text || '');
+  let inc = null;
+  const idRef = n.incId || ((txt.match(/INC-[A-Z0-9_-]+/) || [])[0] || '');
+  if (idRef) inc = incs.find((x) => x && x.id === idRef) || null;
+  if (!inc && n.type === 'incident') {
+    inc = incs.find((x) => x && x.date === n.date && x.who === n.actor && x.text && txt.indexOf(x.text) === 0) || null;
+  }
+  if (inc) {
+    res.inc = inc;
+    const list = (Array.isArray(inc.photos) && inc.photos.length ? inc.photos : (inc.photo ? [inc.photo] : []));
+    list.forEach((u, i) => addMedia(u, (inc.step || 'Поломка') + (list.length > 1 ? ' · кадр ' + (i + 1) : ''), ''));
+    if (inc.text) res.comments.push({ who: inc.who || n.actor, time: (inc.time || ''), label: inc.step || inc.incType || 'Комментарий', text: inc.text, meta: [inc.priority, inc.status].filter(Boolean).join(' · ') });
+  }
+  if (n.type === 'checklist' || n.type === 'overdue') {
+    const blk = n.block || ((String(n.title || '').match(/«(.+?)»/) || [])[1] || '');
+    if (blk) {
+      const chks = (db.checklists || []).filter((c) => c && c.date === n.date && c.block === blk);
+      const chk = chks.find((c) => c.who === n.actor) || chks[chks.length - 1];
+      if (chk && Array.isArray(chk.photos)) {
+        chk.photos.forEach((p) => {
+          if (!p) return;
+          addMedia(p.url, p.step, p.comment);
+          if (p.comment) res.comments.push({ who: chk.who || n.actor, time: p.completedAt || '', label: p.step || 'Пункт чек-листа', text: p.comment, meta: p.isIncident ? 'Проблема' : '' });
+        });
+      }
+      incs.filter((x) => x && x.date === n.date && x.block === blk && x !== inc).forEach((x) => {
+        const list = (Array.isArray(x.photos) && x.photos.length ? x.photos : (x.photo ? [x.photo] : []));
+        list.forEach((u, i) => addMedia(u, (x.step || 'Проблема') + (list.length > 1 ? ' · кадр ' + (i + 1) : ''), x.text));
+        if (x.text && !x.isOverdueAuto) res.comments.push({ who: x.who || n.actor, time: x.time || '', label: x.step || 'Проблема', text: x.text, meta: [x.priority, x.status].filter(Boolean).join(' · ') });
+      });
+    }
+  }
+  return res;
+}
+function ntfMediaBigHtml(m) {
+  if (!m) return '<div class="ntf-empty">📷 К этому уведомлению фото или видео не приложено</div>';
+  const u = esc(m.url);
+  if (/^data:video\/|\.(mp4|webm|mov)(\?|$)/i.test(m.url)) return '<video src="' + u + '" controls autoplay muted playsinline class="ntf-big"></video>';
+  return '<a href="' + u + '" target="_blank" rel="noopener"><img src="' + u + '" alt="' + esc(m.label || 'Фото') + '" class="ntf-big"></a>';
+}
+function closeNtfModal() {
+  const m = $('ownerNtfModal');
+  if (m) m.remove();
+  document.removeEventListener('keydown', ntfEsc, true);
+}
+function ntfEsc(e) { if (e.key === 'Escape') { e.preventDefault(); closeNtfModal(); } }
+function openNtfModal(id) {
+  const db = getUDB();
+  const n = (db.liveNotifications || []).find((x) => x && x.id === id);
+  if (!n) return;
+  closeNtfModal();
+  const data = ntfCollect(n, db);
+  const thumbs = data.media.length > 1
+    ? '<div class="ntf-thumbs">' + data.media.map((m, i) => {
+        const isVid = /^data:video\/|\.(mp4|webm|mov)(\?|$)/i.test(m.url);
+        return '<button type="button" class="ntf-th' + (i === 0 ? ' on' : '') + '" data-ntf-th="' + i + '">' +
+          (isVid ? '<span>▶</span>' : '<img src="' + esc(m.url) + '" alt="">') + '</button>';
+      }).join('') + '</div>'
+    : '';
+  const comments = data.comments.length
+    ? data.comments.map((c) =>
+        '<div class="ntf-cm"><div class="ntf-cm-h"><b>' + esc(c.who) + '</b>' + (c.time ? ' <span class="mu">· ' + esc(c.time) + '</span>' : '') +
+        (c.label ? ' <span class="mu">· ' + esc(c.label) + '</span>' : '') + '</div>' +
+        '<div class="ntf-cm-t">' + esc(c.text) + '</div>' +
+        (c.meta ? '<div class="mu" style="font-size:12px;margin-top:2px">' + esc(c.meta) + '</div>' : '') + '</div>').join('')
+    : '<div class="ntf-cm"><div class="ntf-cm-t">' + esc(n.text || 'Подробностей нет.') + '</div></div>';
+  const wrap = document.createElement('div');
+  wrap.id = 'ownerNtfModal';
+  wrap.className = 'ntf-modal';
+  wrap.innerHTML =
+    '<div class="ntf-card" role="dialog" aria-modal="true" aria-label="Уведомление">' +
+      '<div class="ntf-head"><div><b>' + esc(n.title) + '</b><div class="mu" style="font-size:12.5px">' + dmy(n.date) + ' ' + esc(n.time) + ' · ' + esc(n.actor) + (data.inc ? ' · ' + esc(data.inc.id) : '') + '</div></div>' +
+      '<button type="button" class="b" id="ntfCloseBtn">✕</button></div>' +
+      (data.media.length ? '<div class="ntf-media" id="ntfMediaBox">' + ntfMediaBigHtml(data.media[0]) + '</div>' + thumbs : '') +
+      '<div class="ntf-sec">' + (data.media.length ? '💬 Комментарий баристы' : 'ℹ️ Что произошло') + '</div>' + comments +
+    '</div>';
+  document.body.appendChild(wrap);
+  document.addEventListener('keydown', ntfEsc, true);
+  try { $('ntfCloseBtn').focus(); } catch (_) {}
+  wrap.addEventListener('click', (e) => {
+    if (e.target === wrap || e.target.id === 'ntfCloseBtn') { closeNtfModal(); return; }
+    const th = e.target.closest('[data-ntf-th]');
+    if (th) {
+      const i = Number(th.dataset.ntfTh);
+      const box = $('ntfMediaBox'); if (box) box.innerHTML = ntfMediaBigHtml(data.media[i]);
+      wrap.querySelectorAll('.ntf-th').forEach((b) => b.classList.toggle('on', b === th));
+    }
+  });
+  // открытое уведомление считается прочитанным
+  if (!n.read) {
+    n.read = true;
+    try { saveUDB(db); if (window.coffeeBus) window.coffeeBus.emit('mutation', { action: 'notifications_read' }); } catch (_) {}
+    renderOwnerNotificationsDrawer();
+  }
+}
+document.addEventListener('click', (e) => {
+  const row = e.target && e.target.closest && e.target.closest('[data-ntf-id]');
+  if (row) openNtfModal(row.getAttribute('data-ntf-id'));
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const row = e.target && e.target.closest && e.target.closest('[data-ntf-id]');
+  if (row) { e.preventDefault(); openNtfModal(row.getAttribute('data-ntf-id')); }
+});
 
 /* =========================================================================
    1. ДАШБОРД — ТОЛЬКО КРАТКАЯ ИНФОРМАЦИЯ («ВСЁ ЛИ В ПОРЯДКЕ?»)

@@ -143,6 +143,8 @@ window.coffeeNotify = {
       title: String(evt.title || 'Уведомление'),
       text: String(evt.text || ''),
       actor: String(evt.actor || 'Терминал'),
+      incId: String(evt.incId || ''),
+      block: String(evt.block || ''),
       read: false
     };
     // Защита от дублирования одинаковых уведомлений подряд

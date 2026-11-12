@@ -279,7 +279,7 @@ $('csv').onclick = () => {
 $('print').onclick = () => window.print();
 
 /* ---------- тема ---------- */
-const curTheme = () => document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const curTheme = () => document.documentElement.getAttribute('data-theme') ||'light';
 function paintTheme() { const k = curTheme() === 'dark'; $('theme').textContent = k ? '☀️' : '🌙'; $('theme').setAttribute('aria-label', k ? 'Светлая тема' : 'Тёмная тема'); }
 $('theme').onclick = () => { const n = curTheme() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('coffee_illy_theme', n); } catch (e) {} paintTheme(); };
 paintTheme();

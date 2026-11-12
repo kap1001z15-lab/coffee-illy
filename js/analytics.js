@@ -718,6 +718,8 @@ window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
           window.coffeeNotify.push(db, {
             level: 'critical',
             type: 'overdue',
+            incId: incId,
+            block: blk,
             actor: activeBarista,
             title: '⏰ Просрочен чек-лист «' + blk + '»',
             text: 'Дедлайн ' + win.deadline + ' истёк (дежурный: ' + activeBarista + '). Доступ закрыт, создан инцидент ' + incId + '.',

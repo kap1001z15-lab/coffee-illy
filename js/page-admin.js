@@ -681,7 +681,7 @@ $('panel').addEventListener('click',(e)=>{
 });
 
 /* ----- тема ----- */
-const cur=()=>document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+const cur=()=>document.documentElement.getAttribute('data-theme')||'light';
 const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
 $('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
 paint();load();

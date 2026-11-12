@@ -1,0 +1,190 @@
+/* Светлая тема по умолчанию. Подключается ПОСЛЕ основных стилей и действует,
+   пока не включена тёмная (кнопка 🌙/☀️). Тёмная тема остаётся как была. */
+
+:root:not([data-theme=dark]) {
+  color-scheme: light;
+  --bg: #faf6f0;
+  --surface: #ffffff;
+  --ink: #2c2420;
+  --muted: #7b6f66;
+  --line: #ece2d6;
+  --brew: #9a5f33;
+  --crema: #c98b4f;
+  --accent: #9a5f33;
+  --good: #2c8a58;
+  --bad: #c7432b;
+  --warn: #b57a1c;
+  --espresso: #2c2420;
+  --cream: #fffaf3;
+  --chip: #f3ebe1;
+  --shadow: 0 1px 2px rgba(60, 40, 20, .05), 0 10px 24px -16px rgba(60, 40, 20, .22);
+}
+
+:root:not([data-theme=dark]) body { background: var(--bg); }
+
+/* ---------- Шапка: светлая и компактная ---------- */
+:root:not([data-theme=dark]) header,
+:root:not([data-theme=dark]) .app-header {
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 0 0 20px 20px;
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 8px 24px -18px rgba(60, 40, 20, .35);
+}
+:root:not([data-theme=dark]) header { padding-bottom: 10px; }
+:root:not([data-theme=dark]) header .sub,
+:root:not([data-theme=dark]) .app-header .sub { color: var(--muted); }
+:root:not([data-theme=dark]) .brand h1,
+:root:not([data-theme=dark]) .app-header h1 { color: var(--ink); }
+:root:not([data-theme=dark]) .brand h1 svg,
+:root:not([data-theme=dark]) .app-header h1 svg { stroke: var(--brew); }
+
+:root:not([data-theme=dark]) .theme-btn,
+:root:not([data-theme=dark]) .app-header .theme-btn,
+:root:not([data-theme=dark]) #ownerNotifBtn {
+  border: 1px solid var(--line) !important;
+  background: var(--chip) !important;
+  color: var(--ink) !important;
+}
+:root:not([data-theme=dark]) .barista-sel {
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+}
+
+/* Переключатели в шапке */
+:root:not([data-theme=dark]) .tabs,
+:root:not([data-theme=dark]) .owner-nav,
+:root:not([data-theme=dark]) .app-header .tabs,
+:root:not([data-theme=dark]) #ownerMainNav {
+  background: var(--chip);
+}
+:root:not([data-theme=dark]) .tabs button,
+:root:not([data-theme=dark]) .owner-nav a,
+:root:not([data-theme=dark]) .app-header .tabs a {
+  color: var(--muted);
+}
+:root:not([data-theme=dark]) .tabs button[aria-selected=true],
+:root:not([data-theme=dark]) .owner-nav a.on,
+:root:not([data-theme=dark]) .app-header .tabs a.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(60, 40, 20, .14);
+}
+:root:not([data-theme=dark]) .steps i { background: var(--line); }
+:root:not([data-theme=dark]) .steps i.done { background: var(--crema); }
+:root:not([data-theme=dark]) .steps i.now { background: var(--brew); }
+
+/* Блоки чек-листов в терминале: три колонки, меньше высоты */
+:root:not([data-theme=dark]) #termModeSwitch {
+  background: var(--chip) !important;
+  margin: 10px 0 8px;
+}
+:root:not([data-theme=dark]) #termModeSwitch button {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border-color: transparent !important;
+  min-height: 42px !important;
+}
+:root:not([data-theme=dark]) #termModeSwitch button.ok {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+  box-shadow: 0 1px 3px rgba(60, 40, 20, .12);
+}
+:root:not([data-theme=dark]) #termTimelineTabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 6px !important;
+  margin-top: 6px !important;
+}
+:root:not([data-theme=dark]) #termTimelineTabs button {
+  min-height: 46px !important;
+  padding: 5px 3px !important;
+  font-size: 12.5px !important;
+  background: var(--chip) !important;
+  color: var(--ink) !important;
+  border: 1px solid transparent !important;
+}
+:root:not([data-theme=dark]) #termTimelineTabs button small,
+:root:not([data-theme=dark]) #termTimelineTabs button .t { color: var(--muted); }
+:root:not([data-theme=dark]) #termTimelineTabs button[aria-selected="true"] {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border-color: var(--brew) !important;
+  box-shadow: 0 1px 4px rgba(154, 95, 51, .28);
+}
+
+/* ---------- Карточки и кнопки ---------- */
+:root:not([data-theme=dark]) .panel,
+:root:not([data-theme=dark]) .card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+:root:not([data-theme=dark]) .btn {
+  background: var(--brew);
+  color: #fff;
+  box-shadow: 0 8px 18px -12px rgba(154, 95, 51, .8);
+}
+:root:not([data-theme=dark]) .btn:disabled { background: #d9cdbf; color: #fff; box-shadow: none; }
+:root:not([data-theme=dark]) .seg button { background: var(--chip); border-color: transparent; color: var(--ink); }
+:root:not([data-theme=dark]) .seg button.on { background: var(--brew); color: #fff; }
+:root:not([data-theme=dark]) .seg button.ok { background: color-mix(in srgb, var(--good) 12%, #fff); color: var(--good); }
+:root:not([data-theme=dark]) .seg button.bad { background: color-mix(in srgb, var(--bad) 12%, #fff); color: var(--bad); }
+:root:not([data-theme=dark]) .seg button.warn { background: color-mix(in srgb, var(--warn) 14%, #fff); color: var(--warn); }
+:root:not([data-theme=dark]) .toast { background: var(--ink); color: #fff; }
+:root:not([data-theme=dark]) .meter { background: var(--chip); }
+
+/* Окна */
+:root:not([data-theme=dark]) dialog {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+}
+:root:not([data-theme=dark]) dialog::backdrop { background: rgba(44, 36, 32, .38); }
+
+/* Поля ввода */
+:root:not([data-theme=dark]) input,
+:root:not([data-theme=dark]) textarea,
+:root:not([data-theme=dark]) select {
+  background-color: #fff;
+  border-color: var(--line);
+}
+
+/* ---------- Навигация владельца и статусы ---------- */
+:root:not([data-theme=dark]) #ownerMainNav {
+  background: var(--chip) !important;
+  flex-wrap: nowrap !important;
+}
+:root:not([data-theme=dark]) #ownerMainNav button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 7px 6px !important;
+  font-size: 13px !important;
+}
+:root:not([data-theme=dark]) #ownerMainNav button.on {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 0 1px 3px rgba(60, 40, 20, .12);
+}
+:root:not([data-theme=dark]) .net-pill.online { background: #e6f4ec; color: #1f7a4c; border-color: #bfe3cf; }
+:root:not([data-theme=dark]) .net-pill.offline { background: #fbf0da; color: #8a5a0b; border-color: #ecd29c; }
+:root:not([data-theme=dark]) .net-pill.syncing { background: #e4effb; color: #2b64a5; border-color: #bcd5f0; }
+
+/* Окно уведомления */
+:root:not([data-theme=dark]) .ntf-modal { background: rgba(44, 36, 32, .45); }
+:root:not([data-theme=dark]) .ntf-card { box-shadow: 0 24px 50px -24px rgba(60, 40, 20, .5); }
+:root:not([data-theme=dark]) .ntf-empty { color: var(--muted); }
+:root:not([data-theme=dark]) .ntf-media { background: var(--chip); }
+
+/* Форма поломки */
+:root:not([data-theme=dark]) #quickIncDlg::backdrop { background: rgba(44, 36, 32, .4); backdrop-filter: none; }
+:root:not([data-theme=dark]) #qiCancel { background: var(--chip); color: var(--ink); box-shadow: none; }
+:root:not([data-theme=dark]) .sos-btn { color: var(--bad) !important; }
+.sos-btn { font-size: 17px; }

@@ -41,7 +41,7 @@ let userName = (function () {
 const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {} };
 const tgt = (f) => { try { return f(); } catch (e) {} };
 $("loc").textContent = LOCATION; $("who").textContent = userName;
-const curTheme = () => document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+const curTheme = () => document.documentElement.getAttribute("data-theme") ||'light';
 function paintTheme() { const d = curTheme() === "dark"; $("theme").textContent = d ? "☀️" : "🌙"; $("theme").setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема"); }
 $("theme").onclick = () => { const n = curTheme() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {} paintTheme(); };
 paintTheme();
@@ -49,9 +49,9 @@ paintTheme();
 if (tg) {
   tgt(() => tg.ready()); tgt(() => tg.expand()); tgt(() => tg.disableVerticalSwipes());     // не закрывается случайным свайпом вниз
   const hasTheme = () => { try { return !!localStorage.getItem("coffee_illy_theme"); } catch (e) { return false; } };
-  const tgTheme = () => { if (!hasTheme() && tg.colorScheme) { document.documentElement.setAttribute("data-theme", tg.colorScheme === "dark" ? "dark" : "light"); paintTheme(); } };
+  const tgTheme = () => { /* светлая тема по умолчанию: тему Telegram не копируем */ };
   tgTheme(); tgt(() => tg.onEvent("themeChanged", tgTheme));
-  tgt(() => tg.setHeaderColor("#5a3a29"));
+  tgt(() => tg.setHeaderColor("#fbf6ef"));
   tgt(() => tg.setBackgroundColor(curTheme() === "dark" ? "#161211" : "#f6ece2"));
   tgt(() => tg.BackButton.onClick(() => { const b = $("backBtn"); if (!b.hidden && !b.disabled) b.click(); }));   // системная «назад» = предыдущий шаг
   setInterval(() => {        // подтверждение закрытия, пока есть несохранённая работа; кнопка «назад» на шагах 2+
@@ -597,39 +597,6 @@ if ($("addMorePhotoBtn")) {
 }
 
 /* Быстрый штамп-снимок для тестирования или при блокировке камеры браузером */
-function makeStampedFallbackPhoto() {
-  const c = document.createElement("canvas");
-  c.width = 800; c.height = 500;
-  const x = c.getContext("2d");
-  const g = x.createLinearGradient(0, 0, c.width, c.height);
-  g.addColorStop(0, "#2e1b11"); g.addColorStop(1, "#5a3a29");
-  x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
-  x.strokeStyle = "rgba(224,167,106,.45)"; x.lineWidth = 3;
-  x.strokeRect(22, 22, c.width - 44, c.height - 44);
-  x.fillStyle = "#e0a76a"; x.font = "700 22px system-ui,sans-serif";
-  x.fillText("📸 ФОТОФИКСАЦИЯ ПУНКТА · КАДР №" + (photos.length + 1), 44, 90);
-  x.fillStyle = "#fff"; x.font = "700 26px system-ui,sans-serif";
-  x.fillText(String((cur[idx] && cur[idx].title) || "Проверка").slice(0, 40), 44, 150);
-  x.fillStyle = "#f6ece2"; x.font = "500 19px system-ui,sans-serif";
-  x.fillText("Блок: " + block + " · Сотрудник: " + userName, 44, 205);
-  x.fillStyle = "rgba(0,0,0,.6)"; x.fillRect(0, c.height - 54, c.width, 54);
-  x.fillStyle = "#fff"; x.font = "600 17px system-ui,sans-serif";
-  x.fillText(new Date().toLocaleString("ru-RU") + " · " + LOCATION, 24, c.height - 20);
-  return c.toDataURL("image/jpeg", 0.8);
-}
-
-if ($("simPhotoBtn")) {
-  $("simPhotoBtn").onclick = () => {
-    const dataUrl = makeStampedFallbackPhoto();
-    photos.push(dataUrl);
-    photo = photos[0];
-    setPhotoUI();
-    photoMsg("✓ Добавлен контрольный снимок (всего кадров: " + photos.length + ")", "good");
-    validate();
-    saveAnswer();
-  };
-}
-
 /* Встроенный фотообразец прямо внутри блока информации задачи (не выглядит как отдельная задача) */
 if ($("btnSampleModal") && $("btnSampleModal").tagName !== "SUMMARY") {
   $("btnSampleModal").onclick = () => {
@@ -701,24 +668,19 @@ async function startStream() {
 }
 function camError(e) {
   const n = (e && e.name) || "";
-  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере — нажмите «📸 Контрольный снимок со штампом» ниже." : "Камера недоступна — нажмите «📸 Контрольный снимок со штампом».", "bad");
+  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере. Разрешите камеру в настройках браузера или Telegram и нажмите «Открыть камеру» ещё раз." : "Камера недоступна на этом устройстве. Снимок можно сделать только камерой — откройте терминал в браузере телефона.", "bad");
 }
 async function openCamera() {
   if (photoBusy || !$("cam").hidden) return;
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-    if ($("simPhotoBtn")) $("simPhotoBtn").click();
-    return;
+    camError(); return;
   }
+  camFacing = (cur[idx] && /селфи|selfie/i.test(cur[idx].title || "")) ? "user" : "environment";
   $("cam").hidden = false; setMode("photo"); photoMsg("");
   try { await startStream(); }
   catch (e) {
     closeCamera();
-    if ($("simPhotoBtn")) {
-      $("simPhotoBtn").click();
-      toast("📸 Камера недоступна в этом окне — прикреплён контрольный снимок со штампом");
-    } else {
-      camError(e);
-    }
+    camError(e);
   }
 }
 function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
@@ -845,7 +807,7 @@ $("nextBtn").onclick = async () => {
     if (!choiceMade) {
       toast("👆 Сначала выберите «✅ Всё в норме» или «⚠️ Обнаружена проблема»");
     } else if (needPhoto && !hasPhoto) {
-      toast("📸 Для этого шага нужно фото — нажмите «Открыть камеру» или «📸 Контрольный снимок со штампом»");
+      toast("📸 Для этого шага нужно фото — нажмите «Открыть камеру»");
     } else if (incident && !commentOk) {
       toast("✍️ Опишите проблему в комментарии (минимум 3 символа)");
       if ($("incidentComment")) $("incidentComment").focus();
@@ -1072,20 +1034,19 @@ function renderQiMediaPreview() {
     '</div>';
   }).join("");
 }
-function handleQiFiles(fileList) {
-  Array.from(fileList || []).forEach((f) => {
-    const r = new FileReader();
-    r.onload = () => {
-      if (r.result) {
-        qiMediaList.push(String(r.result));
-        renderQiMediaPreview();
-      }
-    };
-    r.readAsDataURL(f);
-  });
+/* Только живая камера (фото / видео / фронталка) — без выбора из галереи */
+async function captureQi(mode) {
+  if (!window.coffeeCamera) { toast("Камера недоступна"); return; }
+  const src = await window.coffeeCamera.open({ mode, facing: "environment", stamp: LOCATION + " · " + userName });
+  if (src) { qiMediaList.push(src); renderQiMediaPreview(); }
 }
-if ($("qiPhotoIn")) $("qiPhotoIn").addEventListener("change", (e) => { handleQiFiles(e.target.files); e.target.value = ""; });
-if ($("qiVideoIn")) $("qiVideoIn").addEventListener("change", (e) => { handleQiFiles(e.target.files); e.target.value = ""; });
+function bindBtn(id, fn) {
+  const b = $(id); if (!b) return;
+  b.addEventListener("click", fn);
+  b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } });
+}
+bindBtn("qiPhotoBtn", () => captureQi("photo"));
+bindBtn("qiVideoBtn", () => captureQi("video"));
 if ($("qiMediaPreview")) {
   $("qiMediaPreview").addEventListener("click", (e) => {
     const b = e.target.closest("[data-qidel]");
@@ -1094,15 +1055,15 @@ if ($("qiMediaPreview")) {
     renderQiMediaPreview();
   });
 }
-if ($("quickIncidentBtn")) {
-  $("quickIncidentBtn").onclick = () => {
-    $("qiStep").value = "";
-    $("qiText").value = "";
-    qiMediaList = [];
-    renderQiMediaPreview();
-    safeShowModal($("quickIncDlg"));
-  };
+function openQuickInc() {
+  $("qiStep").value = "";
+  $("qiText").value = "";
+  qiMediaList = [];
+  renderQiMediaPreview();
+  safeShowModal($("quickIncDlg"));
 }
+/* кнопка «Сообщить о поломке» доступна с любого экрана: в шапке и во вкладке «Инфо» */
+["quickIncidentBtn", "quickIncidentTopBtn"].forEach((id) => { if ($(id)) $(id).onclick = openQuickInc; });
 if ($("qiCancel")) $("qiCancel").onclick = () => safeCloseModal($("quickIncDlg"));
 if ($("qiCloseX")) $("qiCloseX").onclick = () => safeCloseModal($("quickIncDlg"));
 if ($("quickIncForm")) {
@@ -1799,31 +1760,31 @@ if ($("applyManCashBtn")) {
 
 let quickCounterPhotoData = "";
 let quickPaperPhotoData = "";
-function handleQuickCashPhoto(inp, isCounter) {
-  const f = inp && inp.files && inp.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = () => {
-    if (isCounter) {
-      quickCounterPhotoData = String(r.result || "");
-      if ($("lblPhotoCounter")) $("lblPhotoCounter").textContent = "✓ Фото счётчика прикреплено";
-    } else {
-      quickPaperPhotoData = String(r.result || "");
-      if ($("lblPhotoPaper")) $("lblPhotoPaper").textContent = "✓ Фото бумажного отчёта прикреплено";
-    }
-    const prev = $("quickCashPhotosPreview");
-    if (prev) {
-      prev.hidden = false;
-      prev.innerHTML = [
-        quickCounterPhotoData ? '<img src="' + quickCounterPhotoData + '" style="height:68px;border-radius:10px;border:2px solid var(--good)">' : '',
-        quickPaperPhotoData ? '<img src="' + quickPaperPhotoData + '" style="height:68px;border-radius:10px;border:2px solid var(--good)">' : ''
-      ].join("");
-    }
-  };
-  r.readAsDataURL(f);
+function setQuickCashPhoto(data, isCounter) {
+  if (!data) return;
+  if (isCounter) {
+    quickCounterPhotoData = data;
+    if ($("lblPhotoCounter")) $("lblPhotoCounter").textContent = "✓ Фото счётчика прикреплено";
+  } else {
+    quickPaperPhotoData = data;
+    if ($("lblPhotoPaper")) $("lblPhotoPaper").textContent = "✓ Фото бумажного отчёта прикреплено";
+  }
+  const prev = $("quickCashPhotosPreview");
+  if (prev) {
+    prev.hidden = false;
+    prev.innerHTML = [
+      quickCounterPhotoData ? '<img src="' + quickCounterPhotoData + '" style="height:68px;border-radius:10px;border:2px solid var(--good)">' : '',
+      quickPaperPhotoData ? '<img src="' + quickPaperPhotoData + '" style="height:68px;border-radius:10px;border:2px solid var(--good)">' : ''
+    ].join("");
+  }
 }
-if ($("inPhotoCounter")) $("inPhotoCounter").addEventListener("change", (e) => handleQuickCashPhoto(e.target, true));
-if ($("inPhotoPaper")) $("inPhotoPaper").addEventListener("change", (e) => handleQuickCashPhoto(e.target, false));
+async function captureQuickCash(isCounter) {
+  if (!window.coffeeCamera) { toast("Камера недоступна"); return; }
+  const src = await window.coffeeCamera.open({ mode: "photo", facing: "environment", stamp: LOCATION + " · " + userName });
+  if (src) setQuickCashPhoto(src, isCounter);
+}
+bindBtn("inPhotoCounter", () => captureQuickCash(true));
+bindBtn("inPhotoPaper", () => captureQuickCash(false));
 if ($("quickSubmitPaperCashBtn")) {
   $("quickSubmitPaperCashBtn").onclick = async () => {
     const cntVal = Number($("quickCounterIn") ? $("quickCounterIn").value : 0) || 0;
