@@ -1597,12 +1597,18 @@ async function coffeeFlushOutbox(force) {
         if (sess0 && sess0.pinHash) item.payload.pinHash = sess0.pinHash; // не шлём устаревший/дефолтный хеш: неверный PIN копит серверный счётчик блокировки
         if (_serverTokenStale() && await _reauthServerSession()) item.payload.sessionToken = window.coffeeAuth.getSessionToken();
       } catch (_) {}
-      let result = await _sendCorsSafePost(item.url, item.payload, 20000);
+      let result = await _sendCorsSafePost(item.url, item.payload, 60000);
       if (!result.ok && !result.networkError && AUTH_ERR_RE.test(String(result.error || '')) && await _reauthServerSession()) {
         item.payload.sessionToken = window.coffeeAuth.getSessionToken();
-        result = await _sendCorsSafePost(item.url, item.payload, 20000);
+        result = await _sendCorsSafePost(item.url, item.payload, 60000);
       }
-      if (result.networkError) { window._coffeeLastSyncOk = false; break; }
+      if (result.networkError) {
+        window._coffeeLastSyncOk = false;
+        item.lastError = 'NET:' + String(result.error || 'NETWORK_ERROR') + (result.httpStatus ? ' HTTP ' + result.httpStatus : '');
+        item.netFails = (Number(item.netFails) || 0) + 1;
+        _writeCoffeeOutbox(queue);
+        break;
+      }
       window._coffeeLastSyncOk = true;
       if (result.ok !== true) {
         item.lastError = String(result.error || 'SERVER_REJECTED');
@@ -1665,7 +1671,10 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
     el.onclick = function () { window.coffeeOutboxHelp(); };
     if (blocked) {
       el.className = 'net-pill offline';
-      const why = /PIN_REQUIRED|FORBIDDEN/i.test(blocked) ? 'нужен повторный вход'
+      const why = /REQUEST_TIMEOUT/.test(blocked) ? 'сервер не отвечает (таймаут)'
+        : /INVALID_SERVER_RESPONSE/.test(blocked) ? 'сервер вернул не JSON (проверьте доступ развёртывания)'
+        : /NET:NETWORK_ERROR/.test(blocked) ? 'нет связи с сервером Google'
+        : /PIN_REQUIRED|FORBIDDEN/i.test(blocked) ? 'нужен повторный вход'
         : /UNKNOWN_ACTION/i.test(blocked) ? 'сервер (Code.gs) устарел'
         : /LOCK|timeout|Lock/i.test(blocked) ? 'сервер занят' : 'ошибка сервера';
       el.textContent = '⚠️ Не отправлено (' + pending + '): ' + why;
@@ -1904,11 +1913,11 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       }));
     }
 
-    let result = await _sendCorsSafePost(url, operation, ms || 20000);
+    let result = await _sendCorsSafePost(url, operation, Math.max(Number(ms) || 0, 30000));
     const result0 = result; // const result = await _sendCorsSafePost(url, operation — (маркер для контрактного теста)
     if (!result0.ok && !result0.networkError && AUTH_ERR_RE.test(String(result0.error || '')) && await _reauthServerSession()) {
       operation.sessionToken = window.coffeeAuth.getSessionToken();
-      result = await _sendCorsSafePost(url, operation, ms || 20000);
+      result = await _sendCorsSafePost(url, operation, Math.max(Number(ms) || 0, 30000));
     }
     if (result.ok === true) {
       window._coffeeLastSyncOk = true;

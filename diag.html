@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Диагностика синхронизации</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;background:#1b1f23;color:#e8e8e8;margin:0;padding:20px;max-width:820px}
+h1{font-size:20px}button{background:#d9a273;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;margin:4px 6px 4px 0}
+pre{background:#12161a;padding:14px;border-radius:10px;white-space:pre-wrap;word-break:break-word}.ok{color:#5fd68a}.bad{color:#ff7b6b}</style></head>
+<body><h1>Диагностика синхронизации</h1>
+<p>Нажмите «Запустить» и отправьте результат разработчику (кнопка «Копировать»).</p>
+<button id="run">Запустить проверку</button><button id="copy">Копировать</button><button id="clr">Очистить очередь</button>
+<pre id="out">Ожидание…</pre>
+<script src="js/defaults.js"></script>
+<script>
+const out=document.getElementById('out');let log=[];
+function p(t,c){log.push(t);out.innerHTML=log.map(x=>x.replace(/&/g,'&amp;').replace(/</g,'&lt;')).join('\n');}
+async function t(name,fn){const s=performance.now();try{const r=await fn();p((r.ok?'✅ ':'❌ ')+name+' — '+Math.round(performance.now()-s)+' мс\n    '+r.msg);}catch(e){p('❌ '+name+' — '+Math.round(performance.now()-s)+' мс\n    '+(e&&e.name)+': '+(e&&e.message));}}
+async function req(url,opt){const ac=new AbortController();const to=setTimeout(()=>ac.abort(),60000);
+  try{const r=await fetch(url,Object.assign({signal:ac.signal},opt||{}));const tx=await r.text();let j=null;try{j=JSON.parse(tx)}catch(_){}
+    return {status:r.status,json:j,text:tx.slice(0,200)};}finally{clearTimeout(to)}}
+document.getElementById('run').onclick=async()=>{
+  log=[];const API=window.COFFEE.API_URL;
+  p('Время: '+new Date().toLocaleString()+'\nОнлайн: '+navigator.onLine+'\nAPI: '+API.slice(0,60)+'…\n');
+  await t('1. Сервер доступен (get_rev)',async()=>{const r=await req(API+'?action=get_rev&t='+Date.now(),{cache:'no-store'});
+    return {ok:!!(r.json&&r.json.ok),msg:r.json?JSON.stringify(r.json):('НЕ JSON, HTTP '+r.status+': '+r.text)}});
+  await t('2. Публичные данные (get_checklists)',async()=>{const r=await req(API+'?action=get_checklists&nocache=1');
+    return {ok:!!(r.json&&r.json.ok!==false),msg:r.json?('ok, ключи: '+Object.keys(r.json).slice(0,8).join(', ')+(r.json.error?(' ОШИБКА: '+r.json.error):'')):('НЕ JSON: '+r.text)}});
+  let sess=null;try{sess=JSON.parse(localStorage.getItem('coffee_session_token_v21')||'null')}catch(_){}
+  p('\nСессия: '+(sess?('есть, роль '+sess.role+', токен '+String(sess.token).slice(0,8)+'…, '+(String(sess.token).indexOf('st_local_')===0?'ЛОКАЛЬНЫЙ (сервер его не знает)':'серверный')+', до '+new Date(sess.expiresAt).toLocaleString()):'НЕТ — войдите в админку по коду')+'\n');
+  if(sess){
+    let tok=sess.token;
+    await t('3. Вход на сервере (auth_login)',async()=>{const r=await req(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'auth_login',role:sess.role,staffName:sess.staffName,pinHash:sess.pinHash})});
+      if(r.json&&r.json.ok&&r.json.sessionToken){tok=r.json.sessionToken;return{ok:true,msg:'получен серверный токен'}}
+      return {ok:false,msg:r.json?JSON.stringify(r.json):('НЕ JSON, HTTP '+r.status+': '+r.text)}});
+    await t('4. Токен принимается сервером (чтение раздела «Управление»)',async()=>{const r=await req(API+'?action=admin&nocache=1&sessionToken='+encodeURIComponent(tok)+'&pinHash='+encodeURIComponent(sess.pinHash));
+      return {ok:!!(r.json&&r.json.ok!==false&&!r.json.error),msg:r.json?(r.json.error?('ОШИБКА: '+r.json.error):'ok, ключи: '+Object.keys(r.json).slice(0,8).join(', ')):('НЕ JSON, HTTP '+r.status+': '+r.text)}});
+  }
+  let q=[];try{q=JSON.parse(localStorage.getItem('coffee_api_outbox_v1')||'[]')}catch(_){}
+  p('\nОчередь неотправленных: '+q.length);q.forEach((x,i)=>p('  '+(i+1)+'. '+(x.payload&&x.payload.action)+' | ошибка: '+(x.lastError||'—')+' | попыток: '+(x.attempts||0)+' | создано: '+new Date(x.createdAt).toLocaleString()));
+  let f=[];try{f=JSON.parse(localStorage.getItem('coffee_api_outbox_failed_v1')||'[]')}catch(_){}
+  p('Отклонённых навсегда: '+f.length);f.forEach((x,i)=>p('  '+(i+1)+'. '+(x.payload&&x.payload.action)+' | '+x.lastError));
+  p('\nГотово.');
+};
+document.getElementById('copy').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(log.join('\n'));
+document.getElementById('clr').onclick=()=>{if(confirm('Удалить все неотправленные изменения на этом устройстве?')){localStorage.removeItem('coffee_api_outbox_v1');localStorage.removeItem('coffee_illy_queue');p('Очередь очищена.')}};
+</script></body></html>

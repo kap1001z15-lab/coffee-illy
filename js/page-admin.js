@@ -15,7 +15,7 @@ function errText(e){const m=String((e&&e.message)||e||'');
   return m.replace(/^Error:\s*/,'')||'неизвестная ошибка'}
 
 async function call(action,data){
-  const d=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify(Object.assign({action,pin:getPin()},data||{}))},5000);
+  const d=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify(Object.assign({action,pin:getPin()},data||{}))},30000);
   if(!d||d.ok===false)throw new Error((d&&d.error)||'ошибка сервера');return d}
 let admBlockFlt = 'all';
 async function load(){
