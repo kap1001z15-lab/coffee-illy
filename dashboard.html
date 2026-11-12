@@ -1,11 +1,56 @@
-<!DOCTYPE html>
-<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Кофейня — дашборд</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icons/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
-
-<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="stylesheet" href="css/dashboard.css">
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5a3a29">
+<title>Кофейня — Дашборд</title>
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script>window.OWNER_START_SECTION='dashboard';</script>
+<link rel="stylesheet" href="css/owner.css">
+</head>
+<body>
+<header class="app-header"><div class="wrap">
+  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4c0 2.5 2.5 2.5 2.5 5M16 3c0 3 2.5 3 2.5 6M22 4c0 2.5 2.5 2.5 2.5 5"/><path d="M5 13h18v7a9 9 0 0 1-18 0v-7Z" fill="rgba(224,167,106,.18)"/><path d="M23 15h2.5a3.5 3.5 0 0 1 0 7H23"/><path d="M3 29h22"/></svg>Кофейня</h1><span class="sub" id="sub">Панель управления</span> <span id="netStatusBadge" class="net-pill online" style="margin-left:6px">🟢 Онлайн</span></div></div>
+  <nav id="ownerMainNav" aria-label="Разделы владельца">
+    <button type="button" data-osec="dashboard" class="on">🏎️ Дашборд</button>
+    <button type="button" data-osec="report">📊 Отчёты</button>
+    <button type="button" data-osec="admin">⚙️ Управление</button>
+  </nav>
+  <div style="display:flex;align-items:center;gap:8px"><button type="button" id="ownerNotifBtn" style="border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#f6ece2;border-radius:12px;height:40px;padding:0 12px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">🔔 <span id="ownerNotifCount">0</span></button><button class="theme-btn" id="theme" type="button" aria-label="Тема">🌙</button></div>
+</div></header>
+<main>
+  <div id="err" class="al" hidden></div>
+  <div id="ownerNotifDrawer" class="card" hidden style="margin-bottom:14px;border:2px solid var(--accent,#9c5a25)"></div>
+
+  <!-- 1. ВСТРОЕННЫЙ ДАШБОРД ВЛАДЕЛЬЦА -->
+  <div id="ownerSecDashboard"></div>
+
+  <!-- 2. ВСТРОЕННЫЕ ФИНАНСОВЫЕ ОТЧЁТЫ И P&L -->
+  <div id="ownerSecReport" hidden></div>
+
+  <!-- 3. ПОЛНОЕ УПРАВЛЕНИЕ И НАСТРОЙКИ ВСЕГО ПРИЛОЖЕНИЯ (9 ВКЛАДОК) -->
+  <div id="content" hidden>
+    <div class="seg" id="tabs" role="tablist" aria-label="Что редактировать">
+      <button data-t="checklists">📋 Таймлайн</button>
+      <button data-t="tasks">📝 Задачи и Инфо</button>
+      <button data-t="inc">🔧 Поломки</button>
+      <button data-t="ttk">☕ Техкарты</button>
+      <button data-t="cash">⚖️ Выручка</button>
+      <button data-t="exp">💸 Расходы</button>
+      <button data-t="staff">👥 Штат</button>
+      <button data-t="audit">⭐ Аудит</button>
+      <button data-t="set">⚙️ Настройки</button>
+    </div>
+    <section class="card" id="panel"></section>
+  </div>
+</main>
+<dialog id="dlg"><form id="dform" method="dialog"><h2 id="dtitle" style="font-size:20px"></h2><div id="dfields"></div><div id="derr" style="color:var(--bad);font-size:14px;margin-top:8px"></div>
+  <div class="acts" style="margin-top:12px"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" id="dsave" value="ok">Сохранить</button></div></form></dialog>
+<div class="toast" id="toast" hidden></div>
 <script src="config.js"></script>
 <script src="js/defaults.js"></script>
 <script src="js/security.js"></script>
@@ -13,67 +58,9 @@
 <script src="js/analytics.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/telegram.js"></script>
-<script>try{if(!window.coffeeAuth||!window.coffeeAuth.isAuthorized('admin'))document.documentElement.classList.add('gate')}catch(e){}</script>
-</head><body>
-<header class="app-header"><div class="wrap">
-  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Панель владельца</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
-  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html" class="on" aria-current="page">Дашборд</a><a href="report.html">Отчёты</a><a href="admin.html">Управление</a></nav>
-  <div class="dp"><button id="prev" type="button" aria-label="Предыдущий день">‹</button><input type="date" id="pick" aria-label="Дата"><button id="next" type="button" aria-label="Следующий день">›</button><button id="reload" type="button" aria-label="Обновить">↻</button></div>
-</div></header>
-<main id="main">
-<div id="err" class="al" hidden></div>
-<section class="card"><div class="row" style="margin-bottom:6px"><span class="mu" id="date">…</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" id="sendDigestBtn" style="border:1px solid var(--good);background:color-mix(in srgb,var(--good) 14%,var(--bg));color:var(--good);border-radius:10px;padding:6px 11px;font-size:12.5px;font-weight:700;cursor:pointer">📲 Скопировать / отправить сводку дня</button></div></div>
-<div id="pitchDrawer" hidden style="margin:8px 0 12px;padding:14px;border-radius:14px;border:2px solid var(--accent,#9c5a25);background:color-mix(in srgb,var(--crema,#c89b6d) 12%,var(--bg));font-size:13px">
-  <b>🎯 Чек-лист демонстрации продукта заказчику (уровень лучших HoReCa-систем):</b>
-  <div class="smart-grid" style="margin-top:8px">
-    <div class="smart-box"><b>1. Изолированный Терминал бариста</b><span class="mu">Пошаговый мастер (1 экран = 1 задача), живой таймер дедлайна, фотообразцы, мульти-фото и база техкарт ТТК.</span></div>
-    <div class="smart-box"><b>2. Автоблокировка чек-листов + Алерт</b><span class="mu">Вне временного окна доступ закрывается, создаётся критический инцидент и уходит пуш в Telegram.</span></div>
-    <div class="smart-box"><b>3. Фрод-контроль счётчика кофемашины</b><span class="mu">Умная сверка разницы счётчика с чеками и списаниями + суммирование 2 смен за день без перезаписи.</span></div>
-    <div class="smart-box"><b>4. Симулятор прибыли и Food Cost %</b><span class="mu">Калькулятор точки безубыточности, ползунки «Что если», калькулятор маржи ТТК и авто-премии KPI.</span></div>
-  </div>
-</div><span class="big" id="rev" style="color:var(--good)">—</span><div class="mu" id="shiftBreak" style="margin:-6px 0 10px"></div>
-<div class="bar"><i id="bar"></i></div><div class="row"><span id="planL">План</span><span id="planR"></span></div></section>
-<section class="card" id="carGaugesSection">
-  <div class="row" style="margin-bottom:6px;flex-wrap:wrap;gap:8px">
-    <div>
-      <h2 style="margin:0">🏎️ Приборная панель: План / Факт (Касса · Транзакции · Средний чек)</h2>
-      <span class="mu" id="gaugePeriodHint">Цветовая индикация: 🟢 План выполнен · 🟡 Отклонение до 15% · 🔴 Ниже плана (внимание!)</span>
-    </div>
-    
-  </div>
-  <div class="gauge-trio" id="dashGaugesTrio"></div>
-</section>
-<div class="k">
-<div class="card"><span class="mu">Транзакций (Чеков)</span><b id="checks">—</b><span class="mu" id="chk2">&nbsp;</span></div>
-<div class="card"><span class="mu">Средний чек</span><b id="avg">—</b><span class="mu">&nbsp;</span></div>
-<div class="card"><span class="mu">Списания</span><b id="wo" style="color:var(--bad)">—</b><span id="woS">&nbsp;</span></div>
-<div class="card"><span class="mu">Открытие смены</span><b id="open">—</b><span id="openS">&nbsp;</span></div></div>
-<section class="card" id="redFlagsSection">
-  <div class="row" style="margin-bottom:6px">
-    <h2 style="margin:0">🚩 Красные флаги системы (Автоконтроль робота: наличные, счётчик проливов кофе и остатки)</h2>
-    <span class="tag no" id="redFlagsCountBadge">Контроль смены</span>
-  </div>
-  <div id="redFlagsList"></div>
-</section>
-<section class="card" id="shiftMatrixCard">
-  <div class="row" style="margin-bottom:4px">
-    <h2 style="margin:0">🧭 Матрица контроля смены (3 чек-листа и нормативы ТЗ п. 8)</h2>
-    <span class="mu" id="matrixSummaryBadge">Автоконтроль окон</span>
-  </div>
-  <div class="pro-matrix-grid" id="shiftMatrixGrid"></div>
-</section>
-<section class="card" id="smartRadarCard">
-  <div class="row" style="margin-bottom:4px">
-    <h2 style="margin:0">🧠 Умная аналитика: прогноз месяца, фрод-контроль счётчиков и резервы роста</h2>
-    <span class="health-ring" id="smartHealthBadge">Индекс: —</span>
-  </div>
-  <div class="smart-grid" id="smartRadarGrid"></div>
-</section>
-<div class="dash-two-col"><section class="card"><h2>Динамика выручки по дням относительно плана</h2><div id="chart"></div><div style="display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:8px;flex-wrap:wrap"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:5px"></i>Доход (выручка)</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--bad);margin-right:5px"></i>Списания и расходы</span></div></section>
-<section class="card"><h2 id="incT">🔧 Поломки и Экшн-план (от бариста, срок 24ч)</h2><div id="inc"></div></section></div>
-<section class="card" id="phC" hidden><h2>Фотоотчёт</h2><div id="ph"></div></section>
-<p class="mu" style="text-align:center;margin-top:18px">Подробности — в разделе <a href="report.html">Отчёты</a> · <a href="admin.html?tab=cash">Управление выручкой</a> · <a href="index.html?tab=cash">Касса терминала</a></p>
-</main>
-<script src="js/page-dashboard.js"></script>
+<script src="tests/unit-tests.js"></script>
+<script src="js/page-admin.js"></script>
+<script src="js/page-owner.js"></script>
 <script src="app.js" defer></script>
-</body></html>
+</body>
+</html>

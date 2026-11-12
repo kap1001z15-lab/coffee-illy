@@ -1456,18 +1456,6 @@ function buildReportResponse(fromStr, toStr) {
 function isPinAuthorized(pinArg) {
   if (window.coffeeAuth) {
     if (window.coffeeAuth.isAuthorized('admin')) return true;
-    try {
-      const hasAdminDom = typeof document !== 'undefined' && (
-        !!document.getElementById('ownerMainNav') ||
-        (!!document.getElementById('panel') && !!document.getElementById('tabs'))
-      );
-      const activeBarista = typeof localStorage !== 'undefined' ? (localStorage.getItem('coffee_active_barista') || '') : '';
-      if (hasAdminDom || activeBarista === 'Администратор') {
-        const expectedHash = window.coffeeAuth.getExpectedOwnerPinHash();
-        window.coffeeAuth.createLocalSession('admin', 'Администратор', expectedHash);
-        return true;
-      }
-    } catch (_) {}
     if (pinArg) return window.coffeeAuth.verifyOwnerPin(pinArg);
     return window.coffeeAuth.isAuthorized('admin');
   }

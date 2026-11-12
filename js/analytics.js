@@ -927,14 +927,34 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
     cogsFromTtk += dayCogs;
     periodPlanTotal += (dp.revenue || 2200);
 
+    const zTot = c.zTotal != null ? Number(c.zTotal) : dayRev;
+    let cntStart = null, cntEnd = null, cntDelta = 0, accCups = 0;
+    shArr.forEach((sh) => {
+      if (sh.prevCounter != null && cntStart === null) cntStart = Number(sh.prevCounter);
+      if (sh.counter != null) cntEnd = Number(sh.counter);
+      if (sh.counter != null && sh.prevCounter != null && Number(sh.counter) >= Number(sh.prevCounter)) {
+        cntDelta += (Number(sh.counter) - Number(sh.prevCounter));
+        accCups += (Number(sh.cups || sh.checks) || 0) + (Number(sh.writeoff || sh.writeoffQty) || 0);
+      }
+    });
     dayByDayPnL.push({
       date: c.date,
       dayCode: dp.dayCode || '',
       barista: c.barista || shArr.map((s) => s.name).join(', '),
       shiftsCount: dayShiftsCnt,
+      shifts: shArr,
       cash: dayCash,
       card: dayCard,
       revenue: dayRev,
+      zTotal: zTot,
+      zDiff: dayRev - zTot,
+      counterStart: cntStart,
+      counterEnd: cntEnd,
+      counterDelta: cntDelta,
+      accountedCups: accCups || dayChecks,
+      counterGap: cntDelta > 0 ? (cntDelta - (accCups || (dayChecks + dayWo))) : 0,
+      topItems: c.topItems || '',
+      comment: c.comment || '',
       plan: dp.revenue || 2200,
       planPct: dp.revenue > 0 ? Math.round((dayRev / dp.revenue) * 100) : 0,
       checks: dayChecks,

@@ -1,12 +1,3 @@
-
-if (window.coffeeAuth) {
-  if (window.coffeeRateLimiter) window.coffeeRateLimiter.reset('owner_admin');
-  if (!window.coffeeAuth.isAuthorized('admin')) {
-    const expHash = window.coffeeAuth.getExpectedOwnerPinHash ? window.coffeeAuth.getExpectedOwnerPinHash() : '1234';
-    window.coffeeAuth.createLocalSession('admin', 'Администратор', expHash);
-  }
-}
-
 /* Клиентский модуль страницы admin.html (v21 Enterprise) */
 const API_URL=window.COFFEE.API_URL,PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
 const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};

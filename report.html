@@ -1,17 +1,56 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Кофейня — отчёты</title><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#5a3a29"><link rel="apple-touch-icon" href="icons/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Кофейня">
-
-<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
-
-<link rel="stylesheet" href="css/report.css">
+<meta name="theme-color" content="#5a3a29">
+<title>Кофейня — Отчёты</title>
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<script>try{var t=localStorage.getItem('coffee_illy_theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script>window.OWNER_START_SECTION='report';</script>
+<link rel="stylesheet" href="css/owner.css">
+</head>
+<body>
+<header class="app-header"><div class="wrap">
+  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4c0 2.5 2.5 2.5 2.5 5M16 3c0 3 2.5 3 2.5 6M22 4c0 2.5 2.5 2.5 2.5 5"/><path d="M5 13h18v7a9 9 0 0 1-18 0v-7Z" fill="rgba(224,167,106,.18)"/><path d="M23 15h2.5a3.5 3.5 0 0 1 0 7H23"/><path d="M3 29h22"/></svg>Кофейня</h1><span class="sub" id="sub">Панель управления</span> <span id="netStatusBadge" class="net-pill online" style="margin-left:6px">🟢 Онлайн</span></div></div>
+  <nav id="ownerMainNav" aria-label="Разделы владельца">
+    <button type="button" data-osec="dashboard" class="on">🏎️ Дашборд</button>
+    <button type="button" data-osec="report">📊 Отчёты</button>
+    <button type="button" data-osec="admin">⚙️ Управление</button>
+  </nav>
+  <div style="display:flex;align-items:center;gap:8px"><button type="button" id="ownerNotifBtn" style="border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#f6ece2;border-radius:12px;height:40px;padding:0 12px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">🔔 <span id="ownerNotifCount">0</span></button><button class="theme-btn" id="theme" type="button" aria-label="Тема">🌙</button></div>
+</div></header>
+<main>
+  <div id="err" class="al" hidden></div>
+  <div id="ownerNotifDrawer" class="card" hidden style="margin-bottom:14px;border:2px solid var(--accent,#9c5a25)"></div>
+
+  <!-- 1. ВСТРОЕННЫЙ ДАШБОРД ВЛАДЕЛЬЦА -->
+  <div id="ownerSecDashboard"></div>
+
+  <!-- 2. ВСТРОЕННЫЕ ФИНАНСОВЫЕ ОТЧЁТЫ И P&L -->
+  <div id="ownerSecReport" hidden></div>
+
+  <!-- 3. ПОЛНОЕ УПРАВЛЕНИЕ И НАСТРОЙКИ ВСЕГО ПРИЛОЖЕНИЯ (9 ВКЛАДОК) -->
+  <div id="content" hidden>
+    <div class="seg" id="tabs" role="tablist" aria-label="Что редактировать">
+      <button data-t="checklists">📋 Таймлайн</button>
+      <button data-t="tasks">📝 Задачи и Инфо</button>
+      <button data-t="inc">🔧 Поломки</button>
+      <button data-t="ttk">☕ Техкарты</button>
+      <button data-t="cash">⚖️ Выручка</button>
+      <button data-t="exp">💸 Расходы</button>
+      <button data-t="staff">👥 Штат</button>
+      <button data-t="audit">⭐ Аудит</button>
+      <button data-t="set">⚙️ Настройки</button>
+    </div>
+    <section class="card" id="panel"></section>
+  </div>
+</main>
+<dialog id="dlg"><form id="dform" method="dialog"><h2 id="dtitle" style="font-size:20px"></h2><div id="dfields"></div><div id="derr" style="color:var(--bad);font-size:14px;margin-top:8px"></div>
+  <div class="acts" style="margin-top:12px"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" id="dsave" value="ok">Сохранить</button></div></form></dialog>
+<div class="toast" id="toast" hidden></div>
 <script src="config.js"></script>
 <script src="js/defaults.js"></script>
 <script src="js/security.js"></script>
@@ -19,113 +58,9 @@
 <script src="js/analytics.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/telegram.js"></script>
-<script>try{if(!window.coffeeAuth||!window.coffeeAuth.isAuthorized('admin'))document.documentElement.classList.add('gate')}catch(e){}</script>
-</head>
-<body>
-<header class="app-header"><div class="wrap">
-  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1><span class="sub" id="sub">Отчёты владельца</span></div><button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button></div>
-  <nav class="tabs" aria-label="Разделы"><a href="dashboard.html">Дашборд</a><a href="report.html" class="on" aria-current="page">Отчёты</a><a href="admin.html">Управление</a></nav>
-</div></header>
-<main id="main">
-  <div id="err" class="alert" role="alert" hidden></div>
-
-  <section class="panel noprint" aria-label="Период">
-    <h2>Период отчёта</h2>
-    <div class="presets">
-      <div class="seg" id="presets" role="group" aria-label="Быстрый выбор">
-        <button data-p="today">Сегодня</button><button data-p="yest">Вчера</button><button data-p="7" class="on">7 дней</button>
-        <button data-p="30">30 дней</button><button data-p="month">Этот месяц</button><button data-p="pmonth">Прошлый месяц</button>
-      </div>
-      <div class="range"><input type="date" id="from" aria-label="С даты"><span class="muted">—</span><input type="date" id="to" aria-label="По дату">
-        <button class="btn-p" id="apply" type="button">Показать</button></div>
-      <button class="btn-s" id="csv" type="button">Скачать таблицу (CSV)</button>
-      <button class="btn-s" id="print" type="button">Печать / PDF</button>
-    </div>
-  </section>
-
-  <p class="muted" id="periodLbl" style="margin:14px 2px 0"></p>
-  <div class="grid g4 k6">
-    <div class="panel kpi"><span class="muted">Доход (Выручка)</span><span class="num pos" id="kRev">—</span><span class="sub" id="kRevS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Расходы</span><span class="num neg" id="kExp">—</span><span class="sub" id="kExpS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Прибыль</span><span class="num" id="kPro">—</span><span class="sub" id="kProS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Чеков · средний чек</span><span class="num" id="kChk">—</span><span class="sub" id="kChkS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">План</span><span class="num" id="kPlan">—</span><span class="sub" id="kPlanS">&nbsp;</span></div>
-    <div class="panel kpi"><span class="muted">Списания</span><span class="num neg" id="kWo">—</span><span class="sub">контроль потерь и порций</span></div>
-  </div>
-
-  <section class="panel" style="margin-top:16px"><h2>Прибыль и убытки</h2><div class="wk" id="pnl"></div></section>
-
-  <section class="panel noprint" id="smartSimPanel" style="margin-top:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <h2 style="margin:0">🎛️ Умный симулятор прибыли «Что если» и Точка безубыточности</h2>
-      <span class="kpi-pill ok" id="simBreakEvenBadge">Точка безубыточности: —</span>
-    </div>
-    <p class="muted" style="margin:4px 0 8px">Двигайте ползунки, чтобы смоделировать рост прибыли на основе вашей фактической выручки, среднего чека и списаний:</p>
-    <div class="sim-controls">
-      <div class="sim-slider-wrap">
-        <label for="simAvgSlider"><b>1. Рост среднего чека (Upsell):</b> <span id="simAvgVal">+5 руб.</span></label>
-        <input type="range" id="simAvgSlider" min="0" max="25" step="1" value="5">
-      </div>
-      <div class="sim-slider-wrap">
-        <label for="simChkSlider"><b>2. Прирост чеков / гостей в день:</b> <span id="simChkVal">+10%</span></label>
-        <input type="range" id="simChkSlider" min="0" max="40" step="2" value="10">
-      </div>
-      <div class="sim-slider-wrap">
-        <label for="simWoSlider"><b>3. Снижение списаний:</b> <span id="simWoVal">-30%</span></label>
-        <input type="range" id="simWoSlider" min="0" max="80" step="5" value="30">
-      </div>
-    </div>
-    <div class="smart-grid" id="simResultGrid"></div>
-    <h3 style="font-size:15.5px;margin:16px 0 6px">📅 Матрица эффективности по дням недели и рекомендация по сменам (1 или 2 бариста)</h3>
-    <div class="dow-grid" id="dowHeatmapGrid"></div>
-  </section>
-
-  <section class="panel" style="margin-top:16px"><h2>Доход (зелёный) и Расходы со списаниями (красный)</h2><div id="chart"></div>
-    <div class="lg"><span><i style="background:var(--good)"></i>Доход (выручка)</span><span><i style="background:var(--bad)"></i>Расходы и списания</span><span id="grpNote"></span></div></section>
-
-  <div class="grid g11">
-    <section class="panel"><h2>Расходы по статьям</h2><div id="cats"></div></section>
-  </div>
-
-  <section class="panel" style="margin-top:16px"><h2>Позиции — сколько раз брали</h2><div class="scrollx"><table class="tbl"><thead><tr><th>Позиция</th><th>Раз</th><th>Выручка</th><th>Доля</th></tr></thead><tbody id="top"></tbody></table></div></section>
-
-  <section class="panel" style="margin-top:16px"><h2>Выполнение задач персоналом</h2>
-    <p class="muted" style="margin:-6px 0 12px">Порядок смены: открытие → в течение дня → закрытие. «—» у дня с выручкой значит, что отметки не было.</p>
-    <div class="scrollx"><table class="tbl" id="who"><thead><tr><th>Бариста</th><th>Открытий</th><th>Обходов за день</th><th>Закрытий</th></tr></thead><tbody id="whoB"></tbody></table></div>
-    <div class="scrollx" style="margin-top:14px"><table class="tbl"><thead><tr><th>Дата</th><th>Открытие</th><th>В течение дня</th><th>Закрытие</th></tr></thead><tbody id="tasks"></tbody></table></div>
-  </section>
-
-  <section class="panel noprint" style="margin-top:16px"><h2>Добавить расход</h2>
-    <div class="fm">
-      <div><label for="xDate">Дата</label><input type="date" id="xDate"></div>
-      <div><label for="xCat">Статья</label><select id="xCat"></select></div>
-      <div><label for="xAmt">Сумма, руб.</label><input type="number" id="xAmt" min="0" step="any" inputmode="decimal" placeholder="0"></div>
-      <div><label for="xCom">Комментарий</label><input type="text" id="xCom" maxlength="200" placeholder="Необязательно"></div>
-      <div><button class="btn-p" id="xAdd" type="button" style="width:100%">Добавить расход</button></div>
-    </div>
-  </section>
-
-  <section class="panel" style="margin-top:16px"><h2>Расходы за период</h2><div id="exps"></div></section>
-
-  <section class="panel" style="margin-top:16px"><h2>Автоматическая сводка по сотрудникам (смены, выручка, чашки, списания)</h2>
-    <p class="muted" style="margin:-6px 0 12px">Если в один день работали 2 бариста (например, Алина и Соня), система суммирует их вклад в общую выручку дня и считает персональную статистику каждого сотрудника.</p>
-    <div class="scrollx"><table class="tbl"><thead><tr><th>Сотрудник</th><th>Смен</th><th>Дисциплина (7.1)</th><th>Качество сервиса (7.2)</th><th>Доход (7.3)</th><th>Ср. чек</th><th>Чашек / Чеков</th><th>Списания</th><th>Рейтинг KPI</th><th>Премия по KPI</th></tr></thead><tbody id="staffSummaryB"></tbody></table></div>
-  </section>
-
-  <section class="panel" style="margin-top:16px"><h2>Дисциплина, поломки и фото/видео фиксация замечаний</h2>
-    <div class="wk" id="disc"></div>
-    <h3 style="font-size:16px;margin:18px 0 8px">Фото и видео отчёт по отмеченным поломкам и замечаниям</h3>
-    <div id="incMediaList"></div>
-  </section>
-
-  <section class="panel" style="margin-top:16px"><h2>Разбивка по дням</h2>
-    <div class="scrollx"><table class="tbl"><thead><tr><th>Дата</th><th>Выручка</th><th>Расходы</th><th>Прибыль</th><th>Чеков</th><th>Ср. чек</th><th>Нал</th><th>Безнал</th><th>Списания</th></tr></thead><tbody id="tbl"></tbody></table></div>
-    <p class="muted" style="margin:12px 0 0">Те же данные автоматически собираются в таблице на листах <code>Отчёт по дням</code> и <code>Отчёт по месяцам</code>.</p>
-  </section>
-</main>
-<div class="toast" id="toast" hidden></div>
-
-<script src="js/page-report.js"></script>
+<script src="tests/unit-tests.js"></script>
+<script src="js/page-admin.js"></script>
+<script src="js/page-owner.js"></script>
 <script src="app.js" defer></script>
 </body>
 </html>
