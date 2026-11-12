@@ -1585,7 +1585,10 @@ async function coffeeFlushOutbox(force) {
     let sent = 0;
     let queue = _readCoffeeOutbox();
     while (queue.length) {
-      const item = queue[0];
+      // Операции, которые старый сервер не знает (UNKNOWN ACTION), «паркуем»: они не блокируют остальные.
+      const idx = queue.findIndex((x) => !(x.parked && !force && x.nextRetryAt && Date.now() < x.nextRetryAt));
+      if (idx < 0) break;
+      const item = queue[idx];
       if (!force && item.nextRetryAt && Date.now() < item.nextRetryAt) break;
       // Всегда отправляем с актуальным токеном сессии: сохранённый при постановке в очередь мог устареть.
       try {
@@ -1613,23 +1616,29 @@ async function coffeeFlushOutbox(force) {
       if (result.ok !== true) {
         item.lastError = String(result.error || 'SERVER_REJECTED');
         // Ошибки входа/версии сервера не «сжигают» попытки: данные не битые, нужно перелогиниться или обновить GAS.
-        if (!/PIN_REQUIRED|FORBIDDEN|UNKNOWN_ACTION/i.test(item.lastError)) item.attempts = (Number(item.attempts) || 0) + 1;
+        if (!/PIN_REQUIRED|FORBIDDEN|UNKNOWN[ _]ACTION/i.test(item.lastError)) item.attempts = (Number(item.attempts) || 0) + 1;
         item.failedAt = Date.now();
         if (_isPermanentApiError(item.lastError) || item.attempts >= COFFEE_OUTBOX_MAX_ATTEMPTS) {
           // Не блокируем всю очередь одной безнадёжной операцией: переносим в список «не отправлено» и идём дальше.
           _moveToFailedOutbox(item);
-          queue.shift();
+          queue.splice(idx, 1);
           _writeCoffeeOutbox(queue);
           if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError, dead: true });
           continue;
         }
+        if (/UNKNOWN[ _]ACTION/i.test(item.lastError)) {
+          item.parked = true; item.nextRetryAt = Date.now() + 60000;
+          _writeCoffeeOutbox(queue);
+          if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
+          continue;
+        }
         // Временная ошибка: порядок сохраняем, повторяем с нарастающей задержкой (5 с … 2 мин).
-        item.nextRetryAt = Date.now() + (/PIN_REQUIRED|FORBIDDEN|UNKNOWN_ACTION/i.test(item.lastError) ? 15000 : Math.min(120000, 5000 * Math.pow(2, Math.min(item.attempts, 5))));
+        item.nextRetryAt = Date.now() + (/PIN_REQUIRED|FORBIDDEN|UNKNOWN[ _]ACTION/i.test(item.lastError) ? 15000 : Math.min(120000, 5000 * Math.pow(2, Math.min(item.attempts, 5))));
         _writeCoffeeOutbox(queue);
         if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
         break;
       }
-      queue.shift();
+      queue.splice(idx, 1);
       _writeCoffeeOutbox(queue);
       sent++;
     }
@@ -1666,7 +1675,7 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
     el.textContent = pending > 0 ? ('🟡 Офлайн · в очереди: ' + pending) : '🟡 Офлайн (данные сохраняются)';
     el.title = 'Нет интернета. Все изменения сохраняются на устройстве и отправятся автоматически при появлении сети.';
   } else if (pending > 0) {
-    const blocked = (_readCoffeeOutbox()[0] || {}).lastError || '';
+    const _q0 = _readCoffeeOutbox(); const blocked = (_q0.find((x) => /UNKNOWN[ _]ACTION/i.test(x.lastError || '')) || _q0[0] || {}).lastError || '';
     el.style.cursor = 'pointer';
     el.onclick = function () { window.coffeeOutboxHelp(); };
     if (blocked) {
@@ -1675,7 +1684,7 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
         : /INVALID_SERVER_RESPONSE/.test(blocked) ? 'сервер вернул не JSON (проверьте доступ развёртывания)'
         : /NET:NETWORK_ERROR/.test(blocked) ? 'нет связи с сервером Google'
         : /PIN_REQUIRED|FORBIDDEN/i.test(blocked) ? 'нужен повторный вход'
-        : /UNKNOWN_ACTION/i.test(blocked) ? 'сервер (Code.gs) устарел'
+        : /UNKNOWN[ _]ACTION/i.test(blocked) ? 'сервер (Code.gs) устарел'
         : /LOCK|timeout|Lock/i.test(blocked) ? 'сервер занят' : 'ошибка сервера';
       el.textContent = '⚠️ Не отправлено (' + pending + '): ' + why;
       el.title = blocked + '\nНажмите, чтобы повторить или очистить очередь.';

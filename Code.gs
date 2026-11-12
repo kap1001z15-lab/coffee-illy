@@ -51,6 +51,7 @@ function doGet(e) {
     var p = (e && e.parameter) || {};
     var action = p.action || 'get_checklists';
     if (action === 'get_rev') return jsonOut_({ ok: true, rev: getDataRev_(), serverTs: Date.now() });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v22.7', actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync'] });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
