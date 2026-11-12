@@ -198,5 +198,91 @@ check('6. Проверка шаблона смены (SAMPLE_FILES_DB.shift_text
   assert(window.coffeeAuth.isAuthorized('admin') === true, 'Возврат стандартного ADMIN_PIN сохраняет активную сессию');
 });
 
-process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК ИНТЕРФЕЙСА: ' + passed + '/6 успешно.\n');
+
+check('7. Защита от самопроизвольного отката настроек спустя время (Anti-Revert) и двусторонняя синхронизация с Google Таблицей', () => {
+  // 1) Фиксируем исходный снимок сервера (как будто таблица вернула базовые значения)
+  const initialServerPayload = {
+    ok: true,
+    settings: [{ id: 'PLAN', value: '2200' }, { id: 'LOCATION', value: 'Кофейня №1' }],
+    checklistBlocks: [
+      { id: 'blk_open', name: 'Открытие', openTime: '07:30', deadline: '08:30', isCash: false, active: true },
+      { id: 'blk_lc1', name: 'Лайн Чек 1', openTime: '08:30', deadline: '09:30', isCash: false, active: true }
+    ],
+    dailyPlans: { 'Пн': { revenue: 2200, avgCheck: 32, checks: 70 } },
+    tasks: [
+      { id: '__SYS_CONFIG_V19__', title: '__SYS_SYNC__', instruction: JSON.stringify({ ts: 9999999999999, plan: 1111, location: 'Старая точка из V19' }) },
+      { id: 'o01', block: 'Открытие', title: 'Фото-селфи', active: 'да' },
+      { id: 'o02', block: 'Открытие', title: 'Зал', active: 'да' }
+    ],
+    goodDeeds: [{ id: 'gd1', title: 'Разморозка холодильника', frequency: 'Раз в 2 недели' }],
+    ttk: [{ id: 'ttk1', name: 'Капучино', price: 19 }]
+  };
+  window.absorbServerData('https://example.test/api?action=admin', initialServerPayload, { forceFromSheet: true });
+
+  // 2) Администратор изменяет и удаляет настройки в Управлении
+  window.applyLocalMutation({ action: 'save_setting', id: 'PLAN', value: '2750' });
+  window.applyLocalMutation({ action: 'delete_task', id: 'o02', expect: 'Зал' });
+  window.applyLocalMutation({ action: 'delete_checklist_block', name: 'Лайн Чек 1' });
+  window.applyLocalMutation({ action: 'delete_good_deed', id: 'gd1' });
+  window.applyLocalMutation({ action: 'delete_ttk', id: 'ttk1' });
+
+  // 3) Имитируем, что прошло 60 секунд (раньше через 5–10 сек фоновый синк откатывал всё назад!)
+  const db = window.getUDB();
+  db.lastLocalMutationAt = Date.now() - 60000;
+  window.saveUDB(db);
+
+  // Фоновый опрос возвращает ТОТ ЖЕ старый ответ сервера (плюс старую строку __SYS_CONFIG_V19__)
+  window.absorbServerData('https://example.test/api?action=admin', initialServerPayload);
+
+  const dbAfterBg = window.getUDB();
+  assert(dbAfterBg.plan === 2750, 'Изменённый в Управлении план (2750 руб.) НЕ должен откатываться назад к 2200 или 1111 спустя время');
+  assert(!dbAfterBg.tasks.some((t) => t.id === 'o02'), 'Удалённая задача o02 НЕ должна возвращаться при фоновом опросе');
+  assert(!dbAfterBg.checklistBlocks.some((b) => b.name === 'Лайн Чек 1'), 'Удалённый блок чек-листа НЕ должен возвращаться обратно');
+  assert(dbAfterBg.goodDeeds.length === 0, 'Удалённая задача из Карты добрых дел НЕ должна возвращаться обратно');
+  assert(dbAfterBg.ttk.length === 0, 'Удалённая техкарта ТТК НЕ должна возвращаться обратно');
+
+  // 4) Теперь владелец меняет настройку ПРЯМО В GOOGLE ТАБЛИЦЕ (например, ставит PLAN = 3100 и меняет окно Открытия на 07:00–08:15)
+  const updatedSheetPayload = Object.assign({}, initialServerPayload, {
+    settings: [{ id: 'PLAN', value: '3100' }, { id: 'LOCATION', value: 'Кофейня №1 (Центр)' }],
+    checklistBlocks: [
+      { id: 'blk_open', name: 'Открытие', openTime: '07:00', deadline: '08:15', isCash: false, active: true }
+    ]
+  });
+  window.absorbServerData('https://example.test/api?action=admin', updatedSheetPayload);
+  const dbFromSheet = window.getUDB();
+  assert(dbFromSheet.plan === 3100 && dbFromSheet.location === 'Кофейня №1 (Центр)', 'Изменение ячейки в Google Таблице должно автоматически применяться в системе');
+  assert(dbFromSheet.checklistBlocks[0].openTime === '07:00' && dbFromSheet.checklistBlocks[0].deadline === '08:15', 'Изменение окна времени в листе Таймлайн Google Таблицы должно сразу применяться в системе');
+});
+
+
+check('8. Сохранение под учётной записью Администратора никогда не выдаёт ошибку «Введите код доступа администратора» (PIN_REQUIRED)', async () => {
+  // Имитируем ситуацию: администратор уже вошёл, но в localStorage остался старый PIN или сработал rate-limiter, а сервер вернул PIN_REQUIRED
+  window.coffeeAuth.createLocalSession('admin', 'Администратор', '1234');
+  localStorage.setItem('coffee_illy_pin', 'stale_wrong_pin');
+  const origFetch = global.fetch;
+  try {
+    global.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: false, error: 'PIN_REQUIRED: Неверный код доступа' })
+    });
+    const res = await window.coffeeFetch(window.COFFEE.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'save_task',
+        pin: localStorage.getItem('coffee_illy_pin'),
+        id: 't_admin_save_test',
+        block: 'Открытие',
+        title: 'Проверка сохранения под админом'
+      })
+    });
+    assert(res && res.ok === true, 'При активной сессии Администратора сохранение должно проходить успешно (ok: true), без ошибки PIN_REQUIRED');
+    assert(window.getUDB().tasks.some((t) => t.id === 't_admin_save_test'), 'Сохранённая под админом задача должна сразу записаться в базу');
+    window.applyLocalMutation({ action: 'delete_task', id: 't_admin_save_test' });
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
+process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/8 успешно.\n');
 process.exit(0);

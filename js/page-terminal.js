@@ -227,7 +227,13 @@ function promptStaffPinAndSwitch(targetName) {
   const dlg = $("staffPinDlg");
   if (!dlg || typeof dlg.showModal !== "function") {
     userName = targetName;
-    try { localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
+    try {
+      localStorage.setItem("coffee_active_barista", userName);
+      if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
+        const role = (targetName === "Администратор" || /админ|владелец/i.test(targetName)) ? "admin" : "staff";
+        window.coffeeAuth.createLocalSession(role, targetName, entered);
+      }
+    } catch (_) {}
     $("who").textContent = userName;
     drawTabs();
     if (block === "ИНФО") renderInfoView();

@@ -422,15 +422,15 @@ window.coffeeNormalizeTasksTimeline = function (tasksList) {
 
 window.coffeeEnsureV19Schema = function (db) {
   if (!db || typeof db !== 'object') return db;
-  if (!Array.isArray(db.checklistBlocks) || !db.checklistBlocks.length) {
+  if (!Array.isArray(db.checklistBlocks)) {
     db.checklistBlocks = window.COFFEE_DEFAULT_CHECKLIST_BLOCKS.map((b) => Object.assign({}, b));
-  } else {
-    /* Если в старой базе не было Лайн Чек 1 / Лайн Чек 2, мигрируем на новый таймлайн */
+  } else if (!db._timelineMigratedV28) {
     const hasLc1 = db.checklistBlocks.some((b) => b.name === 'Лайн Чек 1');
     const hasOldDay = db.checklistBlocks.some((b) => b.name === 'День');
     if (!hasLc1 && hasOldDay) {
       db.checklistBlocks = window.COFFEE_DEFAULT_CHECKLIST_BLOCKS.map((b) => Object.assign({}, b));
     }
+    db._timelineMigratedV28 = true;
   }
   db.blocks = db.checklistBlocks.filter((b) => b && b.active !== false && !b.isCash && b.name !== 'Касса').map((b) => b.name);
   if (!db.blocks.length) db.blocks = ['Открытие', 'Лайн Чек 1', 'Лайн Чек 2', 'Закрытие'];

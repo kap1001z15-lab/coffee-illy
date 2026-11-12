@@ -117,18 +117,15 @@ window.CoffeeIDB = (function () {
 
 function ensureMvpFields(db) {
   const t = _isoToday();
-  if (!Array.isArray(db.staff) || !db.staff.length) {
+  if (!Array.isArray(db.staff)) {
     db.staff = window.COFFEE_MVP.DEFAULT_STAFF.map((x) => Object.assign({}, x));
   }
-  if (!Array.isArray(db.announcements) || !db.announcements.length) {
+  if (!Array.isArray(db.announcements)) {
     db.announcements = window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(t);
   }
   db.deadlineExtensions = db.deadlineExtensions || {};
   if (!Array.isArray(db.auditLog)) {
-    db.auditLog = [
-      { ts: Date.now() - 86400000, date: '2026-11-05', time: '08:20', actor: 'Соня (Бариста)', action: 'Чек-лист «Открытие»', details: 'Выполнен в срок (08:20, дедлайн 08:30)' },
-      { ts: Date.now() - 43200000, date: '2026-11-05', time: '09:15', actor: 'Соня (Бариста)', action: 'Ознакомление с инфо', details: 'Подтверждено: «❄️ Запуск зимнего меню с 15 ноября»' }
-    ];
+    db.auditLog = [];
   }
   (db.incidents || []).forEach((inc) => {
     inc.status = window.coffeeNormIncStatus(inc.status);
@@ -216,25 +213,21 @@ function syncSettingsFields(db) {
   db.deadline = getVal('DEADLINE', db.deadline || '08:30');
   if (/^\d:\d{2}$/.test(db.deadline)) db.deadline = '0' + db.deadline;
   [
-    { id: 'MIN_AVG_CHECK', label: 'Норматив среднего чека, руб. (ТЗ п. 8)', hint: 'Плановый минимальный средний чек для контроля выполнения плана', value: '390', secret: false },
-    { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день (ТЗ п. 8)', hint: 'Целевое количество гостей/чеков за смену', value: '150', secret: false }
+    { id: 'MIN_AVG_CHECK', label: 'Норматив среднего чека, руб. (ТЗ п. 8)', hint: 'Плановый минимальный средний чек для контроля выполнения плана', value: '35', secret: false },
+    { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день (ТЗ п. 8)', hint: 'Целевое количество гостей/чеков за смену', value: '75', secret: false }
   ].forEach((defS) => {
     if (!(db.settings || []).some((x) => x.id === defS.id)) {
       db.settings.push(Object.assign({}, defS));
     }
   });
   db.woNorm = Math.max(0, Number(String(getVal('WO_NORM', db.woNorm ?? 15)).replace(/\s/g, '')) || 0);
-  db.minAvgCheck = Math.max(1, Number(getVal('MIN_AVG_CHECK', db.minAvgCheck || 390)) || 390);
-  db.planChecks = Math.max(1, Number(getVal('PLAN_CHECKS', db.planChecks || 150)) || 150);
-  if (!Array.isArray(db.serviceAudits) || !db.serviceAudits.length) {
-    db.serviceAudits = [
-      { id: 'AUD-101', date: _shiftIso(_isoToday(), -2), barista: 'Соня', auditor: 'Шеф-бариста Максим', greet: 100, clarify: 100, upsell: 90, farewell: 100, score: 98, comment: 'Отличный контакт с гостями, предложила сезонный раф и круассан' },
-      { id: 'AUD-102', date: _shiftIso(_isoToday(), -1), barista: 'Алина', auditor: 'Шеф-бариста Максим', greet: 100, clarify: 95, upsell: 85, farewell: 100, score: 95, comment: 'Чёткая работа на баре в утренний пик, вежливое прощание' },
-      { id: 'AUD-103', date: _isoToday(), barista: 'Настя', auditor: 'Администратор', greet: 100, clarify: 90, upsell: 80, farewell: 95, score: 91, comment: 'Соблюдает стандарты приветствия, рекомендовано чаще предлагать десерты' }
-    ];
+  db.minAvgCheck = Math.max(1, Number(getVal('MIN_AVG_CHECK', db.minAvgCheck || 35)) || 35);
+  db.planChecks = Math.max(1, Number(getVal('PLAN_CHECKS', db.planChecks || 75)) || 75);
+  if (!Array.isArray(db.serviceAudits)) {
+    db.serviceAudits = [];
   }
   db.cashHistory = db.cashHistory || [];
-  if (!Array.isArray(db.ttk) || !db.ttk.length) {
+  if (!Array.isArray(db.ttk)) {
     db.ttk = (window.COFFEE_DEFAULT_TTK || []).map((x) => Object.assign({}, x));
   }
   if (!db.shiftRoster || typeof db.shiftRoster !== 'object') {
@@ -387,17 +380,19 @@ function _migrateAndMergeOwnerDB(existing) {
     if (legPin && !existing.adminPin) db.adminPin = legPin;
   } catch (_) {}
 
-  /* Сохраняем пользовательские задачи как есть, добавляя только совершенно новые ID из обновлений кода (если они не были удалены владельцем) */
-  if (Array.isArray(existing.tasks) && existing.tasks.length > 0) {
-    const existingById = {};
-    existing.tasks.forEach((t) => { if (t && t.id) existingById[t.id] = t; });
-    const mergedTasks = existing.tasks.slice();
-    (window.COFFEE.DEFAULT_TASKS || []).forEach((defT, idx) => {
-      if (defT && defT.id && !existingById[defT.id] && !db.deletedTaskIds[defT.id]) {
-        mergedTasks.push(Object.assign({}, defT, { row: mergedTasks.length + idx + 2, mediaRequired: defT.photo === 'да' }));
-      }
-    });
-    db.tasks = mergedTasks;
+  db.deletedCashDates = Object.assign({}, existing.deletedCashDates || {});
+  db.deletedExpenseIds = Object.assign({}, existing.deletedExpenseIds || {});
+  db.deletedAnnouncementIds = Object.assign({}, existing.deletedAnnouncementIds || {});
+  db.deletedStaffIds = Object.assign({}, existing.deletedStaffIds || {});
+  db.deletedTtkIds = Object.assign({}, existing.deletedTtkIds || {});
+  db.deletedGoodDeedIds = Object.assign({}, existing.deletedGoodDeedIds || {});
+  db.deletedChecklistBlocks = Object.assign({}, existing.deletedChecklistBlocks || {});
+  db.deletedServiceAuditIds = Object.assign({}, existing.deletedServiceAuditIds || {});
+  db._lastServerSnapshot = Object.assign({}, existing._lastServerSnapshot || {});
+
+  /* Сохраняем пользовательские задачи без возврата удалённых шагов */
+  if (Array.isArray(existing.tasks)) {
+    db.tasks = existing.tasks.filter((t) => t && !(db.deletedTaskIds && db.deletedTaskIds[t.id]));
   } else {
     db.tasks = def.tasks;
   }
@@ -435,6 +430,16 @@ function _migrateAndMergeOwnerDB(existing) {
         }
       });
     } catch (_) {}
+  }
+  if (!db.prodCleanAuditsV28) {
+    const demoAudIds = { 'AUD-101': 1, 'AUD-102': 1, 'AUD-103': 1 };
+    if (Array.isArray(db.serviceAudits)) {
+      db.serviceAudits = db.serviceAudits.filter((a) => a && !demoAudIds[a.id]);
+    }
+    if (Array.isArray(db.auditLog)) {
+      db.auditLog = db.auditLog.filter((l) => l && l.date !== '2026-11-05');
+    }
+    db.prodCleanAuditsV28 = true;
   }
   syncSettingsFields(db);
   return db;

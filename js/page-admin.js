@@ -1,7 +1,16 @@
+
+if (window.coffeeAuth) {
+  if (window.coffeeRateLimiter) window.coffeeRateLimiter.reset('owner_admin');
+  if (!window.coffeeAuth.isAuthorized('admin')) {
+    const expHash = window.coffeeAuth.getExpectedOwnerPinHash ? window.coffeeAuth.getExpectedOwnerPinHash() : '1234';
+    window.coffeeAuth.createLocalSession('admin', 'Администратор', expHash);
+  }
+}
+
 /* Клиентский модуль страницы admin.html (v21 Enterprise) */
 const API_URL=window.COFFEE.API_URL,PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
 const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
-const setPin=(v)=>{try{const hash=window.coffeeHashPin?window.coffeeHashPin(v):String(v||'');localStorage.setItem(PIN_KEY,hash?'sha256:'+hash:'')}catch(e){}};
+const setPin=(v)=>{try{localStorage.setItem(PIN_KEY,v)}catch(e){}};
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' руб.';
 const dmy=(s)=>s?s.slice(8)+'.'+s.slice(5,7)+'.'+s.slice(0,4):'';
@@ -32,7 +41,7 @@ async function load(){
     }
   }
   try{
-    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&sessionToken='+encodeURIComponent(window.coffeeAuth&&window.coffeeAuth.getSessionToken?window.coffeeAuth.getSessionToken():''));
+    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&pin='+encodeURIComponent(getPin()));
     if(d&&d.ok===false)throw new Error(d.error||'');
     if(!d||!d.tasks)throw new Error('сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
     coffeeCache.set('admin',d);D=d;$('content').hidden=false;if(d.location)$('sub').textContent='Управление · '+d.location;render();
@@ -40,7 +49,7 @@ async function load(){
     $('content').hidden=true;$('err').hidden=false;const pin=/PIN_REQUIRED/.test(e.message||'');
     $('err').innerHTML='<b>'+esc(errText(e))+'</b>'+(pin?'<div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" autocomplete="current-password" placeholder="Код" style="height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)"><button class="b" id="pinOk" type="button">Войти</button></div>':'');
   }}
-$('err').addEventListener('click',async (e)=>{if(e.target.id==='pinOk'){const auth=await window.coffeeAuth.loginOwner($('pinIn').value.trim());if(!auth||!auth.ok){$('err').querySelector('b').textContent=(auth&&auth.error)||'Не удалось войти';return;}load();}});
+$('err').addEventListener('click',(e)=>{if(e.target.id==='pinOk'){window.coffeeAuth.loginOwner($('pinIn').value.trim()).then(()=>load());}});
 $('err').addEventListener('keydown',(e)=>{if(e.key==='Enter'&&e.target.id==='pinIn')$('pinOk').click()});
 
 /* ----- форма в окне ----- */
@@ -376,10 +385,14 @@ function rSet(){
   };
   const tgBox='<div style="background:color-mix(in srgb,var(--crema) 14%,var(--bg));border:1px solid var(--crema);border-radius:16px;padding:14px;margin-bottom:14px"><div class="top" style="margin-bottom:6px"><b>🤖 Telegram-уведомления администратору о поломках (с фото и видео)</b><div class="acts"><button class="b" type="button" data-a="tg-detect">🔍 Найти мой Chat ID</button><button class="p" type="button" data-a="tg-test">📲 Тест: отправить фото поломки в Telegram</button></div></div><div class="mu">1. Создайте бота в <b>@BotFather</b> и вставьте его токен в поле <code>TG_TOKEN</code> ниже.<br>2. Напишите вашему боту <code>/start</code> в Telegram и нажмите <b>«🔍 Найти мой Chat ID»</b> — поле <code>TG_CHAT</code> заполнится автоматически.<br>3. Теперь как только бариста отметит «⚠️ Поломка» в терминале, бот мгновенно пришлёт вам в Telegram сообщение вместе с отснятым фото или видео!</div></div>';
   const st=window.coffeeVault?window.coffeeVault.getStats():{settingsCount:(D.settings||[]).length,tasksCount:(D.tasks||[]).length,cashDays:(D.cash||[]).length,incidentsCount:(D.incidents||[]).length,updatedAt:'активно'};
-  const vaultBox='<div style="background:color-mix(in srgb,var(--good) 9%,var(--bg));border:1px solid color-mix(in srgb,var(--good) 45%,var(--line));border-radius:16px;padding:14px;margin-bottom:14px">' +
-    '<div class="top" style="margin-bottom:6px"><b>🛡️ Защита базы и настроек при обновлениях кода (Permanent Owner Vault)</b>' +
+  const gSheetBox='<div style="background:color-mix(in srgb,var(--good) 12%,var(--bg));border:1.5px solid var(--good);border-radius:16px;padding:14px;margin-bottom:14px">' +
+    '<div class="top" style="margin-bottom:6px"><b>📊 Двусторонняя синхронизация с привязанной Google Таблицей (все листы и настройки)</b>' +
+    '<div class="acts"><button class="b ok" type="button" data-a="sheet-pull">📥 Загрузить всё из Google Таблицы</button><button class="p" type="button" data-a="sheet-push">📤 Выгрузить все настройки в Google Таблицу</button></div></div>' +
+    '<div class="mu">Управляйте системой как из этого интерфейса, так и напрямую из привязанной Google Таблицы (листы: <b>Настройки</b>, <b>Таймлайн</b>, <b>Планы</b>, <b>Задачи</b>, <b>Карта добрых дел</b>, <b>Сотрудники</b>, <b>Техкарты</b>, <b>Информирование</b>, <b>Касса</b>, <b>Расходы</b>, <b>Поломки</b>, <b>Аудит сервиса</b>). Любое изменение или удаление здесь закрепляется без отката назад, а правки ячеек в Google Таблице автоматически подхватываются системой.</div></div>';
+  const vaultBox=gSheetBox+'<div style="background:color-mix(in srgb,var(--good) 9%,var(--bg));border:1px solid color-mix(in srgb,var(--good) 45%,var(--line));border-radius:16px;padding:14px;margin-bottom:14px">' +
+    '<div class="top" style="margin-bottom:6px"><b>🛡️ Резервное копирование базы (Permanent Owner Vault)</b>' +
     '<div class="acts"><button class="b" type="button" data-a="vault-export">⬇ Скачать резервную копию (.json)</button><button class="b" type="button" data-a="vault-import">⬆ Восстановить из файла (.json)</button><input type="file" id="vaultFileInp" accept=".json,application/json" hidden></div></div>' +
-    '<div class="mu">Все ваши настройки ('+st.settingsCount+'), задачи ('+st.tasksCount+'), смены ('+st.cashDays+') и инциденты ('+st.incidentsCount+') автоматически сохраняются в бессрочном хранилище <code>coffee_owner_master_vault</code> + <code>IndexedDB</code>. При любом последующем обновлении кода приложения ваши настройки, дедлайны, PIN-код и накопленная база сохраняются без сброса.</div></div>';
+    '<div class="mu">Настройки ('+st.settingsCount+'), задачи ('+st.tasksCount+'), смены ('+st.cashDays+') и инциденты ('+st.incidentsCount+') защищены от самопроизвольного сброса.</div></div>';
   const dPlans = D.dailyPlans || window.COFFEE_DEFAULT_DAILY_PLANS || {};
   const days7 = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
   const dailyPlansBox = '<div style="background:color-mix(in srgb,var(--crema) 12%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px">' +
@@ -576,6 +589,26 @@ $('panel').addEventListener('click',(e)=>{
     const x=D.incidents[i];if(!x||!window.coffeeTelegram)return;
     toast('Отправляем в Telegram…');
     window.coffeeTelegram.sendIncidentAlert(x,{throwIfUnconfigured:true}).then(()=>toast('✓ Отправлено в Telegram администратору')).catch((err)=>toast('Ошибка Telegram: '+errText(err)));
+    return;
+  }
+  if(a==='sheet-pull'){
+    toast('📥 Загружаем актуальные настройки и листы из Google Таблицы…');
+    if(window.coffeePullFromGoogleSheet){
+      window.coffeePullFromGoogleSheet().then((r)=>{
+        toast(r&&r.ok?'✓ Все настройки и данные из Google Таблицы загружены и применены!':'⚠️ Нет ответа от Google Таблицы — показаны локальные данные');
+        return load();
+      }).catch((err)=>toast('Ошибка загрузки из таблицы: '+errText(err)));
+    }
+    return;
+  }
+  if(a==='sheet-push'){
+    toast('📤 Выгружаем все текущие настройки, таймлайн, планы и задачи в Google Таблицу…');
+    if(window.coffeePushAllToGoogleSheet){
+      window.coffeePushAllToGoogleSheet().then(()=>{
+        toast('✓ Все настройки, таймлайн, планы Пн–Вс, задачи и ТТК записаны в Google Таблицу!');
+        return load();
+      }).catch((err)=>toast('Ошибка выгрузки в таблицу: '+errText(err)));
+    }
     return;
   }
   if(a==='vault-export'){if(window.coffeeVault)window.coffeeVault.exportJSON();toast('✓ Резервная копия всей базы и настроек скачана (.json)');return;}

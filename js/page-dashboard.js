@@ -18,7 +18,7 @@ async function load(silent, fresh) {
     else $('main').classList.add('ld');
   }
   try {
-    const r = await coffeeFetch(API_URL + '?action=dashboard&date=' + day + '&sessionToken=' + encodeURIComponent(window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken() : '') + (fresh ? '&nocache=1' : ''));
+    const r = await coffeeFetch(API_URL + '?action=dashboard&date=' + day + '&pin=' + encodeURIComponent(getPin()) + (fresh ? '&nocache=1' : ''));
     if (r && r.ok === false && /PIN_REQUIRED/.test(r.error || '')) {
       const e = new Error('Введите код доступа администратора');
       e.pin = true;
