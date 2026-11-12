@@ -1,5 +1,5 @@
 /* Service Worker v22 — Offline-First PWA с раздельным кэшированием модулей JS, CSS, HTML и иконок */
-const CACHE_NAME = 'kofeinya-enterprise-v22.4';
+const CACHE_NAME = 'kofeinya-enterprise-v22.6';
 const STATIC_ASSETS = [
   './',
   './index.html',

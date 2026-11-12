@@ -251,6 +251,7 @@
       if ((role || 'admin') === 'admin' && window.coffeeRateLimiter) {
         window.coffeeRateLimiter.reset('owner_admin');
       }
+      if (serverTokenOpt) { try { localStorage.setItem('coffee_server_tok_at', String(Date.now())); } catch (_) {} }
       const token = serverTokenOpt || ('st_local_' + window.coffeeSha256Sync(Date.now() + ':' + Math.random()).slice(0, 24));
       const expiresAt = Date.now() + SESSION_TTL_MS;
       const sig = _makeSessionSig(token, role || 'admin', pinHash, expiresAt);

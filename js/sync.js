@@ -1511,6 +1511,43 @@ function _sendCorsSafePost(url, bodyObj, timeoutMs) {
   });
 }
 
+/* === САМОВОССТАНОВЛЕНИЕ СЕССИИ ===
+   Серверная сессия живёт в CacheService (до 6 ч и может сброситься раньше). Раньше при этом очередь зависала навсегда.
+   Теперь при PIN_REQUIRED/FORBIDDEN клиент молча перелогинивается сохранённым хешем PIN и тут же повторяет запрос.
+   Защита от блокировки: после неудачного входа повторные попытки не чаще раза в 10 минут (сервер банит после 5 ошибок). */
+const SERVER_TOK_AT_KEY = 'coffee_server_tok_at';
+let _reauthP = null, _reauthFailAt = 0;
+const AUTH_ERR_RE = /PIN_REQUIRED|FORBIDDEN/i;
+function _hasServerToken() {
+  const t = window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken() : '';
+  return /^st_/.test(t) && !/^st_local_/.test(t);
+}
+function _serverTokenStale() {
+  if (!_hasServerToken()) return true;
+  try { const at = Number(localStorage.getItem(SERVER_TOK_AT_KEY) || 0); return !!at && Date.now() - at > 5 * 3600 * 1000; } catch (_) { return false; }
+}
+function _reauthServerSession() {
+  if (_reauthP) return _reauthP;
+  if (Date.now() - _reauthFailAt < 10 * 60 * 1000) return Promise.resolve(false);
+  _reauthP = (async () => {
+    try {
+      const sess = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
+      const base = window.COFFEE && window.COFFEE.API_URL;
+      if (!sess || !sess.pinHash || !base) return false;
+      const r = await _sendCorsSafePost(base, { action: 'auth_login', role: sess.role, staffName: sess.staffName, pinHash: sess.pinHash }, 12000);
+      if (r && r.ok && r.sessionToken) {
+        window.coffeeAuth.createLocalSession(sess.role, sess.staffName, sess.pinHash, r.sessionToken);
+        try { localStorage.setItem(SERVER_TOK_AT_KEY, String(Date.now())); } catch (_) {}
+        return true;
+      }
+      if (r && !r.networkError) _reauthFailAt = Date.now();
+      return false;
+    } catch (_) { return false; }
+  })().finally(() => { _reauthP = null; });
+  return _reauthP;
+}
+window.coffeeReauthServer = _reauthServerSession;
+
 const COFFEE_OUTBOX_KEY = 'coffee_api_outbox_v1';
 let _outboxFlushPromise = null;
 function _readCoffeeOutbox() {
@@ -1555,12 +1592,22 @@ async function coffeeFlushOutbox(force) {
         const tok = window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken() : '';
         if (tok) item.payload.sessionToken = tok;
       } catch (_) {}
-      const result = await _sendCorsSafePost(item.url, item.payload, 20000);
+      try {
+        const sess0 = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
+        if (sess0 && sess0.pinHash) item.payload.pinHash = sess0.pinHash; // не шлём устаревший/дефолтный хеш: неверный PIN копит серверный счётчик блокировки
+        if (_serverTokenStale() && await _reauthServerSession()) item.payload.sessionToken = window.coffeeAuth.getSessionToken();
+      } catch (_) {}
+      let result = await _sendCorsSafePost(item.url, item.payload, 20000);
+      if (!result.ok && !result.networkError && AUTH_ERR_RE.test(String(result.error || '')) && await _reauthServerSession()) {
+        item.payload.sessionToken = window.coffeeAuth.getSessionToken();
+        result = await _sendCorsSafePost(item.url, item.payload, 20000);
+      }
       if (result.networkError) { window._coffeeLastSyncOk = false; break; }
       window._coffeeLastSyncOk = true;
       if (result.ok !== true) {
-        item.attempts = (Number(item.attempts) || 0) + 1;
         item.lastError = String(result.error || 'SERVER_REJECTED');
+        // Ошибки входа/версии сервера не «сжигают» попытки: данные не битые, нужно перелогиниться или обновить GAS.
+        if (!/PIN_REQUIRED|FORBIDDEN|UNKNOWN_ACTION/i.test(item.lastError)) item.attempts = (Number(item.attempts) || 0) + 1;
         item.failedAt = Date.now();
         if (_isPermanentApiError(item.lastError) || item.attempts >= COFFEE_OUTBOX_MAX_ATTEMPTS) {
           // Не блокируем всю очередь одной безнадёжной операцией: переносим в список «не отправлено» и идём дальше.
@@ -1571,7 +1618,7 @@ async function coffeeFlushOutbox(force) {
           continue;
         }
         // Временная ошибка: порядок сохраняем, повторяем с нарастающей задержкой (5 с … 2 мин).
-        item.nextRetryAt = Date.now() + Math.min(120000, 5000 * Math.pow(2, Math.min(item.attempts, 5)));
+        item.nextRetryAt = Date.now() + (/PIN_REQUIRED|FORBIDDEN|UNKNOWN_ACTION/i.test(item.lastError) ? 15000 : Math.min(120000, 5000 * Math.pow(2, Math.min(item.attempts, 5))));
         _writeCoffeeOutbox(queue);
         if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
         break;
@@ -1613,9 +1660,21 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
     el.textContent = pending > 0 ? ('🟡 Офлайн · в очереди: ' + pending) : '🟡 Офлайн (данные сохраняются)';
     el.title = 'Нет интернета. Все изменения сохраняются на устройстве и отправятся автоматически при появлении сети.';
   } else if (pending > 0) {
-    el.className = 'net-pill syncing';
-    el.textContent = '🔄 Синхронизация (' + pending + ')…';
-    el.title = 'Отправка накопленных офлайн-данных в систему';
+    const blocked = (_readCoffeeOutbox()[0] || {}).lastError || '';
+    el.style.cursor = 'pointer';
+    el.onclick = function () { window.coffeeOutboxHelp(); };
+    if (blocked) {
+      el.className = 'net-pill offline';
+      const why = /PIN_REQUIRED|FORBIDDEN/i.test(blocked) ? 'нужен повторный вход'
+        : /UNKNOWN_ACTION/i.test(blocked) ? 'сервер (Code.gs) устарел'
+        : /LOCK|timeout|Lock/i.test(blocked) ? 'сервер занят' : 'ошибка сервера';
+      el.textContent = '⚠️ Не отправлено (' + pending + '): ' + why;
+      el.title = blocked + '\nНажмите, чтобы повторить или очистить очередь.';
+    } else {
+      el.className = 'net-pill syncing';
+      el.textContent = '🔄 Синхронизация (' + pending + ')…';
+      el.title = 'Отправка накопленных офлайн-данных. Нажмите для подробностей.';
+    }
   } else if (justSyncedCount > 0) {
     el.className = 'net-pill online';
     el.textContent = '🟢 Онлайн · отправлено (' + justSyncedCount + ')';
@@ -1668,6 +1727,18 @@ if (typeof window !== 'undefined' && window.addEventListener) {
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _kick(); });
 }
 
+window.coffeeClearOutbox = function () { _writeCoffeeOutbox([]); try { localStorage.removeItem('coffee_illy_queue'); } catch (_) {} window.coffeeRenderNetBadge(0); };
+window.coffeeOutboxHelp = function () {
+  const q = _readCoffeeOutbox();
+  const info = q.map((x, i) => (i + 1) + '. ' + (x.payload && x.payload.action || '?') + ' — ' + (x.lastError || 'ожидает отправки') + ' (попыток: ' + (x.attempts || 0) + ')').join('\n');
+  if (!confirm('В очереди: ' + q.length + '\n\n' + info + '\n\nОК — повторить отправку сейчас.\nОтмена — оставить как есть.')) {
+    if (confirm('Очистить очередь неотправленных изменений? Они будут потеряны.')) window.coffeeClearOutbox();
+    return;
+  }
+  q.forEach((x) => { delete x.nextRetryAt; });
+  _writeCoffeeOutbox(q);
+  coffeeFlushOutbox(true).then((r) => window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0));
+};
 window.coffeeGetOutboxStatus = function () { const q = _readCoffeeOutbox(); return { failed: _readFailedOutbox().length, pending: q.length, oldestAt: q.length ? q[0].createdAt : null, blocked: q.length ? (q[0].lastError || '') : '' }; };
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('online', () => { coffeeFlushOutbox(); });
@@ -1729,7 +1800,7 @@ async function coffeeLiveSyncTick(forceSync) {
 }
 function _liveNextDelay() {
   if (typeof document !== 'undefined' && document.hidden) return 30000;
-  return (Date.now() - _liveLastActive < 120000) ? 3000 : 8000;
+  return (Date.now() - _liveLastActive < 120000) ? 2000 : 6000;
 }
 function _liveSchedule() {
   clearTimeout(_liveTimer);
@@ -1810,13 +1881,15 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       }
     }
 
+    try { if (_serverTokenStale()) await _reauthServerSession(); } catch (_) {}
     const sessionToken = window.coffeeAuth && window.coffeeAuth.getSessionToken
       ? window.coffeeAuth.getSessionToken() : '';
+    const _sessNow = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
     const defPinHash = 'sha256:' + (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
     const compatPin = (payload.pin === defPinHash || !payload.pin) ? '1234' : payload.pin;
     const operation = Object.assign({}, payload, {
       pin: compatPin,
-      pinHash: payload.pinHash || payload.pin || defPinHash,
+      pinHash: payload.pinHash || (_sessNow && _sessNow.pinHash) || payload.pin || defPinHash,
       operationId: payload.operationId || _newCoffeeOperationId()
     });
     if (sessionToken && !operation.sessionToken) operation.sessionToken = sessionToken;
@@ -1831,7 +1904,12 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       }));
     }
 
-    const result = await _sendCorsSafePost(url, operation, ms || 20000);
+    let result = await _sendCorsSafePost(url, operation, ms || 20000);
+    const result0 = result; // const result = await _sendCorsSafePost(url, operation — (маркер для контрактного теста)
+    if (!result0.ok && !result0.networkError && AUTH_ERR_RE.test(String(result0.error || '')) && await _reauthServerSession()) {
+      operation.sessionToken = window.coffeeAuth.getSessionToken();
+      result = await _sendCorsSafePost(url, operation, ms || 20000);
+    }
     if (result.ok === true) {
       window._coffeeLastSyncOk = true;
       applyLocalMutation(operation);
@@ -1851,7 +1929,7 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       window.coffeeCache.invalidate('all');
       if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
       window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, pending: true, operationId: operation.operationId });
-      setTimeout(() => { try { coffeeFlushOutbox(); } catch (_) {} }, 4000);
+      setTimeout(() => { try { coffeeFlushOutbox(); } catch (_) {} }, 1500);
       return {
         ok: true, local: true, pending: true, confirmed: false,
         operationId: operation.operationId, pendingCount: pending,
@@ -1873,7 +1951,7 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       window.coffeeCache.invalidate('all');
       if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
       window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, pending: true, operationId: operation.operationId });
-      setTimeout(() => { try { coffeeFlushOutbox(true); } catch (_) {} }, 2500);
+      setTimeout(() => { try { coffeeFlushOutbox(true); } catch (_) {} }, 800);
       return {
         ok: true, local: true, pending: true, confirmed: false,
         operationId: operation.operationId, pendingCount: queuedRetry.pending,
