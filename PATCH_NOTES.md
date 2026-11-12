@@ -37,3 +37,18 @@ This is not a complete rewrite of every business module. Default PIN fallbacks, 
 
 ## Still open (unchanged)
 Default PIN fallbacks in `Code.gs` / `js/security.js`, server-issued staff sessions, live GAS/Spreadsheet acceptance tests, and a signed-off financial model. See `DEPLOYMENT_MIGRATION_V22.md`.
+
+# v22.2 — automatic delivery of edits to the server
+
+- Fixed: when the server answered with a non-network error (old Apps Script version, expired session, lock/5xx), `coffeeFetch` applied the edit **locally only** and reported success; it was never sent. Such edits are now queued in the outbox and retried automatically until the server confirms.
+- Outbox flush: fresh session token on every attempt, exponential backoff (5 s – 2 min), order preserved; operations rejected as `VALIDATION_FAILED` (or after 30 attempts) are parked in `coffee_api_outbox_failed_v1` instead of blocking the whole queue; the badge shows `⚠️ Не отправлено: N` for them.
+- Triggers: right after queuing, every 5 s, on `online`, tab focus/visibility and startup. The terminal's legacy queue (`coffee_illy_queue`) now also flushes automatically (startup, every 8 s, visibility) rather than only on the `online` event or button.
+- Tests extended (transient error is queued and delivered; invalid op does not block the queue).
+
+# v22.3 — live synchronisation ("single system")
+
+- `Code.gs`: new data revision (`DATA_REV`) bumped on every successful write and on manual edits of the spreadsheet (simple `onEdit` trigger); public cheap `GET ?action=get_rev`; `get_checklists` and every write result carry `rev`. Login/logout do not bump it.
+- `js/sync.js`: `coffeeLiveSyncTick` polls `get_rev` (3 s while the user is active, 8 s idle, 30 s in a hidden tab; immediately on focus/online/visibility and after the outbox is delivered). On a change it pulls fresh data and emits `server_sync{live:true}`; terminal, owner panel and admin re-render. Own unsent edits are never overwritten by remote data; open edit dialogs are not re-rendered under the user.
+- Same browser (several tabs) stays instantaneous through `coffeeBus`.
+- Tests: GAS test 7 (revision), `tests/live-sync-tests.js`.
+- Deployment: after replacing `Code.gs` create a new Web App deployment version. The `onEdit` simple trigger works automatically; nothing to install.

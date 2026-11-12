@@ -21,16 +21,44 @@ var MAX_PIN_ATTEMPTS = 5;
 var LOCKOUT_SECONDS = 900; // 15 минут
 var SESSION_TTL_SECONDS = 21600; // 6 часов (максимум CacheService)
 
+/* === ЖИВАЯ СИНХРОНИЗАЦИЯ: счётчик версии данных ===
+   Любая успешная запись (doPost) или ручная правка таблицы меняет DATA_REV. Клиенты каждые несколько секунд
+   спрашивают дешёвый запрос get_rev и подтягивают данные только когда версия изменилась. */
+function bumpDataRev_() {
+  var rev = String(Date.now());
+  try { PropertiesService.getScriptProperties().setProperty('DATA_REV', rev); } catch (_) {}
+  try { CacheService.getScriptCache().put('DATA_REV', rev, 21600); } catch (_) {}
+  return rev;
+}
+function getDataRev_() {
+  try { var c = CacheService.getScriptCache().get('DATA_REV'); if (c) return c; } catch (_) {}
+  var r = '0';
+  try { r = PropertiesService.getScriptProperties().getProperty('DATA_REV') || '0'; } catch (_) {}
+  try { CacheService.getScriptCache().put('DATA_REV', r, 21600); } catch (_) {}
+  return r;
+}
+/* Простой триггер: ручная правка листа в Google Таблице тоже мгновенно попадает во все устройства. */
+function onEdit(e) {
+  try {
+    var n = e && e.range && e.range.getSheet ? e.range.getSheet().getName() : '';
+    if (n === 'API_OPERATIONS') return;
+    bumpDataRev_();
+  } catch (_) {}
+}
+
 function doGet(e) {
   try {
     var p = (e && e.parameter) || {};
     var action = p.action || 'get_checklists';
+    if (action === 'get_rev') return jsonOut_({ ok: true, rev: getDataRev_(), serverTs: Date.now() });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
     // 1. Публичный запрос терминала бариста (возвращает только публичные чек-листы, окна и список имён без PIN/токенов)
     if (action === 'get_checklists') {
-      return jsonOut_(sanitizePublicChecklists_(getChecklists_(ss), ss, p.sinceTs));
+      var pubRes = sanitizePublicChecklists_(getChecklists_(ss), ss, p.sinceTs);
+      pubRes.rev = getDataRev_();
+      return jsonOut_(pubRes);
     }
 
     // 2. Запросы разделов владельца (Дашборд, Отчёты, Управление) — требуют валидный sessionToken (или верификацию PIN с rate-limit)
@@ -742,6 +770,8 @@ function getIdempotentResult_(ss, body) {
 
 function idempotentJsonOut_(ss, body, result) {
   if (result && result.ok === true) {
+    var actName = String(body && body.action || '');
+    if (actName !== 'auth_login' && actName !== 'auth_logout') result.rev = bumpDataRev_();
     var id = String(body && body.operationId || '').trim();
     // Результаты со session-токеном не журналируем: токены не должны храниться в таблице/кэше.
     if (!result.sessionToken && /^[a-zA-Z0-9_-]{12,80}$/.test(id)) {

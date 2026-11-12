@@ -284,4 +284,24 @@ check('6. Двустороннее управление всеми настро�
   assert(admOut.checklistBlocks.length === 2 && admOut.checklistBlocks[0].openTime === '07:15', 'Лист Таймлайн Google Таблицы управляет окнами чек-листов в терминале');
 });
 
-process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/6 успешно.\n');
+check('7. Живая синхронизация: get_rev меняется после каждой успешной записи и после ручной правки таблицы', () => {
+  const rev0 = JSON.parse(gasContext.doGet({ parameter: { action: 'get_rev' } }).getContent());
+  assert(rev0.ok === true && rev0.rev != null, 'get_rev публичен и возвращает версию данных');
+  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
+  const revAfterLogin = JSON.parse(gasContext.doGet({ parameter: { action: 'get_rev' } }).getContent()).rev;
+  assert(revAfterLogin === rev0.rev, 'Вход (auth_login) не должен менять версию данных');
+  const before = Number(rev0.rev);
+  const t0 = Date.now(); while (Date.now() === t0) {}
+  const saved = callPost({ action: 'save_setting', sessionToken: login.sessionToken, id: 'LOCATION', value: 'Кофейня №7', operationId: 'op_rev_test_0001' });
+  assert(saved.ok === true && Number(saved.rev) > before, 'Успешная запись должна увеличить версию данных и вернуть её клиенту');
+  const rev1 = JSON.parse(gasContext.doGet({ parameter: { action: 'get_rev' } }).getContent()).rev;
+  assert(rev1 === String(saved.rev), 'get_rev должен отдавать версию последней записи');
+  const t1 = Date.now(); while (Date.now() === t1) {}
+  gasContext.onEdit({ range: { getSheet() { return { getName() { return 'Задачи'; } }; } } });
+  const rev2 = JSON.parse(gasContext.doGet({ parameter: { action: 'get_rev' } }).getContent()).rev;
+  assert(Number(rev2) > Number(rev1), 'Ручная правка листа (onEdit) должна менять версию данных');
+  const pub = JSON.parse(gasContext.doGet({ parameter: { action: 'get_checklists' } }).getContent());
+  assert(pub.rev === rev2, 'Публичный get_checklists возвращает текущую версию данных');
+});
+
+process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/7 успешно.\n');

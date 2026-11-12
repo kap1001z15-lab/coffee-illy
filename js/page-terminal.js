@@ -1149,13 +1149,26 @@ async function post(p) {
     queueUI(); if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0); return false;
   }
 }
+let _legacyFlushing = false;
 async function flush() {
-  const q = getQ(); if (!q.length) return;
-  const rest = [];
-  for (const p of q) { try { await sendRaw(p); } catch (e) { rest.push(p); } }
-  setQ(rest); queueUI();
-  if (window.coffeeFlushOutbox) { try { await window.coffeeFlushOutbox(); } catch (_) {} }
-  if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(q.length - rest.length);
+  if (_legacyFlushing) return;
+  const q = getQ(); if (!q.length) { if (window.coffeeFlushOutbox) { try { await window.coffeeFlushOutbox(); } catch (_) {} } return; }
+  _legacyFlushing = true;
+  try {
+    const rest = [];
+    for (const p of q) {
+      try { await sendRaw(p); }
+      catch (e) {
+        // Данные, которые сервер признал некорректными, не повторяем бесконечно.
+        if (/VALIDATION_FAILED|INVALID_REQUEST_JSON/i.test(String(e && e.message))) {
+          try { const f = JSON.parse(localStorage.getItem("coffee_illy_queue_failed") || "[]"); f.push(p); localStorage.setItem("coffee_illy_queue_failed", JSON.stringify(f.slice(-50))); } catch (_) {}
+        } else rest.push(p);
+      }
+    }
+    setQ(rest); queueUI();
+    if (window.coffeeFlushOutbox) { try { await window.coffeeFlushOutbox(); } catch (_) {} }
+    if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(q.length - rest.length);
+  } finally { _legacyFlushing = false; }
 }
 function queueUI() {
   const n = getQ().length;
@@ -1164,6 +1177,11 @@ function queueUI() {
 }
 $("queueBtn").onclick = flush;
 window.addEventListener("online", flush);
+/* Автоотправка без участия пользователя: при запуске, при возврате на вкладку и по таймеру */
+const _autoFlush = () => { if (typeof navigator !== "undefined" && navigator.onLine === false) return; if (getQ().length) flush(); };
+setTimeout(_autoFlush, 1500);
+setInterval(_autoFlush, 8000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") _autoFlush(); });
 
 /* Реактивное обновление терминала при любых изменениях в разделе «Управление» */
 async function syncFromAdminChanges() {
@@ -1192,7 +1210,7 @@ async function syncFromAdminChanges() {
 }
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
-    if (msg && msg.type === "mutation") syncFromAdminChanges();
+    if (msg && (msg.type === "mutation" || (msg.type === "server_sync" && msg.detail && msg.detail.live))) syncFromAdminChanges();
   });
 }
 window.addEventListener("storage", (e) => {

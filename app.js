@@ -150,7 +150,10 @@
     if (window.coffeeBus) {
       window.coffeeBus.on((msg) => {
         if (msg.type === 'auth') location.reload();
-        if (msg.type === 'mutation' && isAdmin()) {
+        const liveSync = msg.type === 'server_sync' && msg.detail && msg.detail.live;
+        if ((msg.type === 'mutation' || liveSync) && isAdmin()) {
+          /* Не перерисовываем экран под руками у пользователя, пока открыт диалог редактирования */
+          if (liveSync && document.querySelector('dialog[open]')) return;
           if (typeof window.load === 'function') {
             try { window.load(true, true); } catch (_) {}
           }

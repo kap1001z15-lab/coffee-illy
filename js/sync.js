@@ -1531,21 +1531,46 @@ function _enqueueCoffeeOperation(url, payload) {
   }
   return { queued: true, pending: q.length };
 }
-async function coffeeFlushOutbox() {
+const COFFEE_OUTBOX_FAILED_KEY = 'coffee_api_outbox_failed_v1';
+const COFFEE_OUTBOX_MAX_ATTEMPTS = 30;
+/* Постоянные ошибки: повтор бессмысленен (данные невалидны). Всё остальное (сеть, сессия, старая версия сервера, 5xx, блокировка) — временное и повторяется. */
+function _isPermanentApiError(err) { return /VALIDATION_FAILED|INVALID_REQUEST_JSON/i.test(String(err || '')); }
+function _readFailedOutbox() { try { const q = JSON.parse(localStorage.getItem(COFFEE_OUTBOX_FAILED_KEY) || '[]'); return Array.isArray(q) ? q : []; } catch (_) { return []; } }
+function _moveToFailedOutbox(item) {
+  const f = _readFailedOutbox(); f.push(Object.assign({}, item, { deadAt: Date.now() }));
+  try { localStorage.setItem(COFFEE_OUTBOX_FAILED_KEY, JSON.stringify(f.slice(-100))); } catch (_) {}
+}
+async function coffeeFlushOutbox(force) {
   if (_outboxFlushPromise) return _outboxFlushPromise;
   _outboxFlushPromise = (async () => {
     let sent = 0;
     let queue = _readCoffeeOutbox();
     while (queue.length) {
       const item = queue[0];
+      if (!force && item.nextRetryAt && Date.now() < item.nextRetryAt) break;
+      // Всегда отправляем с актуальным токеном сессии: сохранённый при постановке в очередь мог устареть.
+      try {
+        const tok = window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken() : '';
+        if (tok) item.payload.sessionToken = tok;
+      } catch (_) {}
       const result = await _sendCorsSafePost(item.url, item.payload, 20000);
-      if (result.networkError) break;
+      if (result.networkError) { window._coffeeLastSyncOk = false; break; }
+      window._coffeeLastSyncOk = true;
       if (result.ok !== true) {
         item.attempts = (Number(item.attempts) || 0) + 1;
         item.lastError = String(result.error || 'SERVER_REJECTED');
         item.failedAt = Date.now();
+        if (_isPermanentApiError(item.lastError) || item.attempts >= COFFEE_OUTBOX_MAX_ATTEMPTS) {
+          // Не блокируем всю очередь одной безнадёжной операцией: переносим в список «не отправлено» и идём дальше.
+          _moveToFailedOutbox(item);
+          queue.shift();
+          _writeCoffeeOutbox(queue);
+          if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError, dead: true });
+          continue;
+        }
+        // Временная ошибка: порядок сохраняем, повторяем с нарастающей задержкой (5 с … 2 мин).
+        item.nextRetryAt = Date.now() + Math.min(120000, 5000 * Math.pow(2, Math.min(item.attempts, 5)));
         _writeCoffeeOutbox(queue);
-        // Не удаляем и не пропускаем отклонённую операцию: это сохраняет порядок изменений.
         if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
         break;
       }
@@ -1553,7 +1578,10 @@ async function coffeeFlushOutbox() {
       _writeCoffeeOutbox(queue);
       sent++;
     }
-    if (sent && window.coffeeBus) window.coffeeBus.emit('outbox_synced', { sent, pending: queue.length });
+    if (sent && window.coffeeBus) {
+      window.coffeeCache && window.coffeeCache.invalidate && window.coffeeCache.invalidate('all');
+      window.coffeeBus.emit('outbox_synced', { sent, pending: queue.length });
+    }
     return { sent, pending: queue.length };
   })().finally(() => { _outboxFlushPromise = null; });
   return _outboxFlushPromise;
@@ -1590,6 +1618,10 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
     el.className = 'net-pill online';
     el.textContent = '🟢 Онлайн · отправлено (' + justSyncedCount + ')';
     setTimeout(() => { window.coffeeRenderNetBadge(0); }, 3500);
+  } else if (_readFailedOutbox().length > 0) {
+    el.className = 'net-pill offline';
+    el.textContent = '⚠️ Не отправлено: ' + _readFailedOutbox().length;
+    el.title = 'Сервер отклонил часть изменений как некорректные. Проверьте данные и повторите ввод.';
   } else {
     el.className = 'net-pill online';
     el.textContent = '🟢 Онлайн';
@@ -1628,10 +1660,13 @@ if (typeof window !== 'undefined' && window.addEventListener) {
         else window.coffeeRenderNetBadge(0);
       });
     }
-  }, 10000);
+  }, 5000);
+  const _kick = () => { if (typeof navigator !== 'undefined' && navigator.onLine === false) return; if (window.coffeeGetTotalPendingCount() > 0) coffeeFlushOutbox().then((r) => window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0)); };
+  window.addEventListener('focus', _kick);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _kick(); });
 }
 
-window.coffeeGetOutboxStatus = function () { const q = _readCoffeeOutbox(); return { pending: q.length, oldestAt: q.length ? q[0].createdAt : null, blocked: q.length ? (q[0].lastError || '') : '' }; };
+window.coffeeGetOutboxStatus = function () { const q = _readCoffeeOutbox(); return { failed: _readFailedOutbox().length, pending: q.length, oldestAt: q.length ? q[0].createdAt : null, blocked: q.length ? (q[0].lastError || '') : '' }; };
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('online', () => { coffeeFlushOutbox(); });
   const flushAtStartup = () => { if (typeof navigator === 'undefined' || navigator.onLine !== false) coffeeFlushOutbox(); };
@@ -1642,6 +1677,74 @@ if (typeof window !== 'undefined' && window.addEventListener) {
   }
 }
 
+
+/* === ЕДИНАЯ СИСТЕМА: ЖИВАЯ СИНХРОНИЗАЦИЯ МЕЖДУ УСТРОЙСТВАМИ ===
+   Apps Script не умеет отправлять push, поэтому каждое устройство дёшево опрашивает версию данных (get_rev).
+   Как только любое устройство или ручная правка таблицы меняет данные — версия меняется, и все открытые
+   экраны подтягивают свежие данные и перерисовываются (обычно за 2–4 секунды, на активном экране).
+   Внутри одного браузера (терминал + управление в разных вкладках) обновление мгновенное через coffeeBus. */
+let _liveRev = null;
+let _liveBusy = false;
+let _liveLastActive = Date.now();
+let _liveTimer = null;
+window.coffeeLiveSyncState = { lastRev: null, lastCheckAt: 0, lastChangeAt: 0, ok: true };
+async function coffeeLiveSyncTick(forceSync) {
+  if (_liveBusy) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const base = window.COFFEE && window.COFFEE.API_URL;
+  if (!base) return;
+  _liveBusy = true;
+  try {
+    // Сначала отправляем собственные накопленные правки, затем забираем чужие.
+    if (window.coffeeGetTotalPendingCount && _readCoffeeOutbox().length) { try { await coffeeFlushOutbox(); } catch (_) {} }
+    const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = ac ? setTimeout(() => ac.abort(), 6000) : null;
+    let d = null;
+    try {
+      const r = await fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=get_rev&t=' + Date.now(), { signal: ac ? ac.signal : undefined, cache: 'no-store' });
+      d = await r.json();
+    } catch (_) {} finally { if (t) clearTimeout(t); }
+    const st = window.coffeeLiveSyncState; st.lastCheckAt = Date.now();
+    if (!d || d.ok !== true || d.rev == null) { st.ok = false; return; }
+    st.ok = true; window._coffeeLastSyncOk = true;
+    const rev = String(d.rev);
+    const changed = _liveRev !== null && rev !== _liveRev;
+    // Пока есть неподтверждённые локальные правки, чужие данные не накатываем поверх них — сначала отправим свои.
+    if ((changed || forceSync) && _readCoffeeOutbox().length === 0) {
+      _liveRev = rev; st.lastRev = rev; st.lastChangeAt = Date.now();
+      try {
+        if (isPinAuthorized()) {
+          _bgSyncInFlight = false;
+          _triggerBackgroundSync('', true, '', true);
+        } else {
+          await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
+        }
+      } catch (_) {}
+      if (window.coffeeCache && window.coffeeCache.invalidate) window.coffeeCache.invalidate('all');
+      if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
+    } else if (_liveRev === null) { _liveRev = rev; st.lastRev = rev; }
+  } finally { _liveBusy = false; }
+}
+function _liveNextDelay() {
+  if (typeof document !== 'undefined' && document.hidden) return 30000;
+  return (Date.now() - _liveLastActive < 120000) ? 3000 : 8000;
+}
+function _liveSchedule() {
+  clearTimeout(_liveTimer);
+  _liveTimer = setTimeout(async () => { try { await coffeeLiveSyncTick(); } catch (_) {} _liveSchedule(); }, _liveNextDelay());
+}
+window.coffeeLiveSyncNow = function () { return coffeeLiveSyncTick(true); };
+if (typeof window !== 'undefined' && window.addEventListener && typeof document !== 'undefined') {
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, () => { _liveLastActive = Date.now(); }, { passive: true }));
+  const kick = () => { _liveLastActive = Date.now(); coffeeLiveSyncTick(); };
+  window.addEventListener('focus', kick);
+  window.addEventListener('online', kick);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') kick(); });
+  if (window.coffeeBus) window.coffeeBus.on((m) => { if (m && m.type === 'outbox_synced') setTimeout(() => coffeeLiveSyncTick(), 300); });
+  const start = () => { coffeeLiveSyncTick(); _liveSchedule(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else setTimeout(start, 0);
+}
+
 /* Legacy CLOUD_SYNC_V17 is read-only for backward compatibility. New writes go through the shared API. */
 /* Извлечение системного пакета синхронизации __SYS_CONFIG_V19__ из массива задач, возвращаемого get_checklists или admin */
 function _extractAndAbsorbSysTaskRow(tasksArr, db) {
@@ -1650,7 +1753,7 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
   return window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(cleanTasks) : cleanTasks;
 }
 
-function _triggerBackgroundSync(qPin, forceNow, focusDate) {
+function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
   const now = Date.now();
   if (_bgSyncInFlight || (!forceNow && (now - _lastBgSyncAt < 3500))) return;
   _bgSyncInFlight = true;
@@ -1682,7 +1785,7 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate) {
     });
     if (anyAbsorbed) {
       window.coffeeCache.invalidate('all');
-      window.coffeeBus.emit('server_sync', { ts: Date.now() });
+      window.coffeeBus.emit('server_sync', { ts: Date.now(), live: !!live });
     }
   }).catch(() => {
     _bgSyncInFlight = false;
@@ -1746,6 +1849,7 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       window.coffeeCache.invalidate('all');
       if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
       window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, pending: true, operationId: operation.operationId });
+      setTimeout(() => { try { coffeeFlushOutbox(); } catch (_) {} }, 4000);
       return {
         ok: true, local: true, pending: true, confirmed: false,
         operationId: operation.operationId, pendingCount: pending,
@@ -1753,22 +1857,25 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       };
     }
 
-    // Если удалённый Apps Script ещё не обновлён до v23 (вернул UNKNOWN_ACTION или старую ошибку PIN при валидной локальной сессии владельца),
-    // применяем изменение в локальной базе Permanent Owner Vault, чтобы раздел «Управление» сразу обновлял всю систему!
+    // Сервер вернул временную/неизвестная ошибку (старая версия скрипта, просроченная сессия, сбой, блокировка).
+    // Раньше правка применялась только локально и НИКОГДА не уходила на сервер. Теперь она ставится в очередь и
+    // автоматически отправляется повторно, пока сервер не подтвердит.
     const errStr = String((result && result.error) || '');
-    const isHardValidationError = /VALIDATION_FAILED|OUTBOX_FULL|INVALID_REQUEST_JSON/i.test(errStr);
+    const isHardValidationError = _isPermanentApiError(errStr) || /OUTBOX_FULL/i.test(errStr);
     const isOwnerAct = OWNER_MUTATION_ACTIONS.test(operation.action || '');
     const canApplyFallback = !isHardValidationError && (isOwnerAct ? (isPinAuthorized() || isPinAuthorized(payload.pin) || isPinAuthorized(operation.pin)) : true);
     if (canApplyFallback) {
+      const queuedRetry = _enqueueCoffeeOperation(url, operation);
+      if (!queuedRetry.queued) return { ok: false, local: false, pending: false, error: 'OUTBOX_FULL: Очередь операций заполнена. Повторите действие позже.' };
       applyLocalMutation(operation);
       window.coffeeCache.invalidate('all');
-      window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, localApplied: true, operationId: operation.operationId });
+      if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
+      window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, pending: true, operationId: operation.operationId });
+      setTimeout(() => { try { coffeeFlushOutbox(true); } catch (_) {} }, 2500);
       return {
-        ok: true,
-        local: true,
-        confirmed: false,
-        operationId: operation.operationId,
-        message: 'Применено в системе и сохранено в локальной базе'
+        ok: true, local: true, pending: true, confirmed: false,
+        operationId: operation.operationId, pendingCount: queuedRetry.pending,
+        message: 'Сохранено и будет автоматически отправлено в систему'
       };
     }
 

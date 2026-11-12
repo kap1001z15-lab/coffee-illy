@@ -644,6 +644,7 @@ if (window.coffeeBus) {
       toast('🔔 ' + (msg.payload.title || 'Новое уведомление'));
     }
     if (msg && (msg.type === 'mutation' || msg.type === 'server_sync')) {
+      if (msg.type === 'server_sync' && document.querySelector('dialog[open]')) return; /* не мешаем редактированию */
       if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
       if (ownerTopSection === 'report') renderOwnerReportSection();
       if (ownerTopSection === 'admin') load();
