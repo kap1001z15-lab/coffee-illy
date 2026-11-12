@@ -23,12 +23,12 @@
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
   body { margin:0; min-height:100vh;min-height:100dvh; color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:radial-gradient(900px 400px at 50% -120px, color-mix(in srgb, var(--crema) 22%, transparent), transparent), var(--bg); }
+    background:var(--bg); }
   h1,h2,.num { font-family:var(--font-d); letter-spacing:-.02em; margin:0; font-variant-numeric:tabular-nums; }
   .muted { color:var(--muted); font-size:14px; }
 
   header { position:relative; z-index:5; color:var(--cream);
-    background:linear-gradient(160deg,#2e1b11,#5a3a29); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
+    background:linear-gradient(160deg,#222b34,#33414f); border-radius:0 0 24px 24px; box-shadow:0 10px 30px -14px rgba(0,0,0,.55);
     padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px; }
   .wrap { max-width:480px; margin:0 auto; }
   .brand { display:flex; justify-content:space-between; align-items:center; gap:12px; }
@@ -56,7 +56,7 @@
   button, input, textarea { font:inherit; color:var(--ink); }
   button:focus-visible, input:focus-visible, textarea:focus-visible, label:focus-within { outline:3px solid var(--crema); outline-offset:2px; }
   .btn { width:100%; min-height:56px; border-radius:18px; border:0; font-weight:700; font-size:17px; cursor:pointer; padding:0 18px;
-    background:linear-gradient(135deg,#7a4e32,#4a2f20); color:var(--cream); box-shadow:0 10px 20px -12px rgba(74,47,32,.9); transition:transform .1s; }
+    background:linear-gradient(135deg,#2b3945,#1e2832); color:var(--cream); box-shadow:0 10px 20px -12px rgba(74,47,32,.9); transition:transform .1s; }
   .btn:active { transform:scale(.98); }
   .btn:disabled { background:var(--line); color:var(--muted); box-shadow:none; cursor:not-allowed; }
   .btn.ghost { background:var(--surface); color:var(--ink); border:1px solid var(--line); box-shadow:none; }
@@ -595,5 +595,342 @@ nav.tabs#tabs button.win-closed, #termTabs button.win-closed {
   nav.tabs#tabs button, #termTabs button {
     min-width: 98px !important;
     font-size: 12.5px !important;
+  }
+}
+
+
+/* === v31 FIX: МОБИЛЬНАЯ ШАПКА, КНОПКИ РЕЖИМОВ И СЕТКА 6 ЧЕК-ЛИСТОВ БЕЗ ОБРЕЗАНИЯ === */
+header .brand {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+header .brand-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+header .brand-left h1 {
+  font-size: 19px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+header .brand-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+header .brand-meta .sub, header .brand-meta .sub-dot {
+  color: rgba(248,249,250,0.72);
+  font-size: 12px;
+}
+header .who {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 55%;
+}
+header .barista-sel {
+  font-size: 13px !important;
+  font-weight: 700;
+  height: 36px;
+  max-width: 138px;
+  padding: 0 22px 0 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.26);
+  background-color: rgba(255,255,255,0.12);
+  color: #f8f9fa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+header .theme-btn {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+#termModeSwitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 10px 0 8px;
+  padding: 4px;
+  border-radius: 13px;
+  background: rgba(0,0,0,0.26);
+}
+#termModeSwitch button {
+  min-height: 40px !important;
+  padding: 6px 8px !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(248,249,250,0.82);
+}
+#termModeSwitch button.ok {
+  background: #f8f9fa !important;
+  color: #1c242b !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+}
+#termTimelineTabs {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  padding: 6px !important;
+  border-radius: 14px !important;
+  background: rgba(0,0,0,0.22) !important;
+  margin-top: 6px !important;
+}
+@media (min-width: 440px) {
+  #termTimelineTabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+#termTimelineTabs button {
+  min-height: 48px !important;
+  padding: 6px 6px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: rgba(248,249,250,0.9) !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.15 !important;
+  white-space: normal !important;
+  text-align: center;
+}
+#termTimelineTabs button[aria-selected="true"] {
+  background: #f8f9fa !important;
+  color: #1c242b !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+
+/* === v32: ИНДИКАТОР ОНЛАЙН/ОФЛАЙН И МИНИМАЛИСТИЧНЫЕ АКЦЕНТЫ === */
+.net-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.net-pill.online {
+  background: rgba(27, 138, 87, 0.22);
+  color: #8ce5b8;
+  border: 1px solid rgba(76, 195, 138, 0.35);
+}
+.net-pill.offline {
+  background: rgba(229, 176, 77, 0.22);
+  color: #ffd480;
+  border: 1px solid rgba(229, 176, 77, 0.45);
+}
+.net-pill.syncing {
+  background: rgba(92, 164, 242, 0.22);
+  color: #a8d1ff;
+  border: 1px solid rgba(92, 164, 242, 0.45);
+}
+#btnOk.ok {
+  background: var(--good) !important;
+  color: #ffffff !important;
+  border-color: var(--good) !important;
+  box-shadow: 0 4px 12px rgba(27, 138, 87, 0.28);
+}
+#btnInc.bad {
+  background: var(--bad) !important;
+  color: #ffffff !important;
+  border-color: var(--bad) !important;
+  box-shadow: 0 4px 12px rgba(194, 59, 34, 0.28);
+}
+
+
+/* === v34: СКРЫТИЕ ТАЙМЛАЙНА В «ИНФО И ТТК» + БОЛЬШОЕ ОКНО ЭКСТРЕННОЙ ПОЛОМКИ === */
+#termTimelineTabs[hidden], #steps[hidden] {
+  display: none !important;
+}
+.emergency-big-btn {
+  width: 100%;
+  min-height: 54px;
+  border-radius: 16px;
+  border: 2px solid var(--bad);
+  background: linear-gradient(135deg, #d9381e, #b02814);
+  color: #ffffff !important;
+  font-weight: 800;
+  font-size: 15.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  box-shadow: 0 8px 20px -8px rgba(194, 59, 34, 0.55);
+}
+.emergency-big-btn:active { transform: scale(0.98); }
+#quickIncDlg {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 20px;
+  width: min(560px, 96vw);
+  max-height: 92dvh;
+  overflow-y: auto;
+  box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.72);
+  margin: auto;
+}
+#quickIncDlg::backdrop {
+  background: rgba(12, 17, 22, 0.78);
+  backdrop-filter: blur(4px);
+}
+.qi-media-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 104px;
+  padding: 14px;
+  border: 2px dashed var(--bad);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bad) 6%, var(--bg));
+  cursor: pointer;
+  text-align: center;
+}
+.qi-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.qi-media-item {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid var(--bad);
+  aspect-ratio: 4 / 3;
+  background: #000;
+}
+.qi-media-item img, .qi-media-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.qi-media-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(194, 59, 34, 0.92);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+
+/* === v36: ИДЕАЛЬНОЕ РАЗМЕЩЕНИЕ ТЕКСТА ВЕЗДЕ БЕЗ ОБРЕЗАНИЯ И ВЫХОДА ЗА ГРАНИЦЫ === */
+.panel, .card, .info-card, .task, .field, .stat, .brand, .brand-left, .who {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+h1, h2, h3, p, span, b, label, summary {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+header .brand {
+  flex-wrap: wrap !important;
+  row-gap: 8px !important;
+}
+header .brand-left {
+  min-width: 150px;
+}
+header .brand-left h1 {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+header .who {
+  max-width: 100% !important;
+  margin-left: auto;
+}
+header .barista-sel {
+  max-width: 175px !important;
+  width: auto !important;
+  padding: 0 24px 0 10px !important;
+  text-overflow: clip !important;
+}
+#termModeSwitch button {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  height: auto !important;
+  min-height: 42px !important;
+  padding: 7px 10px !important;
+  text-align: center;
+  line-height: 1.2 !important;
+}
+#termTimelineTabs button {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  height: auto !important;
+  min-height: 50px !important;
+  padding: 7px 6px !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+  word-break: normal !important;
+}
+.btn, .seg button, .emergency-big-btn, .sample-btn {
+  white-space: normal !important;
+  height: auto !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  line-height: 1.25 !important;
+  text-align: center;
+  overflow-wrap: break-word;
+}
+input::placeholder, textarea::placeholder {
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+@media (max-width: 420px) {
+  .grid2 {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
   }
 }

@@ -22,7 +22,7 @@
 </div></header>
 <main id="main">
 <div id="err" class="al" hidden></div>
-<section class="card"><div class="row" style="margin-bottom:6px"><span class="mu" id="date">…</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" id="pitchGuideBtn" style="border:1px solid var(--accent,#9c5a25);background:color-mix(in srgb,var(--accent,#9c5a25) 12%,var(--bg));color:var(--ink);border-radius:10px;padding:6px 11px;font-size:12.5px;font-weight:700;cursor:pointer">🎯 Презентация заказчику (10 модулей)</button><button type="button" id="sendDigestBtn" style="border:1px solid var(--good);background:color-mix(in srgb,var(--good) 14%,var(--bg));color:var(--good);border-radius:10px;padding:6px 11px;font-size:12.5px;font-weight:700;cursor:pointer">📲 Скопировать / отправить сводку дня</button></div></div>
+<section class="card"><div class="row" style="margin-bottom:6px"><span class="mu" id="date">…</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" id="sendDigestBtn" style="border:1px solid var(--good);background:color-mix(in srgb,var(--good) 14%,var(--bg));color:var(--good);border-radius:10px;padding:6px 11px;font-size:12.5px;font-weight:700;cursor:pointer">📲 Скопировать / отправить сводку дня</button></div></div>
 <div id="pitchDrawer" hidden style="margin:8px 0 12px;padding:14px;border-radius:14px;border:2px solid var(--accent,#9c5a25);background:color-mix(in srgb,var(--crema,#c89b6d) 12%,var(--bg));font-size:13px">
   <b>🎯 Чек-лист демонстрации продукта заказчику (уровень лучших HoReCa-систем):</b>
   <div class="smart-grid" style="margin-top:8px">
@@ -39,11 +39,7 @@
       <h2 style="margin:0">🏎️ Приборная панель: План / Факт (Касса · Транзакции · Средний чек)</h2>
       <span class="mu" id="gaugePeriodHint">Цветовая индикация: 🟢 План выполнен · 🟡 Отклонение до 15% · 🔴 Ниже плана (внимание!)</span>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap" id="dashQuickPeriodBar">
-      <button type="button" data-dp="yest" style="padding:6px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:12.5px;font-weight:700;cursor:pointer">Вчера (закрытая смена)</button>
-      <button type="button" data-dp="today" style="padding:6px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:12.5px;font-weight:700;cursor:pointer">Сегодня</button>
-      <button type="button" data-dp="7" style="padding:6px 11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:12.5px;font-weight:700;cursor:pointer">За 7 дней (сумма планов Пн–Вс)</button>
-    </div>
+    
   </div>
   <div class="gauge-trio" id="dashGaugesTrio"></div>
 </section>

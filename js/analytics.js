@@ -420,6 +420,59 @@ window.coffeeNormalizeTasksTimeline = function (tasksList) {
     });
 };
 
+
+window.coffeeSyncGoodDeedsToChecklistTasks = function (db) {
+  if (!db || typeof db !== 'object') return;
+  if (!Array.isArray(db.goodDeeds)) {
+    db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((g) => Object.assign({}, g));
+  }
+  if (!Array.isArray(db.tasks)) db.tasks = [];
+  const delTasks = db.deletedTaskIds || {};
+  const delGds = db.deletedGoodDeedIds || {};
+  const gdIds = new Set(db.goodDeeds.map((g) => g && g.id).filter(Boolean));
+  // Remove tasks of block 'Карта добрых дел' that were deleted from goodDeeds (if their id starts with gd)
+  db.tasks = db.tasks.filter((t) => {
+    if (!t) return false;
+    if (delGds[t.id] || delTasks[t.id]) return false;
+    if (t.block === 'Карта добрых дел' && /^gd/i.test(String(t.id || '')) && !gdIds.has(t.id)) return false;
+    return true;
+  });
+  db.goodDeeds.forEach((g, idx) => {
+    if (!g || !g.id || delGds[g.id] || delTasks[g.id]) return;
+    const instrText =
+      (g.frequency ? '📅 Периодичность: ' + g.frequency + '\n' : '') +
+      (g.window ? '⏰ Окно выполнения: ' + g.window + '\n' : '') +
+      (g.instruction || '');
+    const ex = db.tasks.find((t) => t && t.id === g.id);
+    if (ex) {
+      ex.block = 'Карта добрых дел';
+      ex.title = g.title || ex.title;
+      ex.instruction = instrText || ex.instruction;
+      ex.responsible = g.responsible || ex.responsible || 'Бариста';
+      ex.photo = 'да';
+      ex.photoMode = 'да';
+      ex.mediaRequired = true;
+      ex.active = 'да';
+    } else {
+      db.tasks.push({
+        id: g.id,
+        block: 'Карта добрых дел',
+        group: 'gd',
+        groupName: 'Карта добрых дел (периодические задачи)',
+        title: g.title || 'Задача Карты добрых дел',
+        instruction: instrText,
+        photo: 'да',
+        photoMode: 'да',
+        responsible: g.responsible || 'Бариста',
+        reviewer: g.reviewer || 'Управляющий',
+        active: 'да',
+        row: 100 + idx,
+        mediaRequired: true
+      });
+    }
+  });
+};
+
 window.coffeeEnsureV19Schema = function (db) {
   if (!db || typeof db !== 'object') return db;
   if (!Array.isArray(db.checklistBlocks)) {
@@ -431,6 +484,11 @@ window.coffeeEnsureV19Schema = function (db) {
       db.checklistBlocks = window.COFFEE_DEFAULT_CHECKLIST_BLOCKS.map((b) => Object.assign({}, b));
     }
     db._timelineMigratedV28 = true;
+  }
+  if (Array.isArray(db.checklistBlocks) && !(db.deletedChecklistBlocks && db.deletedChecklistBlocks['Карта добрых дел'])) {
+    if (!db.checklistBlocks.some((b) => b && b.name === 'Карта добрых дел')) {
+      db.checklistBlocks.push({ id: 'blk_good_deeds', name: 'Карта добрых дел', openTime: '11:00', deadline: '22:00', isCash: false, active: true });
+    }
   }
   db.blocks = db.checklistBlocks.filter((b) => b && b.active !== false && !b.isCash && b.name !== 'Касса').map((b) => b.name);
   if (!db.blocks.length) db.blocks = ['Открытие', 'Лайн Чек 1', 'Лайн Чек 2', 'Закрытие'];
@@ -480,6 +538,7 @@ window.coffeeEnsureV19Schema = function (db) {
   if (!Array.isArray(db.goodDeeds)) {
     db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((g) => Object.assign({}, g));
   }
+  if (window.coffeeSyncGoodDeedsToChecklistTasks) window.coffeeSyncGoodDeedsToChecklistTasks(db);
   /* Обогащаем каждый инцидент полями Action Plan (дедлайн 24ч, проверяющий reviewer, запрет галереи cameraOnly) */
   if (Array.isArray(db.incidents)) {
     db.incidents.forEach((inc) => {
@@ -655,6 +714,16 @@ window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
         };
         db.incidents.unshift(newInc);
         appendAudit(db, 'Система автоконтроля', 'Просрочка чек-листа «' + blk + '»', 'Создан инцидент ' + incId + ' (Ответственный: Администратор)');
+        if (window.coffeeNotify) {
+          window.coffeeNotify.push(db, {
+            level: 'critical',
+            type: 'overdue',
+            actor: activeBarista,
+            title: '⏰ Просрочен чек-лист «' + blk + '»',
+            text: 'Дедлайн ' + win.deadline + ' истёк (дежурный: ' + activeBarista + '). Доступ закрыт, создан инцидент ' + incId + '.',
+            telegramText: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\n📋 Блок: ' + blk + '\n👤 Сотрудник: ' + activeBarista + '\n⏱ Дедлайн: ' + win.deadline
+          });
+        }
         newlyCreated.push(newInc);
         changed = true;
       }
@@ -786,21 +855,34 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
   const cashAll = Array.isArray(db.cash) ? db.cash : [];
   const expAll = Array.isArray(db.expenses) ? db.expenses : [];
   const ttkList = Array.isArray(db.ttk) && db.ttk.length ? db.ttk : (window.COFFEE_DEFAULT_TTK || []);
+  const productsByDate = (db && db.productsByDate && typeof db.productsByDate === 'object') ? db.productsByDate : {};
 
   const inRange = (d) => (!fromStr || d >= fromStr) && (!toStr || d <= toStr);
-  const cashRows = cashAll.filter((c) => c && c.date && inRange(c.date));
+  const cashRows = cashAll.filter((c) => c && c.date && inRange(c.date)).slice().sort((a, b) => a.date.localeCompare(b.date));
   const expRows = expAll.filter((e) => e && e.date && inRange(e.date));
 
-  // Средняя себестоимость 1 чашки по технологическим картам (ТТК)
+  const ttkUnitCost = (t) => (Number(t.costBeans) || 0) + (Number(t.costMilk) || 0) + (Number(t.costSyrup) || 0) + (Number(t.costCup) || 0);
   const avgTtkUnitCost = ttkList.length
-    ? ttkList.reduce((acc, t) => acc + (Number(t.costBeans) || 0) + (Number(t.costMilk) || 0) + (Number(t.costSyrup) || 0) + (Number(t.costCup) || 0), 0) / ttkList.length
+    ? Math.round((ttkList.reduce((acc, t) => acc + ttkUnitCost(t), 0) / ttkList.length) * 100) / 100
     : 8.5;
+
+  function findTtkCostForProductName(prodName) {
+    const norm = String(prodName || '').toLowerCase();
+    if (!norm) return avgTtkUnitCost;
+    const exact = ttkList.find((t) => String(t.name || '').toLowerCase().indexOf(norm) >= 0 || norm.indexOf(String(t.name || '').replace(/^[^а-яa-z0-9]+/i, '').toLowerCase()) >= 0);
+    if (exact) return ttkUnitCost(exact);
+    if (/американо|эспрессо/i.test(norm)) return 5.5;
+    if (/капучино|латте/i.test(norm)) return 8.0;
+    if (/флэт|flat|раф|какао/i.test(norm)) return 11.2;
+    if (/чизкейк|десерт|торт|круассан/i.test(norm)) return 23.5;
+    return avgTtkUnitCost;
+  }
 
   const sMap = {};
   (db.settings || []).forEach((s) => { if (s && s.id) sMap[s.id] = s.value; });
-  const shiftBasePay = Number(sMap.SHIFT_BASE_PAY != null ? sMap.SHIFT_BASE_PAY : 250); // руб. за выход в смену
-  const shiftBonusPct = Number(sMap.SHIFT_BONUS_PCT != null ? sMap.SHIFT_BONUS_PCT : 5); // % от выручки смены
-  const unitWasteCost = 18; // руб. за 1 списание
+  const shiftBasePay = Number(sMap.SHIFT_BASE_PAY != null ? sMap.SHIFT_BASE_PAY : 250);
+  const shiftBonusPct = Number(sMap.SHIFT_BONUS_PCT != null ? sMap.SHIFT_BONUS_PCT : 5);
+  const unitWasteCost = 18;
 
   let revenue = 0;
   let cashTotal = 0;
@@ -809,6 +891,8 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
   let writeoffsTotal = 0;
   let shiftsCount = 0;
   let cogsFromTtk = 0;
+  let periodPlanTotal = 0;
+  const dayByDayPnL = [];
 
   cashRows.forEach((c) => {
     const dayCash = Number(c.cash) || 0;
@@ -816,14 +900,52 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
     const dayRev = dayCash + dayCard;
     const dayChecks = Number(c.checks) || 0;
     const dayWo = Number(c.writeoff) || 0;
+    const shArr = Array.isArray(c.shifts) && c.shifts.length ? c.shifts : [{ name: c.barista || 'Бариста' }];
+    const dayShiftsCnt = shArr.length;
+
+    // Точный расчёт COGS: если за день загружены позиции Продажи.csv, считаем по ТТК каждой позиции, иначе по числу чеков * avgTtkUnitCost
+    const dayProds = Array.isArray(c.products) && c.products.length ? c.products : (productsByDate[c.date] || []);
+    let dayCogs = 0;
+    if (dayProds.length) {
+      dayCogs = Math.round(dayProds.reduce((s, p) => s + (Number(p.qty) || 1) * findTtkCostForProductName(p.name), 0));
+    } else {
+      dayCogs = Math.round(dayChecks * avgTtkUnitCost);
+    }
+
+    const dayPayroll = Math.round(dayShiftsCnt * shiftBasePay + dayRev * (shiftBonusPct / 100));
+    const dayOpex = expRows.filter((e) => e.date === c.date && !/зарплат|фот|аванс/i.test(String(e.category || ''))).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const dayWaste = Math.round(dayWo * unitWasteCost);
+    const dayNet = dayRev - dayCogs - dayPayroll - dayOpex - dayWaste;
+    const dp = window.coffeeGetDayPlan ? window.coffeeGetDayPlan(c.date, db) : { revenue: Number(db.plan) || 2200, dayCode: '' };
+
     revenue += dayRev;
     cashTotal += dayCash;
     cardTotal += dayCard;
     checksTotal += dayChecks;
     writeoffsTotal += dayWo;
-    const shArr = Array.isArray(c.shifts) && c.shifts.length ? c.shifts : [{ name: c.barista || 'Бариста' }];
-    shiftsCount += shArr.length;
-    cogsFromTtk += Math.round(dayChecks * avgTtkUnitCost);
+    shiftsCount += dayShiftsCnt;
+    cogsFromTtk += dayCogs;
+    periodPlanTotal += (dp.revenue || 2200);
+
+    dayByDayPnL.push({
+      date: c.date,
+      dayCode: dp.dayCode || '',
+      barista: c.barista || shArr.map((s) => s.name).join(', '),
+      shiftsCount: dayShiftsCnt,
+      cash: dayCash,
+      card: dayCard,
+      revenue: dayRev,
+      plan: dp.revenue || 2200,
+      planPct: dp.revenue > 0 ? Math.round((dayRev / dp.revenue) * 100) : 0,
+      checks: dayChecks,
+      avgCheck: dayChecks > 0 ? Math.round(dayRev / dayChecks) : 0,
+      cogs: dayCogs,
+      payroll: dayPayroll,
+      opex: dayOpex,
+      writeoff: dayWo,
+      wasteCost: dayWaste,
+      netProfit: dayNet
+    });
   });
 
   const payrollAccrued = Math.round(shiftsCount * shiftBasePay + revenue * (shiftBonusPct / 100));
@@ -832,42 +954,75 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
   let loggedOpex = 0;
   let marketingSpend = 0;
   let loggedPayroll = 0;
+  const opexByCategoryMap = {};
   expRows.forEach((e) => {
     const amt = Number(e.amount) || 0;
-    const cat = String(e.category || '').toLowerCase();
+    const cat = String(e.category || 'Прочее').trim();
     loggedOpex += amt;
-    if (/реклам|маркет|продвиж|таргет/.test(cat)) marketingSpend += amt;
-    if (/зарплат|фот|аванс/.test(cat)) loggedPayroll += amt;
+    opexByCategoryMap[cat] = (opexByCategoryMap[cat] || 0) + amt;
+    if (/реклам|маркет|продвиж|таргет/i.test(cat)) marketingSpend += amt;
+    if (/зарплат|фот|аванс/i.test(cat)) loggedPayroll += amt;
   });
 
-  // Если ФОТ уже проведён в журнале «Расходы», не дублируем его с расчётным начислением
   const effectivePayroll = loggedPayroll > 0 ? loggedPayroll : payrollAccrued;
   const nonPayrollOpex = Math.max(0, loggedOpex - loggedPayroll);
+  const grossProfit = revenue - cogsFromTtk;
+  const grossMarginPct = revenue > 0 ? Math.round((grossProfit / revenue) * 1000) / 10 : 0;
   const totalCosts = cogsFromTtk + effectivePayroll + nonPayrollOpex + wasteCost;
   const netProfit = revenue - totalCosts;
+  const netMarginPct = revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : 0;
   const foodCostPct = revenue > 0 ? Math.round((cogsFromTtk / revenue) * 1000) / 10 : 0;
+  const laborCostPct = revenue > 0 ? Math.round((effectivePayroll / revenue) * 1000) / 10 : 0;
+  const opexPct = revenue > 0 ? Math.round((nonPayrollOpex / revenue) * 1000) / 10 : 0;
   const cac = checksTotal > 0 && marketingSpend > 0 ? Math.round((marketingSpend / checksTotal) * 100) / 100 : 0;
+  const cashSharePct = revenue > 0 ? Math.round((cashTotal / revenue) * 100) : 0;
+  const cardSharePct = revenue > 0 ? (100 - cashSharePct) : 0;
+
+  // Юнит-экономика по каждой техкарте ТТК для профессиональной таблицы
+  const ttkEconomics = ttkList.map((t) => {
+    const unitCost = Math.round(ttkUnitCost(t) * 10) / 10;
+    const price = Number(t.price) || 1;
+    const marginRub = Math.round((price - unitCost) * 10) / 10;
+    const marginPct = Math.round((marginRub / price) * 100);
+    const fcPct = Math.round((unitCost / price) * 100);
+    return Object.assign({}, t, { unitCost, marginRub, marginPct, foodCostPct: fcPct });
+  });
 
   return {
     revenue,
+    periodPlanTotal,
     cashTotal,
     cardTotal,
+    cashSharePct,
+    cardSharePct,
     checksTotal,
     avgCheck: checksTotal > 0 ? Math.round(revenue / checksTotal) : 0,
     shiftsCount,
+    avgRevPerShift: shiftsCount > 0 ? Math.round(revenue / shiftsCount) : 0,
     cogs: cogsFromTtk,
+    avgTtkUnitCost,
+    grossProfit,
+    grossMarginPct,
     foodCostPct,
     payrollAccrued,
     loggedPayroll,
     effectivePayroll,
+    laborCostPct,
+    shiftBasePay,
+    shiftBonusPct,
     loggedOpex,
     nonPayrollOpex,
+    opexPct,
+    opexByCategory: Object.keys(opexByCategoryMap).map((k) => ({ category: k, amount: opexByCategoryMap[k] })).sort((a, b) => b.amount - a.amount),
     marketingSpend,
     cac,
     writeoffsTotal,
     wasteCost,
     totalCosts,
     netProfit,
+    netMarginPct,
+    dayByDayPnL,
+    ttkEconomics,
     isEstimated: false,
     hasLoggedExpenses: expRows.length > 0
   };

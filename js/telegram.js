@@ -124,3 +124,58 @@ window.coffeeTelegram = {
     return this._sendViaServer('digest', text);
   }
 };
+
+
+/* === ЕДИНЫЙ ЦЕНТР МГНОВЕННЫХ УВЕДОМЛЕНИЙ (TELEGRAM + ВНУТРИ ПРИЛОЖЕНИЯ + ОФЛАЙН-ОЧЕРЕДЬ) === */
+window.coffeeNotify = {
+  push(db, evt) {
+    if (!db || !evt) return null;
+    db.liveNotifications = Array.isArray(db.liveNotifications) ? db.liveNotifications : [];
+    const now = new Date();
+    const hm = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const item = {
+      id: evt.id || ('NTF-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6)),
+      ts: Date.now(),
+      date: (typeof _isoToday === 'function' ? _isoToday() : new Date().toISOString().slice(0, 10)),
+      time: hm,
+      level: evt.level || 'info', // 'critical' | 'warn' | 'ok' | 'info'
+      type: evt.type || 'system',
+      title: String(evt.title || 'Уведомление'),
+      text: String(evt.text || ''),
+      actor: String(evt.actor || 'Терминал'),
+      read: false
+    };
+    // Защита от дублирования одинаковых уведомлений подряд
+    const dup = db.liveNotifications.find((n) => n && n.date === item.date && n.title === item.title && n.text === item.text && (item.ts - (n.ts || 0) < 60000));
+    if (dup) return dup;
+    db.liveNotifications.unshift(item);
+    if (db.liveNotifications.length > 60) db.liveNotifications.length = 60;
+
+    // Мгновенная отправка в Telegram (сервер Apps Script или офлайн-очередь)
+    try {
+      if (window.coffeeTelegram && evt.telegramText) {
+        window.coffeeTelegram._sendViaServer(item.type, evt.telegramText, { notificationId: item.id });
+      }
+    } catch (_) {}
+
+    // Сигнал для открытых вкладок Панели владельца / Дашборда (0 мс)
+    try {
+      if (window.coffeeBus && typeof window.coffeeBus.emit === 'function') {
+        window.coffeeBus.emit('live_notification', item);
+      }
+    } catch (_) {}
+
+    return item;
+  },
+  getUnreadCount(dbOpt) {
+    const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+    return (db.liveNotifications || []).filter((n) => n && !n.read).length;
+  },
+  markAllRead() {
+    if (typeof getUDB !== 'function' || typeof saveUDB !== 'function') return;
+    const db = getUDB();
+    (db.liveNotifications || []).forEach((n) => { if (n) n.read = true; });
+    saveUDB(db);
+    if (window.coffeeBus) window.coffeeBus.emit('mutation', { action: 'notifications_read' });
+  }
+};

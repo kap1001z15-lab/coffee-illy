@@ -10,7 +10,7 @@ function safeShowModal(dlg) {
   if (!dlg) return;
   try {
     if (dlg.open) safeCloseModal(dlg);
-    if (typeof dlg.showModal === "function") safeShowModal(dlg);
+    if (typeof dlg.showModal === "function") dlg.showModal();
     else dlg.setAttribute("open", "open");
   } catch (_) {
     dlg.setAttribute("open", "open");
@@ -19,7 +19,7 @@ function safeShowModal(dlg) {
 function safeCloseModal(dlg) {
   if (!dlg) return;
   try {
-    if (dlg.open && typeof dlg.close === "function") safeCloseModal(dlg);
+    if (dlg.open && typeof dlg.close === "function") dlg.close();
     dlg.removeAttribute("open");
   } catch (_) {
     dlg.removeAttribute("open");
@@ -64,7 +64,7 @@ if (tg) {
 document.addEventListener("focusin", (e) => {     // клавиатура не перекрывает поле ввода
   if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName)) setTimeout(() => { try { e.target.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (x) {} }, 320);
 });
-$("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+$("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
 
 let tasks = [], cur = [], idx = 0, answers = [], META = {};
 let block = "Открытие", photo = "", incident = false, priority = "Терпит";
@@ -97,15 +97,14 @@ const markDone = (b) => { try { localStorage.setItem(doneKey(b), "1"); } catch (
 function drawTabs() {
   const unreadCount = getUnreadInfoCount();
   if ($("termInfoModeLbl")) {
-    $("termInfoModeLbl").textContent = unreadCount > 0 ? ("📢 Задачи + Информирование (" + unreadCount + ")") : "📢 Задачи + Информирование";
+    $("termInfoModeLbl").textContent = unreadCount > 0 ? ("📢 Инфо и ТТК (" + unreadCount + ")") : "📢 Инфо и ТТК";
   }
   const isInfoMode = block === "ИНФО";
   if ($("termModeSwitch")) {
     document.querySelectorAll("#termModeSwitch button").forEach((btn) => {
       const on = (btn.dataset.tmode === "tasks_info") === isInfoMode;
       btn.className = on ? "ok" : "";
-      btn.style.background = on ? "var(--surface,#fff)" : "transparent";
-      btn.style.color = on ? "var(--ink,#231812)" : "#f6ece2";
+      btn.removeAttribute("style");
     });
   }
   const tlBar = $("termTimelineTabs");
@@ -116,13 +115,14 @@ function drawTabs() {
       { name: "Лайн Чек 1", openTime: "08:30", deadline: "09:30" },
       { name: "Лайн Чек 2", openTime: "14:00", deadline: "16:00" },
       { name: "Закрытие", openTime: "21:30", deadline: "22:30" },
-      { name: "Касса", openTime: "22:00", deadline: "23:59", isCash: true }
+      { name: "Касса", openTime: "22:00", deadline: "23:59", isCash: true },
+      { name: "Карта добрых дел", openTime: "11:00", deadline: "22:00" }
     ];
     tlBar.innerHTML = dynBlocks.map((bObj) => {
       const bVal = (bObj.isCash || bObj.name === "Касса") ? "КАССА" : bObj.name;
       const isSel = block === bVal;
       const done = isDone(bVal);
-      const locked = bVal !== block && inProgress();
+      const locked = false;
       return '<button role="tab" type="button" data-b="' + esc(bVal) + '" data-l="' + esc(bObj.name) + '" aria-selected="' + (isSel ? 'true' : 'false') + '" class="' + (locked ? 'locked' : '') + '">' +
         '<span>' + esc(bObj.name) + '</span>' +
         (done ? '<span class="ck">✓</span>' : '') +
@@ -136,7 +136,7 @@ if ($("termModeSwitch")) {
   $("termModeSwitch").addEventListener("click", (e) => {
     const b = e.target.closest("[data-tmode]");
     if (!b) return;
-    if (inProgress()) { toast("Сначала завершите начатый чек-лист"); return; }
+    if (inProgress()) { try { saveAnswer(); saveShiftDraft(); } catch (_) {} }
     if (b.dataset.tmode === "tasks_info") {
       selectBlock("ИНФО");
     } else {
@@ -215,7 +215,7 @@ function syncStaffSelector() {
   const staffList = (META && Array.isArray(META.staff) && META.staff.length)
     ? META.staff.filter((s) => s.active !== "нет")
     : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
-  sel.innerHTML = staffList.map((s) => '<option value="' + s.name.replace(/"/g, '&quot;') + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + s.name + ' (' + (s.role || 'Бариста') + ')</option>').join("");
+  sel.innerHTML = staffList.map((s) => '<option value="' + s.name.replace(/"/g, '&quot;') + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + s.name + '</option>').join("");
   if (!staffList.some((s) => s.name === userName) && staffList.length) {
     userName = staffList[0].name;
     sel.value = userName;
@@ -380,8 +380,11 @@ function updateDeadlineUI() {
 
   const lockCard = $("windowLockCard");
   const stepWrap = $("taskStepWrap");
+  const progWrap = $("stepProgressWrap");
   if (lockCard && stepWrap) {
     if (!win.canPass) {
+      banner.hidden = true;
+      if (progWrap) progWrap.hidden = true;
       lockCard.hidden = false;
       stepWrap.hidden = true;
       $("steps").hidden = true;
@@ -390,29 +393,45 @@ function updateDeadlineUI() {
       if (win.state === "completed") {
         lockCard.style.borderColor = "var(--good)";
         $("windowLockIcon").textContent = "✅";
-        $("windowLockTitle").textContent = "Чек-лист «" + block + "» за сегодня выполнен";
-        $("windowLockDesc").textContent = "Все обязательные пункты блока «" + block + "» успешно сданы" + (win.completedRecord && win.completedRecord.time ? " в " + win.completedRecord.time : "") + ". Повторная отправка не требуется.";
+        $("windowLockTitle").textContent = "Чек-лист «" + checkBlkName + "» выполнен";
+        $("windowLockDesc").textContent = "Все пункты блока «" + checkBlkName + "» сданы" + (win.completedRecord && win.completedRecord.time ? " в " + win.completedRecord.time : "") + ".";
         alertBox.hidden = true;
       } else if (win.state === "before_window") {
         lockCard.style.borderColor = "var(--warn)";
         $("windowLockIcon").textContent = "⏳";
-        $("windowLockTitle").textContent = "Доступ к чек-листу «" + block + "» ещё не открыт";
-        $("windowLockDesc").textContent = "Прохождение чек-листа доступно для сотрудников строго в отведённое время: с " + win.openTime + " до " + win.deadline + " (сейчас " + win.currentTime + ").";
+        $("windowLockTitle").textContent = "Окно «" + checkBlkName + "»: " + win.openTime + " – " + win.deadline;
+        $("windowLockDesc").textContent = "Доступ откроется по расписанию в " + win.openTime + " (сейчас " + win.currentTime + ").";
         alertBox.hidden = true;
       } else {
         lockCard.style.borderColor = "var(--bad)";
         $("windowLockIcon").textContent = "🔒";
-        $("windowLockTitle").textContent = "Доступ закрыт — время выполнения истекло!";
-        $("windowLockDesc").textContent = "Отведённое время для прохождения чек-листа «" + block + "» (" + win.openTime + " – " + win.deadline + ") закончилось. Прохождение после дедлайна заблокировано.";
+        $("windowLockTitle").textContent = "Доступ к «" + checkBlkName + "» закрыт (" + win.openTime + "–" + win.deadline + ")";
+        $("windowLockDesc").textContent = "Время выполнения чек-листа истекло в " + win.deadline + ". Самостоятельное открытие на терминале бариста недоступно.";
         alertBox.hidden = false;
         alertBox.innerHTML =
-          "<b>🚨 Автоматическая фиксация нарушения:</b><br>" +
-          "• В реестр проблем занесён критический инцидент о несвоевременном выполнении чек-листа «" + block + "».<br>" +
-          "• Администратору отправлено уведомление в Telegram.<br>" +
-          "• Открыть доступ или продлить окно может только администратор в разделе <b>«Управление → Задачи»</b>.";
+          "<b>🚨 Зафиксирована просрочка дедлайна:</b><br>" +
+          "• Уведомление отправлено администратору.<br>" +
+          "• Открыть доступ или продлить дедлайн смены может только <b>Администратор</b> в Панели управления.";
+      }
+      // Проверяем, какой чек-лист сейчас открыт по времени, чтобы дать кнопку быстрого перехода в 1 клик
+      const jumpBtn = $("goToActiveBlockFromLockBtn");
+      if (jumpBtn && window.coffeeGetChecklistBlocks && window.coffeeGetBlockWindow) {
+        const openBlkObj = window.coffeeGetChecklistBlocks().find((bObj) => {
+          const w = window.coffeeGetBlockWindow(bObj.name);
+          return w && w.canPass && bObj.name !== checkBlkName;
+        });
+        if (openBlkObj) {
+          jumpBtn.hidden = false;
+          jumpBtn.textContent = "🟢 Открыть активный сейчас: «" + openBlkObj.name + "» (" + openBlkObj.openTime + "–" + openBlkObj.deadline + ")";
+          jumpBtn.onclick = () => selectBlock((openBlkObj.isCash || openBlkObj.name === "Касса") ? "КАССА" : openBlkObj.name);
+        } else {
+          jumpBtn.hidden = true;
+        }
       }
       return false;
     } else {
+      banner.hidden = false;
+      if (progWrap) progWrap.hidden = false;
       lockCard.hidden = true;
       stepWrap.hidden = false;
       $("steps").hidden = false;
@@ -482,7 +501,7 @@ function renderStep() {
   if (!updateDeadlineUI()) { $("steps").hidden = true; return; }
   const t = cur[idx], a = answers[idx] || {};
   const pMode = getTaskPhotoMode(t);
-  $("stepCounter").textContent = "Задача " + (idx + 1) + " из " + cur.length + (t.id ? " · код " + t.id : "");
+  $("stepCounter").textContent = "Пункт " + (idx + 1) + " из " + cur.length;
   if ($("photoModeTag")) {
     $("photoModeTag").textContent = pMode === "да" ? "📷 Фото обязательно" : (pMode === "при проблеме" ? "📷 Фото при проблеме" : "✓ Без фото");
     $("photoModeTag").style.color = pMode === "да" ? "var(--warn)" : "var(--muted)";
@@ -490,6 +509,17 @@ function renderStep() {
   $("taskTitle").textContent = t.title || "";
   $("taskInstruction").textContent = t.instruction || "";
   $("taskInstruction").hidden = !t.instruction;
+  if ($("inlineSampleDetails")) $("inlineSampleDetails").open = false;
+  if ($("inlineSamplePhotos")) {
+    const samples = window.coffeeGetSamplePhotos ? window.coffeeGetSamplePhotos(t) : [];
+    $("inlineSamplePhotos").innerHTML = samples.map((s) => (
+      '<div style="border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--surface)">' +
+        '<div style="font-weight:700;font-size:12.5px;margin-bottom:4px">' + esc(s.label) + '</div>' +
+        '<img src="' + s.url + '" alt="' + esc(s.label) + '" style="width:100%;border-radius:8px;display:block">' +
+        '<div class="muted" style="font-size:11.5px;margin-top:4px">' + esc(s.caption || '') + '</div>' +
+      '</div>'
+    )).join("");
+  }
 
   photos = Array.isArray(a.photos) ? a.photos.slice() : (a.preview ? [a.preview] : []);
   photo = photos[0] || "";
@@ -507,9 +537,7 @@ function renderStep() {
   $("btnOk").className = (choiceMade && !incident) ? "ok" : "";
   $("btnInc").className = (choiceMade && incident) ? "bad" : "";
   if ($("choiceHint")) {
-    $("choiceHint").textContent = !choiceMade
-      ? "Нажмите «Всё в норме» или «Обнаружена проблема», чтобы разблокировать переход далее"
-      : (incident ? "Заполните карточку проблемы — она сразу поступит в реестр инцидентов и Telegram" : "✓ Выполнение по стандарту подтверждено");
+    $("choiceHint").textContent = !choiceMade ? "" : (incident ? "Опишите проблему ниже" : "✓ Подтверждено");
     $("choiceHint").style.color = !choiceMade ? "var(--warn)" : (incident ? "var(--bad)" : "var(--good)");
   }
 
@@ -602,22 +630,10 @@ if ($("simPhotoBtn")) {
   };
 }
 
-/* Модальное окно «Как правильно выполнить (фотообразец)» */
-if ($("btnSampleModal")) {
+/* Встроенный фотообразец прямо внутри блока информации задачи (не выглядит как отдельная задача) */
+if ($("btnSampleModal") && $("btnSampleModal").tagName !== "SUMMARY") {
   $("btnSampleModal").onclick = () => {
-    const t = cur[idx];
-    if (!t) return;
-    $("sampleDlgTitle").textContent = "📖 Стандарт: " + (t.title || "");
-    $("sampleDlgInstr").textContent = t.instruction || "Выполните операцию согласно регламенту смены.";
-    const samples = window.coffeeGetSamplePhotos ? window.coffeeGetSamplePhotos(t) : [];
-    $("sampleDlgPhotos").innerHTML = samples.map((s) => (
-      '<div style="border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--bg)">' +
-        '<div style="font-weight:700;font-size:13.5px;margin-bottom:6px">' + esc(s.label) + '</div>' +
-        '<img src="' + s.url + '" alt="' + s.label + '" style="width:100%;border-radius:10px;display:block">' +
-        '<div class="muted" style="font-size:12.5px;margin-top:6px">' + esc(s.caption || '') + '</div>' +
-      '</div>'
-    )).join("");
-    safeShowModal($("sampleDlg"));
+    if ($("inlineSampleDetails")) $("inlineSampleDetails").open = !$("inlineSampleDetails").open;
   };
 }
 if ($("sampleDlgClose")) $("sampleDlgClose").onclick = () => safeCloseModal($("sampleDlg"));
@@ -875,13 +891,23 @@ $("nextBtn").onclick = async () => {
 };
 
 /* ---------- Вкладка 3.2: Информирование и кнопка «Ознакомлен» ---------- */
+let ttkShowAllMode = false;
 function renderTtkCatalog() {
   const box = $("ttkListContainer");
   if (!box) return;
   const q = ($("ttkSearchIn") ? $("ttkSearchIn").value : "").trim().toLowerCase();
-  const list = ((window.coffeeGetInstantAdmin && window.coffeeGetInstantAdmin().ttk) || window.COFFEE_DEFAULT_TTK || []).filter((t) => !q || (t.name + " " + t.category + " " + t.recipe).toLowerCase().indexOf(q) >= 0);
+  const allTtk = (window.coffeeGetInstantAdmin && window.coffeeGetInstantAdmin().ttk) || window.COFFEE_DEFAULT_TTK || [];
+  if (!q && !ttkShowAllMode) {
+    box.innerHTML = '<div class="muted" style="font-size:13px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px dashed var(--line)">💡 Нажмите на быструю кнопку напитка выше или введите запрос (например, <b>Капучино</b>, <b>Флэт Уайт</b>, <b>Раф</b>), чтобы бот показал точный рецепт и граммовки.</div>';
+    return;
+  }
+  const list = allTtk.filter((t) => !q || (t.name + " " + t.category + " " + t.recipe + " " + (t.serving || "")).toLowerCase().indexOf(q) >= 0);
+  if (!list.length) {
+    box.innerHTML = '<div class="muted" style="font-size:13px;padding:10px 12px;border-radius:12px;background:var(--bg)">По запросу «' + esc(q) + '» техкарта не найдена. Попробуйте другое название или нажмите «Все ТТК».</div>';
+    return;
+  }
   box.innerHTML = list.map((t) => (
-    '<div style="border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:color-mix(in srgb,var(--crema,#c89b6d) 8%,var(--surface,#fff))">' +
+    '<div style="border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--bg)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<b>' + esc(t.name) + ' <span class="tag">' + esc(t.volume) + '</span></b>' +
         '<span class="tag ok">' + esc(t.category) + ' · ' + esc(t.price) + ' руб.</span>' +
@@ -891,7 +917,31 @@ function renderTtkCatalog() {
     '</div>'
   )).join('');
 }
-if ($("ttkSearchIn")) $("ttkSearchIn").addEventListener("input", renderTtkCatalog);
+if ($("ttkSearchIn")) {
+  $("ttkSearchIn").addEventListener("input", () => {
+    ttkShowAllMode = false;
+    renderTtkCatalog();
+  });
+}
+if ($("ttkShowAllBtn")) {
+  $("ttkShowAllBtn").onclick = () => {
+    ttkShowAllMode = !ttkShowAllMode;
+    if (ttkShowAllMode && $("ttkSearchIn")) $("ttkSearchIn").value = "";
+    $("ttkShowAllBtn").textContent = ttkShowAllMode ? "Скрыть список" : "Все ТТК";
+    renderTtkCatalog();
+  };
+}
+if ($("ttkQuickChips")) {
+  $("ttkQuickChips").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-ttkchip]");
+    if (!chip) return;
+    if ($("ttkSearchIn")) {
+      $("ttkSearchIn").value = chip.dataset.ttkchip;
+      ttkShowAllMode = false;
+      renderTtkCatalog();
+    }
+  });
+}
 
 function getAnnouncementsSource() {
   if (META && Array.isArray(META.announcements) && META.announcements.length) return META.announcements;
@@ -1009,29 +1059,72 @@ if ($("infoCardsList")) {
   });
 }
 
+let qiMediaList = [];
+function renderQiMediaPreview() {
+  const box = $("qiMediaPreview");
+  if (!box) return;
+  box.hidden = qiMediaList.length === 0;
+  box.innerHTML = qiMediaList.map((src, i) => {
+    const isVid = /^data:video/.test(src);
+    return '<div class="qi-media-item">' +
+      (isVid ? '<video src="' + src + '" muted playsinline></video>' : '<img src="' + src + '" alt="Фото поломки">') +
+      '<button type="button" class="qi-media-del" data-qidel="' + i + '" title="Удалить">×</button>' +
+    '</div>';
+  }).join("");
+}
+function handleQiFiles(fileList) {
+  Array.from(fileList || []).forEach((f) => {
+    const r = new FileReader();
+    r.onload = () => {
+      if (r.result) {
+        qiMediaList.push(String(r.result));
+        renderQiMediaPreview();
+      }
+    };
+    r.readAsDataURL(f);
+  });
+}
+if ($("qiPhotoIn")) $("qiPhotoIn").addEventListener("change", (e) => { handleQiFiles(e.target.files); e.target.value = ""; });
+if ($("qiVideoIn")) $("qiVideoIn").addEventListener("change", (e) => { handleQiFiles(e.target.files); e.target.value = ""; });
+if ($("qiMediaPreview")) {
+  $("qiMediaPreview").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-qidel]");
+    if (!b) return;
+    qiMediaList.splice(Number(b.dataset.qidel), 1);
+    renderQiMediaPreview();
+  });
+}
 if ($("quickIncidentBtn")) {
   $("quickIncidentBtn").onclick = () => {
     $("qiStep").value = "";
     $("qiText").value = "";
+    qiMediaList = [];
+    renderQiMediaPreview();
     safeShowModal($("quickIncDlg"));
   };
 }
 if ($("qiCancel")) $("qiCancel").onclick = () => safeCloseModal($("quickIncDlg"));
+if ($("qiCloseX")) $("qiCloseX").onclick = () => safeCloseModal($("quickIncDlg"));
 if ($("quickIncForm")) {
   $("quickIncForm").onsubmit = async (e) => {
     e.preventDefault();
     const txt = $("qiText").value.trim();
-    if (txt.length < 3) { toast("Опишите проблему (минимум 3 символа)"); return; }
-    await post({
+    if (txt.length < 3) { toast("Опишите проблему (минимум 3 символа)"); if ($("qiText")) $("qiText").focus(); return; }
+    const btn = $("qiSubmit");
+    if (btn) { btn.disabled = true; btn.textContent = "Отправка…"; }
+    const ok = await post({
       action: "report_standalone_incident",
       userName,
       incType: $("qiType").value,
       step: $("qiStep").value.trim() || $("qiType").value,
       text: txt,
-      priority: $("qiPriority").value
+      priority: $("qiPriority").value,
+      photo: qiMediaList[0] || "",
+      photos: qiMediaList.slice()
     });
+    if (btn) { btn.disabled = false; btn.textContent = "🚨 Отправить руководителю"; }
     safeCloseModal($("quickIncDlg"));
-    toast("🚨 Инцидент зарегистрирован и отправлен в Telegram!");
+    toast(ok ? "🚨 Сообщение о поломке отправлено руководителю!" : "🚨 Сохранено офлайн — отправится при появлении сети!");
   };
 }
 
@@ -1053,7 +1146,7 @@ async function post(p) {
       if (light.items) light.items.forEach((i) => i.photo_base64 = "");
       q.push(light); setQ(q);
     }
-    queueUI(); return false;
+    queueUI(); if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0); return false;
   }
 }
 async function flush() {
@@ -1061,6 +1154,8 @@ async function flush() {
   const rest = [];
   for (const p of q) { try { await sendRaw(p); } catch (e) { rest.push(p); } }
   setQ(rest); queueUI();
+  if (window.coffeeFlushOutbox) { try { await window.coffeeFlushOutbox(); } catch (_) {} }
+  if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(q.length - rest.length);
 }
 function queueUI() {
   const n = getQ().length;
@@ -1109,10 +1204,15 @@ window.addEventListener("focus", syncFromAdminChanges);
 
 
 function finish(ok, text) {
-  tgt(() => tg.HapticFeedback.notificationOccurred(ok ? "success" : "warning"));
+  tgt(() => tg.HapticFeedback.notificationOccurred("success"));
   $("steps").hidden = true; show("doneView");
-  $("doneTitle").textContent = ok ? "Отправлено!" : "Сохранено на телефоне";
-  $("doneText").textContent = ok ? text : "Нет связи — отчёт уйдёт автоматически, когда появится интернет.";
+  $("doneTitle").textContent = "✅ Отчёт успешно выполнен";
+  const pendingCnt = window.coffeeGetTotalPendingCount ? window.coffeeGetTotalPendingCount() : getQ().length;
+  const isOffline = !ok || (typeof navigator !== "undefined" && navigator.onLine === false) || pendingCnt > 0;
+  $("doneText").textContent = isOffline
+    ? ((text ? text + " · " : "") + "Сохранено офлайн — данные автоматически отправятся в систему при появлении интернета.")
+    : (text || "Данные успешно записаны в систему.");
+  if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
 }
 
 /* ---------- касса: CSV ---------- */
@@ -1718,7 +1818,7 @@ if ($("quickSubmitPaperCashBtn")) {
     const deltaCups = cntVal > prevCnt ? (cntVal - prevCnt) : Math.max(1, Math.round(papCash / 35) || 45);
     const estCash = papCash > 0 ? papCash : (deltaCups * 35);
     if ($("manCashIn")) $("manCashIn").value = estCash;
-    if ($("manChecksIn")) $("manChecksIn").value = deltaCups;
+    if ($("manChecksIn") && !$("manChecksIn").value) $("manChecksIn").value = deltaCups;
     applyManualCashInputs();
     if (trans && Array.isArray(trans.shifts) && trans.shifts[0]) {
       trans.shifts[0].prevCounter = prevCnt;
@@ -1755,7 +1855,7 @@ $("submitCashBtn").onclick = async () => {
   $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
   const top = sales || [];
   const ok = await post({
-    action: "submit_cash", mergeMode: (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace", shifts: (trans && trans.shifts) || undefined, sid: uid(), location: LOCATION, userName: ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName, date: reportDate,
+    action: "submit_cash", endCounter: Number($("quickCounterIn") && $("quickCounterIn").value) || undefined, mergeMode: (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace", shifts: (trans && trans.shifts) || undefined, sid: uid(), location: LOCATION, userName: ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName, date: reportDate,
     cash: trans.cash, card: trans.card, checks: trans.checks,
     writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
     topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
@@ -1772,7 +1872,7 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("#termTimelineTabs button[data-b], .tabs button[data-b]");
   if (!b) return;
   tap();
-  if (b.dataset.b !== block && inProgress()) { toast("Сначала завершите «" + block + "»: на каждом шаге нужно новое фото"); return; }
+  if (b.dataset.b !== block && inProgress()) { try { saveAnswer(); saveShiftDraft(); } catch (_) {} }
   if ($("loader") && !$("loader").hidden) return;
   if ($("errorView") && !$("errorView").hidden && b.dataset.b !== "КАССА") return;
   selectBlock(b.dataset.b);
@@ -1785,6 +1885,26 @@ $("retryBtn").onclick = loadTasks;
   const qb = qp.get("block"); if (qb && ["Открытие","День","Закрытие","КАССА"].includes(qb)) block = qb;
   setReportDate(reportDate);
 })();
+
+(function autoSelectOpenChecklistOnStart() {
+  try {
+    const qp = new URLSearchParams(location.search);
+    if (qp.get("block") || qp.get("tab")) return;
+    if (window.coffeeGetBlockWindow && window.coffeeGetChecklistBlocks) {
+      const wCur = window.coffeeGetBlockWindow(block === "КАССА" ? "Касса" : block);
+      if (wCur && !wCur.canPass) {
+        const openNow = window.coffeeGetChecklistBlocks().find((bObj) => {
+          const w = window.coffeeGetBlockWindow(bObj.name);
+          return w && w.canPass;
+        });
+        if (openNow) {
+          block = (openNow.isCash || openNow.name === "Касса") ? "КАССА" : openNow.name;
+        }
+      }
+    }
+  } catch (_) {}
+})();
+
 if (window.coffeeSettings) { const cs = window.coffeeSettings.get(); if (cs.location) { LOCATION = cs.location; $("loc").textContent = LOCATION; } if (cs.plan > 0) PLAN = cs.plan; if (cs.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = cs.initCounter; }
 
 /* Поддержка перетаскивания файлов мышкой (Drag & Drop) на ПК */
@@ -1860,29 +1980,7 @@ window.addEventListener('storage', (e) => {
 window.addEventListener('focus', reloadTerminalFromVault);
 
 
-if ($("unlockBlockNowBtn")) {
-  $("unlockBlockNowBtn").onclick = async () => {
-    const targetBlk = (block === "КАССА" || block === "Касса") ? "Касса" : block;
-    await post({
-      action: "extend_deadline",
-      block: targetBlk,
-      openFrom: "00:00",
-      until: "23:59",
-      reason: "Открыто сотрудником/администратором в терминале"
-    });
-    if (window.applyLocalMutation) {
-      window.applyLocalMutation({
-        action: "extend_deadline",
-        block: targetBlk,
-        openFrom: "00:00",
-        until: "23:59",
-        reason: "Открыто сотрудником/администратором в терминале"
-      });
-    }
-    toast("🔓 Доступ к блоку «" + targetBlk + "» открыт!");
-    selectBlock(block);
-  };
-}
+
 if ($("goToInfoFromLockBtn")) {
   $("goToInfoFromLockBtn").onclick = () => {
     selectBlock("ИНФО");
@@ -1893,3 +1991,25 @@ if ($("doneHomeBtn")) {
     selectBlock(block === "КАССА" ? "Открытие" : block);
   };
 }
+
+
+/* Поддержка свайпа влево/вправо для переключения шагов чек-листа на телефоне */
+(function () {
+  const wrapEl = $("taskStepWrap");
+  if (!wrapEl) return;
+  let touchStartX = 0, touchStartY = 0;
+  wrapEl.addEventListener("touchstart", (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  wrapEl.addEventListener("touchend", (e) => {
+    if (!e.changedTouches || e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 68 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+      if (dx < 0 && $("nextBtn") && !$("nextBtn").disabled) $("nextBtn").click();
+      else if (dx > 0 && $("backBtn") && !$("backBtn").hidden && !$("backBtn").disabled) $("backBtn").click();
+    }
+  }, { passive: true });
+})();

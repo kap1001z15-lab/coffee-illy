@@ -187,7 +187,8 @@ check('6. Проверка шаблона смены (SAMPLE_FILES_DB.shift_text
 
   assert(window.SAMPLE_FILES_DB && typeof window.SAMPLE_FILES_DB.shift_text === 'string' && window.SAMPLE_FILES_DB.shift_text.indexOf('Счетчик') >= 0, 'SAMPLE_FILES_DB.shift_text должен возвращать валидный шаблон смены');
   assert(!/data-preset="all_batch"/.test(idxHtml), 'Старые демо-кнопки примеров в Кассе убраны');
-  assert(/id="unlockBlockNowBtn"/.test(idxHtml) && /id="goToInfoFromLockBtn"/.test(idxHtml), 'В карточке закрытого окна добавлены кнопки разблокировки и перехода в Инфо');
+  assert(!/id="unlockBlockNowBtn"/.test(idxHtml) && /id="goToInfoFromLockBtn"/.test(idxHtml), 'У бариста в терминале НЕТ кнопки самостоятельной разблокировки чек-листа без команды администратора');
+  assert(/data-b="Карта добрых дел"/.test(idxHtml) && /id="inlineSampleDetails"/.test(idxHtml) && /Отчёт успешно выполнен/.test(idxHtml), 'Карта добрых дел перенесена 6-м пунктом в чек-лист, фотообразец встроен в карточку задачи, после отчёта выводится «Отчёт успешно выполнен»');
   assert(/id="clearShiftTextBtn"/.test(idxHtml) && /id="doneHomeBtn"/.test(idxHtml), 'Добавлены кнопки очистки шаблона смены и возврата на главную без перезагрузки');
   assert(/safeShowModal/.test(termJs) && /safeCloseModal/.test(termJs), 'Все диалоги в терминале открываются через безопасный safeShowModal');
   assert(/data-a="inc-del"/.test(admJs), 'Кнопка удаления инцидента присутствует в карточке инцидента');
@@ -284,5 +285,139 @@ check('8. Сохранение под учётной записью Админи
   }
 });
 
-process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/8 успешно.\n');
+
+check('9. Работа офлайн при отсутствии интернета + автоматическая отправка накопленных данных при появлении сети', async () => {
+  const origFetch = global.fetch;
+  let sentActions = [];
+  try {
+    // 1) Имитируем потерю интернета (fetch падает с сетевой ошибкой)
+    global.fetch = async () => { throw new Error('Network unreachable'); };
+    const offRes = await window.coffeeFetch(window.COFFEE.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'save_setting',
+        id: 'PLAN',
+        value: '2990'
+      })
+    });
+    assert(offRes && offRes.ok === true && offRes.pending === true, 'В офлайн-режиме действие должно сразу сохраняться локально и ставиться в очередь');
+    assert(window.getUDB().plan === 2990, 'Изменение должно применяться в интерфейсе моментально (0 мс) даже без интернета');
+    assert(window.coffeeGetTotalPendingCount() >= 1, 'Счётчик очереди должен показывать несинхронизированные операции');
+
+    // 2) Имитируем восстановление интернета и автоматическую отправку очереди
+    global.fetch = async (u, opt) => {
+      const b = JSON.parse((opt && opt.body) || '{}');
+      sentActions.push(b.action);
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const flushRes = await window.coffeeFlushOutbox();
+    assert(flushRes && flushRes.sent >= 1 && flushRes.pending === 0, 'При появлении сети все накопленные офлайн-действия должны автоматически отправиться в систему');
+    assert(sentActions.includes('save_setting'), 'Отложенное действие save_setting должно быть доставлено на сервер');
+  } finally {
+    global.fetch = origFetch;
+  }
+});
+
+
+check('10. Защита от дублирования данных (чек-листы, касса, инциденты, задачи и настройки)', () => {
+  const opId = 'op_dedup_test_1';
+  const payloadChk = {
+    action: 'submit_checklist',
+    operationId: opId,
+    sid: 'sid_chk_1',
+    userName: 'Соня',
+    block: 'Открытие',
+    items: [
+      { id: 'o01', title: 'Фото-селфи', isIncident: true, comment: 'Тестовая поломка без дубля', priority: 'Терпит' }
+    ]
+  };
+  window.applyLocalMutation(payloadChk);
+  window.applyLocalMutation(payloadChk);
+  window.applyLocalMutation(Object.assign({}, payloadChk, { operationId: 'op_dedup_test_2' }));
+
+  const db = window.getUDB();
+  const today = window._isoToday();
+  const matchingChks = db.checklists.filter((c) => c.date === today && c.block === 'Открытие' && c.who === 'Соня');
+  const matchingIncs = db.incidents.filter((i) => i.date === today && i.text === 'Тестовая поломка без дубля');
+  assert(matchingChks.length === 1, 'Повторная отправка чек-листа не должна создавать дубль в db.checklists (найдено: ' + matchingChks.length + ')');
+  assert(matchingIncs.length === 1, 'Повторная отправка чек-листа не должна создавать дубль инцидента (найдено: ' + matchingIncs.length + ')');
+
+  const cashPayload = {
+    action: 'submit_cash',
+    sid: 'sid_cash_dedup_1',
+    date: '2026-11-12',
+    barista: 'Соня',
+    cash: 1500,
+    card: 500,
+    checks: 50
+  };
+  window.applyLocalMutation(cashPayload);
+  window.applyLocalMutation(Object.assign({}, cashPayload, { operationId: 'op_cash_2' }));
+  const cashRec = window.getUDB().cash.find((c) => c.date === '2026-11-12');
+  assert(cashRec && cashRec.cash === 1500 && cashRec.card === 500, 'Повторная отправка кассы с тем же sid не должна удваивать выручку');
+});
+
+
+check('11. Мгновенные уведомления (coffeeNotify) при поломках, сдаче чек-листов, просрочке и закрытии кассы', () => {
+  window.applyLocalMutation({
+    action: 'report_standalone_incident',
+    operationId: 'op_notif_inc_1',
+    userName: 'Алина',
+    incType: 'Поломка оборудования',
+    step: 'Правый стимер кофемашины',
+    text: 'Падает давление пара',
+    priority: 'Критично'
+  });
+  const db = window.getUDB();
+  assert(Array.isArray(db.liveNotifications) && db.liveNotifications.length >= 1, 'Должен формироваться список мгновенных уведомлений liveNotifications');
+  const incNotif = db.liveNotifications.find((n) => /Правый стимер/.test(n.title));
+  assert(incNotif && incNotif.level === 'critical', 'Экстренная поломка должна мгновенно создавать критическое уведомление руководителю');
+  assert(window.coffeeNotify.getUnreadCount() >= 1, 'Счётчик непрочитанных уведомлений должен быть >= 1');
+  window.coffeeNotify.markAllRead();
+  assert(window.coffeeNotify.getUnreadCount() === 0, 'Кнопка Отметить все прочитанными должна обнулять счётчик непрочитанных уведомлений');
+});
+
+check('12. Полный финансовый сбор P&L: точный COGS по ТТК проданных позиций, Валовая прибыль, ФОТ, OpEx и Посуточная ведомость', () => {
+  const db = window.getUDB();
+  db.cash = [];
+  db.expenses = [];
+  db.productsByDate = {};
+  window.saveUDB(db);
+
+  // Записываем смену с детализацией проданных напитков по ТТК
+  window.applyLocalMutation({
+    action: 'submit_cash',
+    operationId: 'op_fin_test_1',
+    sid: 'sid_fin_test_1',
+    date: '2026-11-11',
+    barista: 'Соня',
+    cash: 1200,
+    card: 800,
+    checks: 50,
+    writeOffs: 1,
+    products: [
+      { name: 'Капучино ILLY', qty: 30, sum: 570 },
+      { name: 'Американо ILLY', qty: 20, sum: 240 }
+    ]
+  });
+  window.applyLocalMutation({
+    action: 'add_expense',
+    operationId: 'op_fin_exp_1',
+    id: 'EXP-FIN-1',
+    date: '2026-11-11',
+    category: 'Закупка продуктов',
+    amount: 300,
+    comment: 'Молоко и стаканы'
+  });
+
+  const fin = window.coffeeCalculateFinancialModel(window.getUDB(), '2026-11-11', '2026-11-11');
+  assert(fin.revenue === 2000 && fin.cashTotal === 1200 && fin.cardTotal === 800, 'Выручка должна точно собираться из наличных (1200) и безнала (800)');
+  assert(fin.cogs > 0 && fin.grossProfit === (fin.revenue - fin.cogs), 'Валовая прибыль должна быть равна Выручка минус точный COGS по ТТК');
+  assert(fin.effectivePayroll === 350, 'ФОТ за 1 смену при выручке 2000 руб. должен быть 250 + 5% (100) = 350 руб.');
+  assert(fin.nonPayrollOpex === 300 && fin.wasteCost === 18, 'OpEx (300 руб.) и стоимость списаний (18 руб.) должны точно учитываться');
+  assert(fin.netProfit === (2000 - fin.cogs - 350 - 300 - 18), 'Чистая операционная прибыль должна сходиться до рубля по формуле P&L');
+  assert(Array.isArray(fin.dayByDayPnL) && fin.dayByDayPnL.length === 1 && fin.dayByDayPnL[0].netProfit === fin.netProfit, 'Посуточная ведомость P&L должна точно совпадать с итоговым отчётом');
+});
+
+process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/12 успешно.\n');
 process.exit(0);

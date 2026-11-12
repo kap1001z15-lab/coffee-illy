@@ -96,12 +96,12 @@
       }
     },
     {
-      name: '4. Таймлайн чек-листов: 5 регламентных окон (Открытие, Лайн Чек 1/2, Закрытие, Касса)',
+      name: '4. Таймлайн чек-листов: 6 регламентных окон (включая 6-й пункт «Карта добрых дел»)',
       fn() {
         const db = {};
         const blocks = window.coffeeGetChecklistBlocks(db);
         const names = blocks.map((b) => b.name);
-        assert(names.includes('Открытие') && names.includes('Лайн Чек 1') && names.includes('Лайн Чек 2') && names.includes('Закрытие') && names.includes('Касса'), 'Все 5 окон таймлайна должны присутствовать');
+        assert(names.includes('Открытие') && names.includes('Лайн Чек 1') && names.includes('Лайн Чек 2') && names.includes('Закрытие') && names.includes('Касса') && names.includes('Карта добрых дел'), 'Все 6 окон таймлайна (включая «Карта добрых дел») должны присутствовать');
         const lc2 = blocks.find((b) => b.name === 'Лайн Чек 2');
         assert(lc2.openTime === '14:00' && lc2.deadline === '16:00', 'Окно Лайн Чек 2 должно быть 14:00–16:00');
       }

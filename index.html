@@ -27,34 +27,32 @@
 <header>
   <div class="wrap">
     <div class="brand">
-      <div>
+      <div class="brand-left">
         <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1>
-        <span class="sub" id="today"></span>
+        <div class="brand-meta"><span class="sub" id="loc">Кофейня №1</span><span class="sub-dot">·</span><span class="sub" id="today"></span><span id="netStatusBadge" class="net-pill online">🟢 Онлайн</span></div>
       </div>
-      <div class="who" style="display:flex;gap:8px;align-items:center">
-        <div style="text-align:right">
-          <span class="sub" id="loc"></span><br>
-          <b id="who" hidden></b>
-          <select id="baristaSelect" class="barista-sel" aria-label="Учётная запись сотрудника" title="Выберите свою учётную запись">
-            <option value="Соня">👤 Соня (Бариста)</option>
-            <option value="Алина">👤 Алина (Бариста)</option>
-            <option value="Настя">👤 Настя (Бариста)</option>
-            <option value="Максим">👤 Максим (Шеф-бариста)</option>
-          </select>
-        </div>
+      <div class="who">
+        <b id="who" hidden></b>
+        <select id="baristaSelect" class="barista-sel" aria-label="Учётная запись сотрудника" title="Выберите свою учётную запись">
+          <option value="Соня">👤 Соня</option>
+          <option value="Алина">👤 Алина</option>
+          <option value="Настя">👤 Настя</option>
+          <option value="Максим">👤 Максим</option>
+        </select>
         <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button>
       </div>
     </div>
-    <div class="seg" id="termModeSwitch" style="margin:8px 0 6px;background:rgba(0,0,0,0.22);padding:4px;border-radius:14px;gap:6px">
-      <button type="button" data-tmode="checklists" class="ok" style="min-height:40px;border-radius:11px;font-size:13.5px;font-weight:700;color:#fff;border-color:rgba(255,255,255,0.25)">📋 Чек-листы (Таймлайн)</button>
-      <button type="button" data-tmode="tasks_info" style="min-height:40px;border-radius:11px;font-size:13.5px;font-weight:700;color:#f6ece2;background:transparent;border-color:transparent"><span id="termInfoModeLbl">📢 Задачи + Информирование</span></button>
+    <div class="seg" id="termModeSwitch">
+      <button type="button" data-tmode="checklists" class="ok">📋 Чек-листы</button>
+      <button type="button" data-tmode="tasks_info"><span id="termInfoModeLbl">📢 Инфо и ТТК</span></button>
     </div>
-    <div class="tabs" id="termTimelineTabs" role="tablist" aria-label="Таймлайн чек-листов" style="grid-template-columns:repeat(auto-fit,minmax(92px,1fr))">
+    <div class="tabs" id="termTimelineTabs" role="tablist" aria-label="Таймлайн чек-листов">
       <button role="tab" data-b="Открытие" data-l="Открытие" aria-selected="true">Открытие</button>
       <button role="tab" data-b="Лайн Чек 1" data-l="Лайн Чек 1" aria-selected="false">Лайн Чек 1</button>
       <button role="tab" data-b="Лайн Чек 2" data-l="Лайн Чек 2" aria-selected="false">Лайн Чек 2</button>
       <button role="tab" data-b="Закрытие" data-l="Закрытие" aria-selected="false">Закрытие</button>
       <button role="tab" data-b="КАССА" data-l="Касса" aria-selected="false">Касса</button>
+      <button role="tab" data-b="Карта добрых дел" data-l="Карта добрых дел" aria-selected="false">Карта добрых дел</button>
     </div>
     <div class="steps" id="steps" aria-hidden="true"></div>
   </div>
@@ -102,17 +100,23 @@
       <span id="draftRestoreText">↺ Восстановлен незавершённый чек-лист</span>
       <button type="button" id="resetDraftBtn">Сбросить</button>
     </div>
-    <div id="windowLockCard" class="panel center" hidden style="border-width:2px">
-      <div id="windowLockIcon" style="font-size:44px;margin-bottom:8px">🔒</div>
-      <h2 id="windowLockTitle" style="font-size:21px;margin:0 0 8px">Доступ к чек-листу закрыт</h2>
-      <p id="windowLockDesc" class="muted" style="margin:0 0 12px;font-size:15px"></p>
-      <div id="windowLockAlertBox" style="padding:12px 14px;border-radius:14px;background:color-mix(in srgb,var(--bad) 12%,var(--bg));border:1px solid var(--bad);font-size:13.5px;text-align:left;margin-top:10px" hidden></div>
-      <div style="display:flex;flex-direction:column;gap:8px;max-width:360px;margin:14px auto 0">
-        <button type="button" class="btn" id="unlockBlockNowBtn" style="min-height:46px;font-size:14px">🔓 Открыть доступ к этому блоку сейчас</button>
-        <button type="button" class="btn ghost" id="goToInfoFromLockBtn" style="min-height:42px;font-size:13.5px">📢 Перейти в «Задачи + Информирование + ТТК»</button>
+    <div id="windowLockCard" class="panel center" hidden style="border-width:2px;padding:16px 14px">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:6px">
+        <span id="windowLockIcon" style="font-size:28px;line-height:1">🔒</span>
+        <h2 id="windowLockTitle" style="font-size:18px;margin:0;text-align:left">Доступ к чек-листу закрыт</h2>
+      </div>
+      <p id="windowLockDesc" class="muted" style="margin:0 0 10px;font-size:13.5px;line-height:1.4"></p>
+      <div id="windowLockAlertBox" style="padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--bad) 10%,var(--bg));border:1px solid var(--bad);font-size:12.5px;text-align:left;margin-top:8px;line-height:1.4" hidden></div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin:12px auto 0">
+        <button type="button" class="btn" id="goToActiveBlockFromLockBtn" hidden style="min-height:46px;font-size:14px;background:var(--good);color:#fff">🟢 Перейти к активному сейчас чек-листу</button>
+        <button type="button" class="btn ghost" id="goToInfoFromLockBtn" style="min-height:44px;font-size:13.5px">📢 Открыть «Информирование и ТТК»</button>
       </div>
     </div>
     <div id="taskStepWrap">
+    <div id="beginnerGuideBar" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.3">
+      <span style="font-weight:700;color:var(--ink)">Шаги:</span>
+      <span>1. Фото</span><span>➔</span><span>2. Норма / Проблема</span><span>➔</span><span>3. Далее</span>
+    </div>
 
     <div class="panel task">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -120,12 +124,19 @@
         <span id="photoModeTag" style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--muted)"></span>
       </div>
       <h2 id="taskTitle"></h2>
-      <p class="instr" id="taskInstruction"></p>
-
-      <button type="button" class="sample-btn" id="btnSampleModal">📖 Как правильно выполнить (фотообразец)</button>
+      <div class="task-info-unified" style="background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--brew);border-radius:14px;padding:12px 14px;margin:0 0 16px">
+        <p class="instr" id="taskInstruction" style="background:transparent;border:0;padding:0;margin:0"></p>
+        <details id="inlineSampleDetails" class="inline-std" style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)">
+          <summary id="btnSampleModal" style="cursor:pointer;font-weight:700;font-size:13.5px;color:var(--brew);list-style:none;display:flex;align-items:center;justify-content:space-between">
+            <span>📷 Фотообразец и стандарт (с какого ракурса снимать)</span>
+            <span class="muted" style="font-size:12px">Показать ▾</span>
+          </summary>
+          <div id="inlineSamplePhotos" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px"></div>
+        </details>
+      </div>
 
       <div class="field" id="photoBlock">
-        <span class="label" id="photoBlockLabel">Фото или видео — можно прикрепить несколько снимков</span>
+        <span class="label" id="photoBlockLabel">Фото / видеофиксация</span>
         <div class="drop" id="drop" role="button" tabindex="0" aria-label="Открыть камеру">
           <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
           <span id="photoPrompt">Открыть камеру</span>
@@ -141,12 +152,12 @@
       </div>
 
       <div class="field">
-        <span class="label">Обязательное подтверждение результата</span>
+        <span class="label">Результат проверки</span>
         <div class="seg">
           <button type="button" id="btnOk">✅ Всё в норме</button>
           <button type="button" id="btnInc">⚠️ Обнаружена проблема</button>
         </div>
-        <p class="muted" id="choiceHint" style="margin:6px 0 0;font-size:12.5px">Выберите результат проверки для перехода к следующей задаче</p>
+        <p class="muted" id="choiceHint" style="margin:6px 0 0;font-size:12.5px"></p>
       </div>
 
       <div id="incidentBox" hidden>
@@ -165,7 +176,7 @@
         </div>
         <div class="field">
           <span class="label" style="color:var(--bad)">Описание проблемы</span>
-          <textarea id="incidentComment" placeholder="Опишите неисправность или отклонение (минимум 3 символа)"></textarea>
+          <textarea id="incidentComment" placeholder="Коротко опишите проблему…"></textarea>
         </div>
         <div class="field">
           <span class="label">Срочность эскалации</span>
@@ -183,38 +194,43 @@
     </div>
   </section>
 
-  <!-- Вкладка 3.2: ИНФОРМИРОВАНИЕ И ОБУЧЕНИЕ ПЕРСОНАЛА -->
+  <!-- Вкладка 3.2: ИНФОРМИРОВАНИЕ И СПРАВОЧНЫЙ БОТ БАЗЫ ЗНАНИЙ -->
   <section id="infoView" class="stack" hidden>
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <div>
-          <h2 style="font-size:20px;margin:0">📢 Задачи смены + Информирование персонала</h2>
-          <p class="muted" style="margin:4px 0 0">Персональные поручения сотруднику, события календаря, обновления меню и технологические карты.</p>
-        </div>
-        <button type="button" id="quickIncidentBtn" style="border:1px solid var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--bg));color:var(--bad);border-radius:12px;padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer">🚨 Сообщить о проблеме</button>
+        <h2 style="font-size:19px;margin:0">📢 Информирование</h2>
       </div>
+      <button type="button" id="quickIncidentBtn" class="emergency-big-btn">🚨 Сообщить о поломке руководителю</button>
       <div class="seg" id="infoFilterSeg" style="margin-top:12px">
-        <button type="button" data-iflt="unread" class="ok">🔥 Актуальные сейчас (непрочитанные)</button>
-        <button type="button" data-iflt="all">📚 Архив прочитанных и все события</button>
+        <button type="button" data-iflt="unread" class="ok">🔥 Непрочитанные</button>
+        <button type="button" data-iflt="all">📚 Архив прочитанных</button>
       </div>
-    </div>
-    <div class="panel" id="personalTasksPanel">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-        <h3 style="font-size:17px;margin:0">📌 Поручения и задачи для сотрудника: <span id="personalTasksWho">Соня</span></h3>
-        <span class="tag ok" id="personalTasksCountTag">Актуально</span>
-      </div>
-      <div id="personalTasksList" class="stack" style="gap:8px"></div>
     </div>
     <div id="infoCardsList"></div>
     <div class="panel" id="ttkCardsSection" style="margin-top:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <div>
-          <h2 style="font-size:19px;margin:0">☕ Технологические карты напитков (ТТК и стандарты бара)</h2>
-          <p class="muted" style="margin:3px 0 0;font-size:13px">Быстрая шпаргалка бариста: граммовки зерна, экстракция, температура взбивания молока и подача.</p>
+          <h2 style="font-size:17px;margin:0">🤖 База знаний (ТТК и стандарты)</h2>
         </div>
       </div>
-      <input type="search" id="ttkSearchIn" placeholder="🔍 Поиск напитка (Капучино, Раф, Флэт Уайт, Матча)…" style="margin-bottom:10px">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="search" id="ttkSearchIn" placeholder="🔍 Напиток или вопрос (Капучино, Раф…)" style="margin:0;flex:1">
+        <button type="button" id="ttkShowAllBtn" style="border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:0 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Все ТТК</button>
+      </div>
+      <div id="ttkQuickChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button type="button" data-ttkchip="Капучино" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">☕ Капучино</button>
+        <button type="button" data-ttkchip="Американо" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">🖤 Американо</button>
+        <button type="button" data-ttkchip="Латте" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">🥛 Латте</button>
+        <button type="button" data-ttkchip="Flat White" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">⚡ Flat White</button>
+        <button type="button" data-ttkchip="Раф" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">🍊 Раф</button>
+        <button type="button" data-ttkchip="Какао" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">🍫 Какао</button>
+      </div>
       <div id="ttkListContainer" class="stack" style="gap:10px"></div>
+    </div>
+    <div class="panel" id="personalTasksPanel" hidden>
+      <span id="personalTasksWho" hidden></span>
+      <span id="personalTasksCountTag" hidden></span>
+      <div id="personalTasksList"></div>
     </div>
   </section>
 
@@ -234,10 +250,8 @@
     </div>
     <div class="panel" id="minimalBaristaCashCard" style="border:2px solid var(--good)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-        <span class="label" style="margin:0;color:var(--good)">⚡ Быстрая сдача смены бариста (Счётчик + 2 Фото с камеры)</span>
-        <span class="tag ok">Принцип 1 окна (30 сек)</span>
+        <span class="label" style="margin:0;color:var(--good)">⚡ Сдача смены (Счётчик + 2 фото)</span>
       </div>
-      <p class="muted" style="margin:0 0 10px;font-size:13px">В конце смены просто укажите показание счётчика кофемашины, сфотографируйте экран счётчика и ваш бумажный лист кассы — управляющий сам сверит цифры на Дашборде:</p>
       <div class="grid2" style="gap:10px;margin-bottom:10px">
         <div>
           <label class="muted" for="quickCounterIn" style="font-size:12.5px;display:block;margin-bottom:4px">☕ Счётчик кофемашины (конец смены)</label>
@@ -264,6 +278,9 @@
       <button type="button" class="btn" id="quickSubmitPaperCashBtn" style="min-height:48px;font-size:15px">✅ Отправить счётчик и фото бумажного отчёта</button>
     </div>
 
+    <details id="cashAdvancedTools" class="panel" style="padding:14px 16px">
+      <summary style="cursor:pointer;font-weight:700;font-size:14px;color:var(--brew)">📂 Дополнительно: загрузка CSV и ручной ввод кассы ▾</summary>
+      <div class="stack" style="margin-top:12px">
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <span class="label" style="margin:0">1. Единое поле загрузки документов (CSV и TXT — любое количество файлов сразу)</span>
@@ -322,6 +339,9 @@
         </div>
       </div>
     </div>
+      </div>
+    </details>
+
 
     <div class="panel">
       <span class="muted">Итого выручка</span>
@@ -369,7 +389,7 @@
       <path d="M30 40h120v58c0 34-22 56-60 56s-60-22-60-56z" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
       <path d="M20 176h140" stroke="var(--ink)" stroke-width="7" stroke-linecap="round"/>
     </svg>
-    <h2 id="doneTitle">Отправлено!</h2>
+    <h2 id="doneTitle">✅ Отчёт успешно выполнен</h2>
     <p class="muted" id="doneText"></p>
     <a class="btn" id="toDash" href="dashboard.html" hidden style="max-width:280px;margin:14px auto 0">Посмотреть на дашборде</a>
     <button class="btn ghost" id="doneHomeBtn" type="button" style="max-width:280px;margin:10px auto 0">На главную</button>
@@ -385,41 +405,59 @@
   <div id="sampleDlgPhotos" class="stack"></div>
 </dialog>
 
-<dialog id="quickIncDlg" style="border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:20px;width:min(480px,94vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.65)">
+<dialog id="quickIncDlg">
   <form id="quickIncForm" method="dialog">
-    <h2 style="font-size:19px;margin:0 0 8px">🚨 Зарегистрировать инцидент</h2>
-    <p class="muted" style="margin:0 0 12px">Сообщение сразу попадёт в реестр проблем и уйдёт ответственным лицам в Telegram.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+      <h2 style="font-size:20px;margin:0;color:var(--bad)">🚨 Экстренное сообщение о поломке</h2>
+      <button type="button" id="qiCloseX" style="border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 11px;font-weight:700;cursor:pointer">✕</button>
+    </div>
+    <div class="field">
+      <label class="label">Фото или видео поломки</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label class="qi-media-drop" style="min-height:82px;padding:10px">
+          <span style="font-size:24px">📷</span>
+          <span style="font-weight:700;font-size:13px">Сделать фото</span>
+          <input type="file" id="qiPhotoIn" accept="image/*" capture="environment" multiple hidden>
+        </label>
+        <label class="qi-media-drop" style="min-height:82px;padding:10px">
+          <span style="font-size:24px">📹</span>
+          <span style="font-weight:700;font-size:13px">Снять видео</span>
+          <input type="file" id="qiVideoIn" accept="video/*" capture="environment" hidden>
+        </label>
+      </div>
+      <div id="qiMediaPreview" class="qi-media-grid" hidden></div>
+    </div>
     <div class="field">
       <label class="label" for="qiType">Тип проблемы</label>
-      <select id="qiType" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
-        <option value="Поломка оборудования">Поломка оборудования</option>
-        <option value="Отсутствие необходимых продуктов">Отсутствие необходимых продуктов</option>
-        <option value="Проблемы с поставками">Проблемы с поставками</option>
-        <option value="Проблемы с кассой">Проблемы с кассой</option>
-        <option value="Жалобы клиентов">Жалобы клиентов</option>
-        <option value="Нарушение санитарных требований">Нарушение санитарных требований</option>
-        <option value="Проблемы с персоналом">Проблемы с персоналом</option>
-        <option value="Прочие операционные проблемы">Прочие операционные проблемы</option>
+      <select id="qiType" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
+        <option value="Поломка оборудования">🔧 Поломка оборудования</option>
+        <option value="Отсутствие необходимых продуктов">🥛 Отсутствие необходимых продуктов</option>
+        <option value="Проблемы с поставками">🚚 Проблемы с поставками</option>
+        <option value="Проблемы с кассой">💰 Проблемы с кассой</option>
+        <option value="Жалобы клиентов">💬 Жалобы клиентов</option>
+        <option value="Нарушение санитарных требований">🧼 Нарушение санитарных требований</option>
+        <option value="Проблемы с персоналом">👥 Проблемы с персоналом</option>
+        <option value="Прочие операционные проблемы">⚠️ Прочие операционные проблемы</option>
       </select>
     </div>
     <div class="field">
       <label class="label" for="qiStep">Участок / Оборудование</label>
-      <input type="text" id="qiStep" placeholder="Например: Кофемашина / Холодильник / Терминал" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
+      <input type="text" id="qiStep" placeholder="Кофемашина, холодильник, бар…" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
     </div>
     <div class="field">
-      <label class="label" for="qiText">Описание</label>
-      <textarea id="qiText" placeholder="Подробно опишите, что произошло"></textarea>
+      <label class="label" for="qiText">Что произошло (описание)</label>
+      <textarea id="qiText" rows="3" placeholder="Коротко опишите, что случилось…"></textarea>
     </div>
     <div class="field">
-      <label class="label" for="qiPriority">Критичность</label>
-      <select id="qiPriority" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
+      <label class="label" for="qiPriority">Срочность</label>
+      <select id="qiPriority" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">
         <option value="Критично">🔴 Критично (требует немедленной реакции)</option>
         <option value="Терпит">🟡 Терпит (в рабочем порядке)</option>
       </select>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-      <button type="button" id="qiCancel" style="border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 16px;font-weight:600;cursor:pointer">Отмена</button>
-      <button type="submit" id="qiSubmit" style="border:0;background:var(--bad);color:#fff;border-radius:12px;padding:10px 18px;font-weight:700;cursor:pointer">Отправить инцидент</button>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button type="button" id="qiCancel" class="btn ghost" style="flex:0 0 auto;width:auto;min-height:48px;padding:0 16px;font-size:14px">Отмена</button>
+      <button type="submit" id="qiSubmit" class="btn" style="flex:1;min-height:48px;background:var(--bad);color:#fff;font-size:15px">🚨 Отправить руководителю</button>
     </div>
   </form>
 </dialog>

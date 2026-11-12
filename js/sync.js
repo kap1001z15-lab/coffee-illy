@@ -236,6 +236,12 @@ function mergeOrSaveCashDay(db, payload) {
   } else {
     /* Режим СУММИРОВАНИЯ (если 2 человека в один день или дозагрузка второй смены) */
     const cur = db.cash[idx];
+    const sidKey = payload.sid || payload.operationId || '';
+    if (sidKey) {
+      cur.sids = Array.isArray(cur.sids) ? cur.sids : [];
+      if (cur.sids.includes(sidKey)) return;
+      cur.sids.push(sidKey);
+    }
     const curShifts = Array.isArray(cur.shifts) && cur.shifts.length
       ? cur.shifts.slice()
       : [{
@@ -680,6 +686,12 @@ function absorbServerData(url, data, options) {
 function applyLocalMutation(payload) {
   if (!payload || !payload.action) return;
   const db = getUDB();
+  if (payload.operationId) {
+    db._appliedOpIds = Array.isArray(db._appliedOpIds) ? db._appliedOpIds : [];
+    if (db._appliedOpIds.includes(payload.operationId)) return;
+    db._appliedOpIds.push(payload.operationId);
+    if (db._appliedOpIds.length > 300) db._appliedOpIds = db._appliedOpIds.slice(-300);
+  }
   db.lastLocalMutationAt = Date.now();
   const a = payload.action;
 
@@ -750,6 +762,18 @@ function applyLocalMutation(payload) {
   } else if (a === 'admin_cash' || a === 'submit_cash') {
     if (db.deletedCashDates && payload.date) delete db.deletedCashDates[payload.date];
     mergeOrSaveCashDay(db, payload);
+    if (window.coffeeNotify) {
+      const totRev = (Number(payload.cash) || 0) + (Number(payload.card) || 0);
+      const whoCash = payload.barista || payload.userName || 'Бариста';
+      window.coffeeNotify.push(db, {
+        level: 'ok',
+        type: 'cash',
+        actor: whoCash,
+        title: '💰 Сдан кассовый отчёт: ' + totRev + ' руб.',
+        text: 'Сотрудник: ' + whoCash + ' · Нал: ' + (payload.cash || 0) + ' руб. · Безнал: ' + (payload.card || 0) + ' руб. · Чеков: ' + (payload.checks || 0),
+        telegramText: '💰 КАССА СМЕНЫ (' + (payload.date || _isoToday()) + ')\n👤 Бариста: ' + whoCash + '\n💵 Выручка: ' + totRev + ' руб. (Нал: ' + (payload.cash || 0) + ' / Безнал: ' + (payload.card || 0) + ')\n🧾 Чеков: ' + (payload.checks || 0)
+      });
+    }
     if (payload.endCounter > 0) {
       const sc = db.settings.find((x) => x.id === 'INIT_COUNTER');
       if (sc) sc.value = String(payload.endCounter);
@@ -989,12 +1013,14 @@ function applyLocalMutation(payload) {
     const gIdx = db.goodDeeds.findIndex((x) => x.id === gdItem.id);
     if (gIdx >= 0) db.goodDeeds[gIdx] = gdItem;
     else db.goodDeeds.push(gdItem);
+    if (window.coffeeSyncGoodDeedsToChecklistTasks) window.coffeeSyncGoodDeedsToChecklistTasks(db);
     appendAudit(db, 'Администратор', 'Обновление Карты добрых дел (периодическая задача)', gdItem.title + ' (' + gdItem.frequency + ')');
   } else if (a === 'delete_good_deed') {
     if (!Array.isArray(db.goodDeeds)) db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((x) => Object.assign({}, x));
     db.deletedGoodDeedIds = db.deletedGoodDeedIds || {};
     if (payload.id) db.deletedGoodDeedIds[payload.id] = Date.now();
     db.goodDeeds = db.goodDeeds.filter((x) => x.id !== payload.id);
+    if (window.coffeeSyncGoodDeedsToChecklistTasks) window.coffeeSyncGoodDeedsToChecklistTasks(db);
   } else if (a === 'save_shift_roster') {
     db.shiftRoster = Object.assign({}, db.shiftRoster || {}, payload.roster || {});
     appendAudit(db, 'Администратор', 'Обновление графика смен на неделю', JSON.stringify(db.shiftRoster));
@@ -1109,8 +1135,21 @@ function applyLocalMutation(payload) {
         { time: _isoToday().split('-').reverse().join('.') + ' ' + tStr, actor: payload.userName || 'Бариста', status: 'Новая проблема', note: 'Зарегистрирован инцидент (' + (payload.incType || 'Поломка оборудования') + ')' }
       ]
     };
-    db.incidents.unshift(newInc);
-    appendAudit(db, newInc.who, 'Регистрация проблемы ' + newInc.id, newInc.step + ': ' + newInc.text);
+    const dupStandalone = (db.incidents || []).some((x) => x && x.date === newInc.date && x.step === newInc.step && x.text === newInc.text && x.who === newInc.who);
+    if (!dupStandalone) {
+      db.incidents.unshift(newInc);
+      appendAudit(db, newInc.who, 'Регистрация проблемы ' + newInc.id, newInc.step + ': ' + newInc.text);
+      if (window.coffeeNotify) {
+        window.coffeeNotify.push(db, {
+          level: 'critical',
+          type: 'incident',
+          actor: newInc.who,
+          title: '🚨 Поломка: ' + newInc.step + ' (' + newInc.priority + ')',
+          text: newInc.text + ' · Сообщил: ' + newInc.who + (newInc.photos && newInc.photos.length ? (' · Фото/видео: ' + newInc.photos.length) : ''),
+          telegramText: '🚨 ЭКСТРЕННАЯ ПОЛОМКА (' + (db.location || 'Кофейня') + ')\n🔧 Участок: ' + newInc.step + '\n⚠️ Срочность: ' + newInc.priority + '\n👤 Сообщил: ' + newInc.who + '\n📝 Описание: ' + newInc.text
+        });
+      }
+    }
   } else if (a === 'delete_incident') {
     db.deletedIncidents[payload.id] = true;
     db.incidents = db.incidents.filter((x) => x.id !== payload.id);
@@ -1136,8 +1175,11 @@ function applyLocalMutation(payload) {
         });
       });
     });
-    db.checklists.push({
-      date: _isoToday(),
+    const chkDate = _isoToday();
+    const chkWho = payload.userName || 'Бариста';
+    const chkRec = {
+      sid: payload.sid || payload.operationId || '',
+      date: chkDate,
       time: tStr,
       startedAt: payload.startedAt || tStr,
       deadline: winInfo.deadline,
@@ -1145,16 +1187,29 @@ function applyLocalMutation(payload) {
       status: isLate ? 'Просрочено' : 'Выполнено',
       totalSteps: items.length || (blk === 'Открытие' ? 8 : blk === 'День' ? 6 : 14),
       block: blk,
-      who: payload.userName || 'Бариста',
+      who: chkWho,
       problems: probs.length,
       photos: phs
-    });
+    };
+    const exChkIdx = db.checklists.findIndex((c) => c && ((chkRec.sid && c.sid === chkRec.sid) || (c.date === chkDate && c.block === blk && c.who === chkWho)));
+    if (exChkIdx >= 0) db.checklists[exChkIdx] = chkRec;
+    else db.checklists.push(chkRec);
     appendAudit(
       db,
       payload.userName || 'Бариста',
       'Сдан чек-лист «' + blk + '»',
       (isLate ? '⚠️ ПРОСРОЧЕНО (сдан в ' + tStr + ', дедлайн ' + winInfo.deadline + ')' : '✓ В срок (' + tStr + ', до ' + winInfo.deadline + ')') + ' · Шагов: ' + items.length + ' · Проблем: ' + probs.length
     );
+    if (window.coffeeNotify) {
+      window.coffeeNotify.push(db, {
+        level: probs.length > 0 ? 'warn' : (isLate ? 'warn' : 'ok'),
+        type: 'checklist',
+        actor: chkWho,
+        title: (probs.length > 0 ? '⚠️ ' : '✅ ') + 'Чек-лист «' + blk + '» сдан (' + chkWho + ')',
+        text: (isLate ? 'С опозданием в ' + tStr : 'Вовремя в ' + tStr) + ' · Проверено пунктов: ' + items.length + (probs.length ? (' · Замечаний: ' + probs.length) : ' · Всё в норме'),
+        telegramText: (probs.length > 0 ? '⚠️ ЧЕК-ЛИСТ С ЗАМЕЧАНИЯМИ: ' : '✅ ЧЕК-ЛИСТ ВЫПОЛНЕН: ') + blk + '\n👤 Бариста: ' + chkWho + '\n🕒 Время: ' + tStr + '\n📋 Пунктов: ' + items.length + (probs.length ? ('\n🚨 Проблем: ' + probs.length) : '')
+      });
+    }
     probs.forEach((p) => {
       const pPhotos = Array.isArray(p.photos) && p.photos.length ? p.photos : ((p.photo_url || p.preview || p.photo_base64) ? [p.photo_url || p.preview || p.photo_base64] : []);
       const newInc = {
@@ -1176,7 +1231,8 @@ function applyLocalMutation(payload) {
           { time: _isoToday().split('-').reverse().join('.') + ' ' + tStr, actor: payload.userName || 'Бариста', status: 'Новая проблема', note: 'Отмечена проблема при прохождении чек-листа «' + blk + '»' }
         ]
       };
-      db.incidents.unshift(newInc);
+      const dupProb = (db.incidents || []).some((x) => x && x.date === newInc.date && x.block === newInc.block && x.step === newInc.step && x.text === newInc.text);
+      if (!dupProb) db.incidents.unshift(newInc);
     });
   }
   saveUDB(db);
@@ -1327,7 +1383,9 @@ function buildReportResponse(fromStr, toStr) {
   const cardTotal = series.reduce((s, x) => s + x.card, 0);
   const woTotal = series.reduce((s, x) => s + x.writeoff, 0);
   const actDays = series.filter((x) => x.revenue > 0).length;
-  const periodPlan = Math.max(1, actDays || daysCount) * db.plan;
+  const listForPlan = actDays > 0 ? series.filter((x) => x.revenue > 0) : series;
+  const periodPlan = listForPlan.reduce((sum, x) => sum + (window.coffeeGetDayPlan ? window.coffeeGetDayPlan(x.date, db).revenue : (Number(db.plan) || 2200)), 0);
+  const finModel = window.coffeeCalculateFinancialModel ? window.coffeeCalculateFinancialModel(db, from, to) : null;
 
   const expList = (db.expenses || []).filter((e) => e.date >= from && e.date <= to);
   const catMap = {};
@@ -1373,8 +1431,9 @@ function buildReportResponse(fromStr, toStr) {
     plan: periodPlan,
     pct: periodPlan > 0 ? Math.round(revTotal / periodPlan * 100) : 0,
     delta: prevRev > 0 ? Math.round((revTotal - prevRev) / prevRev * 100) : null,
+    finModel,
     finance: {
-      revenue: revTotal, expenses: expTotal, profit: proTotal, prevProfit: prevRev - prevExp,
+      revenue: revTotal, expenses: expTotal, profit: finModel ? finModel.netProfit : proTotal, grossProfit: finModel ? finModel.grossProfit : proTotal, cogs: finModel ? finModel.cogs : 0, payroll: finModel ? finModel.effectivePayroll : 0, prevProfit: prevRev - prevExp,
       margin: revTotal > 0 ? Math.round(proTotal / revTotal * 100) : 0,
       writeoff: woTotal, byCategory, list: expList
     },
@@ -1434,6 +1493,9 @@ let _bgSyncInFlight = false;
 /* Единый транспорт GAS. Успех возвращается только после JSON-подтверждения сервера. */
 function _sendCorsSafePost(url, bodyObj, timeoutMs) {
   const timeout = Math.max(3000, Number(timeoutMs) || 15000);
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return Promise.resolve({ ok: false, networkError: true, error: 'OFFLINE' });
+  }
   if (typeof fetch !== 'function') return Promise.resolve({ ok: false, networkError: true, error: 'FETCH_UNAVAILABLE' });
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer = null;
@@ -1510,6 +1572,77 @@ async function coffeeFlushOutbox() {
 }
 window.coffeeFlushOutbox = coffeeFlushOutbox;
 window.coffeeApiPost = _sendCorsSafePost;
+
+/* === ГЛОБАЛЬНЫЙ ИНДИКАТОР СЕТИ (ОНЛАЙН / ОФЛАЙН) И АВТОСИНХРОНИЗАЦИЯ ОЧЕРЕДИ === */
+window._coffeeLastSyncOk = typeof navigator === 'undefined' || navigator.onLine !== false;
+window.coffeeGetTotalPendingCount = function () {
+  let cnt = 0;
+  try { cnt += _readCoffeeOutbox().length; } catch (_) {}
+  try {
+    const legacyQ = JSON.parse(localStorage.getItem('coffee_illy_queue') || '[]');
+    if (Array.isArray(legacyQ)) cnt += legacyQ.length;
+  } catch (_) {}
+  return cnt;
+};
+window.coffeeRenderNetBadge = function (justSyncedCount) {
+  if (typeof document === 'undefined') return;
+  const el = document.getElementById('netStatusBadge');
+  if (!el) return;
+  const online = (typeof navigator === 'undefined' || navigator.onLine !== false) && window._coffeeLastSyncOk !== false;
+  const pending = window.coffeeGetTotalPendingCount();
+  if (!online) {
+    el.className = 'net-pill offline';
+    el.textContent = pending > 0 ? ('🟡 Офлайн · в очереди: ' + pending) : '🟡 Офлайн (данные сохраняются)';
+    el.title = 'Нет интернета. Все изменения сохраняются на устройстве и отправятся автоматически при появлении сети.';
+  } else if (pending > 0) {
+    el.className = 'net-pill syncing';
+    el.textContent = '🔄 Синхронизация (' + pending + ')…';
+    el.title = 'Отправка накопленных офлайн-данных в систему';
+  } else if (justSyncedCount > 0) {
+    el.className = 'net-pill online';
+    el.textContent = '🟢 Онлайн · отправлено (' + justSyncedCount + ')';
+    setTimeout(() => { window.coffeeRenderNetBadge(0); }, 3500);
+  } else {
+    el.className = 'net-pill online';
+    el.textContent = '🟢 Онлайн';
+    el.title = 'Устройство подключено к системе';
+  }
+};
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('online', () => {
+    window._coffeeLastSyncOk = true;
+    window.coffeeRenderNetBadge(0);
+    coffeeFlushOutbox().then((res) => {
+      if (res && res.sent > 0) window.coffeeRenderNetBadge(res.sent);
+      else window.coffeeRenderNetBadge(0);
+    });
+  });
+  window.addEventListener('offline', () => {
+    window._coffeeLastSyncOk = false;
+    window.coffeeRenderNetBadge(0);
+  });
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => window.coffeeRenderNetBadge(0), { once: true });
+    } else {
+      Promise.resolve().then(() => window.coffeeRenderNetBadge(0));
+    }
+  }
+  setInterval(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      window._coffeeLastSyncOk = false;
+      window.coffeeRenderNetBadge(0);
+      return;
+    }
+    if (window.coffeeGetTotalPendingCount() > 0) {
+      coffeeFlushOutbox().then((res) => {
+        if (res && res.sent > 0) window.coffeeRenderNetBadge(res.sent);
+        else window.coffeeRenderNetBadge(0);
+      });
+    }
+  }, 10000);
+}
+
 window.coffeeGetOutboxStatus = function () { const q = _readCoffeeOutbox(); return { pending: q.length, oldestAt: q.length ? q[0].createdAt : null, blocked: q.length ? (q[0].lastError || '') : '' }; };
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('online', () => { coffeeFlushOutbox(); });
@@ -1607,19 +1740,23 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
 
     const result = await _sendCorsSafePost(url, operation, ms || 20000);
     if (result.ok === true) {
+      window._coffeeLastSyncOk = true;
       applyLocalMutation(operation);
+      if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
       window.coffeeCache.invalidate('all');
       window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: true, operationId: operation.operationId });
       return Object.assign({}, result, { confirmed: true, operationId: operation.operationId });
     }
 
     if (result.networkError) {
+      window._coffeeLastSyncOk = false;
       // Офлайн: фиксируем локально и в устойчивой очереди. UI получает отдельный pending-флаг.
       const queued = _enqueueCoffeeOperation(url, operation);
       if (!queued.queued) return { ok: false, local: false, pending: false, error: 'OUTBOX_FULL: Очередь офлайн-операций заполнена. Подключите сеть и повторите действие.' };
       applyLocalMutation(operation);
       const pending = queued.pending;
       window.coffeeCache.invalidate('all');
+      if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
       window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: false, pending: true, operationId: operation.operationId });
       return {
         ok: true, local: true, pending: true, confirmed: false,

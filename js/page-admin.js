@@ -91,7 +91,7 @@ function rChecklists(){
         '<b>' + (bObj.isCash || blk === 'Касса' ? '🧾 ' : '📋 ') + esc(blk) + ' <span class="mu" style="font-weight:400;font-size:11.5px">(' + (bObj.isCash || blk === 'Касса' ? 'касса' : taskCnt + ' задач') + ')</span></b>' +
         '<span class="tag ' + bCls + '">' + esc(w.status) + '</span>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">' +
+      '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
         '<input type="time" class="chkblk-start" data-bname="' + esc(blk) + '" value="' + esc(bObj.openTime || w.baseOpenTime || '07:30') + '" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);flex:1">' +
         '<span>—</span>' +
         '<input type="time" class="chkblk-dl" data-bname="' + esc(blk) + '" value="' + esc(bObj.deadline || w.baseDeadline || '08:30') + '" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);flex:1">' +
@@ -117,7 +117,7 @@ function rTasksAndInfo(){
 
   const gDeeds = (typeof getUDB === 'function' && Array.isArray(getUDB().goodDeeds)) ? getUDB().goodDeeds : (window.COFFEE_DEFAULT_GOOD_DEEDS || []);
   const gdHtml = '<div style="background:color-mix(in srgb,var(--good) 8%,var(--bg));border:1px solid color-mix(in srgb,var(--good) 40%,var(--line));border-radius:16px;padding:14px;margin-bottom:16px">' +
-    '<div class="top" style="margin-bottom:8px"><h2 style="font-size:18px;margin:0">🗓 Карта добрых дел и периодические задачи (Daily / 1р в нед. / 2р в нед. / раз в 2 нед. / раз в 4 нед.)</h2><button class="p" type="button" data-a="gd-new">+ Добавить периодическую задачу</button></div>' +
+    '<div class="top" style="margin-bottom:8px"><h2 style="font-size:18px;margin:0">🗓 Карта добрых дел (периодические задачи)</h2><button class="p" type="button" data-a="gd-new">+ Добавить периодическую задачу</button></div>' +
     '<p class="mu" style="margin:0 0 10px">Задачи, не привязанные к ежедневному чек-листу: разморозка холодильника во вторник (тихий день 14:00–18:00), регенерация водоумягчителя солью раз в 4 недели при закрытии, уборка 2-го зала по Пт–Сб. Отображаются у бариста во вкладке «📢 Задачи + Информирование».</p>' +
     gDeeds.map((g, gi) => (
       '<div class="row"><div><b>' + esc(g.title) + '</b> <span class="tag ok">' + esc(g.frequency) + '</span> <span class="tag">⏰ ' + esc(g.window || 'в смену') + '</span>' +
@@ -140,7 +140,7 @@ function rTasksAndInfo(){
     '<button type="button" data-a="blk-flt" data-b="all" class="' + (admBlockFlt === 'all' ? 'on' : '') + '">Все чек-листы (' + D.tasks.length + ')</button>' +
     D.blocks.map((b) => '<button type="button" data-a="blk-flt" data-b="' + esc(b) + '" class="' + (admBlockFlt === b ? 'on' : '') + '">' + esc(b) + ' (' + (blkCounts[b] || 0) + ')</button>').join('') +
   '</div>';
-  h += '<input type="search" id="admTaskSearch" class="task-search" placeholder="🔍 Быстрый поиск задачи по названию, коду (o01, d01, q01, c12) или инструкции…">';
+  h += '<input type="search" id="admTaskSearch" class="task-search" placeholder="🔍 Поиск задачи по названию или коду…">';
   const showBlocks = admBlockFlt === 'all' ? D.blocks : D.blocks.filter((b) => b === admBlockFlt);
   showBlocks.forEach((b) => {
     const l = D.tasks.filter((t) => t.block === b);

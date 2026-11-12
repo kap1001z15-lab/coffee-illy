@@ -462,8 +462,60 @@ function getUDB() {
   return fresh;
 }
 
+
+window.coffeeDeduplicateDB = function (db) {
+  if (!db || typeof db !== 'object') return db;
+  function dedupBy(arr, keyFn) {
+    if (!Array.isArray(arr)) return [];
+    const seen = new Map();
+    arr.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const k = String(keyFn(item) || '').trim();
+      if (!k) return;
+      const prev = seen.get(k);
+      if (!prev || Number(item.updatedAt || 0) >= Number(prev.updatedAt || 0)) {
+        seen.set(k, item);
+      }
+    });
+    return Array.from(seen.values());
+  }
+  if (Array.isArray(db.tasks)) db.tasks = dedupBy(db.tasks, (t) => t.id || (t.block + '|' + t.title));
+  if (Array.isArray(db.checklistBlocks)) db.checklistBlocks = dedupBy(db.checklistBlocks, (b) => b.name);
+  if (Array.isArray(db.cash)) db.cash = dedupBy(db.cash, (c) => c.date);
+  if (Array.isArray(db.checklists)) db.checklists = dedupBy(db.checklists, (c) => c.sid || (c.date + '|' + c.block + '|' + (c.who || '')));
+  if (Array.isArray(db.incidents)) {
+    db.incidents = dedupBy(db.incidents, (i) => i.id);
+    // Also remove exact content duplicates created on the same day & step
+    const sigSeen = new Set();
+    db.incidents = db.incidents.filter((i) => {
+      const sig = String(i.date || '') + '|' + String(i.block || '') + '|' + String(i.step || '') + '|' + String(i.text || '').trim();
+      if (sigSeen.has(sig)) return false;
+      sigSeen.add(sig);
+      return true;
+    });
+  }
+  if (Array.isArray(db.expenses)) db.expenses = dedupBy(db.expenses, (e) => e.id);
+  if (Array.isArray(db.goodDeeds)) db.goodDeeds = dedupBy(db.goodDeeds, (g) => g.id || g.title);
+  if (Array.isArray(db.ttk)) db.ttk = dedupBy(db.ttk, (t) => t.id || t.name);
+  if (Array.isArray(db.staff)) db.staff = dedupBy(db.staff, (s) => String(s.name || s.id || '').toLowerCase());
+  if (Array.isArray(db.announcements)) db.announcements = dedupBy(db.announcements, (a) => a.id);
+  if (Array.isArray(db.serviceAudits)) db.serviceAudits = dedupBy(db.serviceAudits, (a) => a.id);
+  if (Array.isArray(db.auditLog)) {
+    const aSeen = new Set();
+    db.auditLog = db.auditLog.filter((l) => {
+      if (!l) return false;
+      const k = String(l.date || '') + '|' + String(l.time || '') + '|' + String(l.actor || '') + '|' + String(l.action || '') + '|' + String(l.details || '');
+      if (aSeen.has(k)) return false;
+      aSeen.add(k);
+      return true;
+    }).slice(0, 250);
+  }
+  return db;
+};
+
 function saveUDB(db) {
   try {
+    if (window.coffeeDeduplicateDB) window.coffeeDeduplicateDB(db);
     db.updatedAt = Date.now();
     db.schemaVersion = 13;
     syncSettingsFields(db);

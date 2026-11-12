@@ -163,7 +163,7 @@ function renderGaugesAndFlags(d) {
       '<div class="gauge-card ' + cCls + '">' +
         '<span class="mu" style="font-weight:700">1. КАССА (ВЫРУЧКА) · ' + esc(periodTitle) + '</span>' +
         '<div class="gauge-val">' + rub(factRev) + '</div>' +
-        '<div style="font-size:13px;font-weight:700">План: ' + rub(planRev) + ' (' + Math.round((factRev / Math.max(1, planRev)) * 100) + '%)</div>' +
+        '<div style="font-size:13px;font-weight:700">План: ' + rub(planRev) + ' (' + Math.round((factRev / Math.max(1, planRev)) * 100) + '%)' + (factRev < planRev ? ' · <span style="color:var(--bad)">Не добрали ' + rub(planRev - factRev) + '</span>' : ' · <span style="color:var(--good)">План выполнен ✓</span>') + '</div>' +
       '</div>' +
       '<div class="gauge-card ' + tCls + '">' +
         '<span class="mu" style="font-weight:700">2. ТРАНЗАКЦИИ (ГОСТИ / ЧЕКИ)</span>' +

@@ -171,7 +171,8 @@ window.COFFEE_DEFAULT_CHECKLIST_BLOCKS = [
   { id: 'blk_lc1', name: 'Лайн Чек 1', openTime: '08:30', deadline: '09:30', isCash: false, active: true },
   { id: 'blk_lc2', name: 'Лайн Чек 2', openTime: '14:00', deadline: '16:00', isCash: false, active: true },
   { id: 'blk_close', name: 'Закрытие', openTime: '21:30', deadline: '22:30', isCash: false, active: true },
-  { id: 'blk_cash', name: 'Касса', openTime: '22:00', deadline: '23:59', isCash: true, active: true }
+  { id: 'blk_cash', name: 'Касса', openTime: '22:00', deadline: '23:59', isCash: true, active: true },
+  { id: 'blk_good_deeds', name: 'Карта добрых дел', openTime: '11:00', deadline: '22:00', isCash: false, active: true }
 ];
 
 window.COFFEE_DEFAULT_DAILY_PLANS = {
@@ -234,3 +235,31 @@ window.COFFEE_DEFAULT_GOOD_DEEDS = [
 ];
 
 /* Робот-анализатор «Красных флагов» для Приборной панели владельца */
+
+
+/* Автоматическое включение периодических задач «Карты добрых дел» 6-м пунктом в чек-листы с обязательным фото/видео */
+(function () {
+  if (!window.COFFEE || !Array.isArray(window.COFFEE.DEFAULT_TASKS)) return;
+  const gds = window.COFFEE_DEFAULT_GOOD_DEEDS || [];
+  gds.forEach((g, idx) => {
+    if (!window.COFFEE.DEFAULT_TASKS.some((t) => t.id === g.id)) {
+      window.COFFEE.DEFAULT_TASKS.push({
+        id: g.id,
+        block: 'Карта добрых дел',
+        group: 'gd',
+        groupName: 'Карта добрых дел (периодические задачи)',
+        title: g.title,
+        instruction: (g.frequency ? '📅 Периодичность: ' + g.frequency + '\n' : '') +
+                     (g.window ? '⏰ Окно выполнения: ' + g.window + '\n' : '') +
+                     (g.instruction || '') + '\n• 📸 Обязательно прикрепить фото или видео результата (до/после).',
+        photo: 'да',
+        photoMode: 'да',
+        responsible: g.responsible || 'Бариста',
+        reviewer: g.reviewer || 'Управляющий',
+        active: 'да',
+        row: 93 + idx,
+        mediaRequired: true
+      });
+    }
+  });
+})();
