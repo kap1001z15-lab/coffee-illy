@@ -119,6 +119,8 @@ function ensureMvpFields(db) {
   const t = _isoToday();
   if (!Array.isArray(db.staff)) {
     db.staff = window.COFFEE_MVP.DEFAULT_STAFF.map((x) => Object.assign({}, x));
+  } else {
+    db.staff = db.staff.filter((s) => s && !/^(администратор|владелец)$/i.test(String(s.name || '').trim()));
   }
   if (!Array.isArray(db.announcements)) {
     db.announcements = window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(t);

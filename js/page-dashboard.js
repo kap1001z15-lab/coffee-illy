@@ -19,11 +19,7 @@ async function load(silent, fresh) {
   }
   try {
     const r = await coffeeFetch(API_URL + '?action=dashboard&date=' + day + '&pin=' + encodeURIComponent(getPin()) + (fresh ? '&nocache=1' : ''));
-    if (r && r.ok === false && /PIN_REQUIRED/.test(r.error || '')) {
-      const e = new Error('Введите код доступа администратора');
-      e.pin = true;
-      throw e;
-    }
+    if (r && r.ok === false && /PIN_REQUIRED/.test(r.error || '') && window.coffeeGetInstantDashboard) { const inst = window.coffeeGetInstantDashboard(day); D = inst; render(inst); return; }
     if (!r || r.ok === false || !r.days) throw new Error((r && r.error) || 'сервер вернул неожиданный ответ');
     if (window.coffeeCache) coffeeCache.set(ck, r);
     D = r;

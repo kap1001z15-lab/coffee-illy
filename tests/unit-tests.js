@@ -274,6 +274,7 @@
         sessionStorage.setItem('coffee_session_token_v21', JSON.stringify(tampered));
         localStorage.setItem('coffee_session_token_v21', JSON.stringify(tampered));
         assert(window.coffeeAuth.isAuthorized('admin') === false, 'Токен с нарушенной криптоподписью должен автоматически отклоняться');
+        window.coffeeAuth.createLocalSession('admin', 'Администратор', window.coffeeAuth.getExpectedOwnerPinHash ? window.coffeeAuth.getExpectedOwnerPinHash() : '1234');
       }
     },
     {

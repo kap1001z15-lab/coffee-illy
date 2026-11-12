@@ -18,10 +18,11 @@ window.SAMPLE_FILES_DB = {
 };
 
 window.COFFEE_STAFF_PIN_HASHES = {
-  'Соня': '9bc15aadcaa6d8175bf37a1d498da565fdc2e4b3636511eb599a0eb2ac0ce40d',
-  'Алина': 'f8b24f9259114254fa264f01c3abb5fb6f58ec1931b662bf1a5e3f6d177938ff',
-  'Настя': '00a7ca85ad96149231a77246ca33a9e3c32a519cf95bf8c8bcae525d6ded5a29',
-  'Максим': 'f6860b84aca52bb0e90e27df3f9406ae0b9ef28e33888704b03804db73c59e08',
+  'Соня': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
+  'Алина': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
+  'Настя': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
+  'Максим': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
+  'Даша': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
   'Администратор': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532'
 };
 window.COFFEE_DEFAULT_OWNER_PIN_HASH = '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532';
@@ -95,8 +96,7 @@ window.COFFEE_MVP = {
     { id: 'st1', name: 'Соня', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
     { id: 'st2', name: 'Алина', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
     { id: 'st3', name: 'Настя', role: 'Бариста', shop: 'Кофейня №1', active: 'да' },
-    { id: 'st4', name: 'Максим', role: 'Шеф-бариста', shop: 'Кофейня №1', active: 'да' },
-    { id: 'st5', name: 'Администратор', role: 'Администратор', shop: 'Кофейня №1', active: 'да' }
+    { id: 'st4', name: 'Максим', role: 'Шеф-бариста', shop: 'Кофейня №1', active: 'да' }
   ],
   DEFAULT_ANNOUNCEMENTS: function () {
     return [];

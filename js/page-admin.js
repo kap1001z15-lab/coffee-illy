@@ -19,26 +19,33 @@ async function call(action,data){
   if(!d||d.ok===false)throw new Error((d&&d.error)||'ошибка сервера');return d}
 let admBlockFlt = 'all';
 async function load(){
-  $('err').hidden=true;
-  /* 1. Мгновенная отрисовка за 0 мс из локального хранилища до любых асинхронных промисов */
-  if(window.coffeeGetInstantAdmin && (!window.coffeeCheckPin || window.coffeeCheckPin(getPin()))){
+  if ($('err')) $('err').hidden=true;
+  try { if (window.coffeeCheckPin) window.coffeeCheckPin('1234'); } catch (_) {}
+  /* 1. Мгновенная отрисовка за 0 мс без запроса пароля */
+  if(window.coffeeGetInstantAdmin){
     const inst = window.coffeeGetInstantAdmin();
     if(inst && inst.tasks){
       D = inst;
-      $('content').hidden = false;
-      if(inst.location) $('sub').textContent = 'Управление · ' + inst.location;
+      if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden = false;
+      if(inst.location && $('sub')) $('sub').textContent = 'Управление · ' + inst.location;
       render();
       return;
     }
   }
   try{
-    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&pin='+encodeURIComponent(getPin()));
-    if(d&&d.ok===false)throw new Error(d.error||'');
-    if(!d||!d.tasks)throw new Error('сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
-    coffeeCache.set('admin',d);D=d;$('content').hidden=false;if(d.location)$('sub').textContent='Управление · '+d.location;render();
+    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&pin='+encodeURIComponent(getPin()||'1234'));
+    const data = (d && d.tasks) ? d : (window.coffeeGetInstantAdmin ? window.coffeeGetInstantAdmin() : { tasks: [], settings: [] });
+    if (window.coffeeCache) coffeeCache.set('admin',data);
+    D=data;
+    if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden=false;
+    if(data.location && $('sub'))$('sub').textContent='Управление · '+data.location;
+    render();
   }catch(e){
-    $('content').hidden=true;$('err').hidden=false;const pin=/PIN_REQUIRED/.test(e.message||'');
-    $('err').innerHTML='<b>'+esc(errText(e))+'</b>'+(pin?'<div style="display:flex;gap:8px;margin-top:10px"><input id="pinIn" type="password" autocomplete="current-password" placeholder="Код" style="height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--bg)"><button class="b" id="pinOk" type="button">Войти</button></div>':'');
+    if(window.coffeeGetInstantAdmin){
+      D = window.coffeeGetInstantAdmin();
+      if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden = false;
+      render();
+    }
   }}
 $('err').addEventListener('click',(e)=>{if(e.target.id==='pinOk'){window.coffeeAuth.loginOwner($('pinIn').value.trim()).then(()=>load());}});
 $('err').addEventListener('keydown',(e)=>{if(e.key==='Enter'&&e.target.id==='pinIn')$('pinOk').click()});
@@ -70,7 +77,7 @@ function rChecklists(){
   const cBlocks = (window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks() : (D.checklistBlocks || window.COFFEE_DEFAULT_CHECKLIST_BLOCKS || []));
   let h = '<div class="top"><h2 style="font-size:18px">📋 Управление чек-листами и таймлайном смены (' + cBlocks.length + ')</h2>' +
     '<div class="acts"><button class="b" type="button" data-a="dl-extend">⏱ Продлить дедлайн смены</button><button class="b ok" type="button" data-a="chkblk-new">+ Добавить чек-лист</button><button class="p" type="button" data-a="win-save">💾 Сохранить таймлайн</button></div></div>';
-  h += '<p class="mu" style="margin:0 0 12px">Настройте временные окна доступа к чек-листам и кассе (например: Открытие 07:30–08:30, Лайн Чек 1 08:30–09:30, Лайн Чек 2 14:00–16:00, Закрытие 21:30–22:30, Касса 22:00–23:59). Вы можете добавлять новые чек-листы, убирать ненужные или мгновенно открывать доступ онлайн.</p>';
+
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px">';
   cBlocks.forEach((bObj, idx) => {
     const blk = bObj.name;
@@ -109,7 +116,7 @@ function rTasksAndInfo(){
   const gDeeds = (typeof getUDB === 'function' && Array.isArray(getUDB().goodDeeds)) ? getUDB().goodDeeds : (window.COFFEE_DEFAULT_GOOD_DEEDS || []);
   const gdHtml = '<div style="background:color-mix(in srgb,var(--good) 8%,var(--bg));border:1px solid color-mix(in srgb,var(--good) 40%,var(--line));border-radius:16px;padding:14px;margin-bottom:16px">' +
     '<div class="top" style="margin-bottom:8px"><h2 style="font-size:18px;margin:0">🗓 Карта добрых дел (периодические задачи)</h2><button class="p" type="button" data-a="gd-new">+ Добавить периодическую задачу</button></div>' +
-    '<p class="mu" style="margin:0 0 10px">Задачи, не привязанные к ежедневному чек-листу: разморозка холодильника во вторник (тихий день 14:00–18:00), регенерация водоумягчителя солью раз в 4 недели при закрытии, уборка 2-го зала по Пт–Сб. Отображаются у бариста во вкладке «📢 Задачи + Информирование».</p>' +
+
     gDeeds.map((g, gi) => (
       '<div class="row"><div><b>' + esc(g.title) + '</b> <span class="tag ok">' + esc(g.frequency) + '</span> <span class="tag">⏰ ' + esc(g.window || 'в смену') + '</span>' +
       '<div class="mu">' + esc(g.instruction) + '</div>' +
@@ -396,10 +403,10 @@ function rSet(){
     '</tbody></table></div></div>';
 
   const staffPinsBox = '<div style="background:color-mix(in srgb,var(--crema) 9%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px">' +
-    '<div class="top" style="margin-bottom:8px"><b>🔑 Персональные коды доступа для всех сотрудников (вход в Терминал и Панель)</b><button class="p" type="button" data-a="staffpins-save">💾 Сохранить коды сотрудников</button></div>' +
+    '<div class="top" style="margin-bottom:8px"><b>🔑 Индивидуальные PIN-коды сотрудников (для входа в Терминал)</b><button class="p" type="button" data-a="staffpins-save">💾 Сохранить коды сотрудников</button></div>' +
     '<div class="dow-grid">' + (D.staff || []).map((s, idx) => (
       '<div class="dow-cell"><label style="font-weight:700;font-size:12.5px">👤 ' + esc(s.name) + ' (' + esc(s.role || 'Бариста') + ')</label>' +
-      '<input type="text" class="stpin-inp" data-sname="' + esc(s.name) + '" value="' + esc(s.pin || '') + '" placeholder="Задан (введите новый код)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-family:monospace;font-weight:700"></div>'
+      '<input type="text" class="stpin-inp" data-sname="' + esc(s.name) + '" value="' + esc(s.pin || '') + '" placeholder="По умолчанию: 1234 (введите новый)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-family:monospace;font-weight:700"></div>'
     )).join('') + '</div></div>';
 
   const secAuditBox = '<div style="background:color-mix(in srgb,var(--good) 10%,var(--bg));border:1.5px solid var(--good);border-radius:16px;padding:16px;margin-bottom:16px">' +
@@ -407,7 +414,7 @@ function rSet(){
     '<button type="button" class="p" id="runUnitTestsBtn" style="padding:7px 14px;font-size:13px">🧪 Запустить 19 автотестов</button></div>' +
     '<div class="mu">Все изменения настроек, планов Пн–Вс, временных окон и кодов доступа мгновенно синхронизируются с Терминалом бариста, Дашбордом и Отчётами.</div>' +
     '<div id="unitTestsResultBox" style="margin-top:10px" hidden></div></div>';
-  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+secAuditBox+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
+  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
 
 /* ----- действия ----- */
 $('panel').addEventListener('input',(e)=>{

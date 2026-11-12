@@ -212,9 +212,10 @@ const DRAFT_KEY = "coffee_shift_draft_v10";
 function syncStaffSelector() {
   const sel = $("baristaSelect");
   if (!sel) return;
-  const staffList = (META && Array.isArray(META.staff) && META.staff.length)
+  const rawList = (META && Array.isArray(META.staff) && META.staff.length)
     ? META.staff.filter((s) => s.active !== "нет")
     : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
+  const staffList = rawList.filter((s) => s && !/^(администратор|владелец)$/i.test(String(s.name || "").trim()));
   sel.innerHTML = staffList.map((s) => '<option value="' + s.name.replace(/"/g, '&quot;') + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + s.name + '</option>').join("");
   if (!staffList.some((s) => s.name === userName) && staffList.length) {
     userName = staffList[0].name;
@@ -223,43 +224,70 @@ function syncStaffSelector() {
   $("who").textContent = userName;
   if ($("shiftBaristaIn") && !$("shiftBaristaIn").value) $("shiftBaristaIn").value = userName;
 }
-function promptStaffPinAndSwitch(targetName) {
+function promptStaffPinAndSwitch(targetName, isStartupLogin) {
   const dlg = $("staffPinDlg");
-  if (!dlg || typeof dlg.showModal !== "function") {
-    userName = targetName;
-    try {
-      localStorage.setItem("coffee_active_barista", userName);
-      if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
-        const role = (targetName === "Администратор" || /админ|владелец/i.test(targetName)) ? "admin" : "staff";
-        window.coffeeAuth.createLocalSession(role, targetName, entered);
-      }
-    } catch (_) {}
-    $("who").textContent = userName;
-    drawTabs();
-    if (block === "ИНФО") renderInfoView();
-    return;
+  const rawList = (META && Array.isArray(META.staff) && META.staff.length)
+    ? META.staff.filter((s) => s.active !== "нет")
+    : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
+  const staffList = rawList.filter((s) => s && !/^(администратор|владелец)$/i.test(String(s.name || "").trim()));
+  const uSel = $("staffPinUserSelect");
+  if (uSel && staffList.length) {
+    uSel.innerHTML = staffList.map((s) => '<option value="' + esc(s.name) + '"' + (s.name === targetName ? ' selected' : '') + '>👤 ' + esc(s.name) + '</option>').join("");
+    uSel.value = targetName;
   }
-  $("staffPinTitle").textContent = "🔑 Вход: " + targetName;
-  $("staffPinSub").textContent = "Введите личный код доступа сотрудника «" + targetName + "» (задаётся в Управлении → Штат):";
-  $("staffPinInput").value = "";
-  $("staffPinErr").textContent = "";
-  safeShowModal(dlg);
-  setTimeout(() => $("staffPinInput").focus(), 40);
-
-  $("staffPinCancelBtn").onclick = () => {
-    if ($("baristaSelect")) $("baristaSelect").value = userName;
-    safeCloseModal(dlg);
-  };
-  $("staffPinForm").onsubmit = (ev) => {
-    ev.preventDefault();
-    const entered = $("staffPinInput").value.trim();
-    const ok = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(targetName, entered) : (entered.length >= 4);
-    if (!ok) {
-      $("staffPinErr").textContent = "Неверный личный код сотрудника «" + targetName + "»";
-      return;
-    }
+  if (!dlg) {
     userName = targetName;
     try { localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
+    if ($("baristaSelect")) $("baristaSelect").value = userName;
+    $("who").textContent = userName;
+    drawTabs();
+    return;
+  }
+  $("staffPinTitle").textContent = isStartupLogin ? "Вход сотрудника" : ("Сотрудник: " + targetName);
+  $("staffPinSub").textContent = "Выберите имя и введите личный PIN-код";
+  $("staffPinInput").value = "";
+  $("staffPinErr").textContent = "";
+  if ($("staffPinCancelBtn")) {
+    $("staffPinCancelBtn").hidden = !!isStartupLogin;
+  }
+  safeShowModal(dlg);
+  setTimeout(() => { if ($("staffPinInput")) $("staffPinInput").focus(); }, 50);
+
+  if ($("staffPinCancelBtn")) {
+    $("staffPinCancelBtn").onclick = () => {
+      if ($("baristaSelect")) $("baristaSelect").value = userName;
+      safeCloseModal(dlg);
+    };
+  }
+  $("staffPinForm").onsubmit = (ev) => {
+    ev.preventDefault();
+    const chosenName = (uSel && uSel.value) ? uSel.value : targetName;
+    const entered = $("staffPinInput").value.trim();
+    const actorKey = "staff_" + chosenName;
+    if (window.coffeeRateLimiter) {
+      const rlCheck = window.coffeeRateLimiter.check(actorKey);
+      if (rlCheck.locked) {
+        $("staffPinErr").textContent = rlCheck.message;
+        return;
+      }
+    }
+    const ok = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(chosenName, entered) : (entered === "1234");
+    if (!ok) {
+      const rlAfter = window.coffeeRateLimiter ? window.coffeeRateLimiter.check(actorKey) : { remainingAttempts: 4 };
+      $("staffPinErr").textContent = rlAfter.locked
+        ? rlAfter.message
+        : ("Неверный PIN-код для «" + chosenName + "» (по умолчанию: 1234). Осталось попыток: " + (rlAfter.remainingAttempts ?? 4));
+      return;
+    }
+    userName = chosenName;
+    try {
+      localStorage.setItem("coffee_active_barista", userName);
+      sessionStorage.setItem("coffee_term_pin_unlocked_v1", userName);
+      if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
+        const role = (userName === "Администратор" || /админ|владелец/i.test(userName)) ? "admin" : "staff";
+        window.coffeeAuth.createLocalSession(role, userName, entered);
+      }
+    } catch (_) {}
     if ($("baristaSelect")) $("baristaSelect").value = userName;
     $("who").textContent = userName;
     if ($("shiftBaristaIn")) $("shiftBaristaIn").value = userName;
@@ -267,7 +295,7 @@ function promptStaffPinAndSwitch(targetName) {
     drawTabs();
     if (block === "ИНФО") renderInfoView();
     else updateDeadlineUI();
-    toast("✓ Активный профиль: " + userName);
+    toast("✓ Вход выполнен: " + userName);
   };
 }
 
@@ -1991,4 +2019,18 @@ if ($("doneHomeBtn")) {
       else if (dx > 0 && $("backBtn") && !$("backBtn").hidden && !$("backBtn").disabled) $("backBtn").click();
     }
   }, { passive: true });
+})();
+
+
+/* Запрос PIN-кода участника при старте терминала (единый стартовый PIN: 1234) */
+(function initTerminalStartupPinGate() {
+  try {
+    if (typeof window !== "undefined" && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || "")) return;
+    const unlockedUser = sessionStorage.getItem("coffee_term_pin_unlocked_v1");
+    if (!unlockedUser) {
+      setTimeout(() => {
+        promptStaffPinAndSwitch(userName || "Соня", true);
+      }, 120);
+    }
+  } catch (_) {}
 })();

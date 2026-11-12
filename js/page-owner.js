@@ -14,6 +14,77 @@ let ownerRepFrom = window._shiftIso ? window._shiftIso(ownerDashDate, -6) : owne
 let ownerRepTo = ownerDashDate;
 let ownerSimAvg = 5, ownerSimChk = 10, ownerSimWo = 30;
 
+
+/* ---------- ВХОД ПО PIN-КОДУ НА СТАРТЕ ПАНЕЛИ ВЛАДЕЛЬЦА И УПРАВЛЕНИЯ (СТАРТОВЫЙ PIN: 1234) ---------- */
+function ensureOwnerPinGate(forceShow) {
+  if (typeof document === 'undefined') return true;
+  if (!forceShow && window.coffeeAuth && window.coffeeAuth.isAuthorized('admin')) {
+    const existing = document.getElementById('ownerPinGateModal');
+    if (existing) existing.remove();
+    return true;
+  }
+  let modal = document.getElementById('ownerPinGateModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ownerPinGateModal';
+    modal.className = 'ntf-modal';
+    modal.style.zIndex = '9999';
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML =
+    '<div class="ntf-card" style="max-width:340px;width:90vw;padding:24px 20px;text-align:center">' +
+      '<h3 style="margin:0 0 4px;font-size:18px">Панель владельца</h3>' +
+      '<p class="mu" style="margin:0 0 14px;font-size:13px">Введите код доступа владельца</p>' +
+      '<form id="ownerPinGateForm">' +
+        '<input type="password" id="ownerPinGateInp" inputmode="numeric" autocomplete="off" placeholder="PIN (1234)" style="width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:18px;font-weight:700;text-align:center;letter-spacing:4px;color:var(--ink)">' +
+        '<div id="ownerPinGateErr" style="color:var(--bad);font-size:12.5px;min-height:18px;margin:6px 0"></div>' +
+        '<button type="submit" class="p" style="width:100%;min-height:44px;font-size:15px;cursor:pointer">Войти</button>' +
+      '</form>' +
+    '</div>';
+
+  const inp = document.getElementById('ownerPinGateInp');
+  const form = document.getElementById('ownerPinGateForm');
+  const errBox = document.getElementById('ownerPinGateErr');
+  setTimeout(() => { if (inp) inp.focus(); }, 40);
+
+  if (form) {
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const pinVal = (inp && inp.value ? inp.value.trim() : '');
+      if (!pinVal) {
+        if (errBox) errBox.textContent = 'Введите PIN-код';
+        return;
+      }
+      const rl = window.coffeeRateLimiter ? window.coffeeRateLimiter.check('owner_admin') : { locked: false };
+      if (rl.locked) {
+        if (errBox) errBox.textContent = rl.message;
+        return;
+      }
+      const okOwner = window.coffeeAuth && window.coffeeAuth.verifyOwnerPin ? window.coffeeAuth.verifyOwnerPin(pinVal) : (pinVal === '1234');
+      if (!okOwner) {
+        const st = window.coffeeRateLimiter ? window.coffeeRateLimiter.check('owner_admin') : { remainingAttempts: 4 };
+        if (errBox) {
+          errBox.textContent = st.locked
+            ? st.message
+            : ('Неверный код. Осталось попыток: ' + (st.remainingAttempts ?? 4));
+        }
+        return;
+      }
+      if (window.coffeeRateLimiter) window.coffeeRateLimiter.reset('owner_admin');
+      const expHash = window.coffeeAuth && window.coffeeAuth.getExpectedOwnerPinHash ? window.coffeeAuth.getExpectedOwnerPinHash() : pinVal;
+      if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
+        window.coffeeAuth.createLocalSession('admin', 'Владелец', expHash);
+      }
+      const m = document.getElementById('ownerPinGateModal');
+      if (m) m.remove();
+      switchOwnerTopSection(ownerTopSection);
+    };
+  }
+  return false;
+}
+window.ensureOwnerPinGate = ensureOwnerPinGate;
+
 function switchOwnerTopSection(sec, focusDateOpt) {
   ownerTopSection = sec || 'dashboard';
   if (focusDateOpt) {
@@ -756,8 +827,24 @@ document.addEventListener('input', (e) => {
 });
 
 setTimeout(() => {
+  const notifBtn = document.getElementById('ownerNotifBtn');
+  if (notifBtn && !document.getElementById('ownerPinLockBtn')) {
+    const lockBtn = document.createElement('button');
+    lockBtn.type = 'button';
+    lockBtn.id = 'ownerPinLockBtn';
+    lockBtn.className = 'theme-btn';
+    lockBtn.style.cssText = 'width:40px;height:40px;font-size:16px;display:inline-flex;align-items:center;justify-content:center';
+    lockBtn.textContent = '🔒';
+    lockBtn.title = 'Выйти / Заблокировать панель владельца';
+    lockBtn.onclick = () => {
+      if (window.coffeeAuth) window.coffeeAuth.logout();
+      ensureOwnerPinGate(true);
+    };
+    notifBtn.parentNode.insertBefore(lockBtn, notifBtn);
+  }
   renderOwnerNotificationsDrawer();
   switchOwnerTopSection(ownerTopSection);
+  ensureOwnerPinGate(false);
 }, 30);
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {

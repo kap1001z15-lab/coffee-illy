@@ -40,7 +40,6 @@
           <option value="Настя">👤 Настя</option>
           <option value="Максим">👤 Максим</option>
         </select>
-        <button class="theme-btn sos-btn" id="quickIncidentTopBtn" type="button" aria-label="Сообщить о поломке" title="Сообщить о поломке">🚨</button>
         <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button>
       </div>
     </div>
@@ -115,7 +114,7 @@
       </div>
     </div>
     <div id="taskStepWrap">
-    <div id="beginnerGuideBar" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.3">
+    <div id="beginnerGuideBar" hidden style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.3">
       <span style="font-weight:700;color:var(--ink)">Шаги:</span>
       <span>1. Фото</span><span>➔</span><span>2. Норма / Проблема</span><span>➔</span><span>3. Далее</span>
     </div>
@@ -459,15 +458,23 @@
   </form>
 </dialog>
 
-<dialog id="staffPinDlg" style="border:1px solid var(--line);border-radius:20px;background:var(--surface,#fff);color:var(--ink);padding:20px;width:min(360px,92vw);box-shadow:0 24px 50px rgba(0,0,0,.45)">
+<dialog id="staffPinDlg" style="border:1px solid var(--line);border-radius:20px;background:var(--surface,#fff);color:var(--ink);padding:22px 20px;width:min(340px,92vw);box-shadow:0 24px 50px rgba(0,0,0,.35);text-align:center">
   <form id="staffPinForm" method="dialog">
-    <h3 id="staffPinTitle" style="margin:0 0 6px;font-size:18px">🔑 Код доступа сотрудника</h3>
-    <p id="staffPinSub" class="muted" style="margin:0 0 12px;font-size:13.5px">Введите личный код сотрудника для переключения профиля в терминале:</p>
-    <input type="password" id="staffPinInput" inputmode="numeric" autocomplete="off" placeholder="Личный код (например: 1111)" style="width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:16px;font-weight:700">
-    <div id="staffPinErr" style="color:var(--bad);font-size:13px;min-height:18px;margin:6px 0"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button type="button" class="btn ghost" id="staffPinCancelBtn" style="min-height:42px;padding:8px 14px">Отмена</button>
-      <button type="submit" class="btn" style="min-height:42px;padding:8px 16px">Подтвердить</button>
+    <h3 id="staffPinTitle" style="margin:0 0 4px;font-size:18px">Вход сотрудника</h3>
+    <p id="staffPinSub" class="muted" style="margin:0 0 14px;font-size:13px">Выберите имя и введите личный PIN</p>
+    <div id="staffPinUserWrap" style="margin-bottom:10px;text-align:left">
+      <select id="staffPinUserSelect" style="width:100%;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:15px;font-weight:700;color:var(--ink)">
+        <option value="Соня">👤 Соня</option>
+        <option value="Алина">👤 Алина</option>
+        <option value="Настя">👤 Настя</option>
+        <option value="Максим">👤 Максим</option>
+      </select>
+    </div>
+    <input type="password" id="staffPinInput" inputmode="numeric" autocomplete="off" placeholder="PIN (1234)" style="width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:18px;font-weight:700;text-align:center;letter-spacing:4px">
+    <div id="staffPinErr" style="color:var(--bad);font-size:12.5px;min-height:18px;margin:6px 0"></div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:6px">
+      <button type="button" class="btn ghost" id="staffPinCancelBtn" style="min-height:42px;padding:8px 14px;width:auto">Отмена</button>
+      <button type="submit" class="btn" style="min-height:42px;padding:8px 18px;flex:1">Войти</button>
     </div>
   </form>
 </dialog>

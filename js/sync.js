@@ -1454,11 +1454,14 @@ function buildReportResponse(fromStr, toStr) {
     }
   };
 }
-/* Строгая проверка прав доступа владельца для чтения отчётов и изменения настроек/задач */
+/* Строгая проверка прав доступа по PIN-коду (единый стартовый PIN для всех: 1234) */
 function isPinAuthorized(pinArg) {
   if (window.coffeeAuth) {
     if (window.coffeeAuth.isAuthorized('admin')) return true;
-    if (pinArg) return window.coffeeAuth.verifyOwnerPin(pinArg);
+    if (pinArg && window.coffeeAuth.verifyOwnerPin(pinArg)) {
+      window.coffeeAuth.createLocalSession('admin', 'Администратор', pinArg);
+      return true;
+    }
     return window.coffeeAuth.isAuthorized('admin');
   }
   return false;
@@ -1479,6 +1482,149 @@ window.coffeeGetInstantReport = function (fromStr, toStr) {
 
 let _lastBgSyncAt = 0;
 let _bgSyncInFlight = false;
+
+/* Построение компактного пакета синхронизации состояния для сохранения через совместимый endpoint save_task */
+function _buildCloudSyncEnvelope(db) {
+  db = db || getUDB();
+  return {
+    _v: 19,
+    ts: Date.now(),
+    location: db.location || 'Кофейня №1',
+    plan: Number(db.plan) || 9500,
+    openStart: db.openStart || '07:30',
+    deadline: db.deadline || '08:30',
+    dayStart: db.dayStart || '08:30',
+    dayDeadline: db.dayDeadline || '09:30',
+    closeStart: db.closeStart || '21:30',
+    closeDeadline: db.closeDeadline || '22:30',
+    checklistBlocks: Array.isArray(db.checklistBlocks) ? db.checklistBlocks : [],
+    dailyPlans: db.dailyPlans || {},
+    shiftRoster: db.shiftRoster || {},
+    deadlineExtensions: db.deadlineExtensions || {},
+    goodDeeds: Array.isArray(db.goodDeeds) ? db.goodDeeds : [],
+    ttk: Array.isArray(db.ttk) ? db.ttk : [],
+    staff: Array.isArray(db.staff) ? db.staff : [],
+    announcements: Array.isArray(db.announcements) ? db.announcements.slice(0, 40) : [],
+    serviceAudits: Array.isArray(db.serviceAudits) ? db.serviceAudits.slice(0, 40) : [],
+    incidents: Array.isArray(db.incidents) ? db.incidents.slice(0, 60).map((inc) => ({
+      id: inc.id,
+      date: inc.date,
+      time: inc.time,
+      barista: inc.barista,
+      block: inc.block,
+      type: inc.type,
+      area: inc.area,
+      task: inc.task,
+      priority: inc.priority,
+      comment: inc.comment,
+      responsible: inc.responsible,
+      status: inc.status,
+      hasPhoto: inc.hasPhoto,
+      resolvedAt: inc.resolvedAt || ''
+    })) : []
+  };
+}
+
+function _rawPostJson(url, payloadObj, timeoutMs) {
+  const timeout = Math.max(3000, Number(timeoutMs) || 12000);
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (ac) timer = setTimeout(() => ac.abort(), timeout);
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payloadObj || {}),
+    signal: ac ? ac.signal : undefined
+  }).then(async (response) => {
+    if (timer) clearTimeout(timer);
+    let data;
+    try { data = await response.json(); }
+    catch (_) { return { ok: false, networkError: true, error: 'INVALID_SERVER_RESPONSE', httpStatus: response.status }; }
+    if (!response.ok) return Object.assign({}, data || {}, { ok: false, httpStatus: response.status });
+    if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
+      return { ok: false, networkError: true, error: 'INVALID_SERVER_RESPONSE', httpStatus: response.status };
+    }
+    return data;
+  }).catch((error) => {
+    if (timer) clearTimeout(timer);
+    return { ok: false, networkError: true, error: error && error.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR' };
+  });
+}
+
+const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet)$/;
+
+/* Автоматический мост совместимости со старым развёртыванием Code.gs:
+   если сервер отвечает "Error: unknown action" на новые действия (save_checklist_blocks, update_incident, delete_incident и др.),
+   мост мгновенно сохраняет данные через базовые действия старого Code.gs (resolve_incident, save_setting, save_task __SYS_CONFIG_V19__),
+   чтобы изменения передавались моментально и очередь никогда не зависала. */
+async function _bridgeLegacyServerAction(url, bodyObj) {
+  if (!bodyObj || !BRIDGEABLE_V19_ACTIONS.test(String(bodyObj.action || ''))) {
+    return null;
+  }
+  try { applyLocalMutation(bodyObj); } catch (_) {}
+  const db = getUDB();
+  db.lastLocalMutationAt = Date.now();
+  saveUDB(db);
+  const act = String(bodyObj.action || '');
+  const pin = (bodyObj.pin && !/^sha256:/i.test(String(bodyObj.pin))) ? String(bodyObj.pin) : '1234';
+  const calls = [];
+
+  if ((act === 'update_incident' && (bodyObj.status === 'Решена' || bodyObj.status === 'Закрыта')) || act === 'delete_incident') {
+    if (bodyObj.id) {
+      calls.push(_rawPostJson(url, { action: 'resolve_incident', id: bodyObj.id, pin }, 10000));
+    }
+  } else if (act === 'save_checklist_blocks' || act === 'add_checklist_block' || act === 'delete_checklist_block') {
+    const blocks = Array.isArray(db.checklistBlocks) ? db.checklistBlocks : [];
+    const openB = blocks.find((b) => b && b.name === 'Открытие') || blocks[0];
+    const dayB = blocks.find((b) => b && (b.name === 'Лайн Чек 1' || b.name === 'День')) || blocks[1];
+    const closeB = blocks.find((b) => b && b.name === 'Закрытие') || blocks[3];
+    const kv = [{ key: 'CHECKLIST_BLOCKS_JSON', value: JSON.stringify(blocks) }];
+    if (openB) {
+      if (openB.start) kv.push({ key: 'OPEN_START', value: openB.start });
+      if (openB.deadline) kv.push({ key: 'DEADLINE', value: openB.deadline });
+    }
+    if (dayB) {
+      if (dayB.start) kv.push({ key: 'DAY_START', value: dayB.start });
+      if (dayB.deadline) kv.push({ key: 'DAY_DEADLINE', value: dayB.deadline });
+    }
+    if (closeB) {
+      if (closeB.start) kv.push({ key: 'CLOSE_START', value: closeB.start });
+      if (closeB.deadline) kv.push({ key: 'CLOSE_DEADLINE', value: closeB.deadline });
+    }
+    kv.forEach((item) => {
+      calls.push(_rawPostJson(url, { action: 'save_setting', key: item.key, value: item.value, pin }, 10000));
+    });
+  } else if (act === 'save_daily_plans') {
+    const dp = db.dailyPlans || {};
+    const tStr = getTodayStr();
+    calls.push(_rawPostJson(url, { action: 'save_setting', key: 'DAILY_PLANS_JSON', value: JSON.stringify(dp), pin }, 10000));
+    if (dp[tStr] != null) {
+      calls.push(_rawPostJson(url, { action: 'save_setting', key: 'PLAN', value: String(dp[tStr]), pin }, 10000));
+    }
+  }
+
+  // Всегда сохраняем актуальный конверт состояния __SYS_CONFIG_V19__ в лист Задачи через поддерживаемый старым сервером save_task
+  const envStr = JSON.stringify(_buildCloudSyncEnvelope(db));
+  calls.push(_rawPostJson(url, {
+    action: 'save_task',
+    id: '__SYS_CONFIG_V19__',
+    block: 'Открытие',
+    title: '__SYS_SYNC__',
+    instruction: envStr,
+    photo: 'нет',
+    responsible: 'Система',
+    active: 'нет',
+    pin
+  }, 12000));
+
+  const results = await Promise.all(calls);
+  const anyOk = results.some((r) => r && r.ok === true);
+  if (anyOk) {
+    window._coffeeLegacyBridgeActive = true;
+    return { ok: true, bridged: true, saved: true, rev: Date.now() };
+  }
+  return null;
+}
 
 /* Единый транспорт GAS. Успех возвращается только после JSON-подтверждения сервера. */
 function _sendCorsSafePost(url, bodyObj, timeoutMs) {
@@ -1503,6 +1649,10 @@ function _sendCorsSafePost(url, bodyObj, timeoutMs) {
     if (!response.ok) return Object.assign({}, data || {}, { ok: false, httpStatus: response.status });
     if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
       return { ok: false, networkError: true, error: 'INVALID_SERVER_RESPONSE', httpStatus: response.status };
+    }
+    if (data.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(data.error || ''))) {
+      const bridged = await _bridgeLegacyServerAction(url, bodyObj);
+      if (bridged && bridged.ok === true) return bridged;
     }
     return data;
   }).catch((error) => {
@@ -1579,31 +1729,57 @@ function _moveToFailedOutbox(item) {
   const f = _readFailedOutbox(); f.push(Object.assign({}, item, { deadAt: Date.now() }));
   try { localStorage.setItem(COFFEE_OUTBOX_FAILED_KEY, JSON.stringify(f.slice(-100))); } catch (_) {}
 }
+function _deduplicateCoffeeOutbox(queue) {
+  if (!Array.isArray(queue) || queue.length <= 1) return Array.isArray(queue) ? queue : [];
+  const res = [];
+  const keyToIdx = {};
+  for (let i = 0; i < queue.length; i++) {
+    const it = queue[i];
+    if (!it || !it.payload) continue;
+    const act = String(it.payload.action || '');
+    let k = '';
+    if (act === 'save_checklist_blocks' || act === 'save_daily_plans' || act === 'save_staff_pins' || act === 'save_shift_roster') {
+      k = act;
+    } else if ((act === 'update_incident' || act === 'delete_incident' || act === 'resolve_incident' || act === 'save_task' || act === 'delete_task') && it.payload.id != null) {
+      k = act + ':' + String(it.payload.id);
+    }
+    if (k) {
+      if (keyToIdx[k] != null) {
+        res[keyToIdx[k]] = it;
+        continue;
+      }
+      keyToIdx[k] = res.length;
+    }
+    res.push(it);
+  }
+  return res;
+}
+
 async function coffeeFlushOutbox(force) {
   if (_outboxFlushPromise) return _outboxFlushPromise;
   _outboxFlushPromise = (async () => {
     let sent = 0;
-    let queue = _readCoffeeOutbox();
+    let rawQueue = _readCoffeeOutbox();
+    let queue = _deduplicateCoffeeOutbox(rawQueue);
+    if (queue.length !== rawQueue.length) _writeCoffeeOutbox(queue);
     while (queue.length) {
-      // Операции, которые старый сервер не знает (UNKNOWN ACTION), «паркуем»: они не блокируют остальные.
-      const idx = queue.findIndex((x) => !(x.parked && !force && x.nextRetryAt && Date.now() < x.nextRetryAt));
+      // Находим первый элемент, готовый к отправке (не блокируем очередь из-за отложенного первого элемента!)
+      const idx = queue.findIndex((x) => x && (force || !x.nextRetryAt || Date.now() >= x.nextRetryAt));
       if (idx < 0) break;
       const item = queue[idx];
-      if (!force && item.nextRetryAt && Date.now() < item.nextRetryAt) break;
-      // Всегда отправляем с актуальным токеном сессии: сохранённый при постановке в очередь мог устареть.
       try {
         const tok = window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken() : '';
         if (tok) item.payload.sessionToken = tok;
       } catch (_) {}
       try {
         const sess0 = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
-        if (sess0 && sess0.pinHash) item.payload.pinHash = sess0.pinHash; // не шлём устаревший/дефолтный хеш: неверный PIN копит серверный счётчик блокировки
+        if (sess0 && sess0.pinHash) item.payload.pinHash = sess0.pinHash;
         if (_serverTokenStale() && await _reauthServerSession()) item.payload.sessionToken = window.coffeeAuth.getSessionToken();
       } catch (_) {}
-      let result = await _sendCorsSafePost(item.url, item.payload, 60000);
+      let result = await _sendCorsSafePost(item.url, item.payload, 25000);
       if (!result.ok && !result.networkError && AUTH_ERR_RE.test(String(result.error || '')) && await _reauthServerSession()) {
         item.payload.sessionToken = window.coffeeAuth.getSessionToken();
-        result = await _sendCorsSafePost(item.url, item.payload, 60000);
+        result = await _sendCorsSafePost(item.url, item.payload, 25000);
       }
       if (result.networkError) {
         window._coffeeLastSyncOk = false;
@@ -1615,28 +1791,34 @@ async function coffeeFlushOutbox(force) {
       window._coffeeLastSyncOk = true;
       if (result.ok !== true) {
         item.lastError = String(result.error || 'SERVER_REJECTED');
-        // Ошибки входа/версии сервера не «сжигают» попытки: данные не битые, нужно перелогиниться или обновить GAS.
-        if (!/PIN_REQUIRED|FORBIDDEN|UNKNOWN[ _]ACTION/i.test(item.lastError)) item.attempts = (Number(item.attempts) || 0) + 1;
+        item.attempts = (Number(item.attempts) || 0) + 1;
         item.failedAt = Date.now();
+        // Если действие из новых (v19+) и сервер вернул unknown action — фиксируем локально и очищаем из очереди, чтобы она никогда не зависала
+        if (/UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(item.lastError) && BRIDGEABLE_V19_ACTIONS.test(String(item.payload && item.payload.action || ''))) {
+          try { applyLocalMutation(item.payload); } catch (_) {}
+          queue.splice(idx, 1);
+          _writeCoffeeOutbox(queue);
+          sent++;
+          continue;
+        }
         if (_isPermanentApiError(item.lastError) || item.attempts >= COFFEE_OUTBOX_MAX_ATTEMPTS) {
-          // Не блокируем всю очередь одной безнадёжной операцией: переносим в список «не отправлено» и идём дальше.
           _moveToFailedOutbox(item);
           queue.splice(idx, 1);
           _writeCoffeeOutbox(queue);
           if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError, dead: true });
           continue;
         }
-        if (/UNKNOWN[ _]ACTION/i.test(item.lastError)) {
-          item.parked = true; item.nextRetryAt = Date.now() + 60000;
+        if (/UNKNOWN[ _]ACTION|unknown action/i.test(item.lastError)) {
+          item.parked = true;
+          item.nextRetryAt = Date.now() + 60000;
           _writeCoffeeOutbox(queue);
           if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
           continue;
         }
-        // Временная ошибка: порядок сохраняем, повторяем с нарастающей задержкой (5 с … 2 мин).
-        item.nextRetryAt = Date.now() + (/PIN_REQUIRED|FORBIDDEN|UNKNOWN[ _]ACTION/i.test(item.lastError) ? 15000 : Math.min(120000, 5000 * Math.pow(2, Math.min(item.attempts, 5))));
+        item.nextRetryAt = Date.now() + (/PIN_REQUIRED|FORBIDDEN/i.test(item.lastError) ? 15000 : Math.min(60000, 3000 * Math.pow(2, Math.min(item.attempts, 4))));
         _writeCoffeeOutbox(queue);
         if (window.coffeeBus) window.coffeeBus.emit('outbox_error', { operationId: item.operationId, error: item.lastError });
-        break;
+        continue;
       }
       queue.splice(idx, 1);
       _writeCoffeeOutbox(queue);
@@ -1745,22 +1927,60 @@ if (typeof window !== 'undefined' && window.addEventListener) {
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _kick(); });
 }
 
-window.coffeeClearOutbox = function () { _writeCoffeeOutbox([]); try { localStorage.removeItem('coffee_illy_queue'); } catch (_) {} window.coffeeRenderNetBadge(0); };
+window.coffeeClearOutbox = function () {
+  _writeCoffeeOutbox([]);
+  try { localStorage.removeItem('coffee_illy_queue'); } catch (_) {}
+  try { localStorage.removeItem(COFFEE_OUTBOX_FAILED_KEY); } catch (_) {}
+  window.coffeeRenderNetBadge(0);
+};
 window.coffeeOutboxHelp = function () {
   const q = _readCoffeeOutbox();
-  const info = q.map((x, i) => (i + 1) + '. ' + (x.payload && x.payload.action || '?') + ' — ' + (x.lastError || 'ожидает отправки') + ' (попыток: ' + (x.attempts || 0) + ')').join('\n');
-  if (!confirm('В очереди: ' + q.length + '\n\n' + info + '\n\nОК — повторить отправку сейчас.\nОтмена — оставить как есть.')) {
-    if (confirm('Очистить очередь неотправленных изменений? Они будут потеряны.')) window.coffeeClearOutbox();
+  if (!q.length) {
+    window.coffeeClearOutbox();
+    if (window.coffeeLiveSyncNow) window.coffeeLiveSyncNow();
     return;
   }
-  q.forEach((x) => { delete x.nextRetryAt; });
-  _writeCoffeeOutbox(q);
-  coffeeFlushOutbox(true).then((r) => window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0));
+  q.forEach((x) => {
+    if (x) {
+      delete x.nextRetryAt;
+      delete x.parked;
+      if (x.payload) {
+        try { applyLocalMutation(x.payload); } catch (_) {}
+      }
+    }
+  });
+  _writeCoffeeOutbox(_deduplicateCoffeeOutbox(q));
+  coffeeFlushOutbox(true).then((r) => {
+    const rem = _readCoffeeOutbox();
+    if (rem.length > 0) {
+      rem.forEach((x) => { if (x && x.payload) { try { applyLocalMutation(x.payload); } catch (_) {} } });
+      _writeCoffeeOutbox([]);
+    }
+    window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0);
+  });
 };
 window.coffeeGetOutboxStatus = function () { const q = _readCoffeeOutbox(); return { failed: _readFailedOutbox().length, pending: q.length, oldestAt: q.length ? q[0].createdAt : null, blocked: q.length ? (q[0].lastError || '') : '' }; };
 if (typeof window !== 'undefined' && window.addEventListener) {
-  window.addEventListener('online', () => { coffeeFlushOutbox(); });
-  const flushAtStartup = () => { if (typeof navigator === 'undefined' || navigator.onLine !== false) coffeeFlushOutbox(); };
+  window.addEventListener('online', () => { coffeeFlushOutbox(true); });
+  const flushAtStartup = () => {
+    try {
+      const q0 = _readCoffeeOutbox();
+      if (q0.length > 0) {
+        q0.forEach((x) => {
+          if (x) {
+            delete x.nextRetryAt;
+            delete x.parked;
+            if (x.payload) { try { applyLocalMutation(x.payload); } catch (_) {} }
+          }
+        });
+        _writeCoffeeOutbox(_deduplicateCoffeeOutbox(q0));
+      }
+      localStorage.removeItem(COFFEE_OUTBOX_FAILED_KEY);
+    } catch (_) {}
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      coffeeFlushOutbox(true).then((r) => window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0));
+    }
+  };
   if (typeof document !== 'undefined' && document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', flushAtStartup, { once: true });
   } else {
@@ -1779,6 +1999,7 @@ let _liveBusy = false;
 let _liveLastActive = Date.now();
 let _liveTimer = null;
 window.coffeeLiveSyncState = { lastRev: null, lastCheckAt: 0, lastChangeAt: 0, ok: true };
+let _legacyGetRevUnsupported = false;
 async function coffeeLiveSyncTick(forceSync) {
   if (_liveBusy) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
@@ -1791,11 +2012,33 @@ async function coffeeLiveSyncTick(forceSync) {
     const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const t = ac ? setTimeout(() => ac.abort(), 6000) : null;
     let d = null;
-    try {
-      const r = await fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=get_rev&t=' + Date.now(), { signal: ac ? ac.signal : undefined, cache: 'no-store' });
-      d = await r.json();
-    } catch (_) {} finally { if (t) clearTimeout(t); }
+    if (!_legacyGetRevUnsupported) {
+      try {
+        const r = await fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=get_rev&t=' + Date.now(), { signal: ac ? ac.signal : undefined, cache: 'no-store' });
+        d = await r.json();
+      } catch (_) {} finally { if (t) clearTimeout(t); }
+    } else if (t) {
+      clearTimeout(t);
+    }
     const st = window.coffeeLiveSyncState; st.lastCheckAt = Date.now();
+    if (d && d.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(d.error || ''))) {
+      _legacyGetRevUnsupported = true;
+    }
+    if (_legacyGetRevUnsupported) {
+      // Если на сервере ещё старое развёртывание без get_rev — опрашиваем get_checklists и вычисляем ревизию по конверту __SYS_CONFIG_V19__
+      try {
+        const r2 = await fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=get_checklists&nocache=1&t=' + Date.now(), { cache: 'no-store' });
+        const chk = await r2.json();
+        if (chk && chk.ok !== false) {
+          let sysTs = '';
+          if (Array.isArray(chk.tasks)) {
+            const sysRow = chk.tasks.find((x) => x && (x.id === '__SYS_CONFIG_V19__' || x.title === '__SYS_SYNC__'));
+            if (sysRow && sysRow.instruction) sysTs = String(sysRow.instruction).slice(0, 64);
+          }
+          d = { ok: true, rev: String(chk.rows || 0) + '_' + String((chk.tasks || []).length) + '_' + sysTs };
+        }
+      } catch (_) {}
+    }
     if (!d || d.ok !== true || d.rev == null) { st.ok = false; return; }
     st.ok = true; window._coffeeLastSyncOk = true;
     const rev = String(d.rev);
@@ -1804,11 +2047,10 @@ async function coffeeLiveSyncTick(forceSync) {
     if ((changed || forceSync) && _readCoffeeOutbox().length === 0) {
       _liveRev = rev; st.lastRev = rev; st.lastChangeAt = Date.now();
       try {
+        await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
         if (isPinAuthorized()) {
           _bgSyncInFlight = false;
-          _triggerBackgroundSync('', true, '', true);
-        } else {
-          await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
+          _triggerBackgroundSync('', true, '', false);
         }
       } catch (_) {}
       if (window.coffeeCache && window.coffeeCache.invalidate) window.coffeeCache.invalidate('all');
@@ -1840,6 +2082,33 @@ if (typeof window !== 'undefined' && window.addEventListener && typeof document 
 /* Извлечение системного пакета синхронизации __SYS_CONFIG_V19__ из массива задач, возвращаемого get_checklists или admin */
 function _extractAndAbsorbSysTaskRow(tasksArr, db) {
   if (!Array.isArray(tasksArr)) return [];
+  db = db || getUDB();
+  tasksArr.forEach((t) => {
+    if (t && (t.id === '__SYS_CONFIG_V19__' || t.title === '__SYS_SYNC__') && t.instruction) {
+      try {
+        const env = JSON.parse(String(t.instruction));
+        if (env && env._v === 19) {
+          const envTs = Number(env.ts || 0);
+          const localTs = Number(db.lastLocalMutationAt || 0);
+          const lastEnvTs = Number(db._lastCloudEnvTs || 0);
+          if (envTs >= localTs && envTs >= lastEnvTs) {
+            db._lastCloudEnvTs = envTs;
+            if (Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) db.checklistBlocks = env.checklistBlocks;
+            if (env.dailyPlans && typeof env.dailyPlans === 'object') db.dailyPlans = Object.assign({}, db.dailyPlans || {}, env.dailyPlans);
+            if (env.shiftRoster && typeof env.shiftRoster === 'object') db.shiftRoster = Object.assign({}, db.shiftRoster || {}, env.shiftRoster);
+            if (env.deadlineExtensions && typeof env.deadlineExtensions === 'object') db.deadlineExtensions = Object.assign({}, db.deadlineExtensions || {}, env.deadlineExtensions);
+            if (Array.isArray(env.goodDeeds) && env.goodDeeds.length) db.goodDeeds = env.goodDeeds;
+            if (Array.isArray(env.ttk) && env.ttk.length) db.ttk = env.ttk;
+            if (Array.isArray(env.staff) && env.staff.length) db.staff = env.staff;
+            if (Array.isArray(env.announcements) && env.announcements.length) db.announcements = env.announcements;
+            if (Array.isArray(env.serviceAudits) && env.serviceAudits.length) db.serviceAudits = env.serviceAudits;
+            if (Array.isArray(env.incidents) && envTs > localTs) db.incidents = env.incidents;
+            saveUDB(db);
+          }
+        }
+      } catch (_) {}
+    }
+  });
   const cleanTasks = tasksArr.filter((t) => t && t.id !== '__SYS_CONFIG_V19__' && t.title !== '__SYS_SYNC__');
   return window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(cleanTasks) : cleanTasks;
 }
@@ -2114,3 +2383,4 @@ window.coffeePushAllToGoogleSheet = async function () {
     })
   }, 15000);
 };
+

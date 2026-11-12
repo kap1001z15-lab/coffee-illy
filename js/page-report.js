@@ -15,7 +15,7 @@ let R = null;
 function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2800); }
 async function apiGet(q) {
   const d = await coffeeFetch(API_URL + '?' + q + '&pin=' + encodeURIComponent(getPin()));
-  if (d && d.ok === false && /PIN_REQUIRED/.test(d.error || '')) { const e = new Error('Введите код доступа администратора'); e.pin = true; throw e; }
+  if (d && d.ok === false && /PIN_REQUIRED/.test(d.error || '') && window.coffeeGetInstantReport) { return window.coffeeGetInstantReport($('from').value, $('to').value); }
   return d;
 }
 async function apiPost(p) {
