@@ -6,6 +6,38 @@
    - Проверка персональных PIN сотрудников через SHA-256 + Rate-Limiting 5 попыток (coffeeVerifyStaffPin)
    - Детектор «Красных флагов» робота (coffeeEvaluateRedFlags) и P&L-движок (coffeeSmartEngine)
    ========================================================================= */
+window.coffeeCounterDelta = function (prev, cur) {
+  if (prev == null || cur == null || prev === '' || cur === '') return null;
+  const p = Number(prev), c = Number(cur);
+  if (!Number.isFinite(p) || !Number.isFinite(c) || p < 0 || c < 0) return null;
+  const pi = Math.round(p), ci = Math.round(c);
+  if (window.CoffeeSalesReconciliation && typeof window.CoffeeSalesReconciliation.counterDelta === 'function') {
+    const d = window.CoffeeSalesReconciliation.counterDelta(pi, ci, 1000);
+    if (d !== null) return d;
+  }
+  if (pi < 1000 && ci < 1000) {
+    return ci >= pi ? (ci - pi) : ((1000 - pi) + ci);
+  }
+  return ci >= pi ? (ci - pi) : null;
+};
+
+window.coffeeExtractNomenclatureStats = function (productsList) {
+  const prods = Array.isArray(productsList) ? productsList : [];
+  let coffeeQty = 0, nonCoffeeQty = 0, reviewQty = 0;
+  prods.forEach((p) => {
+    if (!p || !p.name) return;
+    const q = Number(p.qty) || 0;
+    if (q <= 0) return;
+    const kind = p.kind || (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.classifyCoffee
+      ? window.CoffeeSalesReconciliation.classifyCoffee(p.name)
+      : 'coffee');
+    if (kind === 'coffee') coffeeQty += q;
+    else if (kind === 'review') reviewQty += q;
+    else nonCoffeeQty += q;
+  });
+  return { coffeeQty, nonCoffeeQty, reviewQty, hasNomenclature: prods.length > 0 };
+};
+
 window.coffeeNormIncStatus = function (st) {
   const s = String(st || '').trim();
   if (!s || s === 'Open' || s === 'Открыта' || s === 'Новая проблема') return 'Новая проблема';
@@ -252,15 +284,20 @@ window.coffeeSmartEngine = {
         st.card += Number(sh.card) || 0;
         st.cups += sCups;
         st.wo += sWo;
-        if (sh.counter != null && sh.prevCounter != null && Number(sh.counter) >= Number(sh.prevCounter)) {
+        const prevC = sh.prevCounter != null ? sh.prevCounter : sh.counterStart;
+        const endC = sh.counter != null ? sh.counter : sh.counterEnd;
+        if (endC != null && prevC != null) {
+          const delta = window.coffeeCounterDelta(prevC, endC);
+          if (delta == null) return;
           counterCheckedShifts += 1;
-          const delta = Number(sh.counter) - Number(sh.prevCounter);
           st.counterDelta += delta;
-          const accounted = sCups + sWo;
+          const soldCoffee = sh.coffeeQty != null ? Number(sh.coffeeQty) : (sh.soldCoffee != null ? Number(sh.soldCoffee) : sCups);
+          const woShots = sh.writeoffShots != null ? Number(sh.writeoffShots) : (sh.writeoffQty != null ? Number(sh.writeoffQty) : sWo);
+          const accounted = soldCoffee + woShots;
           const diff = delta - accounted;
-          if (Math.abs(diff) > 0 && sCups > 0 && delta !== sCups) {
+          if (Math.abs(diff) > 0 && accounted > 0) {
             counterDiscrepancyCups += Math.abs(diff);
-            counterAlerts.push(dayRec.date + ' (' + nm + '): счётчик +' + delta + ', учтено ' + sCups);
+            counterAlerts.push(dayRec.date + ' (' + nm + '): счётчик +' + delta + ', учтено ' + accounted + ' (кофе ' + soldCoffee + ' + спис. ' + woShots + ')');
           }
         }
       });
@@ -635,7 +672,7 @@ window.coffeeGetBlockWindow = function (block, dbOpt) {
   const adminForcedOpen = !!(extObj && extObj.forceOpen && curHm >= effectiveOpen && curHm <= effectiveDeadline);
   const isBefore = !adminForcedOpen && !completed && curHm < effectiveOpen;
   const isOverdue = !adminForcedOpen && !completed && curHm > effectiveDeadline;
-  const canPass = adminForcedOpen || (!completed && curHm >= effectiveOpen && curHm <= effectiveDeadline);
+  const canPass = !completed && (adminForcedOpen || (curHm >= effectiveOpen && curHm <= effectiveDeadline));
 
   let state = 'open';
   let status = 'Доступ открыт (' + effectiveOpen + '–' + effectiveDeadline + ')';
@@ -778,35 +815,70 @@ window.coffeeEvaluateRedFlags = function (dateStr, dbOpt) {
       });
     }
 
-    /* Флаг 2: Сверка счётчика проливов кофемашины (гриндер) с продажами и списаниями */
+    /* Флаг 2: Сверка счётчика проливов кофемашины (гриндер) с продажами кофейных напитков по номенклатуре и списаниями в порциях */
     const shifts = Array.isArray(c.shifts) ? c.shifts : [];
+    const dayProds = Array.isArray(c.products) && c.products.length ? c.products : ((db.productsByDate && db.productsByDate[day]) || []);
+    const nomStats = window.coffeeExtractNomenclatureStats(dayProds);
     let totalCounterDelta = 0;
     let totalAccountedCups = 0;
+    let totalSoldCoffee = 0;
+    let totalWriteoffShots = 0;
     let hasCounter = false;
+    let hasWrap = false;
     shifts.forEach((sh) => {
-      if (sh.counter != null && sh.prevCounter != null && Number(sh.counter) >= Number(sh.prevCounter)) {
+      const pCnt = sh.prevCounter != null ? sh.prevCounter : sh.counterStart;
+      const eCnt = sh.counter != null ? sh.counter : sh.counterEnd;
+      if (eCnt != null && pCnt != null) {
+        var shiftDelta = window.coffeeCounterDelta(pCnt, eCnt);
+        if (shiftDelta == null) return;
         hasCounter = true;
-        totalCounterDelta += (Number(sh.counter) - Number(sh.prevCounter));
-        totalAccountedCups += (Number(sh.cups || sh.checks) || 0) + (Number(sh.writeoff) || 0);
+        if (Number(eCnt) < Number(pCnt) && Number(pCnt) < 1000) hasWrap = true;
+        totalCounterDelta += shiftDelta;
+        var shCoffee = sh.coffeeQty != null ? Number(sh.coffeeQty) : (sh.soldCoffee != null ? Number(sh.soldCoffee) : (nomStats.hasNomenclature && shifts.length === 1 ? nomStats.coffeeQty : (Number(sh.cups != null ? sh.cups : sh.checks) || 0)));
+        var shWoShots = sh.writeoffShots != null ? Number(sh.writeoffShots) : (sh.writeoffQty != null ? Number(sh.writeoffQty) : (Number(sh.writeoff) || 0));
+        totalSoldCoffee += shCoffee;
+        totalWriteoffShots += shWoShots;
+        totalAccountedCups += shCoffee + shWoShots;
       }
     });
+    if (!hasCounter && c.counterStart != null && c.counterEnd != null) {
+      var dayDelta = window.coffeeCounterDelta(c.counterStart, c.counterEnd);
+      if (dayDelta != null) {
+        hasCounter = true;
+        if (Number(c.counterEnd) < Number(c.counterStart) && Number(c.counterStart) < 1000) hasWrap = true;
+        totalCounterDelta = dayDelta;
+        totalSoldCoffee = c.coffeeQty != null ? Number(c.coffeeQty) : (nomStats.hasNomenclature ? nomStats.coffeeQty : (Number(c.coffeeCups || c.checks) || 0));
+        totalWriteoffShots = c.writeoffShots != null ? Number(c.writeoffShots) : (Number(c.writeoff) || 0);
+        totalAccountedCups = totalSoldCoffee + totalWriteoffShots;
+      }
+    }
+    const reviewQtyDay = c.reviewQty != null ? Number(c.reviewQty) : nomStats.reviewQty;
     if (hasCounter) {
       const cupGap = Math.abs(totalCounterDelta - totalAccountedCups);
+      const wrapNote = hasWrap ? ' (учтён переход счётчика через 999→0; подтвердите по дисплею кофемолки)' : '';
       if (cupGap > deltaNorm) {
         flags.push({
           level: 'red',
           title: '🚩 КРАСНЫЙ ФЛАГ: Не сходится счётчик кофемашины (разница ' + cupGap + ' порций при допуске ≤ ' + deltaNorm + ')',
-          desc: 'По счётчику пролито ' + totalCounterDelta + ' порций, а в продажах и списаниях учтено ' + totalAccountedCups + '. Проверьте списания на проработку или неучтённые проливы!',
+          desc: 'По счётчику пролито ' + totalCounterDelta + ' порций' + wrapNote + ', а по номенклатуре кофе (' + totalSoldCoffee + ') и списаниям порций (' + totalWriteoffShots + ') учтено ' + totalAccountedCups + '. Необъяснённая разница: ' + (totalCounterDelta - totalAccountedCups) + ' порц.!',
           tag: 'Счётчик / Гриндер'
         });
       } else {
         flags.push({
           level: 'green',
           title: '🟢 Проливы кофемашины совпадают с продажами и списаниями',
-          desc: 'Пролито по счётчику: ' + totalCounterDelta + ' порц. · Учтено с учётом списаний: ' + totalAccountedCups + ' (в пределах сезонного допуска ±' + deltaNorm + ' порц.).',
+          desc: 'Пролито по счётчику: ' + totalCounterDelta + ' порц.' + wrapNote + ' · Учтено (кофе ' + totalSoldCoffee + ' + списания ' + totalWriteoffShots + '): ' + totalAccountedCups + ' (в пределах допуска ±' + deltaNorm + ' порц.).',
           tag: 'Счётчик ОК'
         });
       }
+    }
+    if (reviewQtyDay > 0) {
+      flags.push({
+        level: 'yellow',
+        title: '🟡 Неопределённая номенклатура в Продажи.csv: ' + reviewQtyDay + ' шт.',
+        desc: 'Позиции со статусом «review» (например, «Напиток от Бариста») учитываются отдельно от кофе и некофейных товаров до уточнения рецептуры.',
+        tag: 'Номенклатура / Сверка'
+      });
     } else {
       flags.push({
         level: 'yellow',
@@ -936,15 +1008,40 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
     periodPlanTotal += (dp.revenue || 2200);
 
     const zTot = c.zTotal != null ? Number(c.zTotal) : dayRev;
-    let cntStart = null, cntEnd = null, cntDelta = 0, accCups = 0;
+    const nomStats = window.coffeeExtractNomenclatureStats(dayProds);
+    const daySoldCoffee = c.coffeeQty != null ? Number(c.coffeeQty) : (nomStats.hasNomenclature ? nomStats.coffeeQty : 0);
+    const dayNonCoffee = c.nonCoffeeQty != null ? Number(c.nonCoffeeQty) : nomStats.nonCoffeeQty;
+    const dayReviewQty = c.reviewQty != null ? Number(c.reviewQty) : nomStats.reviewQty;
+    const dayWoShots = c.writeoffShots != null ? Number(c.writeoffShots) : shArr.reduce((acc, s) => acc + (Number(s.writeoffShots != null ? s.writeoffShots : s.writeoffQty) || 0), 0);
+    let cntStart = c.counterStart != null ? Number(c.counterStart) : null;
+    let cntEnd = c.counterEnd != null ? Number(c.counterEnd) : null;
+    let cntDelta = 0, accCups = 0, cntWrapped = false;
     shArr.forEach((sh) => {
-      if (sh.prevCounter != null && cntStart === null) cntStart = Number(sh.prevCounter);
-      if (sh.counter != null) cntEnd = Number(sh.counter);
-      if (sh.counter != null && sh.prevCounter != null && Number(sh.counter) >= Number(sh.prevCounter)) {
-        cntDelta += (Number(sh.counter) - Number(sh.prevCounter));
-        accCups += (Number(sh.cups || sh.checks) || 0) + (Number(sh.writeoff || sh.writeoffQty) || 0);
+      const pCnt = sh.prevCounter != null ? sh.prevCounter : sh.counterStart;
+      const eCnt = sh.counter != null ? sh.counter : sh.counterEnd;
+      if (pCnt != null && cntStart === null) cntStart = Number(pCnt);
+      if (eCnt != null) cntEnd = Number(eCnt);
+      if (eCnt != null && pCnt != null) {
+        const d = window.coffeeCounterDelta(pCnt, eCnt);
+        if (d !== null) {
+          cntDelta += d;
+          if (Number(eCnt) < Number(pCnt) && Number(pCnt) < 1000) cntWrapped = true;
+          const shCoffee = sh.coffeeQty != null ? Number(sh.coffeeQty) : (sh.soldCoffee != null ? Number(sh.soldCoffee) : (daySoldCoffee > 0 && shArr.length === 1 ? daySoldCoffee : (Number(sh.cups != null ? sh.cups : sh.checks) || 0)));
+          const shWoS = sh.writeoffShots != null ? Number(sh.writeoffShots) : (sh.writeoffQty != null ? Number(sh.writeoffQty) : (Number(sh.writeoff) || 0));
+          accCups += shCoffee + shWoS;
+        }
       }
     });
+    if (cntDelta === 0 && cntStart !== null && cntEnd !== null) {
+      const dDay = window.coffeeCounterDelta(cntStart, cntEnd);
+      if (dDay !== null) {
+        cntDelta = dDay;
+        if (cntEnd < cntStart && cntStart < 1000) cntWrapped = true;
+        accCups = (daySoldCoffee > 0 ? daySoldCoffee : dayChecks) + (dayWoShots > 0 ? dayWoShots : dayWo);
+      }
+    }
+    const effectiveAccounted = accCups || ((daySoldCoffee > 0 ? daySoldCoffee : dayChecks) + (dayWoShots > 0 ? dayWoShots : 0));
+    const counterGap = cntDelta > 0 ? (cntDelta - effectiveAccounted) : 0;
     dayByDayPnL.push({
       date: c.date,
       dayCode: dp.dayCode || '',
@@ -959,8 +1056,14 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
       counterStart: cntStart,
       counterEnd: cntEnd,
       counterDelta: cntDelta,
-      accountedCups: accCups || dayChecks,
-      counterGap: cntDelta > 0 ? (cntDelta - (accCups || (dayChecks + dayWo))) : 0,
+      counterWrapped: cntWrapped,
+      coffeeQty: daySoldCoffee,
+      nonCoffeeQty: dayNonCoffee,
+      reviewQty: dayReviewQty,
+      writeoffShots: dayWoShots,
+      accountedCups: effectiveAccounted,
+      unaccountedShots: Math.max(0, counterGap),
+      counterGap: counterGap,
       topItems: c.topItems || '',
       comment: c.comment || '',
       plan: dp.revenue || 2200,

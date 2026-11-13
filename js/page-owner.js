@@ -441,7 +441,48 @@ function renderOwnerReportSection() {
   const annsList = db.announcements || [];
   const goodDeedsList = db.goodDeeds || window.COFFEE_DEFAULT_GOOD_DEEDS || [];
   const auditLogList = (db.auditLog || []).slice(0, 80);
-  const soldProducts = rep.products || [];
+  /* Цена и выручка по позициям: если в данных нет суммы — берём цену из техкарт (ТТК), помечаем как расчётную. */
+  const _ttkList = (Array.isArray(db.ttk) && db.ttk.length) ? db.ttk : (window.COFFEE_DEFAULT_TTK || []);
+  const _nrm = (x) => String(x || '').replace(/^[^а-яёa-z0-9]+/i, '').trim().toLowerCase();
+  const _ttkPrice = (nm) => {
+    const n = _nrm(nm); if (!n) return 0;
+    const t = _ttkList.find((x) => _nrm(x.name) === n) || _ttkList.find((x) => { const m = _nrm(x.name); return m && (m.indexOf(n) >= 0 || n.indexOf(m) >= 0); });
+    return t ? (Number(t.price) || 0) : 0;
+  };
+  const soldProducts = (rep.products || []).map((p) => {
+    const sum = Number(p.sum) || 0;
+    if (sum > 0) return Object.assign({}, p, { sum, est: false });
+    const pr = _ttkPrice(p.name);
+    return Object.assign({}, p, { sum: pr ? Math.round(pr * (Number(p.qty) || 0)) : 0, est: !!pr });
+  });
+
+  /* Предыдущий период такой же длины — для сравнения «к прошлому периоду». */
+  const _days = Math.max(1, Math.round((Date.parse(ownerRepTo + 'T00:00:00Z') - Date.parse(ownerRepFrom + 'T00:00:00Z')) / 86400000) + 1);
+  const prevTo = _shiftIso(ownerRepFrom, -1);
+  const prevFrom = _shiftIso(prevTo, -(_days - 1));
+  const prevFin = window.coffeeCalculateFinancialModel ? window.coffeeCalculateFinancialModel(db, prevFrom, prevTo) : null;
+  const _dlt = (cur, prev, costLike) => {
+    if (!prevFin || !(Number(prev) > 0)) return '<span class="mu">к пред. периоду: нет данных</span>';
+    const pc = Math.round(((Number(cur) - Number(prev)) / Math.abs(Number(prev))) * 100);
+    const up = pc > 0, flat = pc === 0;
+    const good = flat ? null : (costLike ? !up : up);
+    return '<span style="font-weight:700;color:' + (good === null ? 'var(--mu)' : (good ? 'var(--good)' : 'var(--bad)')) + '">' + (flat ? '＝ 0%' : (up ? '▲ +' : '▼ ') + pc + '%') + '</span> <span class="mu">к ' + dmy(prevFrom) + '–' + dmy(prevTo) + '</span>';
+  };
+  /* Главное за период — текстовая сводка. */
+  const _dRows = (fin.dayByDayPnL || []).filter((r) => r.revenue > 0);
+  const _best = _dRows.length ? _dRows.reduce((a, b) => (b.revenue > a.revenue ? b : a)) : null;
+  const _worst = _dRows.length ? _dRows.reduce((a, b) => (b.revenue < a.revenue ? b : a)) : null;
+  const _topP = soldProducts.length ? soldProducts[0] : null;
+  const _zBad = _dRows.filter((r) => r.zDiff !== 0).length;
+  const _highlights = [];
+  if (_best) _highlights.push('Лучший день: <b>' + dmy(_best.date) + '</b> — ' + rub(_best.revenue));
+  if (_worst && _dRows.length > 1) _highlights.push('Слабый день: <b>' + dmy(_worst.date) + '</b> — ' + rub(_worst.revenue));
+  if (_topP) _highlights.push('Топ позиция: <b>' + esc(_topP.name) + '</b> (' + _topP.qty + ' шт.)');
+  _highlights.push('Выполнение плана: <b>' + (rep.pct || 0) + '%</b>');
+  if (_zBad) _highlights.push('<span style="color:var(--bad)">Расхождений Z-отчёта: <b>' + _zBad + '</b> дн.</span>');
+  const _openInc = periodIncidents.filter((i) => window.coffeeIsIncActive(i.status)).length;
+  if (_openInc) _highlights.push('<span style="color:var(--bad)">Открытых поломок: <b>' + _openInc + '</b></span>');
+
 
   // Полная таблица по сотрудникам (Смены, Выручка, Счётчик, Дисциплина, Аудит сервиса, Расчёт ФОТ и бонуса KPI)
   /* Статистика смен приходит массивом rep.staffSummary; rep.staff — это анкеты сотрудников (массив), их нельзя читать как карту «имя → цифры». */
@@ -482,7 +523,39 @@ function renderOwnerReportSection() {
     };
   });
 
+  /* Данные для экспорта в Excel (несколько листов). */
+  window._ownerRepExport = {
+    from: ownerRepFrom, to: ownerRepTo,
+    sheets: [
+      { name: 'Сводка', rows: [['Показатель', 'Текущий период', 'Предыдущий период'],
+        ['Период', ownerRepFrom + ' — ' + ownerRepTo, prevFrom + ' — ' + prevTo],
+        ['Выручка', fin.revenue, prevFin ? prevFin.revenue : ''], ['Наличные', fin.cashTotal, prevFin ? prevFin.cashTotal : ''], ['Безнал', fin.cardTotal, prevFin ? prevFin.cardTotal : ''],
+        ['Себестоимость (COGS)', fin.cogs, prevFin ? prevFin.cogs : ''], ['Валовая прибыль', fin.grossProfit, prevFin ? prevFin.grossProfit : ''],
+        ['ФОТ', fin.effectivePayroll, prevFin ? prevFin.effectivePayroll : ''], ['OpEx', fin.nonPayrollOpex, prevFin ? prevFin.nonPayrollOpex : ''],
+        ['Списания (потери)', fin.wasteCost, prevFin ? prevFin.wasteCost : ''], ['Чистая прибыль', fin.netProfit, prevFin ? prevFin.netProfit : ''],
+        ['Чеков', fin.checksTotal, prevFin ? prevFin.checksTotal : ''], ['Средний чек', fin.avgCheck, prevFin ? prevFin.avgCheck : ''],
+        ['Food Cost, %', fin.foodCostPct, prevFin ? prevFin.foodCostPct : ''], ['Рентабельность, %', fin.netMarginPct, prevFin ? prevFin.netMarginPct : '']] },
+      { name: 'По дням', rows: [['Дата', 'День', 'Бариста', 'Смен', 'Нал', 'Безнал', 'Выручка', 'Z-отчёт', 'Разница Z', 'План', '% плана', 'Чеков', 'Ср. чек', 'COGS', 'ФОТ', 'OpEx', 'Списания', 'Чистая прибыль']]
+        .concat((fin.dayByDayPnL || []).map((x) => [x.date, x.dayCode, x.barista, x.shiftsCount, x.cash, x.card, x.revenue, x.zTotal, x.zDiff, x.plan, x.planPct, x.checks, x.avgCheck, x.cogs, x.payroll, x.opex, x.wasteCost, x.netProfit])) },
+      { name: 'Сотрудники', rows: [['Сотрудник', 'Роль', 'Смен', 'Выручка', 'Нал', 'Безнал', 'Чеков', 'Списаний', 'Задач вовремя', 'Опоздало', 'Пропущено', 'Дисциплина %', 'Аудит %', 'База', 'Бонус', 'КПИ', 'К выплате']]
+        .concat(fullStaffRows.map((x) => [x.name, x.role, x.shifts, x.revenue, x.cash, x.card, x.checks, x.writeoff, x.onTimeTasks, x.lateTasks, x.missedTasks, x.disciplinePct, x.auditScore, x.baseRate, x.bonus, x.kpiCoeff, x.totalPayout])) },
+      { name: 'Расходы', rows: [['Дата', 'Категория', 'Сумма', 'Комментарий']].concat(((rep.finance && rep.finance.list) || []).map((x) => [x.date, x.category, x.amount, x.comment || ''])) },
+      { name: 'Продажи по позициям', rows: [['Позиция', 'Продано, шт.', 'Выручка', 'Выручка расчётная (цена ТТК)', 'Доля, %']]
+        .concat(soldProducts.map((x) => [x.name, x.qty, x.est ? '' : x.sum, x.est ? x.sum : '', Math.round((x.qty / (soldProducts.reduce((a, y) => a + (Number(y.qty) || 0), 0) || 1)) * 100)])) },
+      { name: 'Поломки', rows: [['ID', 'Дата', 'Время', 'Узел', 'Тип', 'Описание', 'Статус', 'Приоритет', 'Сообщил', 'Исполнитель']]
+        .concat(periodIncidents.map((i) => [i.id || '', i.date || '', i.time || '', i.step || '', i.incType || '', i.text || '', i.status || '', i.priority || '', i.who || '', i.owner || ''])) }
+    ]
+  };
+
   const _newRepHtml =
+    /* ЗАКРЕПЛЁННАЯ ПАНЕЛЬ: период, оглавление, экспорт */
+    '<div class="rep-sticky">' +
+      '<b class="rep-sticky-p">' + dmy(ownerRepFrom) + ' — ' + dmy(ownerRepTo) + '</b>' +
+      '<nav class="rep-toc">' +
+        [['rep-s1', 'P&amp;L'], ['rep-s2', 'По дням'], ['rep-s3', 'Продажи'], ['rep-s4', 'Сотрудники'], ['rep-s5', 'Чек-листы'], ['rep-s6', 'Поломки']].map((a) => '<a href="#' + a[0] + '" data-repgo="' + a[0] + '">' + a[1] + '</a>').join('') +
+      '</nav>' +
+      '<span class="rep-sticky-act"><button type="button" class="p" id="oRepXlsBtn">⬇ Excel</button><button type="button" class="b" id="oRepCsvBtn2">CSV</button><button type="button" class="b" id="oRepPrintBtn2">🖨</button></span>' +
+    '</div>' +
     /* ШАПКА ОТЧЁТОВ И ВЫБОР ПЕРИОДА */
     '<div class="card">' +
       '<div class="top" style="margin-bottom:10px">' +
@@ -504,16 +577,17 @@ function renderOwnerReportSection() {
       '</div>' +
 
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:10px">' +
-        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">1. Выручка (Нал + Безнал)</div><div style="font-size:22px;font-weight:800;color:var(--good);margin:4px 0">' + rub(fin.revenue) + '</div><div class="mu">Нал: ' + rub(fin.cashTotal) + ' (' + (fin.cashSharePct || 0) + '%) · Безнал: ' + rub(fin.cardTotal) + '</div><div class="mu">План периода: ' + rub(rep.plan || 0) + ' (' + (rep.pct || 0) + '%)</div></div>' +
-        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">2. Себестоимость (COGS по ТТК)</div><div style="font-size:22px;font-weight:800;margin:4px 0">' + rub(fin.cogs) + '</div><div class="mu">Food Cost: <b>' + fin.foodCostPct + '%</b> · Валовая прибыль: <b>' + rub(fin.grossProfit) + '</b> (' + (fin.grossMarginPct || 0) + '%)</div></div>' +
-        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">3. ФОТ смен + Опер. расходы</div><div style="font-size:22px;font-weight:800;color:var(--bad);margin:4px 0">' + rub(fin.effectivePayroll + fin.nonPayrollOpex) + '</div><div class="mu">ФОТ (' + (fin.shiftsCount || 0) + ' см.): ' + rub(fin.effectivePayroll) + ' (' + (fin.laborCostPct || 0) + '%) · OpEx: ' + rub(fin.nonPayrollOpex) + '</div></div>' +
-        '<div style="padding:13px;border-radius:14px;border:1.5px solid ' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ';background:color-mix(in srgb,' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ' 6%,var(--surface))"><div class="mu" style="font-weight:700">4. Чистая прибыль (Net Profit)</div><div style="font-size:23px;font-weight:800;color:' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ';margin:4px 0">' + rub(fin.netProfit) + '</div><div class="mu">Рентабельность: <b>' + (fin.netMarginPct || 0) + '%</b> · Потери списаний: ' + rub(fin.wasteCost) + '</div></div>' +
-        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">5. Гости, Чеки и CAC</div><div style="font-size:22px;font-weight:800;margin:4px 0">' + fin.checksTotal + ' чек. · ' + rub(fin.avgCheck) + '</div><div class="mu">Ср. выручка смены: ' + rub(fin.avgRevPerShift || 0) + ' · CAC: ' + rub(fin.cac) + '</div></div>' +
+        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">1. Выручка (Нал + Безнал)</div><div style="font-size:22px;font-weight:800;color:var(--good);margin:4px 0">' + rub(fin.revenue) + '</div><div class="mu">Нал: ' + rub(fin.cashTotal) + ' (' + (fin.cashSharePct || 0) + '%) · Безнал: ' + rub(fin.cardTotal) + '</div><div class="mu">План периода: ' + rub(rep.plan || 0) + ' (' + (rep.pct || 0) + '%)</div><div>' + _dlt(fin.revenue, prevFin && prevFin.revenue) + '</div></div>' +
+        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">2. Себестоимость (COGS по ТТК)</div><div style="font-size:22px;font-weight:800;margin:4px 0">' + rub(fin.cogs) + '</div><div class="mu">Food Cost: <b>' + fin.foodCostPct + '%</b> · Валовая прибыль: <b>' + rub(fin.grossProfit) + '</b> (' + (fin.grossMarginPct || 0) + '%)</div><div>' + _dlt(fin.cogs, prevFin && prevFin.cogs, true) + '</div></div>' +
+        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">3. ФОТ смен + Опер. расходы</div><div style="font-size:22px;font-weight:800;color:var(--bad);margin:4px 0">' + rub(fin.effectivePayroll + fin.nonPayrollOpex) + '</div><div class="mu">ФОТ (' + (fin.shiftsCount || 0) + ' см.): ' + rub(fin.effectivePayroll) + ' (' + (fin.laborCostPct || 0) + '%) · OpEx: ' + rub(fin.nonPayrollOpex) + '</div><div>' + _dlt(fin.effectivePayroll + fin.nonPayrollOpex, prevFin && (prevFin.effectivePayroll + prevFin.nonPayrollOpex), true) + '</div></div>' +
+        '<div style="padding:13px;border-radius:14px;border:1.5px solid ' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ';background:color-mix(in srgb,' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ' 6%,var(--surface))"><div class="mu" style="font-weight:700">4. Чистая прибыль (Net Profit)</div><div style="font-size:23px;font-weight:800;color:' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ';margin:4px 0">' + rub(fin.netProfit) + '</div><div class="mu">Рентабельность: <b>' + (fin.netMarginPct || 0) + '%</b> · Потери списаний: ' + rub(fin.wasteCost) + '</div><div>' + _dlt(fin.netProfit, prevFin && prevFin.netProfit) + '</div></div>' +
+        '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">5. Гости, Чеки и CAC</div><div style="font-size:22px;font-weight:800;margin:4px 0">' + fin.checksTotal + ' чек. · ' + rub(fin.avgCheck) + '</div><div class="mu">Ср. выручка смены: ' + rub(fin.avgRevPerShift || 0) + ' · CAC: ' + rub(fin.cac) + '</div><div>' + _dlt(fin.checksTotal, prevFin && prevFin.checksTotal) + ' <span class="mu">(чеки)</span></div></div>' +
       '</div>' +
+      '<div class="rep-hl"><b>Главное за период:</b> ' + _highlights.join(' · ') + '</div>' +
     '</div>' +
 
     /* БЛОК 1: ПОЛНЫЙ УПРАВЛЕНЧЕСКИЙ ОТЧЁТ P&L (ОПиУ) И СТРУКТУРА РАСХОДОВ */
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
+    '<div id="rep-s1" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
       '<div class="card" style="margin:0">' +
         '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">1. Управленческий отчёт P&amp;L (ОПиУ)</h2><span class="tag ok">Все доходы и издержки</span></div>' +
         '<div class="sx"><table class="tbl"><thead><tr><th>Статья P&amp;L</th><th>Сумма, руб.</th><th>% от выручки</th><th>Расшифровка</th></tr></thead><tbody>' +
@@ -541,14 +615,14 @@ function renderOwnerReportSection() {
     '</div>' +
 
     /* БЛОК 2: ПОСУТОЧНАЯ ФИНАНСОВАЯ ВЕДОМОСТЬ, СЧЁТЧИКИ КОФЕМАШИНЫ И Z-ОТЧЁТЫ */
-    '<div class="card" style="margin-top:14px">' +
+    '<div class="card" id="rep-s2" style="margin-top:14px">' +
       '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">2. Посуточная ведомость: Касса, Z-отчёты, Счётчики кофемашины и Прибыль по дням</h2><button type="button" class="b" data-jumpadm="cash">+ Внести / сверить смену</button></div>' +
       '<div class="sx"><table class="tbl"><thead><tr><th>Дата</th><th>Бариста (смены)</th><th>Счётчик кофемашины (Дельта)</th><th>Нал</th><th>Безнал</th><th>Выручка (% плана)</th><th>Z-отчёт (Разница)</th><th>Чеков (Ср. чек)</th><th>COGS</th><th>ФОТ</th><th>OpEx+Спис.</th><th>Чистая прибыль</th></tr></thead><tbody>' +
         ((fin.dayByDayPnL && fin.dayByDayPnL.length) ? fin.dayByDayPnL.map((r) => (
           '<tr>' +
             '<td><a href="#dash" data-jumpdash="' + esc(r.date) + '"><b>' + dmy(r.date) + '</b></a> <span class="mu">(' + esc(r.dayCode) + ')</span></td>' +
-            '<td>' + esc(r.barista) + ' <span class="mu">(' + r.shiftsCount + ' см.)</span></td>' +
-            '<td>' + (r.counterEnd != null ? ((r.counterStart != null ? r.counterStart + '→' : '') + '<b>' + r.counterEnd + '</b> (пролито ' + r.counterDelta + ', дельта ' + (r.counterGap > 0 ? '+' : '') + r.counterGap + ')') : '<span class="mu">не внесён</span>') + '</td>' +
+            '<td>' + esc(r.barista) + ' <span class="mu">(' + r.shiftsCount + ' см.)</span>' + (r.coffeeQty ? '<div class="mu" style="font-size:11px">☕ Кофе: ' + r.coffeeQty + ' шт.' + (r.reviewQty ? ' · ❓ ' + r.reviewQty + ' шт.' : '') + '</div>' : '') + '</td>' +
+            '<td>' + (r.counterEnd != null ? ((r.counterStart != null ? r.counterStart + '→' : '') + '<b>' + r.counterEnd + '</b> (сраб. ' + r.counterDelta + (r.counterWrapped ? ' [999→0]' : '') + (r.writeoffShots ? ', спис. ' + r.writeoffShots + ' порц.' : '') + ', разн. <b style="color:' + (Math.abs(r.counterGap) > 4 ? 'var(--bad)' : 'var(--good)') + '">' + (r.counterGap > 0 ? '+' : '') + r.counterGap + '</b>)') : '<span class="mu">не внесён</span>') + '</td>' +
             '<td>' + rub(r.cash) + '</td>' +
             '<td>' + rub(r.card) + '</td>' +
             '<td><b>' + rub(r.revenue) + '</b> <span class="tag ' + (r.planPct >= 98 ? 'ok' : (r.planPct < 85 ? 'no' : '')) + '">' + r.planPct + '%</span></td>' +
@@ -565,15 +639,18 @@ function renderOwnerReportSection() {
     '</div>' +
 
     /* БЛОК 3: ПРОДАЖИ ПО ПОЗИЦИЯМ МЕНЮ И ПОЛНАЯ ЮНИТ-ЭКОНОМИКА ПО ТТК */
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
+    '<div id="rep-s3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
       '<div class="card" style="margin:0">' +
         '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">3. Продажи по позициям меню (из Продажи.csv)</h2><span class="tag">' + soldProducts.length + ' поз.</span></div>' +
-        '<div class="sx"><table class="tbl"><thead><tr><th>Позиция меню</th><th>Продано, шт.</th><th>Выручка</th><th>Доля продаж</th></tr></thead><tbody>' +
+        '<div class="sx"><table class="tbl"><thead><tr><th>Позиция меню</th><th>Категория сверки</th><th>Продано, шт.</th><th>Выручка</th><th>Доля</th></tr></thead><tbody>' +
           (soldProducts.length ? soldProducts.map((p) => {
             const totQty = soldProducts.reduce((s, x) => s + (Number(x.qty) || 0), 0) || 1;
-            return '<tr><td><b>' + esc(p.name) + '</b></td><td>' + p.qty + ' шт.</td><td>' + (p.sum ? rub(p.sum) : '—') + '</td><td>' + Math.round((p.qty / totQty) * 100) + '%</td></tr>';
-          }).join('') : '<tr><td colspan="4" class="mu">Поштучная детализация заполняется автоматически при загрузке файла «Продажи.csv» в Кассе.</td></tr>') +
+            const kind = p.kind || (window.CoffeeSalesReconciliation ? window.CoffeeSalesReconciliation.classifyCoffee(p.name) : 'coffee');
+            const kindBadge = kind === 'coffee' ? '<span class="tag ok">☕ Кофе</span>' : (kind === 'review' ? '<span class="tag warn">❓ На проверку</span>' : '<span class="tag">🍰 Не кофе</span>');
+            return '<tr><td><b>' + esc(p.name) + '</b></td><td>' + kindBadge + '</td><td>' + p.qty + ' шт.</td><td>' + (p.sum ? (p.est ? '≈ ' : '') + rub(p.sum) : '—') + '</td><td>' + Math.round((p.qty / totQty) * 100) + '%</td></tr>';
+          }).join('') : '<tr><td colspan="5" class="mu">Поштучная детализация заполняется автоматически при загрузке файла «Продажи.csv» в Кассе.</td></tr>') +
         '</tbody></table></div>' +
+        (soldProducts.some((x) => x.est) ? '<div class="mu" style="margin-top:6px">≈ — выручка рассчитана по цене из техкарты (в данных продаж суммы нет).</div>' : '') +
       '</div>' +
 
       '<div class="card" style="margin:0">' +
@@ -587,7 +664,7 @@ function renderOwnerReportSection() {
     '</div>' +
 
     /* БЛОК 4: ПЕРСОНАЛ: СМЕНЫ, ВЫРУЧКА, ДИСЦИПЛИНА, АУДИТЫ СЕРВИСА, ФОТ И ОЗНАКОМЛЕНИЕ С РЕГЛАМЕНТАМИ */
-    '<div class="card" style="margin-top:14px">' +
+    '<div class="card" id="rep-s4" style="margin-top:14px">' +
       '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">4. Сотрудники: Смены, Выручка, Дисциплина, Аудит сервиса и Расчёт ФОТ / Премий KPI</h2><button type="button" class="b" data-jumpadm="staff">Штат и График</button></div>' +
       '<div class="sx"><table class="tbl"><thead><tr><th>Сотрудник (Роль)</th><th>Смен</th><th>Выручка (Нал/Безнал)</th><th>Чеков / Списаний</th><th>Задач Вовремя / Опозд. / Пропуск</th><th>Дисциплина</th><th>Аудит сервиса</th><th>Расчёт ФОТ (Ставка + Бонус × KPI)</th></tr></thead><tbody>' +
         (fullStaffRows.length ? fullStaffRows.map((s) => (
@@ -618,7 +695,7 @@ function renderOwnerReportSection() {
     '</div>' +
 
     /* БЛОК 5: СТАТУС 6 ЧЕК-ЛИСТОВ ТАЙМЛАЙНА, ПОЛНЫЙ ЖУРНАЛ СДАЧ И ФОТО/ВИДЕО-АРХИВ */
-    '<div class="card" style="margin-top:14px">' +
+    '<div class="card" id="rep-s5" style="margin-top:14px">' +
       '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">5. Таймлайн 6 чек-листов, Полный журнал сдач (' + periodChecklists.length + ') и Фото/Видео-архив (' + allPhotosInPeriod.length + ' кадр.)</h2><button type="button" class="b" data-jumpadm="checklists">Настроить окна</button></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px;margin-bottom:12px">' +
         (window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks(db) : []).map((bObj) => {
@@ -660,7 +737,7 @@ function renderOwnerReportSection() {
     '</div>' +
 
     /* БЛОК 6: ПОЛНЫЙ РЕЕСТР ПОЛОМОК / ИНЦИДЕНТОВ (ЭКШН-ПЛАН 24Ч) И КАРТА ДОБРЫХ ДЕЛ */
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
+    '<div id="rep-s6" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
       '<div class="card" style="margin:0">' +
         '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">6. Полный реестр поломок и инцидентов (' + periodIncidents.length + ')</h2><button type="button" class="b" data-jumpadm="inc">Управление поломками</button></div>' +
         (periodIncidents.length ? periodIncidents.map((inc) => (
@@ -816,7 +893,7 @@ document.addEventListener('click', (e) => {
     renderOwnerReportSection();
     return;
   }
-  if (e.target && e.target.id === 'oRepCsvBtn') {
+  if (e.target && (e.target.id === 'oRepCsvBtn' || e.target.id === 'oRepCsvBtn2')) {
     const fin = window.coffeeCalculateFinancialModel ? window.coffeeCalculateFinancialModel( getUDB(), ownerRepFrom, ownerRepTo ) : { dayByDayPnL: [] };
     const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const lines = [['Дата', 'День', 'Бариста', 'Смен', 'Счётчик (пролито)', 'Наличные', 'Безнал', 'Выручка', 'Z-отчёт', 'План', '% Плана', 'Чеков', 'Средний чек', 'COGS (ТТК)', 'ФОТ', 'OpEx', 'Списания', 'Чистая прибыль'].map(q).join(';')]
@@ -828,7 +905,32 @@ document.addEventListener('click', (e) => {
     toast('✓ Полный финансовый отчёт скачан в CSV');
     return;
   }
-  if (e.target && e.target.id === 'oRepPrintBtn') {
+  const goRep = e.target.closest && e.target.closest('[data-repgo]');
+  if (goRep) {
+    e.preventDefault();
+    const el = document.getElementById(goRep.dataset.repgo);
+    if (el) { const y = el.getBoundingClientRect().top + window.pageYOffset - 70; window.scrollTo({ top: y, behavior: 'smooth' }); }
+    return;
+  }
+  if (e.target && e.target.id === 'oRepXlsBtn') {
+    const ex = window._ownerRepExport;
+    if (!ex) return;
+    const X = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const cell = (v) => (typeof v === 'number' && isFinite(v)) ? '<Cell><Data ss:Type="Number">' + v + '</Data></Cell>' : '<Cell><Data ss:Type="String">' + X(v) + '</Data></Cell>';
+    const xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>' +
+      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+      '<Styles><Style ss:ID="h"><Font ss:Bold="1"/><Interior ss:Color="#EADFCF" ss:Pattern="Solid"/></Style></Styles>' +
+      ex.sheets.map((sh) => '<Worksheet ss:Name="' + X(sh.name).slice(0, 31) + '"><Table>' +
+        sh.rows.map((r, i) => '<Row' + (i === 0 ? ' ss:StyleID="h"' : '') + '>' + r.map(cell).join('') + '</Row>').join('') +
+        '</Table></Worksheet>').join('') + '</Workbook>';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' }));
+    a.download = 'отчет_кофейня_' + ex.from + '_' + ex.to + '.xls';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('✓ Отчёт скачан в Excel (6 листов)');
+    return;
+  }
+  if (e.target && (e.target.id === 'oRepPrintBtn' || e.target.id === 'oRepPrintBtn2')) {
     window.print();
     return;
   }

@@ -513,3 +513,19 @@ header.app-header .wrap {
 .ntf-cm-t{margin-top:3px;white-space:pre-wrap;word-break:break-word}
 
 .ntf-row .tag{align-self:flex-start;width:auto;max-width:max-content;display:inline-block}
+
+/* ===== Отчёты: закреплённая панель, сводка, печать ===== */
+.rep-sticky{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.rep-sticky-p{font-size:13.5px;white-space:nowrap}
+.rep-toc{display:flex;gap:4px;flex-wrap:wrap;flex:1 1 auto}
+.rep-toc a{padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;text-decoration:none;color:var(--ink);background:var(--bg)}
+.rep-toc a:hover{border-color:var(--brew)}
+.rep-sticky-act{display:flex;gap:6px}
+.rep-sticky-act button{min-height:32px;padding:0 12px;font-size:12.5px}
+.rep-hl{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px dashed var(--line);font-size:13.5px;line-height:1.6}
+@media print{
+  .rep-sticky,#ownerMainNav,.theme-btn,#ownerNotifBtn,[data-jumpadm],[data-orp],#oRepApplyBtn,#oRepCsvBtn,#oRepPrintBtn,#oRepFrom,#oRepTo{display:none!important}
+  .card{box-shadow:none;break-inside:avoid-page}
+}
+/* overflow-x:hidden на html/body делал body контейнером прокрутки и ломал sticky; clip не создаёт контейнер */
+html, body { overflow-x: clip !important; }

@@ -68,7 +68,7 @@ function doGet(e) {
     var p = (e && e.parameter) || {};
     var action = p.action || 'get_checklists';
     if (action === 'get_rev') return jsonOut_({ ok: true, rev: getDataRev_(), serverTs: Date.now() });
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v23', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v54', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54'] });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
@@ -269,6 +269,24 @@ function resolveVerifiedStaffSession_(ss, body) {
   return null;
 }
 
+function counterDeltaServer_(prev, cur) {
+  if (prev === null || prev === undefined || prev === '' || cur === null || cur === undefined || cur === '') return null;
+  var p = Math.round(Number(prev)), c = Math.round(Number(cur));
+  if (!isFinite(p) || !isFinite(c) || p < 0 || c < 0) return null;
+  if (p < 1000 && c < 1000) return c >= p ? (c - p) : ((1000 - p) + c);
+  return c >= p ? (c - p) : null;
+}
+
+function classifyCoffeeServer_(name) {
+  var n = String(name || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`]/g, '').replace(/\s+/g, ' ').trim();
+  if (!n) return 'non_coffee';
+  var excl = [/молоко/, /сироп/, /альтернативн/, /сливки/, /чай/, /какао/, /шоколад/, /маршмеллоу/, /кола/, /спрайт/, /фанта/, /вода/, /минеральн/, /пина\s*колада/, /стимер/, /лимонад/, /чизкейк/, /эклер/, /десерт/, /фрукт/, /стикер/, /круассан/, /торт/];
+  for (var i = 0; i < excl.length; i++) { if (excl[i].test(n)) return 'non_coffee'; }
+  var cof = [/американо/, /эспрессо/, /капучино/, /латте/, /лате/, /flat\s*white/, /флэт\s*уайт/, /мокко/, /мокка/, /длинный черный/, /лонг блэк/, /(?:^|\s)раф(?:\s|$|\()/, /доппио/, /ристретто/, /макиато/, /кортадо/, /айс\s*латте/, /ice\s*latte/, /кофе\s*по/];
+  for (var j = 0; j < cof.length; j++) { if (cof[j].test(n)) return 'coffee'; }
+  return 'review';
+}
+
 function validateCashPayload_(ss, b) {
   if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос кассы');
   var dt = String(b.date || isoDate_()).trim();
@@ -276,7 +294,10 @@ function validateCashPayload_(ss, b) {
   validateFiniteNumber_(b.cash != null ? b.cash : 0, 0, 1000000, 'Наличные');
   validateFiniteNumber_(b.card != null ? b.card : 0, 0, 1000000, 'Безнал');
   validateFiniteNumber_(b.checks != null ? b.checks : 0, 0, 10000, 'Чеки');
-  validateFiniteNumber_(b.writeoff != null ? b.writeoff : (b.writeOffs != null ? b.writeOffs : 0), 0, 5000, 'Списания');
+  validateFiniteNumber_(b.writeoff != null ? b.writeoff : (b.writeOffs != null ? b.writeOffs : 0), 0, 50000, 'Списания (руб.)');
+  if (b.writeoffShots != null && b.writeoffShots !== '') {
+    validateFiniteNumber_(b.writeoffShots, 0, 5000, 'Списания кофе (порций)');
+  }
   resolveVerifiedStaffSession_(ss, b);
   return true;
 }
@@ -777,7 +798,9 @@ function getIdempotentResult_(ss, body) {
     }
     var last = sh.getLastRow();
     if (last >= 2) {
-      var found = sh.getRange(2, 1, last - 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
+      /* Повтор после таймаута приходит вскоре — ищем только в последних 1500 операциях, а не во всех 5000. */
+      var firstRow = Math.max(2, last - 1499);
+      var found = sh.getRange(firstRow, 1, last - firstRow + 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
       if (found) {
         var raw = String(sh.getRange(found.getRow(), 3).getValue() || '');
         if (raw) {
@@ -834,6 +857,9 @@ function fmtIso_(v) {
 }
 
 function ensureSheets_(ss) {
+  /* Проверка 16 листов на каждый запрос стоила секунды: делаем её не чаще раза в 10 минут. */
+  var _sheetsCache = null;
+  try { _sheetsCache = CacheService.getScriptCache(); if (_sheetsCache.get('SHEETS_OK_V54')) return; } catch (_) {}
   var defs = [
     ['Настройки', ['Параметр', 'Значение', 'Описание (можно редактировать столбец «Значение» прямо в таблице)']],
     ['Таймлайн', ['ID', 'Название чек-листа', 'Открытие (ЧЧ:ММ)', 'Дедлайн (ЧЧ:ММ)', 'Касса (да/нет)', 'Активен (да/нет)']],
@@ -843,7 +869,8 @@ function ensureSheets_(ss) {
     ['Сотрудники', ['ID', 'Имя', 'Роль', 'Кофейня', 'Активен', 'Код входа (PIN)']],
     ['Техкарты', ['ID', 'Название', 'Объём', 'Категория', 'Цена, руб.', 'Зерно, руб.', 'Молоко, руб.', 'Сироп, руб.', 'Тара, руб.', 'Рецептура', 'Подача']],
     ['Информирование', ['ID', 'Заголовок', 'Категория', 'Описание', 'Дата публикации', 'Актуально до', 'Дата календаря', 'Событие календаря', 'Кому назначено', 'Ознакомились JSON']],
-    ['Касса', ['Дата', 'Наличные', 'Безнал', 'Чеков', 'Списания', 'Хиты', 'Бариста']],
+    ['Касса', ['Дата', 'Наличные', 'Безнал', 'Чеков', 'Списания', 'Хиты', 'Бариста', 'Счётчик начало', 'Счётчик конец', 'Списания порций', 'Кофе шт', 'Не кофе шт', 'На проверку шт', 'Необъясн. разница', 'Хэши CSV', 'Смены JSON']],
+    ['Продажи', ['Дата', 'Смена', 'Бариста', 'Номенклатура', 'Категория', 'Цена', 'Количество', 'Сумма', 'Хэш CSV']],
     ['Расходы', ['ID', 'Дата', 'Статья', 'Сумма', 'Комментарий']],
     ['Поломки', ['ID', 'Дата', 'Время', 'Шаг', 'Описание', 'Срочность', 'Статус', 'Кто', 'Ответственный', 'Фото', 'Тип', 'История JSON']],
     ['Аудит сервиса', ['ID', 'Дата', 'Бариста', 'Проверяющий', 'Приветствие %', 'Уточнение %', 'Upsell %', 'Прощание %', 'Итог %', 'Комментарий']],
@@ -851,8 +878,10 @@ function ensureSheets_(ss) {
     ['Журнал', ['Дата', 'Время', 'Пользователь', 'Действие', 'Детали']],
     ['ДельтаСинхр', ['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']]
   ];
+  var existing = {};
+  ss.getSheets().forEach(function(x) { existing[x.getName()] = x; });
   defs.forEach(function(d) {
-    var sh = ss.getSheetByName(d[0]);
+    var sh = existing[d[0]];
     if (!sh) {
       sh = ss.insertSheet(d[0]);
       sh.appendRow(d[1]);
@@ -861,6 +890,7 @@ function ensureSheets_(ss) {
       seedDefaultSheetRows_(ss, sh, d[0]);
     }
   });
+  try { if (_sheetsCache) _sheetsCache.put('SHEETS_OK_V54', '1', 600); } catch (_) {}
 }
 
 function seedDefaultSheetRows_(ss, sh, name) {
@@ -1368,18 +1398,83 @@ function getAdmin_(ss) {
     });
   }
 
+  var shSales = ss.getSheetByName('Продажи');
+  var salesRows = shSales ? shSales.getDataRange().getValues() : [];
+  var productsByDateMap = {};
+  var salesLog = [];
+  for (var sIdx = 1; sIdx < salesRows.length; sIdx++) {
+    var sr = salesRows[sIdx];
+    if (!sr[0] || !sr[3]) continue;
+    var sDate = fmtIso_(sr[0]);
+    var sShift = String(sr[1] || '');
+    var sBarista = String(sr[2] || '');
+    var sName = String(sr[3] || '');
+    var sKind = String(sr[4] || classifyCoffeeServer_(sName));
+    var sPrice = Number(sr[5]) || 0;
+    var sQty = Number(sr[6]) || 0;
+    var sSum = Number(sr[7]) || 0;
+    var sHash = String(sr[8] || '');
+    if (sQty <= 0) continue;
+    salesLog.push({
+      date: sDate, shift: sShift, barista: sBarista, name: sName,
+      kind: sKind, price: sPrice, qty: sQty, sum: sSum, csvHash: sHash
+    });
+    if (!productsByDateMap[sDate]) productsByDateMap[sDate] = {};
+    var pm = productsByDateMap[sDate][sName] || (productsByDateMap[sDate][sName] = {
+      name: sName, kind: sKind, price: sPrice, qty: 0, sum: 0, date: sDate, barista: sBarista
+    });
+    pm.qty += sQty;
+    pm.sum += sSum;
+  }
+  var productsByDate = {};
+  Object.keys(productsByDateMap).forEach(function(dKey) {
+    productsByDate[dKey] = Object.keys(productsByDateMap[dKey]).map(function(nKey) {
+      return productsByDateMap[dKey][nKey];
+    }).sort(function(a, b) { return b.qty - a.qty; });
+  });
+
   var shC = ss.getSheetByName('Касса').getDataRange().getValues();
   var cash = [];
   for (var j = 1; j < shC.length; j++) {
     var rc = shC[j]; if (!rc[0]) continue;
+    var cDate = fmtIso_(rc[0]);
+    var dayProds = productsByDate[cDate] || [];
+    var calcCof = dayProds.filter(function(p){ return p.kind === 'coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+    var calcNonCof = dayProds.filter(function(p){ return p.kind === 'non_coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+    var calcRevw = dayProds.filter(function(p){ return p.kind === 'review'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+    var cStart = (rc[7] !== undefined && rc[7] !== '') ? Number(rc[7]) : null;
+    var cEnd = (rc[8] !== undefined && rc[8] !== '') ? Number(rc[8]) : null;
+    var woShots = (rc[9] !== undefined && rc[9] !== '') ? Number(rc[9]) : 0;
+    var cofQty = (rc[10] !== undefined && rc[10] !== '') ? Number(rc[10]) : calcCof;
+    var nonCofQty = (rc[11] !== undefined && rc[11] !== '') ? Number(rc[11]) : calcNonCof;
+    var revwQty = (rc[12] !== undefined && rc[12] !== '') ? Number(rc[12]) : calcRevw;
+    var unaccShots = (rc[13] !== undefined && rc[13] !== '') ? Number(rc[13]) : 0;
+    var hashesArr = [];
+    if (rc[14]) {
+      try { hashesArr = JSON.parse(String(rc[14])); } catch (_) { hashesArr = String(rc[14]).split(',').filter(Boolean); }
+    }
+    var shiftsArr = [];
+    if (rc[15]) {
+      try { shiftsArr = JSON.parse(String(rc[15])); } catch (_) { shiftsArr = []; }
+    }
     cash.push({
-      date: fmtIso_(rc[0]),
+      date: cDate,
       cash: Number(rc[1]) || 0,
       card: Number(rc[2]) || 0,
       checks: Number(rc[3]) || 0,
       writeoff: Number(rc[4]) || 0,
       topItems: String(rc[5] || ''),
-      barista: String(rc[6] || '')
+      barista: String(rc[6] || ''),
+      counterStart: cStart,
+      counterEnd: cEnd,
+      writeoffShots: woShots,
+      coffeeQty: cofQty,
+      nonCoffeeQty: nonCofQty,
+      reviewQty: revwQty,
+      unaccountedShots: unaccShots,
+      csvHashes: Array.isArray(hashesArr) ? hashesArr : [],
+      shifts: Array.isArray(shiftsArr) ? shiftsArr : [],
+      products: dayProds
     });
   }
 
@@ -1449,6 +1544,8 @@ function getAdmin_(ss) {
     categories: rawCats.length ? rawCats : ['Закупка продуктов', 'Аренда', 'Зарплата', 'Коммунальные', 'Реклама', 'Ремонт и оборудование', 'Прочее'],
     tasks: tasks,
     cash: cash.reverse(),
+    productsByDate: productsByDate,
+    salesLog: salesLog,
     expenses: expenses.reverse(),
     incidents: incidents.reverse(),
     announcements: getAnnouncements_(ss),
@@ -1518,6 +1615,16 @@ function getDashboard_(ss, dateStr) {
     checks: chks,
     avg: chks > 0 ? Math.round(rev / chks) : 0,
     writeoff: c ? c.writeoff : 0,
+    writeoffShots: c ? (c.writeoffShots || 0) : 0,
+    counterStart: c ? c.counterStart : null,
+    counterEnd: c ? c.counterEnd : null,
+    coffeeQty: c ? (c.coffeeQty || 0) : 0,
+    nonCoffeeQty: c ? (c.nonCoffeeQty || 0) : 0,
+    reviewQty: c ? (c.reviewQty || 0) : 0,
+    unaccountedShots: c ? (c.unaccountedShots || 0) : 0,
+    shifts: c ? (c.shifts || []) : [],
+    products: c ? (c.products || []) : ((adm.productsByDate && adm.productsByDate[day]) || []),
+    productsByDate: adm.productsByDate || {},
     barista: c ? c.barista : '',
     openedAt: openedAt,
     days: days14,
@@ -1530,19 +1637,84 @@ function getDashboard_(ss, dateStr) {
 
 function getReport_(ss, fromStr, toStr) {
   var adm = getAdmin_(ss);
+  var from = fromStr || adm.today;
+  var to = toStr || adm.today;
+  var prodMap = {};
+  var pbd = adm.productsByDate || {};
+  Object.keys(pbd).forEach(function(dKey) {
+    if (dKey >= from && dKey <= to) {
+      (pbd[dKey] || []).forEach(function(p) {
+        var m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, kind: p.kind || classifyCoffeeServer_(p.name), price: p.price || 0, qty: 0, sum: 0 });
+        m.qty += Number(p.qty) || 0;
+        m.sum += Number(p.sum) || 0;
+      });
+    }
+  });
+  var products = Object.keys(prodMap).map(function(k) { return prodMap[k]; }).sort(function(a, b) { return b.qty - a.qty; });
+
+  var cashInPeriod = (adm.cash || []).filter(function(c) { return c.date >= from && c.date <= to; }).slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
+  var expInPeriod = (adm.expenses || []).filter(function(e) { return e.date >= from && e.date <= to; });
+  var revTotal = 0, cashTotal = 0, cardTotal = 0, chkTotal = 0, woTotal = 0, woShotsTotal = 0;
+  var reconciliationWarnings = [];
+  var series = cashInPeriod.map(function(c) {
+    var r = (Number(c.cash) || 0) + (Number(c.card) || 0);
+    var dExp = expInPeriod.filter(function(e) { return e.date === c.date; }).reduce(function(a, x) { return a + (Number(x.amount) || 0); }, 0);
+    revTotal += r;
+    cashTotal += Number(c.cash) || 0;
+    cardTotal += Number(c.card) || 0;
+    chkTotal += Number(c.checks) || 0;
+    woTotal += Number(c.writeoff) || 0;
+    woShotsTotal += Number(c.writeoffShots) || 0;
+    var cDelta = counterDeltaServer_(c.counterStart, c.counterEnd);
+    if (c.unaccountedShots > 0) {
+      reconciliationWarnings.push(c.date + ' (' + (c.barista || 'Бариста') + '): необъяснённая разница счётчика ' + c.unaccountedShots + ' порц.');
+    }
+    if (c.reviewQty > 0) {
+      reconciliationWarnings.push(c.date + ': неопределённая номенклатура ' + c.reviewQty + ' шт.');
+    }
+    return {
+      date: c.date,
+      revenue: r,
+      expenses: dExp,
+      profit: r - dExp,
+      checks: c.checks || 0,
+      avg: c.checks > 0 ? Math.round(r / c.checks) : 0,
+      cash: c.cash || 0,
+      card: c.card || 0,
+      writeoff: c.writeoff || 0,
+      writeoffShots: c.writeoffShots || 0,
+      counterStart: c.counterStart,
+      counterEnd: c.counterEnd,
+      counterDelta: cDelta,
+      coffeeQty: c.coffeeQty || 0,
+      nonCoffeeQty: c.nonCoffeeQty || 0,
+      reviewQty: c.reviewQty || 0,
+      unaccountedShots: c.unaccountedShots || 0,
+      barista: c.barista || '',
+      shifts: c.shifts || []
+    };
+  });
+  var expTotal = expInPeriod.reduce(function(a, x) { return a + (Number(x.amount) || 0); }, 0);
+  var catMap = {};
+  expInPeriod.forEach(function(e) { catMap[e.category] = (catMap[e.category] || 0) + (Number(e.amount) || 0); });
+  var byCategory = Object.keys(catMap).map(function(k) { return { category: k, sum: catMap[k] }; }).sort(function(a, b) { return b.sum - a.sum; });
+
   return {
     ok: true,
-    from: fromStr || adm.today,
-    to: toStr || adm.today,
-    days: 7,
+    from: from,
+    to: to,
+    days: Math.max(1, series.length || 7),
     categories: adm.categories,
-    plan: adm.plan * 7,
-    pct: 0,
+    plan: adm.plan * Math.max(1, series.length || 7),
+    pct: (adm.plan * Math.max(1, series.length || 1)) > 0 ? Math.round((revTotal / (adm.plan * Math.max(1, series.length || 1))) * 100) : 0,
     delta: null,
-    finance: { revenue: 0, expenses: 0, profit: 0, prevProfit: 0, margin: 0, writeoff: 0, byCategory: [], list: adm.expenses },
-    totals: { days: adm.cash.length, revenue: 0, checks: 0, avg: 0, cash: 0, card: 0, writeoff: 0 },
-    series: [],
-    products: [],
+    finance: { revenue: revTotal, expenses: expTotal, profit: revTotal - expTotal, prevProfit: 0, margin: revTotal > 0 ? Math.round(((revTotal - expTotal) / revTotal) * 100) : 0, writeoff: woTotal, writeoffShots: woShotsTotal, byCategory: byCategory, list: expInPeriod },
+    totals: { days: series.length, revenue: revTotal, checks: chkTotal, avg: chkTotal > 0 ? Math.round(revTotal / chkTotal) : 0, cash: cashTotal, card: cardTotal, writeoff: woTotal, writeoffShots: woShotsTotal },
+    series: series,
+    products: products,
+    productsByDate: adm.productsByDate || {},
+    salesLog: adm.salesLog || [],
+    reconciliationWarnings: reconciliationWarnings,
     tasks: [],
     incidentList: adm.incidents,
     announcements: adm.announcements,
@@ -2058,23 +2230,188 @@ function syncAllToSheet_(ss, b) {
 
 function submitCash_(ss, b) {
   var sh = ss.getSheetByName('Касса');
-  var rows = sh.getDataRange().getValues();
-  var dt = b.date || isoDate_();
-  var wo = Number(b.writeoff != null ? b.writeoff : b.writeOffs) || 0;
-  for (var i = 1; i < rows.length; i++) {
-    if (fmtIso_(rows[i][0]) === dt) {
-      sh.getRange(i + 1, 1, 1, 7).setValues([[dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, wo, b.topItems || rows[i][5] || '', b.userName || rows[i][6] || '']]);
-      return { ok: true };
+  var shSales = ss.getSheetByName('Продажи');
+  if (!shSales) {
+    shSales = ss.insertSheet('Продажи');
+    shSales.appendRow(['Дата', 'Смена', 'Бариста', 'Номенклатура', 'Категория', 'Цена', 'Количество', 'Сумма', 'Хэш CSV']);
+  }
+  var dt = fmtIso_(b.date) || isoDate_();
+  var mode = b.mergeMode || (b.action === 'admin_cash' ? 'replace' : 'sum');
+  var baristaName = String(b.barista || b.userName || '').trim() || 'Бариста';
+  var woRub = Number(b.writeoff != null ? b.writeoff : b.writeOffs) || 0;
+  var woShots = Number(b.writeoffShots != null ? b.writeoffShots : b.writeOffShots) || 0;
+  var cStart = (b.counterStart != null && b.counterStart !== '') ? Number(b.counterStart) : ((b.prevCounter != null && b.prevCounter !== '') ? Number(b.prevCounter) : null);
+  var cEnd = (b.counterEnd != null && b.counterEnd !== '') ? Number(b.counterEnd) : ((b.endCounter != null && b.endCounter !== '') ? Number(b.endCounter) : null);
+
+  var incomingHashes = Array.isArray(b.csvHashes) ? b.csvHashes.filter(Boolean) : (b.csvHash ? [String(b.csvHash)] : []);
+  var salesRows = shSales.getDataRange().getValues();
+  if (mode === 'replace') {
+    for (var sDel = salesRows.length - 1; sDel >= 1; sDel--) {
+      if (fmtIso_(salesRows[sDel][0]) === dt) shSales.deleteRow(sDel + 1);
+    }
+    salesRows = shSales.getDataRange().getValues();
+  }
+
+  var existingHashesForDate = {};
+  for (var sIdx = 1; sIdx < salesRows.length; sIdx++) {
+    if (fmtIso_(salesRows[sIdx][0]) === dt && salesRows[sIdx][8]) {
+      existingHashesForDate[String(salesRows[sIdx][8])] = true;
     }
   }
-  sh.appendRow([dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, wo, b.topItems || '', b.userName || '']);
-  return { ok: true };
+
+  var rawProducts = Array.isArray(b.products) ? b.products : [];
+  var duplicateCsvSkipped = false;
+  var calcCoffee = 0, calcNonCoffee = 0, calcReview = 0;
+
+  rawProducts.forEach(function(p) {
+    if (!p || !p.name) return;
+    var pQty = Number(p.qty) || 0;
+    if (pQty <= 0) return;
+    var pPrice = Number(p.price) || (p.sum ? Math.round((Number(p.sum) / pQty) * 100) / 100 : 0);
+    var pSum = Number(p.sum) || Math.round(pPrice * pQty);
+    var pKind = p.kind || classifyCoffeeServer_(p.name);
+    var pBarista = p.barista || baristaName;
+    var pHash = p.csvHash || b.csvHash || (incomingHashes[0] || '');
+    if (pKind === 'coffee') calcCoffee += pQty;
+    else if (pKind === 'review') calcReview += pQty;
+    else calcNonCoffee += pQty;
+    if (mode !== 'replace' && pHash && existingHashesForDate[pHash]) {
+      duplicateCsvSkipped = true;
+      return;
+    }
+    shSales.appendRow([dt, pBarista, pBarista, String(p.name).trim(), pKind, pPrice, pQty, pSum, pHash]);
+  });
+
+  var coffeeQty = b.coffeeQty != null ? Number(b.coffeeQty) : (b.coffeeCups != null ? Number(b.coffeeCups) : calcCoffee);
+  var nonCoffeeQty = b.nonCoffeeQty != null ? Number(b.nonCoffeeQty) : calcNonCoffee;
+  var reviewQty = b.reviewQty != null ? Number(b.reviewQty) : calcReview;
+
+  var shiftsArr = Array.isArray(b.shifts) && b.shifts.length ? b.shifts : [{
+    name: baristaName,
+    cash: Number(b.cash) || 0,
+    card: Number(b.card) || 0,
+    checks: Number(b.checks) || 0,
+    writeoff: woRub,
+    writeoffShots: woShots,
+    prevCounter: cStart,
+    counter: cEnd,
+    coffeeQty: coffeeQty,
+    nonCoffeeQty: nonCoffeeQty,
+    reviewQty: reviewQty
+  }];
+
+  if (cStart === null && shiftsArr[0] && shiftsArr[0].prevCounter != null) cStart = Number(shiftsArr[0].prevCounter);
+  if (cEnd === null && shiftsArr[shiftsArr.length - 1] && shiftsArr[shiftsArr.length - 1].counter != null) cEnd = Number(shiftsArr[shiftsArr.length - 1].counter);
+
+  var totalDelta = 0, hasCnt = false;
+  shiftsArr.forEach(function(s) {
+    var d = counterDeltaServer_(s.prevCounter != null ? s.prevCounter : s.counterStart, s.counter != null ? s.counter : s.counterEnd);
+    if (d !== null) { hasCnt = true; totalDelta += d; }
+  });
+  if (!hasCnt && cStart !== null && cEnd !== null) {
+    var d0 = counterDeltaServer_(cStart, cEnd);
+    if (d0 !== null) { hasCnt = true; totalDelta = d0; }
+  }
+  var unaccountedShots = b.unaccountedShots != null
+    ? Number(b.unaccountedShots)
+    : (hasCnt ? Math.max(0, totalDelta - (coffeeQty + woShots)) : 0);
+
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (fmtIso_(rows[i][0]) === dt) {
+      var prevRow = rows[i];
+      if (mode === 'sum' && b.action !== 'admin_cash' && !Array.isArray(b.days)) {
+        var prevShifts = [];
+        if (prevRow[15]) { try { prevShifts = JSON.parse(String(prevRow[15])); } catch (_) {} }
+        if (!prevShifts.length && (Number(prevRow[1]) || Number(prevRow[2]))) {
+          prevShifts = [{
+            name: String(prevRow[6] || 'Смена 1'),
+            cash: Number(prevRow[1]) || 0,
+            card: Number(prevRow[2]) || 0,
+            checks: Number(prevRow[3]) || 0,
+            writeoff: Number(prevRow[4]) || 0,
+            writeoffShots: Number(prevRow[9]) || 0,
+            prevCounter: prevRow[7] !== '' && prevRow[7] != null ? Number(prevRow[7]) : null,
+            counter: prevRow[8] !== '' && prevRow[8] != null ? Number(prevRow[8]) : null,
+            coffeeQty: Number(prevRow[10]) || 0,
+            nonCoffeeQty: Number(prevRow[11]) || 0,
+            reviewQty: Number(prevRow[12]) || 0
+          }];
+        }
+        shiftsArr.forEach(function(incS) {
+          var sIdx2 = -1;
+          for (var k = 0; k < prevShifts.length; k++) {
+            if (prevShifts[k].name && incS.name && String(prevShifts[k].name).toLowerCase() === String(incS.name).toLowerCase()) { sIdx2 = k; break; }
+          }
+          if (sIdx2 >= 0 && (shiftsArr.length > 1 || (prevShifts[sIdx2].cash === incS.cash && prevShifts[sIdx2].card === incS.card))) {
+            prevShifts[sIdx2] = Object.assign({}, prevShifts[sIdx2], incS);
+          } else {
+            prevShifts.push(incS);
+          }
+        });
+        var sumCash = prevShifts.reduce(function(a, x){ return a + (Number(x.cash) || 0); }, 0);
+        var sumCard = prevShifts.reduce(function(a, x){ return a + (Number(x.card) || 0); }, 0);
+        var sumChecks = prevShifts.reduce(function(a, x){ return a + (Number(x.checks) || 0); }, 0);
+        var sumWoRub = prevShifts.reduce(function(a, x){ return a + (Number(x.writeoff) || 0); }, 0);
+        var sumWoShots = prevShifts.reduce(function(a, x){ return a + (Number(x.writeoffShots) || 0); }, 0);
+        var sumCoffee = prevShifts.reduce(function(a, x){ return a + (Number(x.coffeeQty) || 0); }, 0) || ((Number(prevRow[10]) || 0) + (duplicateCsvSkipped ? 0 : coffeeQty));
+        var sumNonCoffee = prevShifts.reduce(function(a, x){ return a + (Number(x.nonCoffeeQty) || 0); }, 0) || ((Number(prevRow[11]) || 0) + (duplicateCsvSkipped ? 0 : nonCoffeeQty));
+        var sumReview = prevShifts.reduce(function(a, x){ return a + (Number(x.reviewQty) || 0); }, 0) || ((Number(prevRow[12]) || 0) + (duplicateCsvSkipped ? 0 : reviewQty));
+        var mergedBaristas = [];
+        prevShifts.forEach(function(x){ if (x.name && mergedBaristas.indexOf(x.name) < 0) mergedBaristas.push(x.name); });
+        var prevHashes = [];
+        if (prevRow[14]) { try { prevHashes = JSON.parse(String(prevRow[14])); } catch (_) {} }
+        incomingHashes.forEach(function(h){ if (prevHashes.indexOf(h) < 0) prevHashes.push(h); });
+        var firstStart = cStart != null ? cStart : (prevRow[7] !== '' && prevRow[7] != null ? Number(prevRow[7]) : null);
+        var lastEnd = cEnd != null ? cEnd : (prevRow[8] !== '' && prevRow[8] != null ? Number(prevRow[8]) : null);
+        var sumDelta = 0, sumHasCnt = false;
+        prevShifts.forEach(function(s) {
+          var d = counterDeltaServer_(s.prevCounter, s.counter);
+          if (d !== null) { sumHasCnt = true; sumDelta += d; }
+        });
+        if (!sumHasCnt && firstStart !== null && lastEnd !== null) {
+          var dDay = counterDeltaServer_(firstStart, lastEnd);
+          if (dDay !== null) { sumHasCnt = true; sumDelta = dDay; }
+        }
+        var sumUnacc = sumHasCnt ? Math.max(0, sumDelta - (sumCoffee + sumWoShots)) : 0;
+        var mergedTop = b.topItems ? (prevRow[5] && String(prevRow[5]).indexOf(b.topItems) < 0 ? (prevRow[5] + ' · ' + b.topItems) : b.topItems) : (prevRow[5] || '');
+        sh.getRange(i + 1, 1, 1, 16).setValues([[
+          dt, sumCash, sumCard, sumChecks, sumWoRub, mergedTop, mergedBaristas.join(', ') || baristaName,
+          firstStart != null ? firstStart : '', lastEnd != null ? lastEnd : '',
+          sumWoShots, sumCoffee, sumNonCoffee, sumReview, sumUnacc,
+          JSON.stringify(prevHashes), JSON.stringify(prevShifts)
+        ]]);
+        return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped };
+      }
+
+      sh.getRange(i + 1, 1, 1, 16).setValues([[
+        dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, woRub,
+        b.topItems || prevRow[5] || '', baristaName || prevRow[6] || '',
+        cStart != null ? cStart : (prevRow[7] || ''), cEnd != null ? cEnd : (prevRow[8] || ''),
+        woShots, coffeeQty, nonCoffeeQty, reviewQty, unaccountedShots,
+        JSON.stringify(incomingHashes), JSON.stringify(shiftsArr)
+      ]]);
+      return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped };
+    }
+  }
+
+  sh.appendRow([
+    dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, woRub,
+    b.topItems || '', baristaName,
+    cStart != null ? cStart : '', cEnd != null ? cEnd : '',
+    woShots, coffeeQty, nonCoffeeQty, reviewQty, unaccountedShots,
+    JSON.stringify(incomingHashes), JSON.stringify(shiftsArr)
+  ]);
+  return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped };
 }
 
 function batchSubmitCash_(ss, b) {
   var days = Array.isArray(b.days) ? b.days : [];
-  days.forEach(function(d){ submitCash_(ss, d); });
-  return { ok: true };
+  var mode = b.mergeMode || 'sum';
+  days.forEach(function(d){
+    submitCash_(ss, Object.assign({}, d, { mergeMode: d.mergeMode || mode }));
+  });
+  return { ok: true, savedDays: days.length };
 }
 
 function deleteCash_(ss, b) {
@@ -2082,6 +2419,13 @@ function deleteCash_(ss, b) {
   var rows = sh.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
     if (fmtIso_(rows[i][0]) === b.date) sh.deleteRow(i + 1);
+  }
+  var shSales = ss.getSheetByName('Продажи');
+  if (shSales) {
+    var sRows = shSales.getDataRange().getValues();
+    for (var j = sRows.length - 1; j >= 1; j--) {
+      if (fmtIso_(sRows[j][0]) === b.date) shSales.deleteRow(j + 1);
+    }
   }
   return { ok: true };
 }
@@ -2147,6 +2491,15 @@ function submitChecklist_(ss, b) {
     ]);
   });
 
+  try {
+    var map = getSettingsMap_(ss);
+    var extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}');
+    var extKey = dt + ':' + (b.block || 'Открытие');
+    if (extMap[extKey]) {
+      delete extMap[extKey];
+      saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    }
+  } catch (_) {}
   appendAudit_(ss, b.userName || 'Бариста', 'Сдан чек-лист «' + (b.block || 'Открытие') + '»', 'Проблем: ' + probs.length + (b.isLate ? ' (ПРОСРОЧЕНО)' : ' (в срок)'));
   return { ok: true };
 }

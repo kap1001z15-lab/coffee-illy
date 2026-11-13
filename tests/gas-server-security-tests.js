@@ -64,6 +64,7 @@ function makeSheet(name) {
 
 const mockSS = {
   getSheetByName(n) { return sheetsStore[n] || null; },
+  getSheets() { return Object.keys(sheetsStore).map((k) => Object.assign(sheetsStore[k], { getName: () => k })); },
   insertSheet(n) { sheetsStore[n] = makeSheet(n); return sheetsStore[n]; }
 };
 
@@ -304,4 +305,48 @@ check('7. Живая синхронизация: get_rev меняется пос
   assert(pub.rev === rev2, 'Публичный get_checklists возвращает текущую версию данных');
 });
 
-process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/7 успешно.\n');
+check('8. Сверка продаж v54: лист Продажи, защита от повторной загрузки CSV по хэшу, переход счётчика 998→2 и возврат products в getReport_()', () => {
+  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
+  const tok = login.sessionToken;
+
+  const cashPayload = {
+    action: 'submit_cash',
+    date: '2026-11-04',
+    userName: 'Алина',
+    barista: 'Алина',
+    cash: 1450,
+    card: 237,
+    checks: 47,
+    writeoff: 15,
+    writeoffShots: 1,
+    counterStart: 998,
+    counterEnd: 2,
+    coffeeQty: 52,
+    nonCoffeeQty: 41,
+    reviewQty: 5,
+    csvHash: 'csv_alina_2026_11_04_hash',
+    csvHashes: ['csv_alina_2026_11_04_hash'],
+    products: [
+      { name: 'Американо шт', kind: 'coffee', price: 12, qty: 21, sum: 252, barista: 'Алина', csvHash: 'csv_alina_2026_11_04_hash' },
+      { name: 'Капучино шт', kind: 'coffee', price: 19, qty: 31, sum: 589, barista: 'Алина', csvHash: 'csv_alina_2026_11_04_hash' },
+      { name: 'Чизкейк шт', kind: 'non_coffee', price: 40, qty: 41, sum: 841, barista: 'Алина', csvHash: 'csv_alina_2026_11_04_hash' },
+      { name: 'Напиток от Бариста шт', kind: 'review', price: 1, qty: 5, sum: 5, barista: 'Алина', csvHash: 'csv_alina_2026_11_04_hash' }
+    ]
+  };
+  const rSubmit1 = callPost(cashPayload);
+  assert(rSubmit1.ok === true && rSubmit1.duplicateCsvSkipped === false, 'Первая загрузка CSV должна сохраняться в лист Продажи');
+  assert(sheetsStore['Продажи'] && sheetsStore['Продажи']._rows.length === 5, 'В листе Продажи должны появиться заголовок + 4 строки номенклатуры');
+
+  // Повторная отправка того же CSV по хэшу не должна дублировать строки в листе Продажи
+  const rSubmitDup = callPost(Object.assign({}, cashPayload, { operationId: 'op_dup_csv_test' }));
+  assert(rSubmitDup.ok === true && rSubmitDup.duplicateCsvSkipped === true, 'Повторная загрузка того же хэша CSV должна пропускаться (duplicateCsvSkipped: true)');
+  assert(sheetsStore['Продажи']._rows.length === 5, 'Количество строк в листе Продажи не должно увеличиваться при повторной загрузке того же хэша');
+
+  // Проверка getReport_(): products не пустой, series учитывает циклический переход 998 -> 2 (= 4)
+  const repOut = JSON.parse(gasContext.doGet({ parameter: { action: 'report', from: '2026-11-04', to: '2026-11-04', sessionToken: tok } }).getContent());
+  assert(repOut.ok === true && Array.isArray(repOut.products) && repOut.products.length === 4, 'getReport_() должен возвращать заполненный массив products из листа Продажи');
+  const daySeries = (repOut.series || []).find((s) => s.date === '2026-11-04');
+  assert(daySeries && daySeries.counterDelta === 4 && daySeries.writeoff === 15 && daySeries.writeoffShots === 1, 'В отчёте должен учитываться циклический переход 998→2 (= 4) и раздельные списания (15 руб. и 1 порция)');
+});
+
+process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/8 успешно.\n');

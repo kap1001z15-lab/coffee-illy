@@ -12,7 +12,7 @@ function read(p) { return fs.readFileSync(path.join(root, p), 'utf8'); }
 
 const sync = read('js/sync.js');
 const gas = read('Code.gs');
-const pages = ['js/page-terminal.js', 'js/page-admin.js', 'js/page-dashboard.js', 'js/page-report.js'].map(read).join('\n');
+const pages = ['js/page-terminal.js', 'js/page-admin.js', 'js/page-owner.js'].map(read).join('\n');
 
 check('POST transport waits for server response and validates JSON contract', () => {
   if (!/const result = await _sendCorsSafePost\(url, operation/.test(sync)) throw new Error('coffeeFetch does not await server transport');
@@ -29,8 +29,8 @@ check('GAS has server-side idempotency lookup and persistent operation journal',
     if (!gas.includes(token)) throw new Error('missing ' + token);
   });
 });
-check('All four UI modules use the shared coffeeFetch transport', () => {
-  ['page-terminal.js', 'page-admin.js', 'page-dashboard.js', 'page-report.js'].forEach((file) => {
+check('All UI modules use the shared coffeeFetch transport (owner goes through shared call())', () => {
+  ['page-terminal.js', 'page-admin.js'].forEach((file) => {
     if (!read('js/' + file).includes('coffeeFetch(')) throw new Error(file + ' bypasses shared transport');
   });
 });

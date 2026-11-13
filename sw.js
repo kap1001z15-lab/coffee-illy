@@ -1,8 +1,10 @@
-/* Service Worker v48 — Network-First для мгновенной синхронизации в Telegram Mini App (ILLY_BOT) и браузере */
-const CACHE_NAME = 'kofeinya-enterprise-v50-reports';
+/* Service Worker — Network-First для мгновенной синхронизации в Telegram Mini App (ILLY_BOT) и браузере */
+importScripts('./version.js');
+const CACHE_NAME = self.COFFEE_CACHE_NAME;
 const STATIC_ASSETS = [
   './',
   './index.html',
+  './version.js',
   './dashboard.html',
   './report.html',
   './admin.html',
@@ -10,8 +12,6 @@ const STATIC_ASSETS = [
   './barista.html',
   './css/styles.css',
   './css/terminal.css',
-  './css/dashboard.css',
-  './css/report.css',
   './css/admin.css',
   './css/owner.css',
   './css/light.css',
@@ -21,13 +21,12 @@ const STATIC_ASSETS = [
   './js/security.js',
   './js/storage.js',
   './js/analytics.js',
+  './js/sales-reconciliation.js',
   './js/sync.js',
   './js/telegram.js',
   './js/camera.js',
   './js/page-terminal.js',
   './js/page-admin.js',
-  './js/page-dashboard.js',
-  './js/page-report.js',
   './js/page-owner.js',
   './tests/unit-tests.js',
   './manifest.webmanifest',

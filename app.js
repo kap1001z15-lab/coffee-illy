@@ -115,15 +115,8 @@
 
   function init() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js?v=47').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=54').then((reg) => {
         try { reg.update(); } catch (_) {}
-      }).catch(() => {});
-    }
-    if (typeof caches !== 'undefined' && caches.keys) {
-      caches.keys().then((keys) => {
-        keys.forEach((k) => {
-          if (k !== 'kofeinya-enterprise-v48-tg-sync') caches.delete(k).catch(() => {});
-        });
       }).catch(() => {});
     }
 

@@ -23,7 +23,7 @@
     const path = require('path');
     const vm = require('vm');
     const baseDir = path.resolve(__dirname, '..');
-    ['config.js', 'js/defaults.js', 'js/security.js', 'js/storage.js', 'js/analytics.js', 'js/sync.js', 'js/telegram.js'].forEach((rel) => {
+    ['config.js', 'js/defaults.js', 'js/security.js', 'js/storage.js', 'js/sales-reconciliation.js', 'js/analytics.js', 'js/sync.js', 'js/telegram.js'].forEach((rel) => {
       const code = fs.readFileSync(path.join(baseDir, rel), 'utf8');
       vm.runInThisContext(code, { filename: rel });
     });
@@ -122,6 +122,9 @@
         db.deadlineExtensions[today + ':Открытие'] = { until: '23:59', forceOpen: true, reason: 'Тест продления' };
         const wExtended = window.coffeeGetBlockWindow('Открытие', db);
         assert(wExtended.extended === true && wExtended.canPass === true && wExtended.state === 'open', 'После продления дедлайна до 23:59 доступ должен открыться');
+        db.checklists = [{ date: today, block: 'Открытие', time: '14:32', who: 'Соня', status: 'Выполнено' }];
+        const wCompletedAfterExtend = window.coffeeGetBlockWindow('Открытие', db);
+        assert(wCompletedAfterExtend.completed === true && wCompletedAfterExtend.canPass === false && wCompletedAfterExtend.state === 'completed', 'После сдачи чек-листа даже при forceOpen окно должно переходить в статус completed (canPass: false)');
       }
     },
     {

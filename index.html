@@ -16,35 +16,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="css/terminal.css?v=47">
-<link rel="stylesheet" href="css/light.css?v=47">
-<script src="config.js?v=47"></script>
-<script src="js/defaults.js?v=47"></script>
-<script src="js/security.js?v=47"></script>
-<script src="js/storage.js?v=47"></script>
-<script src="js/analytics.js?v=47"></script>
-<script src="js/sync.js?v=47"></script>
-<script src="js/telegram.js?v=47"></script>
-<script id="tgWebViewCachePurgeV47">
-(function(){
-  try {
-    var VER = 'v48_tg_sync';
-    if (localStorage.getItem('coffee_sw_ver') !== VER) {
-      localStorage.setItem('coffee_sw_ver', VER);
-      if (typeof caches !== 'undefined' && caches.keys) {
-        caches.keys().then(function(ks){
-          ks.forEach(function(k){ if (k !== 'kofeinya-enterprise-v48-tg-sync') caches.delete(k); });
-        });
-      }
-      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-        navigator.serviceWorker.getRegistrations().then(function(regs){
-          regs.forEach(function(r){ try { r.update(); } catch(_){} });
-        });
-      }
-    }
-  } catch (_) {}
-})();
-</script>
+<link rel="stylesheet" href="css/terminal.css?v=54">
+<link rel="stylesheet" href="css/light.css?v=54">
+<script src="config.js?v=54"></script>
+<script src="js/defaults.js?v=54"></script>
+<script src="js/security.js?v=54"></script>
+<script src="js/storage.js?v=54"></script>
+<script src="js/analytics.js?v=54"></script>
+<script src="js/sales-reconciliation.js?v=54"></script>
+<script src="js/sync.js?v=54"></script>
+<script src="js/telegram.js?v=54"></script>
+<script src="version.js?v=54"></script>
 </head>
 <body>
 <header>
@@ -382,10 +364,30 @@
           <input type="text" id="shiftBaristaIn" placeholder="Алина, Соня, Настя…" style="width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">
         </div>
         <div class="field" style="margin:0">
-          <label class="label" for="writeOffs" style="color:var(--bad)">🗑 Списания (шт. или руб.)</label>
-          <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0">
+          <label class="label" for="writeOffShots" style="color:var(--brew)">☕ Списания кофе, порций (шт.)</label>
+          <input type="number" id="writeOffShots" inputmode="numeric" min="0" placeholder="0">
         </div>
       </div>
+      <div class="grid2" style="margin-top:10px">
+        <div class="field" style="margin:0">
+          <label class="label" for="counterStartIn">🔢 Счётчик: начало смены (0–999)</label>
+          <input type="number" id="counterStartIn" inputmode="numeric" min="0" max="999" placeholder="Например: 648">
+        </div>
+        <div class="field" style="margin:0">
+          <label class="label" for="counterEndIn">🔢 Счётчик: конец смены (0–999)</label>
+          <input type="number" id="counterEndIn" inputmode="numeric" min="0" max="999" placeholder="Например: 735">
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <div class="field" style="margin:0">
+          <label class="label" for="writeOffs" style="color:var(--bad)">💸 Денежные списания, руб.</label>
+          <input type="number" id="writeOffs" inputmode="decimal" min="0" placeholder="0">
+        </div>
+        <div class="field" style="margin:0;display:flex;align-items:end">
+          <div id="counterDeltaPreview" class="muted" style="font-size:12.5px;padding:10px 12px;border-radius:12px;border:1px dashed var(--line);width:100%;background:var(--bg)">Срабатывания счётчика: —</div>
+        </div>
+      </div>
+      <div id="reconciliationPanel" hidden style="margin-top:12px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg);font-size:13px"></div>
     </div>
 
     <div class="panel" id="topPanel" hidden>
@@ -498,8 +500,8 @@
   </form>
 </dialog>
 <div class="toast" id="toast" hidden></div>
-<script src="js/camera.js?v=47"></script>
-<script src="js/page-terminal.js?v=47"></script>
-<script src="app.js?v=47" defer></script>
+<script src="js/camera.js?v=54"></script>
+<script src="js/page-terminal.js?v=54"></script>
+<script src="app.js?v=54" defer></script>
 </body>
 </html>

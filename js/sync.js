@@ -177,23 +177,112 @@ window.coffeeDeltaSync = (function () {
 })();
 
 function mergeOrSaveCashDay(db, payload) {
+  db.cash = Array.isArray(db.cash) ? db.cash : [];
+  db.productsByDate = (db.productsByDate && typeof db.productsByDate === 'object') ? db.productsByDate : {};
+  db.salesLog = Array.isArray(db.salesLog) ? db.salesLog : [];
+  db.uploadedCsvHashes = (db.uploadedCsvHashes && typeof db.uploadedCsvHashes === 'object') ? db.uploadedCsvHashes : {};
+
   const dt = payload.date || _isoToday();
   const mode = payload.mergeMode || (payload.action === 'admin_cash' ? 'replace' : 'sum');
   const incomingCash = Math.max(0, Math.round(Number(payload.cash) || 0));
   const incomingCard = Math.max(0, Math.round(Number(payload.card) || 0));
   const incomingChecks = Math.max(0, Math.round(Number(payload.checks) || 0));
   const incomingWo = Math.max(0, Math.round(Number(payload.writeoff != null ? payload.writeoff : payload.writeOffs) || 0));
+  const incomingWoShots = Math.max(0, Math.round(Number(payload.writeoffShots != null ? payload.writeoffShots : (payload.writeOffShots != null ? payload.writeOffShots : 0)) || 0));
   const incomingBarista = String(payload.barista || payload.userName || '').trim();
+  const incomingCounterStart = (payload.counterStart != null && payload.counterStart !== '') ? Number(payload.counterStart) : ((payload.prevCounter != null && payload.prevCounter !== '') ? Number(payload.prevCounter) : null);
+  const incomingCounterEnd = (payload.counterEnd != null && payload.counterEnd !== '') ? Number(payload.counterEnd) : ((payload.endCounter != null && payload.endCounter !== '') ? Number(payload.endCounter) : null);
+
+  const rawProds = Array.isArray(payload.products) ? payload.products : [];
+  const classifyFn = (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.classifyCoffee)
+    ? window.CoffeeSalesReconciliation.classifyCoffee
+    : ((nm) => (/молоко|сироп|альтернативн|сливки|чай|какао|шоколад|маршмеллоу|кола|спрайт|фанта|вода|минеральн|лимонад|чизкейк|эклер|десерт|фрукт|стикер|стимер/i.test(nm) ? 'non_coffee' : (/американо|эспрессо|капучино|латте|лате|flat\s*white|флэт|мокко|мокка|длинный черный|раф|макиато/i.test(nm) ? 'coffee' : 'review')));
+
+  const normalizedProds = rawProds.filter((p) => p && p.name && (Number(p.qty) || 0) > 0).map((p) => ({
+    name: String(p.name).trim(),
+    price: Number(p.price) || (Number(p.qty) > 0 && Number(p.sum) > 0 ? Math.round((Number(p.sum) / Number(p.qty)) * 100) / 100 : 0),
+    qty: Number(p.qty) || 0,
+    sum: Number(p.sum) || 0,
+    kind: p.kind || classifyFn(p.name),
+    date: p.date || dt,
+    barista: p.barista || incomingBarista || 'Бариста',
+    csvHash: p.csvHash || payload.csvHash || ''
+  }));
+
+  const calcCoffeeFromProds = normalizedProds.filter((p) => p.kind === 'coffee').reduce((a, p) => a + p.qty, 0);
+  const calcReviewFromProds = normalizedProds.filter((p) => p.kind === 'review').reduce((a, p) => a + p.qty, 0);
+  const calcNonCoffeeFromProds = normalizedProds.filter((p) => p.kind === 'non_coffee').reduce((a, p) => a + p.qty, 0);
+
+  const incomingCoffeeQty = payload.coffeeQty != null ? Number(payload.coffeeQty) : (payload.coffeeCups != null ? Number(payload.coffeeCups) : (normalizedProds.length ? calcCoffeeFromProds : null));
+  const incomingReviewQty = payload.reviewQty != null ? Number(payload.reviewQty) : (normalizedProds.length ? calcReviewFromProds : 0);
+  const incomingNonCoffeeQty = payload.nonCoffeeQty != null ? Number(payload.nonCoffeeQty) : (normalizedProds.length ? calcNonCoffeeFromProds : 0);
+
+  // Защита от повторной загрузки CSV по хэшу
+  const incomingHashes = Array.isArray(payload.csvHashes) ? payload.csvHashes.filter(Boolean) : (payload.csvHash ? [String(payload.csvHash)] : []);
+  let isDuplicateCsv = false;
+  if (mode !== 'replace' && incomingHashes.length > 0) {
+    const existingDayRec = db.cash.find((c) => c.date === dt);
+    const existingHashes = (existingDayRec && Array.isArray(existingDayRec.csvHashes)) ? existingDayRec.csvHashes : [];
+    if (incomingHashes.every((h) => existingHashes.includes(h) || db.uploadedCsvHashes[dt + ':' + h])) {
+      isDuplicateCsv = true;
+    }
+  }
+  incomingHashes.forEach((h) => { db.uploadedCsvHashes[dt + ':' + h] = Date.now(); });
+
   const incomingShifts = Array.isArray(payload.shifts) && payload.shifts.length
-    ? payload.shifts
+    ? payload.shifts.map((s) => Object.assign({}, s, {
+        name: s.name || s.barista || incomingBarista || 'Бариста',
+        cash: Number(s.cash) || 0,
+        card: Number(s.card) || 0,
+        checks: Number(s.checks) || 0,
+        writeoff: Number(s.writeoff != null ? s.writeoff : 0) || 0,
+        writeoffShots: Number(s.writeoffShots != null ? s.writeoffShots : (s.writeoffQty != null ? s.writeoffQty : (incomingWoShots || 0))) || 0,
+        prevCounter: s.prevCounter != null ? Number(s.prevCounter) : (s.counterStart != null ? Number(s.counterStart) : incomingCounterStart),
+        counter: s.counter != null ? Number(s.counter) : (s.counterEnd != null ? Number(s.counterEnd) : incomingCounterEnd),
+        coffeeQty: s.coffeeQty != null ? Number(s.coffeeQty) : (s.soldCoffee != null ? Number(s.soldCoffee) : incomingCoffeeQty),
+        reviewQty: s.reviewQty != null ? Number(s.reviewQty) : incomingReviewQty,
+        nonCoffeeQty: s.nonCoffeeQty != null ? Number(s.nonCoffeeQty) : incomingNonCoffeeQty,
+        cups: Number(s.coffeeQty != null ? s.coffeeQty : (s.cups != null ? s.cups : (incomingCoffeeQty != null ? incomingCoffeeQty : s.checks))) || 0
+      }))
     : [{
         name: incomingBarista || 'Бариста',
         cash: incomingCash,
         card: incomingCard,
         checks: incomingChecks,
         writeoff: incomingWo,
-        cups: Number(payload.cups) || incomingChecks
+        writeoffShots: incomingWoShots,
+        prevCounter: incomingCounterStart,
+        counter: incomingCounterEnd,
+        coffeeQty: incomingCoffeeQty,
+        reviewQty: incomingReviewQty,
+        nonCoffeeQty: incomingNonCoffeeQty,
+        cups: incomingCoffeeQty != null ? incomingCoffeeQty : (Number(payload.cups) || incomingChecks)
       }];
+
+  const computeDayReconciliation = (shiftsArr, fallbackCoffee, fallbackWoShots, cStart, cEnd) => {
+    let totalGrinder = 0, totalSoldCoffee = 0, totalWoS = 0, hasCnt = false;
+    shiftsArr.forEach((s) => {
+      const pC = s.prevCounter != null ? s.prevCounter : s.counterStart;
+      const eC = s.counter != null ? s.counter : s.counterEnd;
+      if (pC != null && eC != null && window.coffeeCounterDelta) {
+        const d = window.coffeeCounterDelta(pC, eC);
+        if (d !== null) {
+          hasCnt = true;
+          totalGrinder += d;
+        }
+      }
+      totalSoldCoffee += Number(s.coffeeQty != null ? s.coffeeQty : (s.soldCoffee != null ? s.soldCoffee : 0)) || 0;
+      totalWoS += Number(s.writeoffShots != null ? s.writeoffShots : (s.writeoffQty != null ? s.writeoffQty : 0)) || 0;
+    });
+    if (!hasCnt && cStart != null && cEnd != null && window.coffeeCounterDelta) {
+      const d = window.coffeeCounterDelta(cStart, cEnd);
+      if (d !== null) { hasCnt = true; totalGrinder = d; }
+    }
+    const effCoffee = totalSoldCoffee > 0 ? totalSoldCoffee : (Number(fallbackCoffee) || 0);
+    const effWoS = totalWoS > 0 ? totalWoS : (Number(fallbackWoShots) || 0);
+    const unacc = hasCnt ? Math.max(0, totalGrinder - (effCoffee + effWoS)) : 0;
+    return { hasCnt, totalGrinder, effCoffee, effWoS, unacc };
+  };
 
   const idx = db.cash.findIndex((c) => c.date === dt);
   if (idx < 0 || mode === 'replace') {
@@ -202,6 +291,9 @@ function mergeOrSaveCashDay(db, payload) {
     const origCard = prev && prev.origCard != null ? prev.origCard : (prev ? prev.card : incomingCard);
     const newTotal = incomingCash + incomingCard;
     const zTotal = payload.zTotal != null && payload.zTotal !== '' ? Math.max(0, Math.round(Number(payload.zTotal) || 0)) : (prev && prev.zTotal != null ? prev.zTotal : newTotal);
+    const cStart = incomingCounterStart != null ? incomingCounterStart : (incomingShifts[0] && incomingShifts[0].prevCounter != null ? incomingShifts[0].prevCounter : (prev ? prev.counterStart : null));
+    const cEnd = incomingCounterEnd != null ? incomingCounterEnd : (incomingShifts[incomingShifts.length - 1] && incomingShifts[incomingShifts.length - 1].counter != null ? incomingShifts[incomingShifts.length - 1].counter : (prev ? prev.counterEnd : null));
+    const rcInfo = computeDayReconciliation(incomingShifts, incomingCoffeeQty, incomingWoShots, cStart, cEnd);
     const rec = {
       date: dt,
       cash: incomingCash,
@@ -211,6 +303,15 @@ function mergeOrSaveCashDay(db, payload) {
       zTotal,
       checks: incomingChecks,
       writeoff: incomingWo,
+      writeoffShots: rcInfo.effWoS || incomingWoShots,
+      counterStart: cStart,
+      counterEnd: cEnd,
+      coffeeQty: rcInfo.effCoffee || (incomingCoffeeQty != null ? incomingCoffeeQty : 0),
+      nonCoffeeQty: incomingNonCoffeeQty,
+      reviewQty: incomingReviewQty,
+      unaccountedShots: rcInfo.unacc,
+      csvHashes: incomingHashes,
+      products: normalizedProds.length ? normalizedProds : (prev && Array.isArray(prev.products) ? prev.products : []),
       barista: incomingBarista || (prev && prev.barista) || incomingShifts.map((s) => s.name).join(', '),
       shifts: incomingShifts,
       topItems: payload.topItems || (prev && prev.topItems) || '',
@@ -242,6 +343,9 @@ function mergeOrSaveCashDay(db, payload) {
       if (cur.sids.includes(sidKey)) return;
       cur.sids.push(sidKey);
     }
+    if (isDuplicateCsv && incomingShifts.length === 1 && normalizedProds.length > 0 && !incomingCash && !incomingCard) {
+      return;
+    }
     const curShifts = Array.isArray(cur.shifts) && cur.shifts.length
       ? cur.shifts.slice()
       : [{
@@ -250,16 +354,31 @@ function mergeOrSaveCashDay(db, payload) {
           card: Number(cur.card) || 0,
           checks: Number(cur.checks) || 0,
           writeoff: Number(cur.writeoff) || 0,
-          cups: Number(cur.checks) || 0
+          writeoffShots: Number(cur.writeoffShots) || 0,
+          prevCounter: cur.counterStart != null ? cur.counterStart : null,
+          counter: cur.counterEnd != null ? cur.counterEnd : null,
+          coffeeQty: cur.coffeeQty != null ? cur.coffeeQty : null,
+          cups: Number(cur.coffeeQty || cur.checks) || 0
         }];
 
     incomingShifts.forEach((incS) => {
-      /* Если этот же бариста уже есть в этот день с точно такими же суммами — не дублируем, иначе обновляем или добавляем второго бариста */
       const sameIdx = curShifts.findIndex((cs) => cs.name && incS.name && cs.name.toLowerCase() === incS.name.toLowerCase());
       if (sameIdx >= 0 && incomingShifts.length > 1) {
-        curShifts[sameIdx] = incS;
-      } else if (sameIdx >= 0 && curShifts[sameIdx].cash === incS.cash && curShifts[sameIdx].card === incS.card) {
         curShifts[sameIdx] = Object.assign({}, curShifts[sameIdx], incS);
+      } else if (sameIdx >= 0 && (curShifts[sameIdx].cash === incS.cash && curShifts[sameIdx].card === incS.card || !incS.cash && !incS.card || !curShifts[sameIdx].cash && !curShifts[sameIdx].card)) {
+        const ex = curShifts[sameIdx];
+        curShifts[sameIdx] = Object.assign({}, ex, incS, {
+          cash: incS.cash || ex.cash || 0,
+          card: incS.card || ex.card || 0,
+          checks: incS.checks || ex.checks || 0,
+          writeoff: incS.writeoff != null && incS.writeoff > 0 ? incS.writeoff : (ex.writeoff || 0),
+          writeoffShots: incS.writeoffShots != null && incS.writeoffShots > 0 ? incS.writeoffShots : (ex.writeoffShots || 0),
+          prevCounter: incS.prevCounter != null ? incS.prevCounter : ex.prevCounter,
+          counter: incS.counter != null ? incS.counter : ex.counter,
+          coffeeQty: incS.coffeeQty != null ? incS.coffeeQty : ex.coffeeQty,
+          reviewQty: incS.reviewQty != null ? incS.reviewQty : ex.reviewQty,
+          nonCoffeeQty: incS.nonCoffeeQty != null ? incS.nonCoffeeQty : ex.nonCoffeeQty
+        });
       } else {
         curShifts.push(incS);
       }
@@ -270,28 +389,64 @@ function mergeOrSaveCashDay(db, payload) {
     cur.card = curShifts.reduce((s, x) => s + (Number(x.card) || 0), 0);
     cur.checks = curShifts.reduce((s, x) => s + (Number(x.checks) || 0), 0);
     cur.writeoff = curShifts.reduce((s, x) => s + (Number(x.writeoff != null ? x.writeoff : x.writeoffQty) || 0), 0);
+    cur.writeoffShots = curShifts.reduce((s, x) => s + (Number(x.writeoffShots != null ? x.writeoffShots : x.writeoffQty) || 0), 0);
+    const firstWithPrev = curShifts.find((s) => s.prevCounter != null);
+    const lastWithCnt = curShifts.slice().reverse().find((s) => s.counter != null);
+    if (firstWithPrev) cur.counterStart = Number(firstWithPrev.prevCounter);
+    if (lastWithCnt) cur.counterEnd = Number(lastWithCnt.counter);
     cur.barista = Array.from(new Set(curShifts.map((s) => s.name).filter(Boolean))).join(', ');
+    cur.csvHashes = Array.from(new Set((cur.csvHashes || []).concat(incomingHashes)));
     if (payload.topItems) {
-      cur.topItems = cur.topItems && cur.topItems !== payload.topItems
+      cur.topItems = cur.topItems && cur.topItems.indexOf(payload.topItems) < 0
         ? (cur.topItems + ' · ' + payload.topItems)
-        : payload.topItems;
+        : (cur.topItems || payload.topItems);
     }
+    const rcInfo = computeDayReconciliation(curShifts, (Number(cur.coffeeQty) || 0) + (isDuplicateCsv ? 0 : (Number(incomingCoffeeQty) || 0)), cur.writeoffShots, cur.counterStart, cur.counterEnd);
+    cur.coffeeQty = rcInfo.effCoffee;
+    cur.nonCoffeeQty = curShifts.reduce((s, x) => s + (Number(x.nonCoffeeQty) || 0), 0) || ((Number(cur.nonCoffeeQty) || 0) + (isDuplicateCsv ? 0 : incomingNonCoffeeQty));
+    cur.reviewQty = curShifts.reduce((s, x) => s + (Number(x.reviewQty) || 0), 0) || ((Number(cur.reviewQty) || 0) + (isDuplicateCsv ? 0 : incomingReviewQty));
+    cur.unaccountedShots = rcInfo.unacc;
     cur.localUpdated = true;
   }
 
-  /* Суммируем позиции продаж (Продажи.csv) за этот день */
-  if (Array.isArray(payload.products) && payload.products.length) {
+  /* Суммируем позиции продаж (Продажи.csv) за этот день и сохраняем в журнал Продажи (salesLog) */
+  if (normalizedProds.length && !isDuplicateCsv) {
     if (mode === 'replace' || !db.productsByDate[dt] || !db.productsByDate[dt].length) {
-      db.productsByDate[dt] = payload.products;
+      db.productsByDate[dt] = normalizedProds.slice().sort((a, b) => b.qty - a.qty);
+      db.salesLog = (db.salesLog || []).filter((r) => r.date !== dt);
     } else {
       const pMap = {};
-      (db.productsByDate[dt] || []).concat(payload.products).forEach((p) => {
+      (db.productsByDate[dt] || []).concat(normalizedProds).forEach((p) => {
         if (!p || !p.name) return;
-        const m = pMap[p.name] || (pMap[p.name] = { name: p.name, qty: 0, sum: 0 });
+        const m = pMap[p.name] || (pMap[p.name] = { name: p.name, price: p.price || 0, kind: p.kind || classifyFn(p.name), qty: 0, sum: 0, date: dt });
         m.qty += Number(p.qty) || 0;
         m.sum += Number(p.sum) || 0;
+        if (!m.price && p.price) m.price = p.price;
       });
       db.productsByDate[dt] = Object.values(pMap).sort((a, b) => b.qty - a.qty);
+    }
+    normalizedProds.forEach((p) => {
+      db.salesLog.push({
+        date: dt,
+        shift: incomingBarista || 'Смена',
+        barista: p.barista || incomingBarista || 'Бариста',
+        name: p.name,
+        kind: p.kind,
+        price: p.price,
+        qty: p.qty,
+        sum: p.sum,
+        csvHash: p.csvHash || incomingHashes[0] || ''
+      });
+    });
+    const targetRec = db.cash.find((c) => c.date === dt);
+    if (targetRec) {
+      targetRec.products = db.productsByDate[dt];
+      const nStats = window.coffeeExtractNomenclatureStats ? window.coffeeExtractNomenclatureStats(db.productsByDate[dt]) : null;
+      if (nStats && nStats.hasNomenclature) {
+        targetRec.coffeeQty = nStats.coffeeQty;
+        targetRec.nonCoffeeQty = nStats.nonCoffeeQty;
+        targetRec.reviewQty = nStats.reviewQty;
+      }
     }
   }
 }
@@ -626,7 +781,15 @@ function absorbServerData(url, data, options) {
     }
   }
 
-  /* 11. Двусторонняя синхронизация листа «Касса» */
+  /* 11. Двусторонняя синхронизация листа «Касса» и «Продажи» */
+  if (data.productsByDate && typeof data.productsByDate === 'object') {
+    db.productsByDate = Object.assign({}, db.productsByDate || {}, data.productsByDate);
+    changed = true;
+  }
+  if (Array.isArray(data.salesLog) && data.salesLog.length) {
+    db.salesLog = data.salesLog;
+    changed = true;
+  }
   if (Array.isArray(data.cash)) {
     if (_didSheetPartChange(db, 'sheet:cash', data.cash, forceFromSheet)) {
       if (forceFromSheet) db.deletedCashDates = {};
@@ -636,21 +799,40 @@ function absorbServerData(url, data, options) {
         if (sRev <= 0 && !srvC.checks) return;
         const loc = db.cash.find((c) => c.date === srvC.date);
         if (!loc) {
-          db.cash.push({
+          db.cash.push(Object.assign({
             date: srvC.date,
             cash: Number(srvC.cash) || 0,
             card: Number(srvC.card) || 0,
             checks: Number(srvC.checks) || 0,
             writeoff: Number(srvC.writeoff) || 0,
+            writeoffShots: Number(srvC.writeoffShots) || 0,
+            counterStart: srvC.counterStart != null ? Number(srvC.counterStart) : null,
+            counterEnd: srvC.counterEnd != null ? Number(srvC.counterEnd) : null,
+            coffeeQty: srvC.coffeeQty != null ? Number(srvC.coffeeQty) : 0,
+            nonCoffeeQty: srvC.nonCoffeeQty != null ? Number(srvC.nonCoffeeQty) : 0,
+            reviewQty: srvC.reviewQty != null ? Number(srvC.reviewQty) : 0,
+            unaccountedShots: srvC.unaccountedShots != null ? Number(srvC.unaccountedShots) : 0,
+            csvHashes: Array.isArray(srvC.csvHashes) ? srvC.csvHashes : [],
+            shifts: Array.isArray(srvC.shifts) ? srvC.shifts : [],
+            products: Array.isArray(srvC.products) ? srvC.products : [],
             barista: srvC.barista || '',
             topItems: srvC.topItems || ''
-          });
+          }));
           changed = true;
         } else {
           loc.cash = Number(srvC.cash) || 0;
           loc.card = Number(srvC.card) || 0;
           loc.checks = Number(srvC.checks) || loc.checks || 0;
           loc.writeoff = Number(srvC.writeoff != null ? srvC.writeoff : loc.writeoff) || 0;
+          if (srvC.writeoffShots != null) loc.writeoffShots = Number(srvC.writeoffShots) || 0;
+          if (srvC.counterStart != null) loc.counterStart = Number(srvC.counterStart);
+          if (srvC.counterEnd != null) loc.counterEnd = Number(srvC.counterEnd);
+          if (srvC.coffeeQty != null) loc.coffeeQty = Number(srvC.coffeeQty);
+          if (srvC.nonCoffeeQty != null) loc.nonCoffeeQty = Number(srvC.nonCoffeeQty);
+          if (srvC.reviewQty != null) loc.reviewQty = Number(srvC.reviewQty);
+          if (srvC.unaccountedShots != null) loc.unaccountedShots = Number(srvC.unaccountedShots);
+          if (Array.isArray(srvC.shifts) && srvC.shifts.length) loc.shifts = srvC.shifts;
+          if (Array.isArray(srvC.products) && srvC.products.length) loc.products = srvC.products;
           if (srvC.topItems) loc.topItems = srvC.topItems;
           if (srvC.barista) loc.barista = srvC.barista;
           changed = true;
@@ -1221,6 +1403,10 @@ function applyLocalMutation(payload) {
     const exChkIdx = db.checklists.findIndex((c) => c && ((chkRec.sid && c.sid === chkRec.sid) || (c.date === chkDate && c.block === blk && c.who === chkWho)));
     if (exChkIdx >= 0) db.checklists[exChkIdx] = chkRec;
     else db.checklists.push(chkRec);
+    if (db.deadlineExtensions && db.deadlineExtensions[chkDate + ':' + blk]) {
+      delete db.deadlineExtensions[chkDate + ':' + blk];
+    }
+    try { localStorage.setItem('coffee_illy_done_' + chkDate + '_' + blk, '1'); } catch (_) {}
     appendAudit(
       db,
       payload.userName || 'Бариста',
@@ -1423,23 +1609,28 @@ function buildReportResponse(fromStr, toStr) {
   const byCategory = Object.keys(catMap).map((k) => ({ category: k, sum: catMap[k] })).sort((a, b) => b.sum - a.sum);
 
   const prodMap = {};
+  const classifyProd = (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.classifyCoffee)
+    ? window.CoffeeSalesReconciliation.classifyCoffee
+    : (() => 'coffee');
   Object.keys(db.productsByDate || {}).forEach((d) => {
     if (d >= from && d <= to) {
       (db.productsByDate[d] || []).forEach((p) => {
-        const m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, qty: 0, sum: 0 });
+        const m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, price: p.price || 0, kind: p.kind || classifyProd(p.name), qty: 0, sum: 0 });
         m.qty += Number(p.qty) || 0;
         m.sum += Number(p.sum) || 0;
+        if (!m.price && p.price) m.price = p.price;
       });
     }
   });
-  /* Дни, для которых нет загрузки «Продажи.csv», но позиции сохранены в самой кассовой смене. */
+  /* Дни, для которых нет загрузки в productsByDate, но позиции сохранены в самой кассовой смене. */
   (db.cash || []).forEach((c) => {
     if (!c || !c.date || c.date < from || c.date > to) return;
     if ((db.productsByDate || {})[c.date] && db.productsByDate[c.date].length) return;
     (Array.isArray(c.products) ? c.products : []).forEach((p) => {
-      const m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, qty: 0, sum: 0 });
+      const m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, price: p.price || 0, kind: p.kind || classifyProd(p.name), qty: 0, sum: 0 });
       m.qty += Number(p.qty) || 0;
       m.sum += Number(p.sum) || 0;
+      if (!m.price && p.price) m.price = p.price;
     });
   });
   const products = Object.values(prodMap).sort((a, b) => b.qty - a.qty);
@@ -2185,7 +2376,8 @@ async function coffeeLiveSyncTick(forceSync) {
         }
       } catch (_) {}
     }
-    if (!d || d.ok !== true || d.rev == null) { st.ok = false; return; }
+    if (!d || d.ok !== true || d.rev == null) { st.ok = false; _liveFails++; return; }
+    _liveFails = 0;
     st.ok = true; window._coffeeLastSyncOk = true;
     const rev = String(d.rev);
     const changed = _liveRev !== null && rev !== _liveRev;
@@ -2206,9 +2398,18 @@ async function coffeeLiveSyncTick(forceSync) {
     }
   } finally { _liveBusy = false; }
 }
+let _liveFails = 0;
 function _liveNextDelay() {
-  if (typeof document !== 'undefined' && document.hidden) return 30000;
-  return (Date.now() - _liveLastActive < 180000) ? 4000 : 10000;
+  /* Ступенчатое замедление в простое: меньше запросов к Apps Script (квоты) и меньше нагрузка на устройства. */
+  let d;
+  if (typeof document !== 'undefined' && document.hidden) d = 60000;
+  else {
+    const idle = Date.now() - _liveLastActive;
+    d = idle < 180000 ? 4000 : (idle < 900000 ? 10000 : (idle < 3600000 ? 20000 : 30000));
+  }
+  /* При ошибках сети/сервера — экспоненциальная пауза до 2 минут, чтобы не долбить недоступный сервер. */
+  if (_liveFails > 0) d = Math.min(120000, Math.max(d, 4000 * Math.pow(2, Math.min(_liveFails, 5))));
+  return d + Math.floor(Math.random() * 600); /* небольшой разброс, чтобы устройства не стучались одновременно */
 }
 function _liveSchedule() {
   clearTimeout(_liveTimer);

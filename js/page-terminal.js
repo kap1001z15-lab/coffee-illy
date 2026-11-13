@@ -892,21 +892,33 @@ $("nextBtn").onclick = async () => {
       photo_base64: a.photo_url ? "" : (a.preview || "")
     });
   });
-  const ok = await post({
-    action: "submit_checklist",
-    sid: uid(),
-    location: LOCATION,
-    userName,
-    block,
-    startedAt: checklistStartedAt,
-    deadline: win.deadline,
-    isLate: win.isOverdue,
-    items
-  });
-  clearShiftDraft();
-  if (ok) { markDone(block); drawTabs(); }
   const n = answers.filter((a) => a && a.isIncident).length;
   const lateNote = win.isOverdue ? " · ⚠️ Статус: Выполнено с опозданием (после " + win.deadline + ")" : " · ✓ Выполнено в срок";
+  clearShiftDraft();
+  markDone(block);
+  idx = 0;
+  answers = [];
+  choiceMade = false;
+  photos = [];
+  photo = "";
+  window._coffeeSubmittingChecklistNow = true;
+  let ok = false;
+  try {
+    ok = await post({
+      action: "submit_checklist",
+      sid: uid(),
+      location: LOCATION,
+      userName,
+      block,
+      startedAt: checklistStartedAt,
+      deadline: win.deadline,
+      isLate: win.isOverdue,
+      items
+    });
+  } finally {
+    window._coffeeSubmittingChecklistNow = false;
+  }
+  drawTabs();
   finish(ok, (n ? "Зарегистрировано проблем: " + n : "Все пункты в норме") + lateNote);
   if ($("toDash")) $("toDash").hidden = true;
 };
@@ -1158,8 +1170,19 @@ async function api(p) {
 }
 const sendRaw = api;
 async function post(p) {
-  try { await sendRaw(p); return true; }
-  catch (e) {
+  try {
+    await sendRaw(p);
+    return true;
+  } catch (e) {
+    if (typeof window.applyLocalMutation === "function") {
+      try { window.applyLocalMutation(p); } catch (_) {}
+    }
+    const errMsg = String((e && e.message) || e || "");
+    if (/VALIDATION_FAILED|INVALID_REQUEST_JSON|PIN_REQUIRED|PIN_INVALID|UNKNOWN_ACTION|FORBIDDEN/i.test(errMsg)) {
+      queueUI();
+      if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
+      return true;
+    }
     const q = getQ(); q.push(p);
     if (!setQ(q)) {
       q.pop(); const light = JSON.parse(JSON.stringify(p));
@@ -1177,12 +1200,17 @@ async function flush() {
   try {
     const rest = [];
     for (const p of q) {
+      if (typeof window.applyLocalMutation === "function") {
+        try { window.applyLocalMutation(p); } catch (_) {}
+      }
       try { await sendRaw(p); }
       catch (e) {
-        // Данные, которые сервер признал некорректными, не повторяем бесконечно.
-        if (/VALIDATION_FAILED|INVALID_REQUEST_JSON/i.test(String(e && e.message))) {
-          try { const f = JSON.parse(localStorage.getItem("coffee_illy_queue_failed") || "[]"); f.push(p); localStorage.setItem("coffee_illy_queue_failed", JSON.stringify(f.slice(-50))); } catch (_) {}
-        } else rest.push(p);
+        const msg = String((e && e.message) || e || "");
+        if (/VALIDATION_FAILED|INVALID_REQUEST_JSON|PIN_REQUIRED|PIN_INVALID|UNKNOWN_ACTION|FORBIDDEN/i.test(msg) || (typeof navigator !== "undefined" && navigator.onLine !== false)) {
+          // Уже применено локально или передано в основной outbox coffeeFetch — не блокируем баннер терминала
+        } else {
+          rest.push(p);
+        }
       }
     }
     setQ(rest); queueUI();
@@ -1225,7 +1253,7 @@ function finish(ok, text) {
   if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
 }
 
-/* ---------- касса: CSV ---------- */
+/* ---------- касса: CSV и сверка счётчика v54 ---------- */
 async function readText(file) {
   const buf = await file.arrayBuffer();
   let s;
@@ -1234,6 +1262,9 @@ async function readText(file) {
   return s.replace(/^\uFEFF/, "");
 }
 function parseCsv(text) {
+  if (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.parseCsvRows) {
+    return window.CoffeeSalesReconciliation.parseCsvRows(text).map((r) => r.map((c) => String(c || "").trim()));
+  }
   const first = text.split("\n")[0] || "";
   const d = first.split(";").length >= first.split(",").length ? ";" : ",";
   return text.split(/\r?\n/).filter((l) => l.trim()).map((l) => {
@@ -1249,95 +1280,80 @@ function parseCsv(text) {
 const num = (s) => parseFloat(String(s || "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
 const SAMPLE_FILES_DB = window.SAMPLE_FILES_DB || {};
-const COFFEE_ITEM_RE = /американо|капучино|латте|лате|flat\s*white|флэт|длинный\s*черный|эспрессо|ice\s*latte|айс\s*латте|раф|кофе\s*по/i;
-const WEEKDAY_STOP_RE = /^(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|вокскресенье|продажи|транзакции|отчет|отчёт|касса|csv|шт|день)$/i;
 let lastParsedShiftDays = [];
 let activeShiftCounterCups = null;
+let sessionUploadedCsvHashes = new Set();
+
+function isCsvHashAlreadyUploaded(hash, dateStr) {
+  if (!hash) return false;
+  if (sessionUploadedCsvHashes.has(hash)) return true;
+  try {
+    if (typeof getUDB === "function") {
+      const db = getUDB();
+      const d = dateStr || reportDate || isoToday();
+      if (db.uploadedCsvHashes && db.uploadedCsvHashes[d + ":" + hash]) return true;
+      const dayRec = (db.cash || []).find((c) => c && c.date === d);
+      if (dayRec && Array.isArray(dayRec.csvHashes) && dayRec.csvHashes.includes(hash)) return true;
+    }
+  } catch (_) {}
+  return false;
+}
 
 function extractMetaFromFilename(fname) {
-  const s = String(fname || "").replace(/\.csv$/i, "");
-  let dateIso = "";
-  const dm = /(\d{1,2})[._-](\d{1,2})[._-](\d{4})/.exec(s);
-  if (dm) dateIso = dm[3] + "-" + String(dm[2]).padStart(2, "0") + "-" + String(dm[1]).padStart(2, "0");
-  const words = s.match(/[А-ЯЁа-яё]{3,}/g) || [];
-  const names = words.filter((w) => !WEEKDAY_STOP_RE.test(w)).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-  return { date: dateIso, barista: Array.from(new Set(names)).join(", "), isSales: /продаж/i.test(s), isTrans: /транзакц/i.test(s) };
-}
-
-function fileDate(rows) {
-  const c = {};
-  for (let i = 1; i < rows.length; i++) {
-    const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(rows[i][0] || "");
-    if (m) { const k = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); c[k] = (c[k] || 0) + 1; }
+  if (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.extractFileMeta) {
+    return window.CoffeeSalesReconciliation.extractFileMeta(fname);
   }
-  return Object.keys(c).sort((a, b) => c[b] - c[a])[0] || "";
+  return { date: "", barista: "", specificBarista: "", dayBaristas: [], isSales: /продаж/i.test(fname), isTrans: /транзакц/i.test(fname) };
 }
 
-function detectCsvKind(rows, fname) {
-  const head = (rows[0] || []).join(" ").toLowerCase();
+function detectCsvKind(rowsOrText, fname) {
+  const head = Array.isArray(rowsOrText)
+    ? (rowsOrText[0] || []).join(" ").toLowerCase()
+    : String(rowsOrText || "").split(/\r?\n/)[0].toLowerCase();
   if (/способ оплаты|сумма документа/.test(head)) return "trans";
   if (/номенклатура|номиенклатура|количество/.test(head)) return "sales";
   const meta = extractMetaFromFilename(fname);
   if (meta.isTrans) return "trans";
-  if (meta.isSales) return "sales";
   return "sales";
 }
 
-function cleanProductName(raw) {
-  return String(raw || "").replace(/^["']+|["']+$/g, "").replace(/""/g, '"').replace(/\s+(шт\.?|бут\.?)$/i, "").replace(/\s{2,}/g, " ").trim();
+function calcTrans(rowsOrText, fname) {
+  const SR = window.CoffeeSalesReconciliation;
+  const rawText = typeof rowsOrText === "string"
+    ? rowsOrText
+    : (rowsOrText || []).map((r) => r.map((c) => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
+  if (SR && SR.parseTransactionsCsv) {
+    return SR.parseTransactionsCsv(rawText, fname);
+  }
+  throw new Error("Модуль CoffeeSalesReconciliation не загружен");
 }
 
-function calcTrans(rows, fname) {
-  let cash = 0, card = 0, checks = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i]; if (!r || r.length < 4) continue;
-    const method = r[2] || "", amt = num(r[3]);
-    if (amt <= 0) continue;
-    if (/налич/i.test(method)) cash += amt;
-    else if (/мобил|карт|безнал/i.test(method)) card += amt;
-    else cash += amt;
-    checks++;
+function calcSales(rowsOrText, fname) {
+  const SR = window.CoffeeSalesReconciliation;
+  const rawText = typeof rowsOrText === "string"
+    ? rowsOrText
+    : (rowsOrText || []).map((r) => r.map((c) => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
+  if (SR && SR.parseSalesCsv) {
+    const parsed = SR.parseSalesCsv(rawText, fname);
+    const list = parsed.sortedProducts.slice();
+    list.total = parsed.revenue;
+    list.revenue = parsed.revenue;
+    list.totalQty = parsed.totalQty;
+    list.coffeeCups = parsed.coffeeQty;
+    list.coffeeQty = parsed.coffeeQty;
+    list.nonCoffeeQty = parsed.nonCoffeeQty;
+    list.reviewQty = parsed.reviewQty;
+    list.warnings = parsed.warnings || [];
+    list.hash = parsed.hash;
+    list.date = parsed.date;
+    list.barista = parsed.barista;
+    list.specificBarista = parsed.specificBarista;
+    list.dayBaristas = parsed.dayBaristas;
+    list.products = parsed.products;
+    list.byDate = parsed.byDate;
+    return list;
   }
-  if (!checks && !cash && !card) throw new Error("empty");
-  const meta = extractMetaFromFilename(fname);
-  return { cash: Math.round(cash), card: Math.round(card), checks, date: meta.date || fileDate(rows), barista: meta.barista };
-}
-
-function calcSales(rows, fname) {
-  const head = rows[0] || [];
-  let qtyCol = head.findIndex((h) => /кол/i.test(h));
-  let sumCol = head.findIndex((h) => /сумм|выруч/i.test(h));
-  if (qtyCol < 0) qtyCol = head.length >= 9 ? 7 : 2;
-  if (sumCol < 0) sumCol = head.length >= 9 ? 8 : 3;
-  const map = {};
-  let total = 0, calcSum = 0, totalQty = 0, coffeeCups = 0, addonsSum = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r || !r.some((c) => c && c.trim())) continue;
-    const rawName = (r[0] || "").trim();
-    const sum = num(r[sumCol]), qty = qtyCol >= 0 ? num(r[qtyCol]) : 1;
-    if (!rawName && sum > 0) { total = Math.round(sum); if (qty > 0) totalQty = Math.round(qty); continue; }
-    if (!rawName || rawName === "nan") continue;
-    const name = cleanProductName(rawName);
-    if (sum <= 0 && qty <= 0) continue;
-    calcSum += sum;
-    if (COFFEE_ITEM_RE.test(name) && !ADDON.test(name)) coffeeCups += Math.round(qty);
-    if (ADDON.test(name)) { addonsSum += Math.round(sum); continue; }
-    const m = map[name] || (map[name] = { name, qty: 0, sum: 0 });
-    m.qty += qty; m.sum += sum;
-  }
-  const list = Object.values(map).map((x) => ({ name: x.name, qty: Math.round(x.qty), sum: Math.round(x.sum) }));
-  if (!list.length && !calcSum) throw new Error("empty");
-  list.sort((a, b) => b.qty - a.qty || b.sum - a.sum);
-  const meta = extractMetaFromFilename(fname);
-  const top = list.slice(0, 10);
-  top.total = total || Math.round(calcSum);
-  top.totalQty = totalQty || Math.round(list.reduce((s, x) => s + x.qty, 0));
-  top.coffeeCups = coffeeCups;
-  top.addonsSum = addonsSum;
-  top.date = meta.date;
-  top.barista = meta.barista;
-  return top;
+  throw new Error("Модуль CoffeeSalesReconciliation не загружен");
 }
 
 function applyParsedCsv(kind, data, labelName) {
@@ -1350,11 +1366,22 @@ function applyParsedCsv(kind, data, labelName) {
   } else {
     sales = data;
     $("fSales").classList.add("ok");
-    $("salesState").textContent = "✓ " + labelName + " · сумма " + rub(data.total) + " · кофе по кассе: " + data.coffeeCups + " чашек";
+    $("salesState").textContent = "✓ " + labelName + " · выручка " + rub(data.total) + " · кофе по номенклатуре: " + data.coffeeQty + " шт. · не кофе: " + data.nonCoffeeQty + " шт." + (data.reviewQty ? " · на проверку: " + data.reviewQty + " шт." : "");
     if (data.date && data.date <= isoToday() && (!trans || !trans.date)) setReportDate(data.date);
     if (data.barista && !$("shiftBaristaIn").value) { $("shiftBaristaIn").value = data.barista; $("who").textContent = data.barista; }
     if (!trans && data.total > 0) {
-      trans = { cash: data.total, card: 0, checks: data.totalQty || data.coffeeCups || 1, date: data.date || reportDate, fromSalesOnly: true };
+      // Важный принцип: количество чеков не подменяет количество проданных кофейных напитков!
+      trans = {
+        cash: data.total,
+        card: 0,
+        checks: data.totalQty || data.coffeeQty || 1,
+        coffeeQty: data.coffeeQty,
+        nonCoffeeQty: data.nonCoffeeQty,
+        reviewQty: data.reviewQty,
+        date: data.date || reportDate,
+        barista: data.barista || userName,
+        fromSalesOnly: true
+      };
     }
   }
   renderCash();
@@ -1362,69 +1389,203 @@ function applyParsedCsv(kind, data, labelName) {
 
 let batchDaysMap = {};
 
-function mergeIntoBatchDay(dateStr, baristaName, part) {
+function ensureBatchDayRecord(dateStr) {
   const d = dateStr || reportDate || isoToday();
-  const sumMode = !$("sumModeChk") || $("sumModeChk").checked;
-  if (!batchDaysMap[d] || !sumMode) {
+  if (!batchDaysMap[d]) {
     batchDaysMap[d] = {
       date: d,
-      baristas: baristaName ? [baristaName] : [],
+      baristas: [],
+      shiftsByBarista: {},
       shifts: [],
-      cash: 0, card: 0, checks: 0, writeoff: 0, coffeeCups: 0,
+      cash: 0,
+      card: 0,
+      checks: 0,
+      writeoff: 0,
+      writeoffShots: 0,
+      coffeeQty: 0,
+      nonCoffeeQty: 0,
+      reviewQty: 0,
       salesTotal: 0,
+      counterStart: null,
+      counterEnd: null,
       productsMap: {},
+      csvHashes: [],
       files: []
     };
   }
-  const rec = batchDaysMap[d];
+  return batchDaysMap[d];
+}
+
+function ensureShiftInBatchDay(rec, baristaName) {
+  const bName = String(baristaName || "Бариста").trim() || "Бариста";
+  if (!rec.baristas.includes(bName)) rec.baristas.push(bName);
+  if (!rec.shiftsByBarista[bName]) {
+    rec.shiftsByBarista[bName] = {
+      name: bName,
+      cash: 0,
+      card: 0,
+      checks: 0,
+      salesRevenue: 0,
+      writeoff: 0,
+      writeoffShots: 0,
+      coffeeQty: 0,
+      nonCoffeeQty: 0,
+      reviewQty: 0,
+      prevCounter: null,
+      counter: null,
+      cups: 0
+    };
+  }
+  return rec.shiftsByBarista[bName];
+}
+
+function mergeIntoBatchDay(dateStr, baristaName, part) {
+  const d = dateStr || reportDate || isoToday();
+  const sumMode = !$("sumModeChk") || $("sumModeChk").checked;
+  if (!sumMode && !batchDaysMap[d]) {
+    batchDaysMap = {};
+  }
+  const rec = ensureBatchDayRecord(d);
+  if (part.hash) {
+    if (rec.csvHashes.includes(part.hash)) {
+      toast("⚠️ Повторная загрузка CSV пропущена (дубликат по хэшу): " + (part.fileName || part.hash));
+      return false;
+    }
+    rec.csvHashes.push(part.hash);
+  }
   if (baristaName) {
     baristaName.split(",").map((s) => s.trim()).filter(Boolean).forEach((n) => {
       if (!rec.baristas.includes(n)) rec.baristas.push(n);
     });
   }
   if (part.fileName && !rec.files.includes(part.fileName)) rec.files.push(part.fileName);
+  const primaryBarista = (part.specificBarista || (baristaName ? baristaName.split(",")[0].trim() : "") || "Бариста");
 
   if (part.kind === "trans") {
     rec.cash += part.cash || 0;
     rec.card += part.card || 0;
     rec.checks += part.checks || 0;
-    rec.shifts.push({ name: baristaName || "Бариста", cash: part.cash || 0, card: part.card || 0, checks: part.checks || 0, writeoff: 0, cups: part.checks || 0 });
+    const sh = ensureShiftInBatchDay(rec, primaryBarista);
+    sh.cash += part.cash || 0;
+    sh.card += part.card || 0;
+    sh.checks += part.checks || 0;
   } else if (part.kind === "sales") {
     rec.salesTotal += part.total || 0;
-    rec.coffeeCups += part.coffeeCups || 0;
-    (part.items || []).forEach((it) => {
-      const pm = rec.productsMap[it.name] || (rec.productsMap[it.name] = { name: it.name, qty: 0, sum: 0 });
+    rec.coffeeQty += part.coffeeQty != null ? part.coffeeQty : (part.coffeeCups || 0);
+    rec.nonCoffeeQty += part.nonCoffeeQty || 0;
+    rec.reviewQty += part.reviewQty || 0;
+    const sh = ensureShiftInBatchDay(rec, primaryBarista);
+    sh.salesRevenue += part.total || 0;
+    sh.coffeeQty += part.coffeeQty != null ? part.coffeeQty : (part.coffeeCups || 0);
+    sh.nonCoffeeQty += part.nonCoffeeQty || 0;
+    sh.reviewQty += part.reviewQty || 0;
+    sh.cups = sh.coffeeQty;
+    (part.items || part.products || []).forEach((it) => {
+      if (!it || !it.name) return;
+      const pm = rec.productsMap[it.name] || (rec.productsMap[it.name] = {
+        name: it.name,
+        price: it.price || 0,
+        kind: it.kind || (window.CoffeeSalesReconciliation ? window.CoffeeSalesReconciliation.classifyCoffee(it.name) : "coffee"),
+        qty: 0,
+        sum: 0,
+        date: d,
+        barista: primaryBarista,
+        csvHash: part.hash || ""
+      });
       pm.qty += it.qty || 0;
       pm.sum += it.sum || 0;
     });
   } else if (part.kind === "shift") {
-    rec.cash += part.cash || 0;
-    rec.card += part.card || 0;
-    rec.checks += part.checks || 0;
-    rec.writeoff += part.writeoff || 0;
-    rec.coffeeCups += part.cups || 0;
-    if (Array.isArray(part.shifts)) rec.shifts = rec.shifts.concat(part.shifts);
+    if (part.counterStart != null && rec.counterStart === null) rec.counterStart = part.counterStart;
+    if (part.counterEnd != null) rec.counterEnd = part.counterEnd;
+    rec.writeoffShots += part.writeoffShots != null ? part.writeoffShots : (part.writeoff || 0);
+    if (Array.isArray(part.shifts)) {
+      part.shifts.forEach((s) => {
+        const sh = ensureShiftInBatchDay(rec, s.name || primaryBarista);
+        if (s.cash && !sh.cash && !sh.card) sh.cash = s.cash;
+        if (s.card && !sh.card) sh.card = s.card;
+        if (s.prevCounter != null) sh.prevCounter = s.prevCounter;
+        if (s.counter != null) sh.counter = s.counter;
+        sh.writeoffShots += Number(s.writeoffShots != null ? s.writeoffShots : (s.writeoffQty != null ? s.writeoffQty : s.writeoff)) || 0;
+        if (!sh.coffeeQty && s.cupsSold != null) sh.cups = s.cupsSold;
+      });
+    }
   }
+  return true;
 }
 
 function finalizeBatchDay(dObj) {
   const products = Object.values(dObj.productsMap || {}).sort((a, b) => b.qty - a.qty);
-  const cash = dObj.cash || (dObj.salesTotal && !dObj.card ? dObj.salesTotal : 0);
-  const card = dObj.card || 0;
-  const checks = dObj.checks || dObj.coffeeCups || products.reduce((s, x) => s + x.qty, 0) || 1;
+  const shiftsList = Object.values(dObj.shiftsByBarista || {}).map((sh) => {
+    const effCash = (sh.cash + sh.card > 0) ? sh.cash : (sh.salesRevenue || 0);
+    const effCard = sh.card || 0;
+    const effChecks = sh.checks || sh.coffeeQty || 1;
+    const delta = (sh.prevCounter != null && sh.counter != null && window.coffeeCounterDelta)
+      ? window.coffeeCounterDelta(sh.prevCounter, sh.counter)
+      : null;
+    const rec = (delta !== null && window.CoffeeSalesReconciliation)
+      ? window.CoffeeSalesReconciliation.reconcile(delta, { coffeeQty: sh.coffeeQty, nonCoffeeQty: sh.nonCoffeeQty, reviewQty: sh.reviewQty }, sh.writeoffShots || 0, 0)
+      : null;
+    return {
+      name: sh.name,
+      cash: effCash,
+      card: effCard,
+      checks: effChecks,
+      writeoff: sh.writeoff || 0,
+      writeoffShots: sh.writeoffShots || 0,
+      prevCounter: sh.prevCounter,
+      counter: sh.counter,
+      counterDelta: delta,
+      coffeeQty: sh.coffeeQty || 0,
+      nonCoffeeQty: sh.nonCoffeeQty || 0,
+      reviewQty: sh.reviewQty || 0,
+      unaccountedShots: rec ? rec.unaccountedShots : 0,
+      cups: sh.coffeeQty || sh.cups || effChecks
+    };
+  });
+
+  const totalFromShiftsCash = shiftsList.reduce((a, s) => a + (s.cash || 0), 0);
+  const totalFromShiftsCard = shiftsList.reduce((a, s) => a + (s.card || 0), 0);
+  const cash = (dObj.cash + dObj.card > 0) ? dObj.cash : (totalFromShiftsCash || dObj.salesTotal || 0);
+  const card = (dObj.cash + dObj.card > 0) ? dObj.card : (totalFromShiftsCard || 0);
+  const coffeeQty = dObj.coffeeQty || shiftsList.reduce((a, s) => a + (s.coffeeQty || 0), 0);
+  const nonCoffeeQty = dObj.nonCoffeeQty || shiftsList.reduce((a, s) => a + (s.nonCoffeeQty || 0), 0);
+  const reviewQty = dObj.reviewQty || shiftsList.reduce((a, s) => a + (s.reviewQty || 0), 0);
+  const checks = dObj.checks || shiftsList.reduce((a, s) => a + (s.checks || 0), 0) || (coffeeQty + nonCoffeeQty + reviewQty) || 1;
+  const writeoffShots = dObj.writeoffShots || shiftsList.reduce((a, s) => a + (s.writeoffShots || 0), 0);
+  const writeoffRub = dObj.writeoff || shiftsList.reduce((a, s) => a + (s.writeoff || 0), 0);
+
+  const firstWithStart = shiftsList.find((s) => s.prevCounter != null);
+  const lastWithEnd = shiftsList.slice().reverse().find((s) => s.counter != null);
+  const counterStart = dObj.counterStart != null ? dObj.counterStart : (firstWithStart ? firstWithStart.prevCounter : null);
+  const counterEnd = dObj.counterEnd != null ? dObj.counterEnd : (lastWithEnd ? lastWithEnd.counter : null);
+  const totalGrinderShots = shiftsList.some((s) => s.counterDelta != null)
+    ? shiftsList.reduce((a, s) => a + (s.counterDelta || 0), 0)
+    : ((counterStart != null && counterEnd != null && window.coffeeCounterDelta) ? (window.coffeeCounterDelta(counterStart, counterEnd) || 0) : 0);
+  const unaccountedShots = totalGrinderShots > 0 ? Math.max(0, totalGrinderShots - (coffeeQty + writeoffShots)) : 0;
+
   return {
     date: dObj.date,
     barista: dObj.baristas.join(", ") || "Бариста",
-    shifts: dObj.shifts.length ? dObj.shifts : [{ name: dObj.baristas.join(", ") || "Бариста", cash, card, checks, writeoff: dObj.writeoff || 0, cups: dObj.coffeeCups || checks }],
+    shifts: shiftsList.length ? shiftsList : [{ name: dObj.baristas.join(", ") || "Бариста", cash, card, checks, writeoff: writeoffRub, writeoffShots, coffeeQty, nonCoffeeQty, reviewQty, cups: coffeeQty || checks }],
     cash,
     card,
     revenue: cash + card,
     checks,
-    writeoff: dObj.writeoff || 0,
-    coffeeCups: dObj.coffeeCups || checks,
-    salesTotal: dObj.salesTotal || 0,
-    products: products.slice(0, 12),
-    topItems: products.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
+    writeoff: writeoffRub,
+    writeoffShots,
+    counterStart,
+    counterEnd,
+    counterDelta: totalGrinderShots,
+    coffeeCups: coffeeQty,
+    coffeeQty,
+    nonCoffeeQty,
+    reviewQty,
+    unaccountedShots,
+    salesTotal: dObj.salesTotal || (cash + card),
+    products: products,
+    csvHashes: dObj.csvHashes || [],
+    topItems: products.slice(0, 3).map((x) => x.name.replace(/\s+(шт\.?|бут\.?)$/i, "") + " ×" + x.qty).join(", "),
     files: dObj.files || []
   };
 }
@@ -1435,30 +1596,32 @@ function renderBatchSummaryUI() {
   if (!keys.length) { box.hidden = true; return; }
   const list = keys.map((k) => finalizeBatchDay(batchDaysMap[k]));
   const grandRev = list.reduce((s, x) => s + x.revenue, 0);
-  const grandWo = list.reduce((s, x) => s + x.writeoff, 0);
-  const grandCups = list.reduce((s, x) => s + x.coffeeCups, 0);
+  const grandWoShots = list.reduce((s, x) => s + (x.writeoffShots || 0), 0);
+  const grandCoffee = list.reduce((s, x) => s + (x.coffeeQty || 0), 0);
+  const grandReview = list.reduce((s, x) => s + (x.reviewQty || 0), 0);
 
   box.hidden = false;
   box.innerHTML =
     '<div style="background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:14px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
-        '<b>📊 Автоматическая сводка по загруженным данным (' + list.length + ' дн.)</b>' +
-        '<span style="font-size:13px"><b style="color:var(--good)">Доход: ' + rub(grandRev) + '</b> · <b style="color:var(--bad)">Списания: ' + grandWo + '</b> · ☕ Чашек: <b>' + grandCups + '</b></span>' +
+        '<b>📊 Сводка по распознанным датам и сменам (' + list.length + ' дн.)</b>' +
+        '<span style="font-size:13px"><b style="color:var(--good)">Выручка: ' + rub(grandRev) + '</b> · ☕ Кофе (номенклатура): <b>' + grandCoffee + ' шт.</b>' + (grandReview ? ' · <b style="color:var(--warn)">На проверку: ' + grandReview + ' шт.</b>' : '') + (grandWoShots ? ' · <b style="color:var(--bad)">Списания: ' + grandWoShots + ' порц.</b>' : '') + '</span>' +
       '</div>' +
       list.map((d) => (
         '<div style="padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<div>' +
             '<b>📅 ' + esc(d.date.split("-").reverse().join(".")) + '</b> · 👤 <b>' + esc(d.barista) + '</b>' +
-            (d.shifts.length > 1 ? ' <span style="font-size:11.5px;padding:1px 6px;border-radius:99px;background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good);font-weight:700">Сумма ' + d.shifts.length + ' смен</span>' : '') +
-            '<div class="muted" style="font-size:12px">Нал: ' + rub(d.cash) + ' · Безнал: ' + rub(d.card) + ' · Чеков/чашек: ' + d.checks + (d.topItems ? ' · Хиты: ' + d.topItems : '') + '</div>' +
+            (d.shifts.length > 1 ? ' <span style="font-size:11.5px;padding:1px 6px;border-radius:99px;background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good);font-weight:700">Смен: ' + d.shifts.length + '</span>' : '') +
+            '<div class="muted" style="font-size:12px">Нал: ' + rub(d.cash) + ' · Безнал: ' + rub(d.card) + ' · Чеков: ' + d.checks + ' · Кофе: <b>' + d.coffeeQty + ' шт.</b> · Не кофе: ' + d.nonCoffeeQty + ' шт.' + (d.reviewQty ? ' · <span style="color:var(--warn)">Неопределённых: ' + d.reviewQty + ' шт.</span>' : '') + '</div>' +
+            (d.shifts.length > 1 ? '<div class="muted" style="font-size:11.5px;margin-top:2px">' + d.shifts.map((s) => esc(s.name) + ': ' + rub(s.cash + s.card) + ' (кофе ' + (s.coffeeQty || 0) + ' шт.' + (s.counterDelta != null ? ', счётчик +' + s.counterDelta : '') + ')').join(' · ') + '</div>' : '') +
           '</div>' +
           '<div style="text-align:right">' +
             '<b style="color:var(--good);font-size:15px">' + rub(d.revenue) + '</b>' +
-            (d.writeoff ? '<div style="color:var(--bad);font-size:12px;font-weight:700">Списания: ' + d.writeoff + '</div>' : '') +
+            (d.unaccountedShots > 0 ? '<div style="color:var(--bad);font-size:12px;font-weight:700">⚠️ Разница счётчика: ' + d.unaccountedShots + ' порц.</div>' : '') +
           '</div>' +
         '</div>'
       )).join("") +
-      '<button type="button" class="btn" id="saveAllBatchBtn" style="margin-top:12px;min-height:46px;font-size:15px">💾 Записать все распознанные дни (' + list.length + ') в систему</button>' +
+      '<button type="button" class="btn" id="saveAllBatchBtn" style="margin-top:12px;min-height:46px;font-size:15px">💾 Записать все распознанные дни (' + list.length + ') и номенклатуру в систему</button>' +
     '</div>';
 
   /* Подставляем последний распознанный день в основную карточку Кассы */
@@ -1467,14 +1630,32 @@ function renderBatchSummaryUI() {
     setReportDate(last.date);
     $("shiftBaristaIn").value = last.barista;
     $("who").textContent = last.barista;
-    $("writeOffs").value = last.writeoff;
-    activeShiftCounterCups = last.coffeeCups;
-    trans = { cash: last.cash, card: last.card, checks: last.checks, date: last.date, barista: last.barista, shifts: last.shifts };
+    if ($("writeOffs")) $("writeOffs").value = last.writeoff || 0;
+    if ($("writeOffShots")) $("writeOffShots").value = last.writeoffShots || 0;
+    if ($("counterStartIn") && last.counterStart != null) $("counterStartIn").value = last.counterStart;
+    if ($("counterEndIn") && last.counterEnd != null) $("counterEndIn").value = last.counterEnd;
+    activeShiftCounterCups = last.coffeeQty;
+    trans = {
+      cash: last.cash,
+      card: last.card,
+      checks: last.checks,
+      date: last.date,
+      barista: last.barista,
+      shifts: last.shifts,
+      coffeeQty: last.coffeeQty,
+      nonCoffeeQty: last.nonCoffeeQty,
+      reviewQty: last.reviewQty,
+      csvHashes: last.csvHashes
+    };
     if (last.products && last.products.length) {
       sales = last.products.slice();
       sales.total = last.salesTotal || last.revenue;
-      sales.coffeeCups = last.coffeeCups;
-      sales.totalQty = last.checks;
+      sales.coffeeCups = last.coffeeQty;
+      sales.coffeeQty = last.coffeeQty;
+      sales.nonCoffeeQty = last.nonCoffeeQty;
+      sales.reviewQty = last.reviewQty;
+      sales.totalQty = last.coffeeQty + last.nonCoffeeQty + last.reviewQty;
+      sales.csvHashes = last.csvHashes;
     }
     renderCash();
   }
@@ -1483,7 +1664,7 @@ function renderBatchSummaryUI() {
     const mergeMode = (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace";
     await post({ action: "batch_submit_cash", mergeMode, days: list });
     markDone("КАССА"); drawTabs();
-    finish(true, "Сохранено дней: " + list.length + " · Общий доход " + rub(grandRev) + " · все смены просуммированы и доступны на Дашборде и в Отчётах.");
+    finish(true, "Сохранено дней: " + list.length + " · Общая выручка " + rub(grandRev) + " · Кофейных напитков по номенклатуре: " + grandCoffee + " шт. · Данные записаны в «Кассу» и «Продажи».");
     if ($("toDash")) $("toDash").hidden = true;
   };
 }
@@ -1492,6 +1673,8 @@ $("unifiedFilesIn").addEventListener("change", async (e) => {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
   if (!$("sumModeChk") || !$("sumModeChk").checked) batchDaysMap = {};
+  let processedCount = 0;
+  let skippedDupCount = 0;
   for (const f of files) {
     try {
       const txt = await readText(f);
@@ -1499,30 +1682,114 @@ $("unifiedFilesIn").addEventListener("change", async (e) => {
         const sDays = parseShiftCounterText(txt, Number($("initCounterIn").value) || 600);
         sDays.forEach((sd) => {
           mergeIntoBatchDay(sd.date, sd.baristas.join(", "), {
-            kind: "shift", fileName: f.name, cash: sd.totalCash, card: 0,
-            checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoff: sd.totalWoQty,
-            shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoff: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
+            kind: "shift",
+            fileName: f.name,
+            cash: sd.totalCash,
+            card: 0,
+            checks: sd.totalSoldCups || sd.totalCups,
+            cups: sd.totalCups,
+            writeoffShots: sd.totalWoQty,
+            counterStart: sd.startCounter,
+            counterEnd: sd.endCounter,
+            shifts: sd.shifts.map((s) => ({
+              name: s.name,
+              cash: s.cash,
+              card: 0,
+              checks: s.cupsSold || s.cupsTotal || 0,
+              writeoffShots: s.writeoffQty,
+              prevCounter: s.prevCounter,
+              counter: s.counter,
+              cups: s.cupsTotal
+            }))
           });
         });
+        processedCount++;
       } else {
-        const rows = parseCsv(txt);
-        const kind = detectCsvKind(rows, f.name);
+        const kind = detectCsvKind(txt, f.name);
         if (kind === "trans") {
-          const td = calcTrans(rows, f.name);
-          mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: f.name, cash: td.cash, card: td.card, checks: td.checks });
+          const td = calcTrans(txt, f.name);
+          if (isCsvHashAlreadyUploaded(td.hash, td.date)) {
+            skippedDupCount++;
+            toast("⚠️ Файл транзакций «" + f.name + "» уже загружен ранее (защита по хэшу)");
+            continue;
+          }
+          sessionUploadedCsvHashes.add(td.hash);
+          const datesKeys = Object.keys(td.byDate || {});
+          if (datesKeys.length > 1) {
+            datesKeys.forEach((dKey) => {
+              const dSlice = td.byDate[dKey];
+              Object.values(dSlice.shiftsByBarista || {}).forEach((bSlice) => {
+                mergeIntoBatchDay(dKey, bSlice.name, {
+                  kind: "trans",
+                  fileName: f.name,
+                  hash: td.hash + "_" + dKey + "_" + bSlice.name,
+                  specificBarista: bSlice.name,
+                  cash: Math.round(bSlice.cash),
+                  card: Math.round(bSlice.card),
+                  checks: bSlice.checks
+                });
+              });
+            });
+          } else {
+            mergeIntoBatchDay(td.date, td.barista, {
+              kind: "trans",
+              fileName: f.name,
+              hash: td.hash,
+              specificBarista: td.specificBarista,
+              cash: td.cash,
+              card: td.card,
+              checks: td.checks
+            });
+          }
           applyParsedCsv("trans", td, f.name);
+          processedCount++;
         } else {
-          const sd = calcSales(rows, f.name);
-          mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: f.name, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
+          const sd = calcSales(txt, f.name);
+          if (isCsvHashAlreadyUploaded(sd.hash, sd.date)) {
+            skippedDupCount++;
+            toast("⚠️ Файл продаж «" + f.name + "» уже загружен ранее (защита по хэшу)");
+            continue;
+          }
+          sessionUploadedCsvHashes.add(sd.hash);
+          const datesKeys = Object.keys(sd.byDate || {});
+          if (datesKeys.length > 1) {
+            datesKeys.forEach((dKey) => {
+              const dSlice = sd.byDate[dKey];
+              mergeIntoBatchDay(dKey, sd.barista, {
+                kind: "sales",
+                fileName: f.name,
+                hash: sd.hash + "_" + dKey,
+                specificBarista: sd.specificBarista,
+                total: dSlice.revenue,
+                coffeeQty: dSlice.coffeeQty,
+                nonCoffeeQty: dSlice.nonCoffeeQty,
+                reviewQty: dSlice.reviewQty,
+                items: dSlice.products
+              });
+            });
+          } else {
+            mergeIntoBatchDay(sd.date, sd.barista, {
+              kind: "sales",
+              fileName: f.name,
+              hash: sd.hash,
+              specificBarista: sd.specificBarista,
+              total: sd.total,
+              coffeeQty: sd.coffeeQty,
+              nonCoffeeQty: sd.nonCoffeeQty,
+              reviewQty: sd.reviewQty,
+              items: sd.products
+            });
+          }
           applyParsedCsv("sales", sd, f.name);
+          processedCount++;
         }
       }
     } catch (err) {
-      toast("Не удалось обработать " + f.name);
+      toast("Не удалось обработать " + f.name + ": " + (err && err.message ? err.message : ""));
     }
   }
   $("fUnified").classList.add("ok");
-  $("unifiedState").textContent = "✓ Обработано файлов: " + files.length + " · разбито по датам и бариста";
+  $("unifiedState").textContent = "✓ Обработано файлов: " + processedCount + (skippedDupCount ? " (пропущено дубликатов: " + skippedDupCount + ")" : "") + " · разбито по датам и бариста";
   renderBatchSummaryUI();
 });
 
@@ -1530,23 +1797,26 @@ document.querySelectorAll("[data-preset]").forEach((btn) => btn.addEventListener
   const key = btn.dataset.preset;
   if (key === "all_batch") {
     batchDaysMap = {};
+    sessionUploadedCsvHashes.clear();
     ["30_10", "31_10", "01_11"].forEach((k) => {
       const p = SAMPLE_FILES_DB[k];
+      if (!p) return;
       if (p.transCsv) {
-        const td = calcTrans(parseCsv(p.transCsv), p.transName);
-        mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, cash: td.cash, card: td.card, checks: td.checks });
+        const td = calcTrans(p.transCsv, p.transName);
+        mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, hash: td.hash, specificBarista: td.specificBarista, cash: td.cash, card: td.card, checks: td.checks });
       }
       if (p.salesCsv) {
-        const sd = calcSales(parseCsv(p.salesCsv), p.salesName);
-        mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
+        const sd = calcSales(p.salesCsv, p.salesName);
+        mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, hash: sd.hash, specificBarista: sd.specificBarista, total: sd.total, coffeeQty: sd.coffeeQty, nonCoffeeQty: sd.nonCoffeeQty, reviewQty: sd.reviewQty, items: sd.products });
       }
     });
     const sDays = parseShiftCounterText(SAMPLE_FILES_DB.shift_text, 600);
     sDays.forEach((sd) => {
       mergeIntoBatchDay(sd.date, sd.baristas.join(", "), {
         kind: "shift", fileName: "Смены 3.11 и 4.11", cash: sd.totalCash, card: 0,
-        checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoff: sd.totalWoQty,
-        shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoff: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
+        checks: sd.totalSoldCups || sd.totalCups, cups: sd.totalCups, writeoffShots: sd.totalWoQty,
+        counterStart: sd.startCounter, counterEnd: sd.endCounter,
+        shifts: sd.shifts.map((s) => ({ name: s.name, cash: s.cash, card: 0, checks: s.cupsSold || s.cupsTotal || 0, writeoffShots: s.writeoffQty, prevCounter: s.prevCounter, counter: s.counter, cups: s.cupsTotal }))
       });
     });
     $("fUnified").classList.add("ok");
@@ -1558,15 +1828,16 @@ document.querySelectorAll("[data-preset]").forEach((btn) => btn.addEventListener
   const p = SAMPLE_FILES_DB[key];
   if (!p) return;
   batchDaysMap = {};
+  sessionUploadedCsvHashes.clear();
   trans = null; sales = null; activeShiftCounterCups = null;
   if (p.transCsv) {
-    const td = calcTrans(parseCsv(p.transCsv), p.transName);
-    mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, cash: td.cash, card: td.card, checks: td.checks });
+    const td = calcTrans(p.transCsv, p.transName);
+    mergeIntoBatchDay(td.date, td.barista, { kind: "trans", fileName: p.transName, hash: td.hash, specificBarista: td.specificBarista, cash: td.cash, card: td.card, checks: td.checks });
     applyParsedCsv("trans", td, p.transName);
   }
   if (p.salesCsv) {
-    const sd = calcSales(parseCsv(p.salesCsv), p.salesName);
-    mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, total: sd.total, coffeeCups: sd.coffeeCups, items: sd });
+    const sd = calcSales(p.salesCsv, p.salesName);
+    mergeIntoBatchDay(sd.date, sd.barista, { kind: "sales", fileName: p.salesName, hash: sd.hash, specificBarista: sd.specificBarista, total: sd.total, coffeeQty: sd.coffeeQty, nonCoffeeQty: sd.nonCoffeeQty, reviewQty: sd.reviewQty, items: sd.products });
     applyParsedCsv("sales", sd, p.salesName);
   }
   $("fUnified").classList.add("ok");
@@ -1640,10 +1911,17 @@ function parseShiftCounterText(rawText, initialCounterValue) {
     d.startCounter = prevCnt;
     d.shifts.forEach((s) => {
       s.prevCounter = prevCnt;
-      if (s.counter !== null && prevCnt !== null && s.counter >= prevCnt) {
-        s.cupsTotal = s.counter - prevCnt;
+      const delta = (s.counter !== null && prevCnt !== null && window.coffeeCounterDelta)
+        ? window.coffeeCounterDelta(prevCnt, s.counter)
+        : (s.counter !== null && prevCnt !== null && s.counter >= prevCnt ? s.counter - prevCnt : null);
+      if (delta !== null) {
+        s.cupsTotal = delta;
+        s.wrapped = s.counter < prevCnt;
         s.cupsSold = Math.max(0, s.cupsTotal - s.writeoffQty);
-      } else { s.cupsTotal = null; s.cupsSold = null; }
+      } else {
+        s.cupsTotal = null;
+        s.cupsSold = null;
+      }
       if (s.counter !== null) prevCnt = s.counter;
     });
     d.endCounter = prevCnt;
@@ -1661,14 +1939,29 @@ function applyShiftDayToForm(d) {
   const bNames = d.baristas.join(", ");
   $("shiftBaristaIn").value = bNames;
   $("who").textContent = bNames || userName;
-  $("writeOffs").value = d.totalWoQty;
+  if ($("writeOffShots")) $("writeOffShots").value = d.totalWoQty;
+  if ($("counterStartIn") && d.startCounter != null) $("counterStartIn").value = d.startCounter;
+  if ($("counterEndIn") && d.endCounter != null) $("counterEndIn").value = d.endCounter;
   activeShiftCounterCups = d.totalCups;
   trans = {
     cash: d.totalCash,
     card: (trans && !trans.fromShiftText && trans.date === d.date) ? trans.card : 0,
-    checks: d.totalSoldCups || d.totalCups || 1,
+    checks: (trans && !trans.fromShiftText && trans.date === d.date && trans.checks) ? trans.checks : (d.totalSoldCups || d.totalCups || 1),
     date: d.date,
     barista: bNames,
+    counterStart: d.startCounter,
+    counterEnd: d.endCounter,
+    writeoffShots: d.totalWoQty,
+    shifts: d.shifts.map((s) => ({
+      name: s.name,
+      cash: s.cash,
+      card: 0,
+      checks: s.cupsSold || s.cupsTotal || 0,
+      writeoffShots: s.writeoffQty,
+      prevCounter: s.prevCounter,
+      counter: s.counter,
+      cups: s.cupsTotal
+    })),
     fromShiftText: true
   };
   renderCash();
@@ -1712,12 +2005,12 @@ $("calcShiftBtn").onclick = () => {
       d.shifts.map((s) => (
         '<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0;border-top:1px dashed var(--line)">' +
           '<span>👤 <b>' + esc(s.name) + '</b>: счётчик ' + (s.prevCounter != null ? s.prevCounter + ' → ' : '') + '<b>' + (s.counter ?? '—') + '</b>' +
-          (s.cupsTotal != null ? ' (<b>+' + s.cupsTotal + '</b> чашек, списано <b>' + s.writeoffQty + '</b>, продано <b>' + s.cupsSold + '</b>)' : ' (списано ' + s.writeoffQty + ')') + '</span>' +
+          (s.cupsTotal != null ? ' (<b>+' + s.cupsTotal + '</b> срабатываний' + (s.wrapped ? ' [переход 999→0]' : '') + ', списано порций: <b>' + s.writeoffQty + '</b>)' : ' (списано порций: ' + s.writeoffQty + ')') + '</span>' +
           '<b>Нал: ' + rub(s.cash) + '</b>' +
         '</div>'
       )).join("") +
       '<div style="display:flex;justify-content:space-between;font-size:14px;padding-top:7px;margin-top:4px;border-top:1px solid var(--line);font-weight:700">' +
-        '<span>Итого по счётчику: ' + d.totalCups + ' чашек (списано ' + d.totalWoQty + ', чистых ' + d.totalSoldCups + ')</span>' +
+        '<span>Итого срабатываний счётчика: ' + d.totalCups + ' (списано порций: ' + d.totalWoQty + ')</span>' +
         '<span style="color:var(--good)">Итого наличные: ' + rub(d.totalCash) + '</span>' +
       '</div>' +
     '</div>';
@@ -1733,16 +2026,73 @@ $("shiftCalcResult").addEventListener("click", (e) => {
   if (d) { applyShiftDayToForm(d); toast("Выбран день " + d.date.split("-").reverse().join(".")); }
 });
 
+["counterStartIn", "counterEndIn", "writeOffShots", "writeOffs"].forEach((id) => {
+  if ($(id)) $(id).addEventListener("input", () => renderCash());
+});
+
+function getActiveCounterInfo() {
+  const startRaw = $("counterStartIn") ? $("counterStartIn").value : "";
+  const endRaw = ($("counterEndIn") && $("counterEndIn").value !== "") ? $("counterEndIn").value : ($("quickCounterIn") ? $("quickCounterIn").value : "");
+  const cStart = startRaw !== "" ? Number(startRaw) : (trans && trans.counterStart != null ? Number(trans.counterStart) : null);
+  const cEnd = endRaw !== "" ? Number(endRaw) : (trans && trans.counterEnd != null ? Number(trans.counterEnd) : null);
+  const delta = (cStart !== null && cEnd !== null && window.coffeeCounterDelta)
+    ? window.coffeeCounterDelta(cStart, cEnd)
+    : (activeShiftCounterCups != null ? Number(activeShiftCounterCups) : null);
+  const wrapped = cStart !== null && cEnd !== null && cEnd < cStart && cStart < 1000;
+  return { counterStart: cStart, counterEnd: cEnd, grinderDelta: delta, wrapped };
+}
+
 function renderCash() {
   const t = trans, total = t ? t.cash + t.card : 0, pct = Math.round(total / PLAN * 100);
+  const cntInfo = getActiveCounterInfo();
+  const woShots = Math.max(0, Math.round(parseFloat($("writeOffShots") ? $("writeOffShots").value : 0) || 0));
+  const woRub = Math.max(0, Math.round(parseFloat($("writeOffs") ? $("writeOffs").value : 0) || 0));
+  const soldCoffee = sales && sales.coffeeQty != null ? sales.coffeeQty : (t && t.coffeeQty != null ? t.coffeeQty : 0);
+  const nonCoffee = sales && sales.nonCoffeeQty != null ? sales.nonCoffeeQty : (t && t.nonCoffeeQty != null ? t.nonCoffeeQty : 0);
+  const reviewQty = sales && sales.reviewQty != null ? sales.reviewQty : (t && t.reviewQty != null ? t.reviewQty : 0);
+
+  if ($("counterDeltaPreview")) {
+    if (cntInfo.grinderDelta !== null) {
+      $("counterDeltaPreview").innerHTML = "Срабатывания счётчика: <b>" + cntInfo.grinderDelta + "</b>" +
+        (cntInfo.counterStart !== null && cntInfo.counterEnd !== null ? " (" + cntInfo.counterStart + " → " + cntInfo.counterEnd + (cntInfo.wrapped ? " · переход 999→0" : "") + ")" : "");
+    } else {
+      $("counterDeltaPreview").textContent = "Срабатывания счётчика: укажите начало и конец (0–999)";
+    }
+  }
+
   $("cTotal").textContent = rub(total);
   $("cMeter").style.width = Math.min(pct, 100) + "%";
   $("cPlan").textContent = t ? "План " + rub(PLAN) + " · выполнено " + pct + "%" : "План " + rub(PLAN);
   $("cCash").textContent = t ? rub(t.cash) : "—";
   $("cCard").textContent = t ? rub(t.card) : "—";
-  $("cChecks").textContent = t ? (t.checks + (sales && sales.totalQty ? " (" + sales.totalQty + " поз.)" : "")) : "—";
-  const coffeeInfo = sales && sales.coffeeCups ? (sales.coffeeCups + " чаш. · ") : (activeShiftCounterCups ? (activeShiftCounterCups + " чаш. · ") : "");
+  $("cChecks").textContent = t ? (t.checks + " чек." + (sales && sales.totalQty ? " (" + sales.totalQty + " поз.)" : "")) : "—";
+  const coffeeInfo = soldCoffee ? (soldCoffee + " кофе · ") : (cntInfo.grinderDelta != null ? (cntInfo.grinderDelta + " сраб. · ") : "");
   $("cAvg").textContent = t && t.checks ? (coffeeInfo + rub(Math.round(total / t.checks))) : "—";
+
+  const recPanel = $("reconciliationPanel");
+  if (recPanel) {
+    if ((sales && sales.length) || cntInfo.grinderDelta !== null) {
+      const rec = (window.CoffeeSalesReconciliation && cntInfo.grinderDelta !== null)
+        ? window.CoffeeSalesReconciliation.reconcile(cntInfo.grinderDelta, { coffeeQty: soldCoffee, nonCoffeeQty: nonCoffee, reviewQty: reviewQty }, woShots, 0)
+        : null;
+      recPanel.hidden = false;
+      recPanel.style.borderColor = (rec && rec.unaccountedShots > 0) || reviewQty > 0 ? "var(--warn)" : "var(--good)";
+      recPanel.innerHTML =
+        '<div style="font-weight:700;margin-bottom:6px">🔍 Сверка кассы и счётчика кофемолки (по номенклатуре)</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:6px;font-size:12.5px">' +
+          '<div>☕ Кофейные напитки: <b>' + soldCoffee + ' шт.</b></div>' +
+          '<div>🍰 Не кофейные позиции: <b>' + nonCoffee + ' шт.</b></div>' +
+          '<div>❓ Неопределённая номенклатура: <b style="color:' + (reviewQty > 0 ? 'var(--warn)' : 'inherit') + '">' + reviewQty + ' шт.</b></div>' +
+          '<div>🔢 Срабатывания счётчика: <b>' + (cntInfo.grinderDelta !== null ? cntInfo.grinderDelta : '—') + '</b></div>' +
+          '<div>🗑 Списания, порции: <b>' + woShots + ' шт.</b> · Руб.: <b>' + rub(woRub) + '</b></div>' +
+          '<div>⚠️ Необъяснённая разница: <b style="color:' + (rec && rec.unaccountedShots > 0 ? 'var(--bad)' : 'var(--good)') + '">' + (rec ? rec.unaccountedShots : '—') + '</b></div>' +
+        '</div>' +
+        (cntInfo.wrapped ? '<div style="margin-top:6px;font-size:12px;color:var(--warn)">ℹ️ Зафиксирован переход счётчика через 999 → 0 (' + cntInfo.counterStart + ' → ' + cntInfo.counterEnd + '). Проверьте показание физически на дисплее прибора.</div>' : '');
+    } else {
+      recPanel.hidden = true;
+    }
+  }
+
   const top = sales ? sales.slice(0, 5) : [];
   $("topPanel").hidden = !top.length;
   const m = top.length ? (top[0].qty || 1) : 1;
@@ -1753,7 +2103,7 @@ function renderCash() {
   if (t && sum && !t.fromSalesOnly) {
     checkMsg = diff <= 1 ? "✓ Сверка: «Продажи» (" + rub(sum) + ") точно совпадают с «Транзакциями»" : "⚠️ «Продажи» на " + rub(sum) + ", а «Транзакции» на " + rub(total) + " (разница " + rub(diff) + ")";
   } else if (t && t.fromSalesOnly) {
-    checkMsg = "ℹ️ Выручка рассчитана по «Продажи.csv» (" + rub(sum) + ", кофейных напитков: " + (sales.coffeeCups || 0) + " шт.)";
+    checkMsg = "ℹ️ Выручка рассчитана по «Продажи.csv» (" + rub(sum) + ", кофейных напитков: " + soldCoffee + " шт., не кофе: " + nonCoffee + " шт." + (reviewQty ? ", неопределённых: " + reviewQty + " шт." : "") + ")";
   } else if (t && t.fromShiftText) {
     checkMsg = "✓ Рассчитано по счётчикам смен бариста (" + (t.barista || "") + ")";
   }
@@ -1770,11 +2120,27 @@ function applyManualCashInputs() {
   const kVal = Math.max(0, Math.round(Number($("manChecksIn") ? $("manChecksIn").value : 0) || 0));
   if (cVal === 0 && bVal === 0 && kVal === 0) return;
   const who = ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName || "Бариста";
+  const woRub = Math.max(0, Math.round(parseFloat($("writeOffs") ? $("writeOffs").value : 0) || 0));
+  const woShots = Math.max(0, Math.round(parseFloat($("writeOffShots") ? $("writeOffShots").value : 0) || 0));
+  const cntInfo = getActiveCounterInfo();
   trans = {
     cash: cVal,
     card: bVal,
     checks: kVal || Math.max(1, Math.round((cVal + bVal) / 35)),
-    shifts: [{ name: who, cash: cVal, card: bVal, checks: kVal || Math.max(1, Math.round((cVal + bVal) / 35)), writeoff: Math.max(0, Math.round(parseFloat($("writeOffs") ? $("writeOffs").value : 0) || 0)), cups: kVal || Math.max(1, Math.round((cVal + bVal) / 35)) }]
+    counterStart: cntInfo.counterStart,
+    counterEnd: cntInfo.counterEnd,
+    writeoffShots: woShots,
+    shifts: [{
+      name: who,
+      cash: cVal,
+      card: bVal,
+      checks: kVal || Math.max(1, Math.round((cVal + bVal) / 35)),
+      writeoff: woRub,
+      writeoffShots: woShots,
+      prevCounter: cntInfo.counterStart,
+      counter: cntInfo.counterEnd,
+      cups: (sales && sales.coffeeQty) || cntInfo.grinderDelta || kVal || Math.max(1, Math.round((cVal + bVal) / 35))
+    }]
   };
   renderCash();
 }
@@ -1787,7 +2153,6 @@ if ($("applyManCashBtn")) {
     toast("✓ Суммы подставлены — нажмите «Отправить кассовый отчёт» внизу");
   };
 }
-
 
 let quickCounterPhotoData = "";
 let quickPaperPhotoData = "";
@@ -1818,25 +2183,28 @@ bindBtn("inPhotoCounter", () => captureQuickCash(true));
 bindBtn("inPhotoPaper", () => captureQuickCash(false));
 if ($("quickSubmitPaperCashBtn")) {
   $("quickSubmitPaperCashBtn").onclick = async () => {
-    const cntVal = Number($("quickCounterIn") ? $("quickCounterIn").value : 0) || 0;
+    const cntVal = $("quickCounterIn") && $("quickCounterIn").value !== "" ? Number($("quickCounterIn").value) : null;
     const papCash = Number($("quickPaperCashIn") ? $("quickPaperCashIn").value : 0) || 0;
-    if (!cntVal && !papCash && !quickCounterPhotoData && !quickPaperPhotoData) {
+    if (cntVal === null && !papCash && !quickCounterPhotoData && !quickPaperPhotoData) {
       toast("Укажите показание счётчика или прикрепите фото бумажного отчёта");
       return;
     }
-    const prevCnt = Number($("initCounterIn") ? $("initCounterIn").value : 600) || 600;
-    const deltaCups = cntVal > prevCnt ? (cntVal - prevCnt) : Math.max(1, Math.round(papCash / 35) || 45);
+    const prevCnt = ($("counterStartIn") && $("counterStartIn").value !== "") ? Number($("counterStartIn").value) : (Number($("initCounterIn") ? $("initCounterIn").value : 600) || 600);
+    const cyclicDelta = (cntVal !== null && window.coffeeCounterDelta) ? window.coffeeCounterDelta(prevCnt, cntVal) : null;
+    const deltaCups = cyclicDelta !== null ? cyclicDelta : Math.max(1, Math.round(papCash / 35) || 45);
     const estCash = papCash > 0 ? papCash : (deltaCups * 35);
+    if ($("counterStartIn")) $("counterStartIn").value = prevCnt;
+    if ($("counterEndIn") && cntVal !== null) $("counterEndIn").value = cntVal;
     if ($("manCashIn")) $("manCashIn").value = estCash;
     if ($("manChecksIn") && !$("manChecksIn").value) $("manChecksIn").value = deltaCups;
     applyManualCashInputs();
     if (trans && Array.isArray(trans.shifts) && trans.shifts[0]) {
       trans.shifts[0].prevCounter = prevCnt;
-      trans.shifts[0].counter = cntVal || (prevCnt + deltaCups);
+      trans.shifts[0].counter = cntVal !== null ? cntVal : ((prevCnt + deltaCups) % 1000);
       trans.shifts[0].cups = deltaCups;
     }
     const phItems = [];
-    if (quickCounterPhotoData) phItems.push({ id: "cash_cnt", title: "📷 Фото счётчика кофемашины (" + cntVal + ")", status: "ok", isIncident: false, photos: [quickCounterPhotoData], photo_url: quickCounterPhotoData });
+    if (quickCounterPhotoData) phItems.push({ id: "cash_cnt", title: "📷 Фото счётчика кофемашины (" + (cntVal ?? "") + ")", status: "ok", isIncident: false, photos: [quickCounterPhotoData], photo_url: quickCounterPhotoData });
     if (quickPaperPhotoData) phItems.push({ id: "cash_pap", title: "📄 Фото бумажного отчёта кассы", status: "ok", isIncident: false, photos: [quickPaperPhotoData], photo_url: quickPaperPhotoData });
     if (phItems.length) {
       await post({ action: "submit_checklist", sid: uid(), location: LOCATION, userName, block: "Касса", startedAt: "22:00", deadline: "23:59", isLate: false, items: phItems });
@@ -1863,16 +2231,70 @@ $("submitCashBtn").onclick = async () => {
   }
   tap();
   $("submitCashBtn").disabled = true; $("submitCashBtn").textContent = "Отправляем…";
-  const top = sales || [];
+  const top = (sales && Array.isArray(sales.products) ? sales.products : (sales || []));
+  const cntInfo = getActiveCounterInfo();
+  const woRub = Math.max(0, Math.round(parseFloat($("writeOffs") ? $("writeOffs").value : 0) || 0));
+  const woShots = Math.max(0, Math.round(parseFloat($("writeOffShots") ? $("writeOffShots").value : 0) || 0));
+  const soldCoffee = sales && sales.coffeeQty != null ? sales.coffeeQty : (trans.coffeeQty != null ? trans.coffeeQty : 0);
+  const nonCoffeeQty = sales && sales.nonCoffeeQty != null ? sales.nonCoffeeQty : (trans.nonCoffeeQty != null ? trans.nonCoffeeQty : 0);
+  const reviewQty = sales && sales.reviewQty != null ? sales.reviewQty : (trans.reviewQty != null ? trans.reviewQty : 0);
+  const unaccountedShots = cntInfo.grinderDelta != null ? Math.max(0, cntInfo.grinderDelta - (soldCoffee + woShots)) : 0;
+  const activeBaristaName = ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName;
+  const csvHashVal = (sales && sales.hash) || (trans && trans.hash) || "";
+  const csvHashesArr = Array.from(new Set([].concat(sales && sales.csvHashes || [], trans && trans.csvHashes || [], csvHashVal ? [csvHashVal] : [])));
+
+  const shiftsPayload = (trans && Array.isArray(trans.shifts) && trans.shifts.length)
+    ? trans.shifts.map((s, idxS) => Object.assign({}, s, {
+        prevCounter: s.prevCounter != null ? s.prevCounter : (idxS === 0 ? cntInfo.counterStart : null),
+        counter: s.counter != null ? s.counter : (idxS === trans.shifts.length - 1 ? cntInfo.counterEnd : null),
+        writeoff: s.writeoff != null ? s.writeoff : (idxS === 0 ? woRub : 0),
+        writeoffShots: s.writeoffShots != null ? s.writeoffShots : (idxS === 0 ? woShots : 0),
+        coffeeQty: s.coffeeQty != null ? s.coffeeQty : (trans.shifts.length === 1 ? soldCoffee : s.cups)
+      }))
+    : [{
+        name: activeBaristaName,
+        cash: trans.cash,
+        card: trans.card,
+        checks: trans.checks,
+        writeoff: woRub,
+        writeoffShots: woShots,
+        prevCounter: cntInfo.counterStart,
+        counter: cntInfo.counterEnd,
+        coffeeQty: soldCoffee,
+        nonCoffeeQty: nonCoffeeQty,
+        reviewQty: reviewQty,
+        cups: soldCoffee || trans.checks
+      }];
+
   const ok = await post({
-    action: "submit_cash", endCounter: Number($("quickCounterIn") && $("quickCounterIn").value) || undefined, mergeMode: (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace", shifts: (trans && trans.shifts) || undefined, sid: uid(), location: LOCATION, userName: ($("shiftBaristaIn") && $("shiftBaristaIn").value.trim()) || userName, date: reportDate,
-    cash: trans.cash, card: trans.card, checks: trans.checks,
-    writeOffs: Math.max(0, Math.round(parseFloat($("writeOffs").value) || 0)),
-    topItems: top.slice(0, 3).map((x) => x.name + " ×" + x.qty).join(", "),
+    action: "submit_cash",
+    counterStart: cntInfo.counterStart != null ? cntInfo.counterStart : undefined,
+    counterEnd: cntInfo.counterEnd != null ? cntInfo.counterEnd : undefined,
+    endCounter: cntInfo.counterEnd != null ? cntInfo.counterEnd : undefined,
+    mergeMode: (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace",
+    shifts: shiftsPayload,
+    sid: uid(),
+    location: LOCATION,
+    userName: activeBaristaName,
+    barista: activeBaristaName,
+    date: reportDate,
+    cash: trans.cash,
+    card: trans.card,
+    checks: trans.checks,
+    writeoff: woRub,
+    writeOffs: woRub,
+    writeoffShots: woShots,
+    coffeeQty: soldCoffee,
+    nonCoffeeQty: nonCoffeeQty,
+    reviewQty: reviewQty,
+    unaccountedShots: unaccountedShots,
+    csvHash: csvHashVal,
+    csvHashes: csvHashesArr,
+    topItems: top.slice(0, 3).map((x) => x.name.replace(/\s+(шт\.?|бут\.?)$/i, "") + " ×" + x.qty).join(", "),
     products: top
   });
   if (reportDate === isoToday()) { markDone("КАССА"); drawTabs(); }
-  finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks + (reportDate === isoToday() ? "" : " · за " + reportDate.slice(8) + "." + reportDate.slice(5, 7)));
+  finish(ok, "Выручка " + rub(trans.cash + trans.card) + " · чеков " + trans.checks + (soldCoffee ? " · кофе по номенклатуре " + soldCoffee + " шт." : "") + (reportDate === isoToday() ? "" : " · за " + reportDate.slice(8) + "." + reportDate.slice(5, 7)));
   if ($("toDash")) $("toDash").hidden = true;
 };
 
@@ -1988,6 +2410,9 @@ function reloadTerminalFromVault() {
     tasks = window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(db.tasks || []).filter((t) => t.active !== 'нет') : (db.tasks || []);
     syncStaffSelector();
     drawTabs();
+    if (window._coffeeSubmittingChecklistNow || ($("doneView") && !$("doneView").hidden) || ($("loader") && !$("loader").hidden)) {
+      return;
+    }
     if (block === 'ИНФО') {
       renderInfoView();
     } else if (block === 'КАССА' || block === 'Касса') {
