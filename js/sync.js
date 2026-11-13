@@ -1498,6 +1498,10 @@ function _buildCloudSyncEnvelope(db) {
     ts: Date.now(),
     location: db.location || 'Кофейня №1',
     plan: Number(db.plan) || 2200,
+    settings: Array.isArray(db.settings) ? db.settings.filter((s) => s && !s.secret) : [],
+    deletedTaskIds: db.deletedTaskIds || {},
+    deletedIncidents: db.deletedIncidents || {},
+    resolvedIncidents: db.resolvedIncidents || {},
     openStart: db.openStart || '07:30',
     deadline: db.deadline || '08:30',
     dayStart: db.dayStart || '08:30',
@@ -1657,6 +1661,30 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
     return { ok: true, bridged: true, saved: true, rev: Date.now() };
   }
   return null;
+}
+
+
+let _bgEnvPushTimer = null;
+function _pushCloudEnvelopeInBackground(apiUrl) {
+  if (!apiUrl || !/script\.google\.com/i.test(String(apiUrl))) return;
+  if (_bgEnvPushTimer) clearTimeout(_bgEnvPushTimer);
+  _bgEnvPushTimer = setTimeout(() => {
+    try {
+      const db = getUDB();
+      const envStr = JSON.stringify(_buildCloudSyncEnvelope(db));
+      _rawPostJson(apiUrl, {
+        action: 'save_task',
+        id: '__SYS_CONFIG_V19__',
+        block: 'Открытие',
+        title: '__SYS_SYNC__',
+        instruction: envStr,
+        photo: 'нет',
+        responsible: 'Система',
+        active: 'нет',
+        pin: '1234'
+      }, 12000).catch(() => {});
+    } catch (_) {}
+  }, 80);
 }
 
 /* Единый транспорт GAS. Успех возвращается только после JSON-подтверждения сервера. */
@@ -2097,7 +2125,7 @@ async function coffeeLiveSyncTick(forceSync) {
 }
 function _liveNextDelay() {
   if (typeof document !== 'undefined' && document.hidden) return 30000;
-  return (Date.now() - _liveLastActive < 120000) ? 2000 : 6000;
+  return (Date.now() - _liveLastActive < 180000) ? 1200 : 4000;
 }
 function _liveSchedule() {
   clearTimeout(_liveTimer);
@@ -2130,6 +2158,24 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
           const lastEnvTs = Number(db._lastCloudEnvTs || 0);
           if (envTs > lastEnvTs && envTs >= localTs) {
             db._lastCloudEnvTs = envTs;
+            if (env.location) db.location = env.location;
+            if (env.plan > 0) db.plan = Number(env.plan);
+            if (Array.isArray(env.settings) && env.settings.length) {
+              env.settings.forEach((es) => {
+                if (!es || !es.id || es.id === 'ADMIN_PIN') return;
+                const locS = (db.settings || []).find((x) => x.id === es.id);
+                if (locS && es.value !== undefined) locS.value = es.value;
+              });
+            }
+            if (env.deletedTaskIds && typeof env.deletedTaskIds === 'object') {
+              db.deletedTaskIds = Object.assign({}, db.deletedTaskIds || {}, env.deletedTaskIds);
+            }
+            if (env.deletedIncidents && typeof env.deletedIncidents === 'object') {
+              db.deletedIncidents = Object.assign({}, db.deletedIncidents || {}, env.deletedIncidents);
+            }
+            if (env.resolvedIncidents && typeof env.resolvedIncidents === 'object') {
+              db.resolvedIncidents = Object.assign({}, db.resolvedIncidents || {}, env.resolvedIncidents);
+            }
             if (Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) db.checklistBlocks = env.checklistBlocks;
             if (env.dailyPlans && typeof env.dailyPlans === 'object') db.dailyPlans = Object.assign({}, db.dailyPlans || {}, env.dailyPlans);
             if (env.shiftRoster && typeof env.shiftRoster === 'object') db.shiftRoster = Object.assign({}, db.shiftRoster || {}, env.shiftRoster);
@@ -2270,6 +2316,14 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       }));
     }
 
+    // Мгновенно (за 0 мс!) применяем изменение локально и оповещаем соседние вкладки/окна до ожидания ответа сервера
+    const preMutationSnapshot = (function () { try { return localStorage.getItem('coffee_owner_master_vault'); } catch (_) { return null; } })();
+    if (!/^(auth_login|auth_logout|get_rev|version)$/.test(operation.action || '')) {
+      applyLocalMutation(operation);
+      window.coffeeCache.invalidate('all');
+      window.coffeeBus.emit('mutation', { action: operation.action || '', optimistic: true, operationId: operation.operationId });
+    }
+
     let result = await _sendCorsSafePost(url, operation, Math.max(Number(ms) || 0, 30000));
     const result0 = result; // const result = await _sendCorsSafePost(url, operation — (маркер для контрактного теста)
     if (!result0.ok && !result0.networkError && AUTH_ERR_RE.test(String(result0.error || '')) && await _reauthServerSession()) {
@@ -2279,6 +2333,9 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
     if (result.ok === true) {
       window._coffeeLastSyncOk = true;
       applyLocalMutation(operation);
+      if (!result.bridged && operation.id !== '__SYS_CONFIG_V19__') {
+        _pushCloudEnvelopeInBackground(url);
+      }
       if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
       window.coffeeCache.invalidate('all');
       window.coffeeBus.emit('mutation', { action: operation.action || '', confirmed: true, operationId: operation.operationId });
@@ -2325,7 +2382,14 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       };
     }
 
-    // Сервер явно отклонил запрос (например, VALIDATION_FAILED): не выдаём успех и не меняем локальную копию.
+    // Сервер явно отклонил запрос (например, VALIDATION_FAILED): откатываем оптимистичную запись и возвращаем ошибку.
+    if (preMutationSnapshot) {
+      try {
+        localStorage.setItem('coffee_owner_master_vault', preMutationSnapshot);
+        localStorage.setItem('coffee_unified_hybrid_db_v3', preMutationSnapshot);
+        localStorage.setItem('coffee_unified_state_v7', preMutationSnapshot);
+      } catch (_) {}
+    }
     return Object.assign({ ok: false, confirmed: false, operationId: operation.operationId }, result);
   }
 
