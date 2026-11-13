@@ -1003,49 +1003,22 @@ async function startStream() {
 }
 function camError(e) {
   const n = (e && e.name) || "";
-  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере. Разрешите камеру в настройках браузера или Telegram и нажмите «Открыть камеру» ещё раз." : "Камера недоступна на этом устройстве.", "bad");
-}
-async function fallbackNativeChecklistCapture(facing) {
-  if (!(window.coffeeCameraPool && typeof window.coffeeCameraPool.captureNativeCanvas === "function")) return false;
-  const natRes = await window.coffeeCameraPool.captureNativeCanvas({
-    mode: camMode,
-    facing: facing || camFacing,
-    stamp: false
-  });
-  if (!natRes) return true;
-  if (natRes.kind === "video" && natRes.dataUrl) {
-    photos.push(natRes.dataUrl);
-    photo = photos[0];
-    photoUrl = "";
-    setPhotoUI();
-    uploadNow(natRes.dataUrl);
-    saveAnswer();
-    return true;
-  }
-  if (natRes.canvas) {
-    gotPhoto(natRes.canvas);
-    return true;
-  }
-  return false;
+  photoMsg(/NotAllowed|Permission|Security/i.test(n)
+    ? "Нет доступа к камере. Разрешите камеру в настройках браузера или Telegram и нажмите «Открыть камеру» ещё раз."
+    : "Камера недоступна на этом устройстве. Загрузка фото из галереи запрещена — снимок можно сделать только камерой.", "bad");
 }
 async function openCamera() {
   if (photoBusy || !$("cam").hidden) return;
-  camFacing = (cur[idx] && /селфи|selfie/i.test(cur[idx].title || "")) ? "user" : "environment";
-  if (window.coffeeCameraPool && window.coffeeCameraPool.isNativeModePreferred && window.coffeeCameraPool.isNativeModePreferred()) {
-    await fallbackNativeChecklistCapture(camFacing);
-    return;
-  }
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-    const okNat = await fallbackNativeChecklistCapture(camFacing);
-    if (!okNat) camError();
+    camError();
     return;
   }
+  camFacing = (cur[idx] && /селфи|selfie/i.test(cur[idx].title || "")) ? "user" : "environment";
   $("cam").hidden = false; setMode("photo"); paintCamControls(); photoMsg("");
   try { await startStream(); }
   catch (e) {
     closeCamera();
-    const okNat = await fallbackNativeChecklistCapture(camFacing);
-    if (!okNat) camError(e);
+    camError(e);
   }
 }
 function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
@@ -1111,6 +1084,19 @@ async function switchCamFacing(targetFacing) {
 }
 $("drop").onclick = openCamera;
 $("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
+["drop", "inPhotoCounter", "inPhotoPaper", "qiPhotoBtn", "qiVideoBtn"].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  ["dragenter", "dragover", "drop", "paste"].forEach((evName) => {
+    el.addEventListener(evName, (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (evName === "drop" || evName === "paste") {
+        toast("📷 Загрузка из галереи запрещена — сделайте живой снимок камерой", true);
+      }
+    });
+  });
+});
 $("camCancel").onclick = closeCamera;
 $("camShot").onclick = () => { cancelAuto(); if (camMode === "video") toggleRec(); else shot(0); };
 $("mPhoto").onclick = () => { if (!(rec && rec.state === "recording")) setMode("photo"); };
@@ -1121,14 +1107,6 @@ if ($("camFlashBtn")) {
   $("camFlashBtn").onclick = async () => {
     camFlash = !camFlash;
     await applyCamFlashState();
-  };
-}
-if ($("mNativeCam")) {
-  $("mNativeCam").onclick = async () => {
-    if (rec && rec.state === "recording") return;
-    const curFac = camFacing;
-    closeCamera();
-    await fallbackNativeChecklistCapture(curFac);
   };
 }
 $("camFlip").onclick = () => switchCamFacing(camFacing === "user" ? "environment" : "user");

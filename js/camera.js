@@ -1,20 +1,18 @@
 /* =========================================================================
-   КАМЕРА (v57): Основная и фронтальная камеры + Вспышка (аппаратный LED-фонарик
-   torch + экранная Retina-вспышка для селфи и iOS) + пул тёплого потока (1 запрос).
-   Использование:
-     window.coffeeCameraPool.acquire(facing) -> Promise<MediaStream>
-     window.coffeeCameraPool.setTorch(stream, on) -> Promise<boolean>
-     window.coffeeCameraPool.suspend(stream) -> пауза без отзыва разрешения
-     window.coffeeCamera.open({ mode: 'photo'|'video', facing: 'environment'|'user', flash: false, stamp: '...' })
+   КАМЕРА (v58 — ТОЛЬКО ЖИВАЯ СЪЁМКА):
+   Никакого выбора из галереи, файлов или буфера обмена (<input type="file"> запрещён).
+   Снимок или видео можно сделать ТОЛЬКО в реальном времени через объектив
+   основной (📷 Основная) или фронтальной (🤳 Фронтальная) камеры со вспышкой (⚡ Вспышка).
+   Пул тёплого потока (window.coffeeCameraPool) удерживает разрешение в течение смены,
+   чтобы браузер не запрашивал доступ повторно на каждом шаге.
    ========================================================================= */
 (function () {
   'use strict';
   const VID_MAX = 15; // секунд
   const CAM_GRANTED_KEY = 'coffee_cam_granted_v1';
-  const CAM_NATIVE_KEY = 'coffee_cam_native_mode_v1';
   let busy = false;
 
-  // Хранилище активных потоков камеры на время сессии
+  // Хранилище активных потоков камеры на время сессии (чтобы не запрашивать разрешение повторно)
   const _warmStreams = { environment: null, user: null };
 
   function _isStreamAlive(s) {
@@ -54,7 +52,6 @@
         await t.applyConstraints({ advanced: [{ torch: !!on }] });
         return true;
       }
-      // Пробуем применить constraint напрямую (на части Android WebView getCapabilities не возвращает torch, но applyConstraints работает)
       await t.applyConstraints({ advanced: [{ torch: !!on }] });
       return true;
     } catch (_) {
@@ -87,7 +84,6 @@
         : /back|rear|environment|main|wide|0|задн|основн/i;
       const match = vids.find((d) => re.test(String(d.label || '')));
       if (match && match.deviceId) return match.deviceId;
-      // На большинстве смартфонов [0] — основная, [vids.length - 1] — фронтальная
       return facing === 'user' ? vids[vids.length - 1].deviceId : vids[0].deviceId;
     } catch (_) {
       return null;
@@ -98,13 +94,11 @@
     const facing = facingOpt === 'user' ? 'user' : 'environment';
     const alt = facing === 'user' ? 'environment' : 'user';
 
-    // Приостанавливаем альтернативный поток и гасим на нём фонарик
     if (_warmStreams[alt]) {
       await setStreamTorch(_warmStreams[alt], false);
       _enableStreamTracks(_warmStreams[alt], false);
     }
 
-    // 1. Если поток для нужной камеры уже открыт и жив — мгновенно включаем его (0 запросов getUserMedia)
     if (_isStreamAlive(_warmStreams[facing])) {
       _enableStreamTracks(_warmStreams[facing], true);
       return _warmStreams[facing];
@@ -138,8 +132,6 @@
       } catch (e) {
         lastErr = e;
         if (e && /NotAllowed|Permission|Security/i.test(String(e.name || ''))) break;
-        // На многих телефонах Android/iOS нельзя держать открытыми фронтальную и основную камеры одновременно:
-        // освобождаем старый поток другой камеры и сразу повторяем попытку
         if (_warmStreams[alt]) {
           _stopStreamCompletely(_warmStreams[alt]);
           _warmStreams[alt] = null;
@@ -192,7 +184,6 @@
     window.addEventListener('beforeunload', releaseAllWarmStreams);
   }
 
-  // Программная подсветка тёмных кадров при включённой вспышке (если съёмка шла в темноте с экранной вспышкой)
   function enhanceFlashExposure(c) {
     try {
       const ctx = c.getContext('2d');
@@ -233,7 +224,6 @@
     return c;
   }
 
-  // Экранная Retina-вспышка (для фронтальной камеры и устройств без аппаратного WebRTC torch)
   function triggerScreenFlash(flashEl, durationMs) {
     return new Promise((resolve) => {
       if (!flashEl) return resolve();
@@ -253,81 +243,6 @@
     });
   }
 
-  // Прямой захват через системную камеру устройства (<input capture>) — в системном приложении камеры работают обе камеры и родная вспышка
-  function captureNativeCanvas(opts) {
-    opts = opts || {};
-    return new Promise((resolve) => {
-      if (typeof document === 'undefined' || !document.body) return resolve(null);
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = opts.mode === 'video' ? 'video/*,image/*' : 'image/*';
-      inp.setAttribute('capture', opts.facing === 'user' ? 'user' : 'environment');
-      inp.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none';
-      document.body.appendChild(inp);
-
-      let settled = false;
-      const done = (res) => {
-        if (settled) return;
-        settled = true;
-        try { inp.remove(); } catch (_) {}
-        resolve(res || null);
-      };
-
-      inp.addEventListener('cancel', () => done(null));
-      inp.addEventListener('change', () => {
-        const f = inp.files && inp.files[0];
-        if (!f) return done(null);
-        if (/^video\//i.test(f.type || '')) {
-          const fr = new FileReader();
-          fr.onload = () => done({ kind: 'video', dataUrl: String(fr.result || ''), canvas: null });
-          fr.onerror = () => done(null);
-          fr.readAsDataURL(f);
-          return;
-        }
-        const url = URL.createObjectURL(f);
-        const img = new Image();
-        img.onload = () => {
-          try { URL.revokeObjectURL(url); } catch (_) {}
-          const w0 = img.naturalWidth || img.width || 1280;
-          const h0 = img.naturalHeight || img.height || 720;
-          const k = Math.min(1, 1280 / w0);
-          const c = document.createElement('canvas');
-          c.width = Math.max(1, Math.round(w0 * k));
-          c.height = Math.max(1, Math.round(h0 * k));
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          if (opts.stamp !== false) stampCanvas(c, opts.stamp || '');
-          done({ kind: 'photo', canvas: c, dataUrl: c.toDataURL('image/jpeg', 0.74) });
-        };
-        img.onerror = () => {
-          try { URL.revokeObjectURL(url); } catch (_) {}
-          done(null);
-        };
-        img.src = url;
-      });
-
-      try {
-        inp.click();
-      } catch (_) {
-        done(null);
-      }
-    });
-  }
-
-  async function captureNative(opts) {
-    const res = await captureNativeCanvas(opts);
-    return res ? res.dataUrl : null;
-  }
-
-  function isNativeModePreferred() {
-    try { return localStorage.getItem(CAM_NATIVE_KEY) === '1'; } catch (_) { return false; }
-  }
-  function setNativeModePreferred(val) {
-    try {
-      if (val) localStorage.setItem(CAM_NATIVE_KEY, '1');
-      else localStorage.removeItem(CAM_NATIVE_KEY);
-    } catch (_) {}
-  }
-
   window.coffeeCameraPool = {
     acquire: acquireWarmStream,
     suspend: suspendWarmStream,
@@ -335,11 +250,7 @@
     setTorch: setStreamTorch,
     hasTorch: hasHardwareTorch,
     triggerScreenFlash,
-    enhanceFlashExposure,
-    captureNativeCanvas,
-    captureNative,
-    isNativeModePreferred,
-    setNativeModePreferred
+    enhanceFlashExposure
   };
 
   function mk(tag, css, text) {
@@ -365,9 +276,6 @@
 
   function open(opts) {
     opts = opts || {};
-    if (isNativeModePreferred()) {
-      return captureNative(opts);
-    }
     return new Promise((resolve) => {
       if (busy) return resolve(null);
       busy = true;
@@ -387,9 +295,9 @@
       const top = mk('div', 'position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;background:linear-gradient(#000c,#0000);z-index:2');
       const bClose = mk('button', 'border:0;border-radius:999px;background:#0009;color:#fff;font-size:14px;font-weight:700;padding:8px 13px;cursor:pointer', '✕ Отмена');
       const bFlash = mk('button', '', '⚡ Вспышка: Выкл');
-      const bNative = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0009;color:#fff;font-size:12px;font-weight:600;padding:8px 11px;cursor:pointer', '📱 Системная');
-      bClose.type = bFlash.type = bNative.type = 'button';
-      top.append(bClose, bFlash, bNative);
+      const bFlip = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0009;color:#fff;font-size:13.5px;font-weight:700;padding:8px 13px;cursor:pointer', '🔄 Сменить');
+      bClose.type = bFlash.type = bFlip.type = 'button';
+      top.append(bClose, bFlash, bFlip);
 
       const info = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:0;right:0;text-align:center;font-size:13px;font-weight:600;text-shadow:0 1px 4px #000;padding:0 16px;z-index:2');
       const rect = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:50%;transform:translateX(-50%);display:none;background:#d32f2f;border-radius:999px;padding:4px 14px;font-weight:700;font-size:15px;z-index:2');
@@ -406,14 +314,11 @@
       mPhoto.type = mVideo.type = 'button';
       modes.append(mPhoto, mVideo);
 
-      const shutterRow = mk('div', 'display:flex;align-items:center;justify-content:center;gap:24px;width:100%');
       const shutter = mk('button', 'width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:#fff3;cursor:pointer;padding:0');
-      const bFlip = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0009;color:#fff;font-size:13.5px;font-weight:700;padding:9px 14px;cursor:pointer', '🔄 Сменить');
-      shutter.type = bFlip.type = 'button';
+      shutter.type = 'button';
       shutter.disabled = true; shutter.setAttribute('aria-label', 'Снять');
-      shutterRow.append(shutter, bFlip);
 
-      bottom.append(lensRow, modes, shutterRow);
+      bottom.append(lensRow, modes, shutter);
       ov.append(video, screenFlashEl, top, info, rect, bottom);
       document.body.appendChild(ov);
       try { if (typeof ov.showModal === 'function') ov.showModal(); else ov.setAttribute('open', ''); } catch (_) { ov.setAttribute('open', ''); }
@@ -433,7 +338,6 @@
           : 'border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;background:#0009;color:#fff';
         bFlash.textContent = flashOn ? '⚡ Вспышка: Вкл' : '⚡ Вспышка: Выкл';
         shutter.style.background = mode === 'video' ? '#d32f2f' : '#fff3';
-        // При включённой вспышке на фронтальной камере даём мягкую подсветку рамки видоискателя
         video.style.boxShadow = (flashOn && (facing === 'user' || !hwTorchActive))
           ? 'inset 0 0 0 14px rgba(255,253,244,0.88)'
           : 'none';
@@ -473,6 +377,13 @@
       function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); finish(null); } }
       document.addEventListener('keydown', onKey, true);
 
+      function camError(e) {
+        const n = (e && e.name) || '';
+        say(/NotAllowed|Permission|Security/i.test(n)
+          ? 'Нет доступа к камере. Разрешите камеру в настройках браузера и повторите.'
+          : 'Камера недоступна на этом устройстве. Выбрать снимок из галереи нельзя.', true);
+      }
+
       async function startStream() {
         shutter.disabled = true;
         const s = await acquireWarmStream(facing);
@@ -497,7 +408,7 @@
         } catch (e) {
           facing = prev;
           paintControls();
-          try { await startStream(); } catch (_) {}
+          try { await startStream(); } catch (x) { camError(x); }
         }
       }
 
@@ -549,10 +460,6 @@
         flashOn = !flashOn;
         await applyFlashState();
       };
-      bNative.onclick = async () => {
-        const natUrl = await captureNative({ mode, facing, stamp: opts.stamp });
-        finish(natUrl);
-      };
       bRear.onclick = () => switchFacing('environment');
       bFront.onclick = () => switchFacing('user');
       bFlip.onclick = () => switchFacing(facing === 'user' ? 'environment' : 'user');
@@ -561,12 +468,12 @@
       shutter.onclick = () => { if (mode === 'video') toggleRec(); else takePhoto(0); };
 
       paintControls();
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+        say('Камера недоступна (нужно открыть по https). Выбрать снимок из галереи нельзя.', true);
+        return;
+      }
       startStream().then(() => { if (!closed) say(''); })
-        .catch(async () => {
-          if (closed) return;
-          const natUrl = await captureNative({ mode, facing, stamp: opts.stamp });
-          finish(natUrl);
-        });
+        .catch((e) => { if (!closed) camError(e); });
     });
   }
 
