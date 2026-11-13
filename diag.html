@@ -22,7 +22,7 @@ document.getElementById('run').onclick=async()=>{
   await t('1. Сервер доступен (get_rev)',async()=>{const r=await req(API+'?action=get_rev&t='+Date.now(),{cache:'no-store'});
     return {ok:!!(r.json&&r.json.ok),msg:r.json?JSON.stringify(r.json):('НЕ JSON, HTTP '+r.status+': '+r.text)}});
   await t('1б. Версия Code.gs на сервере',async()=>{const r=await req(API+'?action=version&t='+Date.now(),{cache:'no-store'});
-    if(r.json&&r.json.serverVersion)return{ok:true,msg:'Code.gs '+r.json.serverVersion+' (актуальный)'};
+    if(r.json&&r.json.serverVersion&&Number(r.json.api)>=2)return{ok:true,msg:'Code.gs '+r.json.serverVersion+' (актуальный)'};
     return{ok:false,msg:'СТАРЫЙ Code.gs: сервер не знает action=version. Обновите код в Apps Script и переразверните. Ответ: '+(r.json?JSON.stringify(r.json):r.text)}});
   await t('2. Публичные данные (get_checklists)',async()=>{const r=await req(API+'?action=get_checklists&nocache=1');
     return {ok:!!(r.json&&r.json.ok!==false),msg:r.json?('ok, ключи: '+Object.keys(r.json).slice(0,8).join(', ')+(r.json.error?(' ОШИБКА: '+r.json.error):'')):('НЕ JSON: '+r.text)}});

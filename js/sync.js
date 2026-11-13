@@ -2628,3 +2628,69 @@ window.coffeePushAllToGoogleSheet = async function () {
   }, 15000);
 };
 
+/* === ПРОВЕРКА СЕРВЕРА GOOGLE И ПОНЯТНЫЙ БАННЕР ===
+   Самая частая причина «вечной синхронизации»: в Apps Script развёрнут старый Code.gs или у развёртывания закрыт доступ.
+   Клиент сам проверяет GET ?action=version и, если сервер не отвечает как положено, показывает на экране что делать.
+   Как только сервер исправлен — баннер исчезает, а накопленная очередь отправляется немедленно. */
+const REQUIRED_SERVER_API = 2;
+window.coffeeServerHealth = { state: 'unknown', detail: '', at: 0, fails: 0 };
+function _serverBannerText(state) {
+  let admin = false;
+  try { admin = !!(window.coffeeAuth && window.coffeeAuth.isAuthorized && window.coffeeAuth.isAuthorized('admin')); } catch (_) {}
+  if (!admin) return 'Нет связи с сервером. Изменения сохранены на устройстве и отправятся автоматически. Сообщите администратору.';
+  if (state === 'old') return 'Сервер Google устарел: в Apps Script развёрнут старый Code.gs, поэтому изменения не попадают в таблицу. Вставьте свежий Code.gs → «Начать развертывание» → «Управление развертываниями» → ✏️ → Версия «Новая версия» → «Развернуть» (адрес не менять).';
+  if (state === 'nojson') return 'Сервер вернул не данные, а страницу Google. Проверьте развёртывание: «Запуск от имени: я», «Доступ: Все».';
+  return 'Нет связи с сервером Google (или у развёртывания закрыт доступ «Все»). Изменения не потеряны — они отправятся автоматически.';
+}
+function _renderServerBanner() {
+  if (typeof document === 'undefined' || !document.body) return;
+  const h = window.coffeeServerHealth;
+  let el = document.getElementById('coffeeServerBanner');
+  const bad = h.state === 'old' || h.state === 'nojson' || (h.state === 'unreachable' && h.fails >= 2) || (h.state === 'slow' && h.fails >= 3);
+  if (!bad) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'coffeeServerBanner';
+    el.setAttribute('role', 'alert');
+    el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483000;background:#8a2d1c;color:#fff;padding:10px 14px;font:600 14px/1.4 system-ui,sans-serif;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 2px 10px rgba(0,0,0,.35)';
+    const tx = document.createElement('span'); tx.id = 'coffeeServerBannerText';
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Проверить снова';
+    btn.style.cssText = 'flex:none;background:#fff;color:#8a2d1c;border:0;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer';
+    btn.onclick = () => { window.coffeeCheckServer(true); };
+    el.appendChild(tx); el.appendChild(btn); document.body.appendChild(el);
+  }
+  el.firstChild.textContent = '⚠️ ' + _serverBannerText(h.state);
+}
+let _healthBusy = false;
+window.coffeeCheckServer = async function (manual) {
+  if (_healthBusy) return window.coffeeServerHealth;
+  const base = window.COFFEE && window.COFFEE.API_URL;
+  if (!base || (typeof navigator !== 'undefined' && navigator.onLine === false)) return window.coffeeServerHealth;
+  _healthBusy = true;
+  const h = window.coffeeServerHealth, prev = h.state;
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const t = ac ? setTimeout(() => ac.abort(), 10000) : null;
+  try {
+    const r = await fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=version&t=' + Date.now(), { cache: 'no-store', signal: ac ? ac.signal : undefined });
+    const tx = await r.text(); let j = null; try { j = JSON.parse(tx); } catch (_) {}
+    if (!j) { h.state = 'nojson'; h.detail = 'HTTP ' + r.status; }
+    else if (j.ok === true && Number(j.api) >= REQUIRED_SERVER_API) { h.state = 'ok'; h.detail = String(j.serverVersion || ''); h.fails = 0; }
+    else { h.state = 'old'; h.detail = String(j.error || 'no api'); }
+  } catch (e) {
+    h.state = e && e.name === 'AbortError' ? 'slow' : 'unreachable'; h.detail = String((e && e.message) || e); h.fails++;
+  } finally { if (t) clearTimeout(t); _healthBusy = false; }
+  h.at = Date.now();
+  _renderServerBanner();
+  if (h.state === 'ok' && prev !== 'ok' && prev !== 'unknown') { try { coffeeFlushOutbox(true); } catch (_) {} }
+  return h;
+};
+if (typeof window !== 'undefined' && window.addEventListener && typeof document !== 'undefined') {
+  const startHealth = () => {
+    setTimeout(() => window.coffeeCheckServer(), 1500);
+    setInterval(() => { const st = window.coffeeServerHealth.state; if (st !== 'ok' || window.coffeeGetTotalPendingCount() > 0) window.coffeeCheckServer(); }, 30000);
+    setInterval(() => window.coffeeCheckServer(), 5 * 60000);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startHealth, { once: true }); else startHealth();
+  window.addEventListener('online', () => window.coffeeCheckServer());
+  if (window.coffeeBus) window.coffeeBus.on((m) => { if (m && m.type === 'outbox_error' && /UNKNOWN[ _]ACTION/i.test(String(m.error || ''))) window.coffeeCheckServer(); });
+}
