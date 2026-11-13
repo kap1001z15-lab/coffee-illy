@@ -926,13 +926,49 @@ function validate() {
 /* ---------- камера: живой снимок или видео, без чёрного экрана + мульти-фото ---------- */
 function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").className = "pstate" + (cls ? " " + cls : ""); }
 const VID_MAX = 15;
-let camFacing = "environment", camMode = "photo", camT = null, recT = null, rec = null, recChunks = [], armed = false;
+let camFacing = "environment", camMode = "photo", camFlash = false, camHwTorch = false, camT = null, recT = null, rec = null, recChunks = [], armed = false;
 document.addEventListener("pointerdown", () => { armed = true; }, { once: true });
+
+function paintCamControls() {
+  if ($("camRearBtn")) $("camRearBtn").classList.toggle("on", camFacing === "environment");
+  if ($("camFrontBtn")) $("camFrontBtn").classList.toggle("on", camFacing === "user");
+  if ($("camFlashBtn")) {
+    $("camFlashBtn").classList.toggle("on", camFlash);
+    $("camFlashBtn").style.background = camFlash ? "#f5b82e" : "";
+    $("camFlashBtn").style.color = camFlash ? "#1b160d" : "";
+    $("camFlashBtn").textContent = camFlash ? "⚡ Вспышка: Вкл" : "⚡ Вспышка: Выкл";
+  }
+  const v = $("camVideo");
+  if (v) {
+    v.style.boxShadow = (camFlash && (camFacing === "user" || !camHwTorch))
+      ? "inset 0 0 0 14px rgba(255,253,244,0.88)"
+      : "none";
+  }
+}
+
+async function applyCamFlashState() {
+  if (!stream) {
+    camHwTorch = false;
+    paintCamControls();
+    return;
+  }
+  if (camFlash && camFacing === "environment" && window.coffeeCameraPool && typeof window.coffeeCameraPool.setTorch === "function") {
+    camHwTorch = await window.coffeeCameraPool.setTorch(stream, true);
+  } else {
+    camHwTorch = false;
+    if (window.coffeeCameraPool && typeof window.coffeeCameraPool.setTorch === "function") {
+      await window.coffeeCameraPool.setTorch(stream, false);
+    }
+  }
+  paintCamControls();
+}
+
 function stopStream() {
   const v = $("camVideo");
   if (v) {
     try { v.pause(); } catch (_) {}
     v.srcObject = null;
+    v.style.boxShadow = "none";
   }
   if (window.coffeeCameraPool && typeof window.coffeeCameraPool.suspend === "function") {
     window.coffeeCameraPool.suspend(stream);
@@ -940,15 +976,21 @@ function stopStream() {
     stream.getTracks().forEach((t) => { try { t.enabled = false; } catch (_) {} });
   }
   stream = null;
+  camHwTorch = false;
 }
 async function startStream() {
   stopStream(); $("camShot").disabled = true;
+  paintCamControls();
   const v = $("camVideo");
   let s = null;
   if (window.coffeeCameraPool && typeof window.coffeeCameraPool.acquire === "function") {
     s = await window.coffeeCameraPool.acquire(camFacing);
   } else {
-    const tries = [{ video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }, { video: true, audio: false }];
+    const tries = [
+      { video: { facingMode: { exact: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: true, audio: false }
+    ];
     let err;
     for (const c of tries) { try { s = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) { err = e; if (e && /NotAllowed|Permission|Security/i.test(e.name)) break; } }
     if (!s) throw err || new Error("no camera");
@@ -957,6 +999,7 @@ async function startStream() {
   try { await v.play(); } catch (e) {}
   await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 1200); });
   $("camShot").disabled = !v.videoWidth;
+  await applyCamFlashState();
 }
 function camError(e) {
   const n = (e && e.name) || "";
@@ -997,7 +1040,7 @@ async function openCamera() {
     if (!okNat) camError();
     return;
   }
-  $("cam").hidden = false; setMode("photo"); photoMsg("");
+  $("cam").hidden = false; setMode("photo"); paintCamControls(); photoMsg("");
   try { await startStream(); }
   catch (e) {
     closeCamera();
@@ -1013,20 +1056,26 @@ function closeCamera() {
   rec = null; $("camRec").hidden = true; $("camShot").classList.remove("rec"); stopStream(); $("cam").hidden = true;
 }
 function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 10; }
-function shot(n) {
+async function shot(n) {
   const v = $("camVideo"); if (!v.videoWidth) return;
+  if (camFlash && (camFacing === "user" || !camHwTorch) && window.coffeeCameraPool && typeof window.coffeeCameraPool.triggerScreenFlash === "function") {
+    await window.coffeeCameraPool.triggerScreenFlash($("camScreenFlash"), 260);
+  }
   const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
   c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
   c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
-  if (isBlack(c) && n < 3) return void setTimeout(() => shot(n + 1), 350);
+  if (isBlack(c) && n < 2) return void setTimeout(() => shot(n + 1), 200);
+  if (camFlash && window.coffeeCameraPool && typeof window.coffeeCameraPool.enhanceFlashExposure === "function") {
+    window.coffeeCameraPool.enhanceFlashExposure(c);
+  }
   closeCamera(); gotPhoto(c);
 }
 function pickMime() { if (!window.MediaRecorder) return null; for (const m of ["video/webm;codecs=vp8", "video/webm", "video/mp4"]) if (MediaRecorder.isTypeSupported(m)) return m; return ""; }
 function toggleRec() {
   if (rec && rec.state === "recording") { rec.stop(); return; }
-  const mime = pickMime(); if (mime === null) { toast("Запись видео не поддерживается — снимите фото"); return; }
+  const mime = pickMime(); if (mime === null) { toast("Запись видео не поддерживается — снимите фото", true); return; }
   recChunks = [];
-  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 1200000 }, mime ? { mimeType: mime } : {})); } catch (e) { toast("Не удалось начать запись видео"); return; }
+  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 1200000 }, mime ? { mimeType: mime } : {})); } catch (e) { toast("Не удалось начать запись видео", true); return; }
   const r = rec;
   r.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
   r.onstop = () => {
@@ -1046,28 +1095,43 @@ function toggleRec() {
   r.start(500); const t0 = Date.now(); $("camRec").hidden = false; $("camShot").classList.add("rec"); $("camTime").textContent = "0:00";
   recT = setInterval(() => { const sec = Math.floor((Date.now() - t0) / 1000); $("camTime").textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); if (sec >= VID_MAX && r.state === "recording") r.stop(); }, 250);
 }
+async function switchCamFacing(targetFacing) {
+  if (rec && rec.state === "recording") return;
+  cancelAuto();
+  const prev = camFacing;
+  camFacing = targetFacing === "user" ? "user" : "environment";
+  paintCamControls();
+  try {
+    await startStream();
+  } catch (e) {
+    camFacing = prev;
+    paintCamControls();
+    try { await startStream(); } catch (x) { closeCamera(); camError(x); return; }
+  }
+}
 $("drop").onclick = openCamera;
 $("drop").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCamera(); } };
 $("camCancel").onclick = closeCamera;
 $("camShot").onclick = () => { cancelAuto(); if (camMode === "video") toggleRec(); else shot(0); };
 $("mPhoto").onclick = () => { if (!(rec && rec.state === "recording")) setMode("photo"); };
 $("mVideo").onclick = () => { if (!(rec && rec.state === "recording")) setMode("video"); };
+if ($("camRearBtn")) $("camRearBtn").onclick = () => switchCamFacing("environment");
+if ($("camFrontBtn")) $("camFrontBtn").onclick = () => switchCamFacing("user");
+if ($("camFlashBtn")) {
+  $("camFlashBtn").onclick = async () => {
+    camFlash = !camFlash;
+    await applyCamFlashState();
+  };
+}
 if ($("mNativeCam")) {
   $("mNativeCam").onclick = async () => {
     if (rec && rec.state === "recording") return;
-    if (window.coffeeCameraPool && window.coffeeCameraPool.setNativeModePreferred) {
-      window.coffeeCameraPool.setNativeModePreferred(true);
-    }
     const curFac = camFacing;
     closeCamera();
     await fallbackNativeChecklistCapture(curFac);
   };
 }
-$("camFlip").onclick = async () => {
-  if (rec && rec.state === "recording") return;
-  cancelAuto(); const prev = camFacing; camFacing = prev === "user" ? "environment" : "user";
-  try { await startStream(); } catch (e) { camFacing = prev; try { await startStream(); } catch (x) { closeCamera(); camError(x); return; } toast("Вторая камера недоступна"); }
-};
+$("camFlip").onclick = () => switchCamFacing(camFacing === "user" ? "environment" : "user");
 function gotPhoto(c) {
   const x = c.getContext("2d"), h = Math.max(16, Math.round(c.width / 45));
   x.fillStyle = "rgba(0,0,0,.58)"; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);

@@ -1,11 +1,11 @@
 /* =========================================================================
-   КАМЕРА (v56): Единый пул «тёплого» потока (1 запрос доступа за всю смену)
-   + режим прямой системной камеры без браузерных запросов разрешений.
+   КАМЕРА (v57): Основная и фронтальная камеры + Вспышка (аппаратный LED-фонарик
+   torch + экранная Retina-вспышка для селфи и iOS) + пул тёплого потока (1 запрос).
    Использование:
      window.coffeeCameraPool.acquire(facing) -> Promise<MediaStream>
+     window.coffeeCameraPool.setTorch(stream, on) -> Promise<boolean>
      window.coffeeCameraPool.suspend(stream) -> пауза без отзыва разрешения
-     window.coffeeCameraPool.captureNative({ mode, facing, stamp }) -> Promise<string|null>
-     window.coffeeCamera.open({ mode: 'photo' | 'video', facing: 'environment' | 'user', stamp: '...' })
+     window.coffeeCamera.open({ mode: 'photo'|'video', facing: 'environment'|'user', flash: false, stamp: '...' })
    ========================================================================= */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
   const CAM_NATIVE_KEY = 'coffee_cam_native_mode_v1';
   let busy = false;
 
-  // Хранилище активных потоков камеры на время сессии (чтобы WebView/браузер не спрашивал доступ повторно)
+  // Хранилище активных потоков камеры на время сессии
   const _warmStreams = { environment: null, user: null };
 
   function _isStreamAlive(s) {
@@ -33,18 +33,82 @@
   function _stopStreamCompletely(s) {
     if (!s || typeof s.getTracks !== 'function') return;
     s.getTracks().forEach((t) => {
+      try {
+        if (typeof t.applyConstraints === 'function') {
+          t.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+        }
+      } catch (_) {}
       try { t.stop(); } catch (_) {}
     });
   }
 
+  async function setStreamTorch(s, on) {
+    if (!s || typeof s.getVideoTracks !== 'function') return false;
+    const tracks = s.getVideoTracks();
+    if (!tracks.length) return false;
+    const t = tracks[0];
+    if (!t || typeof t.applyConstraints !== 'function') return false;
+    try {
+      const caps = typeof t.getCapabilities === 'function' ? (t.getCapabilities() || {}) : {};
+      if (caps.torch || ('torch' in caps)) {
+        await t.applyConstraints({ advanced: [{ torch: !!on }] });
+        return true;
+      }
+      // Пробуем применить constraint напрямую (на части Android WebView getCapabilities не возвращает torch, но applyConstraints работает)
+      await t.applyConstraints({ advanced: [{ torch: !!on }] });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hasHardwareTorch(s) {
+    if (!s || typeof s.getVideoTracks !== 'function') return false;
+    const t = s.getVideoTracks()[0];
+    if (!t || typeof t.getCapabilities !== 'function') return false;
+    try {
+      const caps = t.getCapabilities() || {};
+      return !!(caps.torch || ('torch' in caps));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function _findCameraDeviceId(facing) {
+    if (!(typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function')) {
+      return null;
+    }
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const vids = (list || []).filter((d) => d && d.kind === 'videoinput');
+      if (vids.length < 2) return null;
+      const re = facing === 'user'
+        ? /front|user|selfie|facetime|передн|фронт/i
+        : /back|rear|environment|main|wide|0|задн|основн/i;
+      const match = vids.find((d) => re.test(String(d.label || '')));
+      if (match && match.deviceId) return match.deviceId;
+      // На большинстве смартфонов [0] — основная, [vids.length - 1] — фронтальная
+      return facing === 'user' ? vids[vids.length - 1].deviceId : vids[0].deviceId;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function acquireWarmStream(facingOpt) {
     const facing = facingOpt === 'user' ? 'user' : 'environment';
-    // 1. Если поток для нужной камеры уже открыт и жив — мгновенно включаем его без нового запроса getUserMedia!
+    const alt = facing === 'user' ? 'environment' : 'user';
+
+    // Приостанавливаем альтернативный поток и гасим на нём фонарик
+    if (_warmStreams[alt]) {
+      await setStreamTorch(_warmStreams[alt], false);
+      _enableStreamTracks(_warmStreams[alt], false);
+    }
+
+    // 1. Если поток для нужной камеры уже открыт и жив — мгновенно включаем его (0 запросов getUserMedia)
     if (_isStreamAlive(_warmStreams[facing])) {
       _enableStreamTracks(_warmStreams[facing], true);
       return _warmStreams[facing];
     }
-    // Очищаем мёртвый поток, если он завершился
     if (_warmStreams[facing]) {
       _stopStreamCompletely(_warmStreams[facing]);
       _warmStreams[facing] = null;
@@ -55,22 +119,40 @@
     }
 
     const tries = [
-      { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-      { video: true, audio: false }
+      { video: { facingMode: { exact: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }
     ];
+
+    const devId = await _findCameraDeviceId(facing);
+    if (devId) {
+      tries.splice(1, 0, { video: { deviceId: { exact: devId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    }
+    tries.push({ video: true, audio: false });
+
     let s = null, lastErr = null;
-    for (const c of tries) {
+    for (let i = 0; i < tries.length; i++) {
+      const c = tries[i];
       try {
         s = await navigator.mediaDevices.getUserMedia(c);
         if (s) break;
       } catch (e) {
         lastErr = e;
         if (e && /NotAllowed|Permission|Security/i.test(String(e.name || ''))) break;
+        // На многих телефонах Android/iOS нельзя держать открытыми фронтальную и основную камеры одновременно:
+        // освобождаем старый поток другой камеры и сразу повторяем попытку
+        if (_warmStreams[alt]) {
+          _stopStreamCompletely(_warmStreams[alt]);
+          _warmStreams[alt] = null;
+          try {
+            s = await navigator.mediaDevices.getUserMedia(c);
+            if (s) break;
+          } catch (e2) {
+            lastErr = e2;
+          }
+        }
       }
     }
     if (!s) {
-      // Если вторая камера недоступна, но есть живой поток другой камеры — используем его
-      const alt = facing === 'user' ? 'environment' : 'user';
       if (_isStreamAlive(_warmStreams[alt])) {
         _enableStreamTracks(_warmStreams[alt], true);
         return _warmStreams[alt];
@@ -84,11 +166,15 @@
   }
 
   function suspendWarmStream(streamOpt) {
-    // Не вызываем track.stop() при закрытии окна камеры, чтобы Telegram Mini App / мобильный браузер
-    // сохранял выданное разрешение до конца смены и открывал камеру за 0 мс на следующих шагах!
-    if (streamOpt) _enableStreamTracks(streamOpt, false);
+    if (streamOpt) {
+      setStreamTorch(streamOpt, false);
+      _enableStreamTracks(streamOpt, false);
+    }
     Object.keys(_warmStreams).forEach((k) => {
-      if (_warmStreams[k]) _enableStreamTracks(_warmStreams[k], false);
+      if (_warmStreams[k]) {
+        setStreamTorch(_warmStreams[k], false);
+        _enableStreamTracks(_warmStreams[k], false);
+      }
     });
   }
 
@@ -106,6 +192,35 @@
     window.addEventListener('beforeunload', releaseAllWarmStreams);
   }
 
+  // Программная подсветка тёмных кадров при включённой вспышке (если съёмка шла в темноте с экранной вспышкой)
+  function enhanceFlashExposure(c) {
+    try {
+      const ctx = c.getContext('2d');
+      const sample = document.createElement('canvas');
+      sample.width = sample.height = 16;
+      const sCtx = sample.getContext('2d');
+      sCtx.drawImage(c, 0, 0, 16, 16);
+      const d = sCtx.getImageData(0, 0, 16, 16).data;
+      let lum = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        lum += (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+      }
+      const avgLum = lum / (d.length / 4);
+      if (avgLum < 85) {
+        const boost = avgLum < 45 ? 1.42 : 1.24;
+        const copy = document.createElement('canvas');
+        copy.width = c.width;
+        copy.height = c.height;
+        copy.getContext('2d').drawImage(c, 0, 0);
+        ctx.save();
+        ctx.filter = 'brightness(' + boost + ') contrast(1.06)';
+        ctx.drawImage(copy, 0, 0);
+        ctx.restore();
+      }
+    } catch (_) {}
+    return c;
+  }
+
   function stampCanvas(c, stampStr) {
     const x = c.getContext('2d');
     const h = Math.max(16, Math.round(c.width / 45));
@@ -118,7 +233,27 @@
     return c;
   }
 
-  // Прямой захват через системную камеру устройства (<input capture>) — 0 всплывающих запросов разрешений от браузера
+  // Экранная Retina-вспышка (для фронтальной камеры и устройств без аппаратного WebRTC torch)
+  function triggerScreenFlash(flashEl, durationMs) {
+    return new Promise((resolve) => {
+      if (!flashEl) return resolve();
+      flashEl.hidden = false;
+      flashEl.style.display = 'block';
+      flashEl.style.opacity = '0.96';
+      setTimeout(() => {
+        resolve();
+        setTimeout(() => {
+          flashEl.style.opacity = '0';
+          setTimeout(() => {
+            flashEl.hidden = true;
+            flashEl.style.display = 'none';
+          }, 150);
+        }, 90);
+      }, Math.max(180, Number(durationMs) || 260));
+    });
+  }
+
+  // Прямой захват через системную камеру устройства (<input capture>) — в системном приложении камеры работают обе камеры и родная вспышка
   function captureNativeCanvas(opts) {
     opts = opts || {};
     return new Promise((resolve) => {
@@ -197,6 +332,10 @@
     acquire: acquireWarmStream,
     suspend: suspendWarmStream,
     releaseAll: releaseAllWarmStreams,
+    setTorch: setStreamTorch,
+    hasTorch: hasHardwareTorch,
+    triggerScreenFlash,
+    enhanceFlashExposure,
     captureNativeCanvas,
     captureNative,
     isNativeModePreferred,
@@ -235,45 +374,83 @@
 
       let facing = opts.facing === 'user' ? 'user' : 'environment';
       let mode = opts.mode === 'video' ? 'video' : 'photo';
+      let flashOn = !!opts.flash;
+      let hwTorchActive = false;
       let stream = null, rec = null, chunks = [], recTimer = null, closed = false;
 
       const ov = mk('dialog', 'position:fixed;inset:0;margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;z-index:2147483000;background:#000;color:#fff;display:flex;flex-direction:column;font-family:system-ui,sans-serif;touch-action:manipulation;overflow:hidden');
       ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Камера');
       const video = mk('video', 'flex:1;min-height:0;width:100%;object-fit:cover;background:#000');
       video.autoplay = true; video.muted = true; video.setAttribute('playsinline', '');
-      const top = mk('div', 'position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;background:linear-gradient(#000a,#0000)');
-      const bClose = mk('button', 'border:0;border-radius:999px;background:#0008;color:#fff;font-size:15px;font-weight:700;padding:9px 14px;cursor:pointer', '✕ Отмена');
-      const bNative = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0008;color:#fff;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer', '⚡ Без запросов');
-      const bFlip = mk('button', 'border:0;border-radius:999px;background:#0008;color:#fff;font-size:14px;font-weight:700;padding:9px 14px;cursor:pointer');
-      bClose.type = bNative.type = bFlip.type = 'button';
-      bNative.title = 'Открыть системную камеру устройства без запросов разрешений в браузере';
-      top.append(bClose, bNative, bFlip);
-      const info = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:0;right:0;text-align:center;font-size:13.5px;font-weight:600;text-shadow:0 1px 4px #000;padding:0 16px');
-      const rect = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:50%;transform:translateX(-50%);display:none;background:#d32f2f;border-radius:999px;padding:4px 14px;font-weight:700;font-size:15px');
-      const bottom = mk('div', 'position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px 14px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(#0000,#000b)');
+      const screenFlashEl = mk('div', 'position:fixed;inset:0;z-index:2147483005;background:#fffdf6;opacity:0;pointer-events:none;transition:opacity .12s ease;display:none');
+
+      const top = mk('div', 'position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;background:linear-gradient(#000c,#0000);z-index:2');
+      const bClose = mk('button', 'border:0;border-radius:999px;background:#0009;color:#fff;font-size:14px;font-weight:700;padding:8px 13px;cursor:pointer', '✕ Отмена');
+      const bFlash = mk('button', '', '⚡ Вспышка: Выкл');
+      const bNative = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0009;color:#fff;font-size:12px;font-weight:600;padding:8px 11px;cursor:pointer', '📱 Системная');
+      bClose.type = bFlash.type = bNative.type = 'button';
+      top.append(bClose, bFlash, bNative);
+
+      const info = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:0;right:0;text-align:center;font-size:13px;font-weight:600;text-shadow:0 1px 4px #000;padding:0 16px;z-index:2');
+      const rect = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:50%;transform:translateX(-50%);display:none;background:#d32f2f;border-radius:999px;padding:4px 14px;font-weight:700;font-size:15px;z-index:2');
+
+      const bottom = mk('div', 'position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:12px;padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 20px);background:linear-gradient(#0000,#000d);z-index:2');
+      const lensRow = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center');
+      const bRear = mk('button', '', '📷 Основная');
+      const bFront = mk('button', '', '🤳 Фронтальная');
+      bRear.type = bFront.type = 'button';
+      lensRow.append(bRear, bFront);
+
       const modes = mk('div', 'display:flex;gap:8px');
-      const mPhoto = mk('button', '', '📷 Фото'), mVideo = mk('button', '', '📹 Видео');
+      const mPhoto = mk('button', '', 'Фото'), mVideo = mk('button', '', 'Видео');
       mPhoto.type = mVideo.type = 'button';
       modes.append(mPhoto, mVideo);
+
+      const shutterRow = mk('div', 'display:flex;align-items:center;justify-content:center;gap:24px;width:100%');
       const shutter = mk('button', 'width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:#fff3;cursor:pointer;padding:0');
-      shutter.type = 'button'; shutter.disabled = true; shutter.setAttribute('aria-label', 'Снять');
-      bottom.append(modes, shutter);
-      ov.append(video, top, info, rect, bottom);
+      const bFlip = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0009;color:#fff;font-size:13.5px;font-weight:700;padding:9px 14px;cursor:pointer', '🔄 Сменить');
+      shutter.type = bFlip.type = 'button';
+      shutter.disabled = true; shutter.setAttribute('aria-label', 'Снять');
+      shutterRow.append(shutter, bFlip);
+
+      bottom.append(lensRow, modes, shutterRow);
+      ov.append(video, screenFlashEl, top, info, rect, bottom);
       document.body.appendChild(ov);
       try { if (typeof ov.showModal === 'function') ov.showModal(); else ov.setAttribute('open', ''); } catch (_) { ov.setAttribute('open', ''); }
       ov.addEventListener('cancel', (e) => { e.preventDefault(); finish(null); });
       const onHide = () => { if (document.hidden) finish(null); };
       document.addEventListener('visibilitychange', onHide);
 
-      function paintModes() {
-        const on = 'border:0;border-radius:999px;padding:8px 16px;font-weight:700;font-size:14px;cursor:pointer;background:#fff;color:#000';
-        const off = 'border:0;border-radius:999px;padding:8px 16px;font-weight:700;font-size:14px;cursor:pointer;background:#0008;color:#fff';
-        mPhoto.style.cssText = mode === 'photo' ? on : off;
-        mVideo.style.cssText = mode === 'video' ? on : off;
+      function paintControls() {
+        const pillOn = 'border:0;border-radius:999px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer;background:#fff;color:#000';
+        const pillOff = 'border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:7px 14px;font-weight:600;font-size:13px;cursor:pointer;background:#0008;color:#fff';
+        mPhoto.style.cssText = mode === 'photo' ? pillOn : pillOff;
+        mVideo.style.cssText = mode === 'video' ? pillOn : pillOff;
+        bRear.style.cssText = facing === 'environment' ? pillOn : pillOff;
+        bFront.style.cssText = facing === 'user' ? pillOn : pillOff;
+        bFlash.style.cssText = flashOn
+          ? 'border:0;border-radius:999px;padding:8px 13px;font-weight:700;font-size:13px;cursor:pointer;background:#f5b82e;color:#1b160d'
+          : 'border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;background:#0009;color:#fff';
+        bFlash.textContent = flashOn ? '⚡ Вспышка: Вкл' : '⚡ Вспышка: Выкл';
         shutter.style.background = mode === 'video' ? '#d32f2f' : '#fff3';
-        bFlip.textContent = facing === 'user' ? '🔄 Основная' : '🤳 Селфи';
+        // При включённой вспышке на фронтальной камере даём мягкую подсветку рамки видоискателя
+        video.style.boxShadow = (flashOn && (facing === 'user' || !hwTorchActive))
+          ? 'inset 0 0 0 14px rgba(255,253,244,0.88)'
+          : 'none';
       }
+
       function say(t, bad) { info.textContent = t || ''; info.style.color = bad ? '#ff8a80' : '#fff'; }
+
+      async function applyFlashState() {
+        if (!stream) { hwTorchActive = false; paintControls(); return; }
+        if (flashOn && facing === 'environment') {
+          hwTorchActive = await setStreamTorch(stream, true);
+        } else {
+          hwTorchActive = false;
+          await setStreamTorch(stream, false);
+        }
+        paintControls();
+      }
 
       function detachStream() {
         try { video.pause(); } catch (_) {}
@@ -306,17 +483,38 @@
         try { await video.play(); } catch (_) {}
         await new Promise((r) => { if (video.videoWidth) return r(); video.onloadedmetadata = () => r(); setTimeout(r, 1500); });
         shutter.disabled = !video.videoWidth;
+        await applyFlashState();
       }
 
-      function takePhoto(n) {
+      async function switchFacing(targetFacing) {
+        if (rec && rec.state === 'recording') return;
+        const prev = facing;
+        facing = targetFacing === 'user' ? 'user' : 'environment';
+        paintControls();
+        try {
+          await startStream();
+          say('');
+        } catch (e) {
+          facing = prev;
+          paintControls();
+          try { await startStream(); } catch (_) {}
+        }
+      }
+
+      async function takePhoto(n) {
         if (!video.videoWidth) return;
+        if (flashOn && (facing === 'user' || !hwTorchActive)) {
+          await triggerScreenFlash(screenFlashEl, 260);
+        }
         const k = Math.min(1, 1280 / video.videoWidth), c = document.createElement('canvas');
         c.width = Math.round(video.videoWidth * k); c.height = Math.round(video.videoHeight * k);
         c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
         if (isBlack(c) && n < 2) return void setTimeout(() => takePhoto(n + 1), 180);
+        if (flashOn) enhanceFlashExposure(c);
         stampCanvas(c, opts.stamp || '');
         finish(c.toDataURL('image/jpeg', 0.74));
       }
+
       function toggleRec() {
         if (rec && rec.state === 'recording') { rec.stop(); return; }
         const mime = pickMime();
@@ -338,7 +536,7 @@
         const t0 = Date.now();
         rect.style.display = 'block'; rect.textContent = '● 0:00';
         shutter.style.borderRadius = '14px';
-        bFlip.disabled = mPhoto.disabled = mVideo.disabled = true;
+        bFlip.disabled = bRear.disabled = bFront.disabled = mPhoto.disabled = mVideo.disabled = true;
         recTimer = setInterval(() => {
           const sec = Math.floor((Date.now() - t0) / 1000);
           rect.textContent = '● ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ' / 0:' + VID_MAX;
@@ -347,29 +545,25 @@
       }
 
       bClose.onclick = () => finish(null);
+      bFlash.onclick = async () => {
+        flashOn = !flashOn;
+        await applyFlashState();
+      };
       bNative.onclick = async () => {
-        setNativeModePreferred(true);
         const natUrl = await captureNative({ mode, facing, stamp: opts.stamp });
         finish(natUrl);
       };
-      mPhoto.onclick = () => { mode = 'photo'; paintModes(); say(''); };
-      mVideo.onclick = () => { mode = 'video'; paintModes(); say('Видео до ' + VID_MAX + ' сек'); };
+      bRear.onclick = () => switchFacing('environment');
+      bFront.onclick = () => switchFacing('user');
+      bFlip.onclick = () => switchFacing(facing === 'user' ? 'environment' : 'user');
+      mPhoto.onclick = () => { mode = 'photo'; paintControls(); say(''); };
+      mVideo.onclick = () => { mode = 'video'; paintControls(); say('Видео до ' + VID_MAX + ' сек'); };
       shutter.onclick = () => { if (mode === 'video') toggleRec(); else takePhoto(0); };
-      bFlip.onclick = async () => {
-        if (rec && rec.state === 'recording') return;
-        const prev = facing; facing = prev === 'user' ? 'environment' : 'user'; paintModes();
-        try { await startStream(); }
-        catch (e) {
-          facing = prev; paintModes();
-          try { await startStream(); } catch (_) {}
-        }
-      };
 
-      paintModes();
+      paintControls();
       startStream().then(() => { if (!closed) say(''); })
         .catch(async () => {
           if (closed) return;
-          // Автоматический бесшовный переход на системную камеру без ошибок и всплывающих окон
           const natUrl = await captureNative({ mode, facing, stamp: opts.stamp });
           finish(natUrl);
         });

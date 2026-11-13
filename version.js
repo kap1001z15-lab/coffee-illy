@@ -1,7 +1,7 @@
 /* ЕДИНСТВЕННОЕ место с номером версии. Меняйте командой: node tools/bump-version.js 53
    Используется страницами (очистка старых кэшей) и sw.js (имя кэша через importScripts). */
 (function (g) {
-  g.COFFEE_VERSION = 'v56';
+  g.COFFEE_VERSION = 'v57';
   g.COFFEE_CACHE_NAME = 'kofeinya-enterprise-' + g.COFFEE_VERSION;
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
