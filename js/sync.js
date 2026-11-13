@@ -1454,12 +1454,12 @@ function buildReportResponse(fromStr, toStr) {
     }
   };
 }
-/* Строгая проверка прав доступа по PIN-коду (единый стартовый PIN для всех: 1234) */
+/* Строгая проверка прав доступа владельца для чтения отчётов и изменения настроек/задач */
 function isPinAuthorized(pinArg) {
   if (window.coffeeAuth) {
     if (window.coffeeAuth.isAuthorized('admin')) return true;
     if (pinArg && window.coffeeAuth.verifyOwnerPin(pinArg)) {
-      window.coffeeAuth.createLocalSession('admin', 'Администратор', pinArg);
+      window.coffeeAuth.createLocalSession('admin', 'Владелец', pinArg);
       return true;
     }
     return window.coffeeAuth.isAuthorized('admin');
@@ -1483,14 +1483,21 @@ window.coffeeGetInstantReport = function (fromStr, toStr) {
 let _lastBgSyncAt = 0;
 let _bgSyncInFlight = false;
 
-/* Построение компактного пакета синхронизации состояния для сохранения через совместимый endpoint save_task */
+function _stripLargeBase64FromMediaList(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, 6).map((u) => {
+    const s = String(u || '');
+    return s.length > 1800 ? '' : s;
+  }).filter(Boolean);
+}
+
 function _buildCloudSyncEnvelope(db) {
   db = db || getUDB();
   return {
     _v: 19,
     ts: Date.now(),
     location: db.location || 'Кофейня №1',
-    plan: Number(db.plan) || 9500,
+    plan: Number(db.plan) || 2200,
     openStart: db.openStart || '07:30',
     deadline: db.deadline || '08:30',
     dayStart: db.dayStart || '08:30',
@@ -1506,21 +1513,47 @@ function _buildCloudSyncEnvelope(db) {
     staff: Array.isArray(db.staff) ? db.staff : [],
     announcements: Array.isArray(db.announcements) ? db.announcements.slice(0, 40) : [],
     serviceAudits: Array.isArray(db.serviceAudits) ? db.serviceAudits.slice(0, 40) : [],
-    incidents: Array.isArray(db.incidents) ? db.incidents.slice(0, 60).map((inc) => ({
+    auditLog: Array.isArray(db.auditLog) ? db.auditLog.slice(0, 40) : [],
+    liveNotifications: Array.isArray(db.liveNotifications) ? db.liveNotifications.slice(0, 25) : [],
+    cash: Array.isArray(db.cash) ? db.cash.slice(0, 30) : [],
+    expenses: Array.isArray(db.expenses) ? db.expenses.slice(0, 40) : [],
+    checklists: Array.isArray(db.checklists) ? db.checklists.slice(-25).map((c) => ({
+      sid: c.sid || '',
+      date: c.date || '',
+      time: c.time || '',
+      startedAt: c.startedAt || '',
+      deadline: c.deadline || '',
+      isLate: !!c.isLate,
+      status: c.status || 'Выполнено',
+      totalSteps: Number(c.totalSteps) || 0,
+      block: c.block || '',
+      who: c.who || 'Бариста',
+      problems: Number(c.problems) || 0,
+      photos: Array.isArray(c.photos) ? c.photos.slice(0, 10).map((p) => ({
+        step: p.step || '',
+        url: (p.url && String(p.url).length <= 1800) ? p.url : '',
+        isIncident: !!p.isIncident,
+        comment: p.comment || '',
+        completedAt: p.completedAt || ''
+      })) : []
+    })) : [],
+    incidents: Array.isArray(db.incidents) ? db.incidents.slice(0, 50).map((inc) => ({
       id: inc.id,
       date: inc.date,
       time: inc.time,
-      barista: inc.barista,
-      block: inc.block,
-      type: inc.type,
-      area: inc.area,
-      task: inc.task,
-      priority: inc.priority,
-      comment: inc.comment,
-      responsible: inc.responsible,
-      status: inc.status,
-      hasPhoto: inc.hasPhoto,
-      resolvedAt: inc.resolvedAt || ''
+      location: inc.location || db.location || 'Кофейня №1',
+      block: inc.block || 'Вне чек-листа',
+      incType: inc.incType || 'Поломка оборудования',
+      step: inc.step || inc.task || 'Проблема',
+      text: inc.text || inc.comment || '',
+      priority: inc.priority || 'Критично',
+      status: inc.status || 'Новая проблема',
+      who: inc.who || inc.barista || 'Бариста',
+      owner: inc.owner || inc.responsible || 'Техник',
+      photo: (inc.photo && String(inc.photo).length <= 1800) ? inc.photo : '',
+      photos: _stripLargeBase64FromMediaList(inc.photos),
+      resolvedAt: inc.resolvedAt || '',
+      history: Array.isArray(inc.history) ? inc.history.slice(-5) : []
     })) : []
   };
 }
@@ -1551,7 +1584,7 @@ function _rawPostJson(url, payloadObj, timeoutMs) {
   });
 }
 
-const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet)$/;
+const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet)$/;
 
 /* Автоматический мост совместимости со старым развёртыванием Code.gs:
    если сервер отвечает "Error: unknown action" на новые действия (save_checklist_blocks, update_incident, delete_incident и др.),
@@ -1848,8 +1881,12 @@ window.coffeeGetTotalPendingCount = function () {
 };
 window.coffeeRenderNetBadge = function (justSyncedCount) {
   if (typeof document === 'undefined') return;
-  const el = document.getElementById('netStatusBadge');
-  if (!el) return;
+  const els = document.querySelectorAll('#netStatusBadge, #termNetStatusBadge');
+  if (!els.length) return;
+  const el = new Proxy({}, {
+    set(_, prop, val) { els.forEach((node) => { node[prop] = val; }); return true; },
+    get(_, prop) { return els[0][prop]; }
+  });
   const online = (typeof navigator === 'undefined' || navigator.onLine !== false) && window._coffeeLastSyncOk !== false;
   const pending = window.coffeeGetTotalPendingCount();
   if (!online) {
@@ -2091,7 +2128,7 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
           const envTs = Number(env.ts || 0);
           const localTs = Number(db.lastLocalMutationAt || 0);
           const lastEnvTs = Number(db._lastCloudEnvTs || 0);
-          if (envTs >= localTs && envTs >= lastEnvTs) {
+          if (envTs > lastEnvTs && envTs >= localTs) {
             db._lastCloudEnvTs = envTs;
             if (Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) db.checklistBlocks = env.checklistBlocks;
             if (env.dailyPlans && typeof env.dailyPlans === 'object') db.dailyPlans = Object.assign({}, db.dailyPlans || {}, env.dailyPlans);
@@ -2102,7 +2139,49 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
             if (Array.isArray(env.staff) && env.staff.length) db.staff = env.staff;
             if (Array.isArray(env.announcements) && env.announcements.length) db.announcements = env.announcements;
             if (Array.isArray(env.serviceAudits) && env.serviceAudits.length) db.serviceAudits = env.serviceAudits;
-            if (Array.isArray(env.incidents) && envTs > localTs) db.incidents = env.incidents;
+            if (Array.isArray(env.auditLog) && env.auditLog.length && !(db.auditLog && db.auditLog.length > env.auditLog.length)) db.auditLog = env.auditLog;
+            if (Array.isArray(env.liveNotifications) && env.liveNotifications.length) {
+              const locNtfIds = new Set((db.liveNotifications || []).map((n) => n && n.id));
+              env.liveNotifications.forEach((n) => {
+                if (n && n.id && !locNtfIds.has(n.id)) {
+                  db.liveNotifications = db.liveNotifications || [];
+                  db.liveNotifications.unshift(n);
+                }
+              });
+            }
+            if (Array.isArray(env.checklists) && env.checklists.length) {
+              db.checklists = db.checklists || [];
+              env.checklists.forEach((sc) => {
+                if (!sc || !sc.date || !sc.block) return;
+                const exIdx = db.checklists.findIndex((c) => c && ((sc.sid && c.sid === sc.sid) || (c.date === sc.date && c.block === sc.block && c.who === sc.who)));
+                if (exIdx < 0) db.checklists.push(sc);
+              });
+            }
+            if (Array.isArray(env.cash) && env.cash.length) {
+              db.cash = db.cash || [];
+              env.cash.forEach((sc) => {
+                if (!sc || !sc.date || (db.deletedCashDates && db.deletedCashDates[sc.date])) return;
+                const exIdx = db.cash.findIndex((c) => c && c.date === sc.date);
+                if (exIdx < 0) db.cash.push(sc);
+                else if (Number(sc.cash || 0) + Number(sc.card || 0) >= Number(db.cash[exIdx].cash || 0) + Number(db.cash[exIdx].card || 0)) {
+                  db.cash[exIdx] = Object.assign({}, db.cash[exIdx], sc);
+                }
+              });
+            }
+            if (Array.isArray(env.incidents)) {
+              if (envTs > localTs) {
+                const locPhotosById = {};
+                (db.incidents || []).forEach((i) => { if (i && i.id) locPhotosById[i.id] = { photo: i.photo, photos: i.photos }; });
+                db.incidents = env.incidents.map((inc) => {
+                  const lp = locPhotosById[inc.id];
+                  if (lp) {
+                    if (!inc.photo && lp.photo) inc.photo = lp.photo;
+                    if ((!inc.photos || !inc.photos.length) && lp.photos && lp.photos.length) inc.photos = lp.photos;
+                  }
+                  return inc;
+                });
+              }
+            }
             saveUDB(db);
           }
         }

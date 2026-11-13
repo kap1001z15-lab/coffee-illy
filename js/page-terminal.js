@@ -1,3 +1,5 @@
+/* UNIFIED_IIFE_START */
+(function () {
 /* Клиентский модуль страницы index.html (v21 Enterprise) */
 const esc = window.escapeHtml || ((s) => String(s == null ? '' : s));
 const API_URL = window.COFFEE.API_URL;
@@ -42,8 +44,27 @@ const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e)
 const tgt = (f) => { try { return f(); } catch (e) {} };
 $("loc").textContent = LOCATION; $("who").textContent = userName;
 const curTheme = () => document.documentElement.getAttribute("data-theme") ||'light';
-function paintTheme() { const d = curTheme() === "dark"; $("theme").textContent = d ? "☀️" : "🌙"; $("theme").setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема"); }
-$("theme").onclick = () => { const n = curTheme() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {} paintTheme(); };
+function paintTheme() {
+  const d = curTheme() === "dark";
+  ["theme", "termThemeBtn"].forEach((id) => {
+    const b = $(id);
+    if (b) {
+      b.textContent = d ? "☀️" : "🌙";
+      b.setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема");
+    }
+  });
+}
+["theme", "termThemeBtn"].forEach((id) => {
+  const b = $(id);
+  if (b) {
+    b.onclick = () => {
+      const n = curTheme() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", n);
+      try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {}
+      paintTheme();
+    };
+  }
+});
 paintTheme();
 /* ---------- Telegram Mini App ---------- */
 if (tg) {
@@ -2023,14 +2044,25 @@ if ($("doneHomeBtn")) {
 
 
 /* Запрос PIN-кода участника при старте терминала (единый стартовый PIN: 1234) */
-(function initTerminalStartupPinGate() {
+window.reloadTerminalFromVault = reloadTerminalFromVault;
+window.promptStaffPinAndSwitch = promptStaffPinAndSwitch;
+window.ensureTerminalPinGate = function () {
   try {
     if (typeof window !== "undefined" && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || "")) return;
+    if (window.COFFEE_ACTIVE_SYSTEM_MODE === "owner") return;
     const unlockedUser = sessionStorage.getItem("coffee_term_pin_unlocked_v1");
     if (!unlockedUser) {
-      setTimeout(() => {
-        promptStaffPinAndSwitch(userName || "Соня", true);
-      }, 120);
+      promptStaffPinAndSwitch(userName || "Соня", true);
     }
   } catch (_) {}
+};
+(function initTerminalStartupPinGate() {
+  setTimeout(() => {
+    if (window.COFFEE_ACTIVE_SYSTEM_MODE !== "owner") {
+      window.ensureTerminalPinGate();
+    }
+  }, 120);
 })();
+
+})();
+/* UNIFIED_IIFE_END */

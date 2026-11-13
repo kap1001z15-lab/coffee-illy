@@ -18,6 +18,11 @@ let ownerSimAvg = 5, ownerSimChk = 10, ownerSimWo = 30;
 /* ---------- ВХОД ПО PIN-КОДУ НА СТАРТЕ ПАНЕЛИ ВЛАДЕЛЬЦА И УПРАВЛЕНИЯ (СТАРТОВЫЙ PIN: 1234) ---------- */
 function ensureOwnerPinGate(forceShow) {
   if (typeof document === 'undefined') return true;
+  if (!forceShow && window.COFFEE_ACTIVE_SYSTEM_MODE === 'terminal') {
+    const existing = document.getElementById('ownerPinGateModal');
+    if (existing) existing.remove();
+    return true;
+  }
   if (!forceShow && window.coffeeAuth && window.coffeeAuth.isAuthorized('admin')) {
     const existing = document.getElementById('ownerPinGateModal');
     if (existing) existing.remove();
@@ -844,7 +849,9 @@ setTimeout(() => {
   }
   renderOwnerNotificationsDrawer();
   switchOwnerTopSection(ownerTopSection);
-  ensureOwnerPinGate(false);
+  if (window.COFFEE_ACTIVE_SYSTEM_MODE !== 'terminal') {
+    ensureOwnerPinGate(false);
+  }
 }, 30);
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
@@ -860,3 +867,51 @@ if (window.coffeeBus) {
     }
   });
 }
+
+
+/* === ЕДИНАЯ СИСТЕМА: МГНОВЕННОЕ ПЕРЕКЛЮЧЕНИЕ ПАНЕЛЬ ВЛАДЕЛЬЦА <-> ТЕРМИНАЛ БАРИСТА (0 МС) === */
+window.coffeeSwitchAppMode = function (targetMode, sectionOpt) {
+  const mode = targetMode === 'terminal' ? 'terminal' : 'owner';
+  window.COFFEE_ACTIVE_SYSTEM_MODE = mode;
+  const termRoot = document.getElementById('unifiedTerminalRoot');
+  const ownerRoot = document.getElementById('unifiedOwnerRoot');
+  if (mode === 'terminal') {
+    if (ownerRoot) ownerRoot.hidden = true;
+    if (termRoot) termRoot.hidden = false;
+    const ownerGate = document.getElementById('ownerPinGateModal');
+    if (ownerGate) ownerGate.remove();
+    if (typeof window.reloadTerminalFromVault === 'function') {
+      window.reloadTerminalFromVault();
+    }
+    if (typeof window.ensureTerminalPinGate === 'function') {
+      window.ensureTerminalPinGate();
+    }
+  } else {
+    if (termRoot) termRoot.hidden = true;
+    if (ownerRoot) ownerRoot.hidden = false;
+    const staffDlg = document.getElementById('staffPinDlg');
+    if (staffDlg) {
+      try { if (staffDlg.open && typeof staffDlg.close === 'function') staffDlg.close(); staffDlg.removeAttribute('open'); } catch (_) {}
+    }
+    if (sectionOpt) ownerTopSection = sectionOpt;
+    renderOwnerNotificationsDrawer();
+    switchOwnerTopSection(ownerTopSection);
+    ensureOwnerPinGate(false);
+  }
+  if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
+};
+
+window.addEventListener('storage', (e) => {
+  if (!e.key || /coffee_/.test(e.key)) {
+    renderOwnerNotificationsDrawer();
+    if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
+    if (ownerTopSection === 'report') renderOwnerReportSection();
+    if (ownerTopSection === 'admin') load();
+  }
+});
+window.addEventListener('focus', () => {
+  renderOwnerNotificationsDrawer();
+  if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
+  if (ownerTopSection === 'report') renderOwnerReportSection();
+  if (ownerTopSection === 'admin') load();
+});

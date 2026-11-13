@@ -300,25 +300,36 @@ header .wrap {
   }
 }
 #tabs {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr)) !important;
-  gap: 6px !important;
-  overflow: visible !important;
-  white-space: normal !important;
-  margin-bottom: 14px !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  margin-bottom: 12px !important;
+}
+#tabs::-webkit-scrollbar {
+  display: none !important;
 }
 #tabs button {
-  width: 100% !important;
-  min-height: 40px !important;
-  padding: 6px 8px !important;
-  font-size: 13px !important;
+  flex: 1 1 0 !important;
+  width: auto !important;
+  min-width: max-content !important;
+  min-height: 34px !important;
+  height: 34px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
   white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 4px !important;
+  line-height: 1 !important;
 }
 .card, .panel, .row, .adm-row, .set, .dow-cell {
   min-width: 0;
@@ -347,4 +358,55 @@ dialog {
   max-width: min(540px, 94vw) !important;
   max-height: 90dvh;
   overflow-y: auto;
+}
+
+
+/* === ИЗОЛЯЦИЯ ГАБАРИТОВ В ЕДИНОЙ СИСТЕМЕ (ТЕРМИНАЛ + ПАНЕЛЬ ВЛАДЕЛЬЦА) === */
+#unifiedTerminalRoot main {
+  max-width: 500px !important;
+  margin: 0 auto !important;
+  padding: 16px 14px calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+}
+#unifiedTerminalRoot #termModeSwitch {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 6px !important;
+}
+#unifiedOwnerRoot main {
+  max-width: 1340px !important;
+  margin: 0 auto !important;
+}
+
+
+/* Компактные кнопки в разделе Управление в 1 строчку */
+#panel .top {
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+}
+#panel .top h2 {
+  font-size: 16px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+#panel .top .acts {
+  flex-wrap: nowrap !important;
+  gap: 5px !important;
+  flex-shrink: 0 !important;
+}
+#panel .b, #panel .p {
+  min-height: 32px !important;
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  border-radius: 8px !important;
+  white-space: nowrap !important;
+}
+@media (max-width: 680px) {
+  #panel .top {
+    flex-wrap: wrap !important;
+  }
+  #panel .top .acts {
+    overflow-x: auto !important;
+    max-width: 100% !important;
+  }
 }

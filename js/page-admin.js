@@ -75,8 +75,8 @@ $('tabs').addEventListener('click',(e)=>{const b=e.target.closest('[data-t]');if
 
 function rChecklists(){
   const cBlocks = (window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks() : (D.checklistBlocks || window.COFFEE_DEFAULT_CHECKLIST_BLOCKS || []));
-  let h = '<div class="top"><h2 style="font-size:18px">📋 Управление чек-листами и таймлайном смены (' + cBlocks.length + ')</h2>' +
-    '<div class="acts"><button class="b" type="button" data-a="dl-extend">⏱ Продлить дедлайн смены</button><button class="b ok" type="button" data-a="chkblk-new">+ Добавить чек-лист</button><button class="p" type="button" data-a="win-save">💾 Сохранить таймлайн</button></div></div>';
+  let h = '<div class="top"><h2 style="font-size:18px">📋 Таймлайн (' + cBlocks.length + ')</h2>' +
+    '<div class="acts"><button class="b" type="button" data-a="dl-extend">⏱ Продлить</button><button class="b ok" type="button" data-a="chkblk-new">+ Чек-лист</button><button class="p" type="button" data-a="win-save">💾 Сохранить</button></div></div>';
 
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px">';
   cBlocks.forEach((bObj, idx) => {
@@ -94,9 +94,9 @@ function rChecklists(){
         '<span>—</span>' +
         '<input type="time" class="chkblk-dl" data-bname="' + esc(blk) + '" value="' + esc(bObj.deadline || w.baseDeadline || '08:30') + '" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);flex:1">' +
       '</div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-        '<button type="button" class="b ok" data-a="win-unlock" data-b="' + esc(blk) + '" style="font-size:12px;padding:5px 9px;min-height:30px">🔓 Открыть доступ</button>' +
-        '<button type="button" class="b del" data-a="win-sim-overdue" data-b="' + esc(blk) + '" style="font-size:12px;padding:5px 9px;min-height:30px">🔴 Просрочить (тест)</button>' +
+      '<div style="display:flex;gap:4px;flex-wrap:nowrap">' +
+        '<button type="button" class="b ok" data-a="win-unlock" data-b="' + esc(blk) + '" style="font-size:12px;padding:5px 9px;min-height:30px">🔓 Открыть</button>' +
+        '<button type="button" class="b del" data-a="win-sim-overdue" data-b="' + esc(blk) + '" style="font-size:12px;padding:5px 9px;min-height:30px">🔴 Тест</button>' +
         (!bObj.isCash && blk !== 'Касса' ? '<button type="button" class="b del" data-a="chkblk-del" data-b="' + esc(blk) + '" style="font-size:12px;padding:5px 9px;min-height:30px">🗑 Убрать</button>' : '') +
       '</div>' +
     '</div>';
