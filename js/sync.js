@@ -480,6 +480,10 @@ function enforceSettingsOnResponse(act, data) {
     data.staff = db.staff || [];
     data.ttk = db.ttk || [];
     data.deadlineExtensions = db.deadlineExtensions || {};
+    data.checklists = db.checklists || [];
+    data.userDrafts = db.userDrafts || {};
+    data.userActiveState = db.userActiveState || {};
+    data.personalTasksDone = db.personalTasksDone || {};
     const forcePhoto = db.photoAll === 'да';
     data.tasks = window.coffeeNormalizeTasksTimeline(db.tasks || []).filter((t) => t.active !== 'нет').map((t) => {
       const isOC = t.block === 'Открытие' || t.block === 'Закрытие';
@@ -883,6 +887,62 @@ function absorbServerData(url, data, options) {
       db.deadlineExtensions = Object.assign({}, db.deadlineExtensions || {}, data.deadlineExtensions);
       changed = true;
     }
+  }
+
+  /* 13. Синхронизация выполненных чек-листов, пошагового прогресса (userDrafts) и личных задач аккаунта */
+  if (Array.isArray(data.checklists) && data.checklists.length) {
+    db.checklists = Array.isArray(db.checklists) ? db.checklists : [];
+    data.checklists.forEach((sc) => {
+      if (!sc || !sc.date || !sc.block) return;
+      const scWho = String(sc.who || 'Бариста').trim();
+      const exIdx = db.checklists.findIndex((c) => c && ((sc.sid && c.sid && c.sid === sc.sid) || (c.date === sc.date && c.block === sc.block && String(c.who || '').trim().toLowerCase() === scWho.toLowerCase())));
+      if (exIdx < 0) {
+        db.checklists.push(sc);
+        changed = true;
+      } else if (sc.time && !db.checklists[exIdx].time) {
+        db.checklists[exIdx] = Object.assign({}, db.checklists[exIdx], sc);
+        changed = true;
+      }
+      try {
+        localStorage.setItem('coffee_illy_done_' + sc.date + '_' + scWho + '_' + sc.block, '1');
+      } catch (_) {}
+    });
+  }
+  if (data.userDrafts && typeof data.userDrafts === 'object') {
+    db.userDrafts = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
+    Object.keys(data.userDrafts).forEach((dKey) => {
+      const remD = data.userDrafts[dKey];
+      if (!remD || typeof remD !== 'object') return;
+      const locD = db.userDrafts[dKey];
+      if (!locD || Number(remD.updatedAt || 0) > Number(locD.updatedAt || 0)) {
+        db.userDrafts[dKey] = remD;
+        changed = true;
+      }
+    });
+  }
+  if (data.userActiveState && typeof data.userActiveState === 'object') {
+    db.userActiveState = (db.userActiveState && typeof db.userActiveState === 'object') ? db.userActiveState : {};
+    Object.keys(data.userActiveState).forEach((uKey) => {
+      const remA = data.userActiveState[uKey];
+      if (!remA || typeof remA !== 'object') return;
+      const locA = db.userActiveState[uKey];
+      if (!locA || Number(remA.updatedAt || 0) > Number(locA.updatedAt || 0)) {
+        db.userActiveState[uKey] = remA;
+        changed = true;
+      }
+    });
+  }
+  if (data.personalTasksDone && typeof data.personalTasksDone === 'object') {
+    db.personalTasksDone = (db.personalTasksDone && typeof db.personalTasksDone === 'object') ? db.personalTasksDone : {};
+    Object.keys(data.personalTasksDone).forEach((pKey) => {
+      const remP = data.personalTasksDone[pKey];
+      if (!remP || typeof remP !== 'object') return;
+      const locP = db.personalTasksDone[pKey];
+      if (!locP || Number(remP.updatedAt || 0) > Number(locP.updatedAt || 0)) {
+        db.personalTasksDone[pKey] = remP;
+        changed = true;
+      }
+    });
   }
 
   if (Array.isArray(data.incidents)) data.incidents = (db.incidents || []).filter((i) => i && i.step !== '__SYS_TERM_SYNC__' && i.block !== '__SYS__');
@@ -1400,13 +1460,26 @@ function applyLocalMutation(payload) {
       problems: probs.length,
       photos: phs
     };
-    const exChkIdx = db.checklists.findIndex((c) => c && ((chkRec.sid && c.sid === chkRec.sid) || (c.date === chkDate && c.block === blk && c.who === chkWho)));
+    const exChkIdx = db.checklists.findIndex((c) => c && ((chkRec.sid && c.sid === chkRec.sid) || (c.date === chkDate && c.block === blk && String(c.who || '').toLowerCase() === String(chkWho || '').toLowerCase())));
     if (exChkIdx >= 0) db.checklists[exChkIdx] = chkRec;
     else db.checklists.push(chkRec);
     if (db.deadlineExtensions && db.deadlineExtensions[chkDate + ':' + blk]) {
       delete db.deadlineExtensions[chkDate + ':' + blk];
     }
-    try { localStorage.setItem('coffee_illy_done_' + chkDate + '_' + blk, '1'); } catch (_) {}
+    db.userDrafts = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
+    db.userDrafts[chkDate + ':' + chkWho + ':' + blk] = {
+      date: chkDate,
+      userName: chkWho,
+      block: blk,
+      idx: 0,
+      answers: [],
+      completed: true,
+      updatedAt: Date.now()
+    };
+    try {
+      localStorage.setItem('coffee_illy_done_' + chkDate + '_' + chkWho + '_' + blk, '1');
+      localStorage.setItem('coffee_illy_done_' + chkDate + '_' + blk, '1');
+    } catch (_) {}
     appendAudit(
       db,
       payload.userName || 'Бариста',
@@ -1448,6 +1521,45 @@ function applyLocalMutation(payload) {
       const dupProb = (db.incidents || []).some((x) => x && x.date === newInc.date && x.block === newInc.block && x.step === newInc.step && x.text === newInc.text);
       if (!dupProb) db.incidents.unshift(newInc);
     });
+  } else if (a === 'save_checklist_draft') {
+    db.userDrafts = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
+    db.userActiveState = (db.userActiveState && typeof db.userActiveState === 'object') ? db.userActiveState : {};
+    const dDate = payload.date || _isoToday();
+    const dWho = String(payload.userName || 'Бариста').trim();
+    const dBlk = String(payload.block || 'Открытие').trim();
+    const dKey = dDate + ':' + dWho + ':' + dBlk;
+    const tsNow = Number(payload.updatedAt) || Date.now();
+    if (payload.cleared || payload.completed) {
+      db.userDrafts[dKey] = {
+        date: dDate,
+        userName: dWho,
+        block: dBlk,
+        idx: 0,
+        answers: [],
+        cleared: !!payload.cleared,
+        completed: !!payload.completed,
+        updatedAt: tsNow
+      };
+    } else if (payload.draft && typeof payload.draft === 'object') {
+      db.userDrafts[dKey] = Object.assign({}, payload.draft, {
+        date: dDate,
+        userName: dWho,
+        block: dBlk,
+        updatedAt: Number(payload.draft.updatedAt) || tsNow
+      });
+    }
+    if (payload.activeState && typeof payload.activeState === 'object' && dWho) {
+      db.userActiveState[dWho] = Object.assign({}, payload.activeState, {
+        updatedAt: Number(payload.activeState.updatedAt) || tsNow
+      });
+    }
+  } else if (a === 'toggle_personal_task') {
+    db.personalTasksDone = (db.personalTasksDone && typeof db.personalTasksDone === 'object') ? db.personalTasksDone : {};
+    const pKey = (payload.date || _isoToday()) + ':' + String(payload.userName || 'Бариста').trim() + ':' + String(payload.taskId || '').trim();
+    db.personalTasksDone[pKey] = {
+      done: !!payload.done,
+      updatedAt: Number(payload.updatedAt) || Date.now()
+    };
   }
   saveUDB(db);
 }
@@ -1751,9 +1863,21 @@ function _buildCloudSyncEnvelope(db) {
     serviceAudits: Array.isArray(db.serviceAudits) ? db.serviceAudits.slice(0, 40) : [],
     auditLog: Array.isArray(db.auditLog) ? db.auditLog.slice(0, 40) : [],
     liveNotifications: Array.isArray(db.liveNotifications) ? db.liveNotifications.slice(0, 25) : [],
+    userDrafts: (function () {
+      const today = _isoToday();
+      const out = {};
+      const src = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
+      Object.keys(src).forEach((k) => {
+        if (k.indexOf(today + ':') === 0 && src[k]) out[k] = src[k];
+      });
+      return out;
+    })(),
+    userActiveState: db.userActiveState || {},
+    personalTasksDone: db.personalTasksDone || {},
+    productsByDate: db.productsByDate || {},
     cash: Array.isArray(db.cash) ? db.cash.slice(0, 30) : [],
     expenses: Array.isArray(db.expenses) ? db.expenses.slice(0, 40) : [],
-    checklists: Array.isArray(db.checklists) ? db.checklists.slice(-25).map((c) => ({
+    checklists: Array.isArray(db.checklists) ? db.checklists.slice(-40).map((c) => ({
       sid: c.sid || '',
       date: c.date || '',
       time: c.time || '',
@@ -1820,7 +1944,7 @@ function _rawPostJson(url, payloadObj, timeoutMs) {
   });
 }
 
-const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet)$/;
+const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet|save_checklist_draft|toggle_personal_task)$/;
 
 /* Автоматический мост совместимости со старым развёртыванием Code.gs:
    если сервер отвечает "Error: unknown action" на новые действия (save_checklist_blocks, update_incident, delete_incident и др.),
@@ -1887,7 +2011,8 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
     calls.push(_rawPostJson(url, { action: 'save_setting', id: 'DEADLINE_EXTENSIONS_JSON', key: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap), pin }, 10000));
   }
 
-  // Всегда сохраняем актуальный конверт состояния __SYS_CONFIG_V19__ в лист Задачи через поддерживаемый старым сервером save_task
+  // Всегда сохраняем актуальный конверт состояния __SYS_CONFIG_V19__ в лист Задачи с active: 'да',
+  // чтобы публичный запрос get_checklists на любом устройстве гарантированно получал конверт синхронизации!
   const envStr = JSON.stringify(_buildCloudSyncEnvelope(db));
   calls.push(_rawPostJson(url, {
     action: 'save_task',
@@ -1897,7 +2022,7 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
     instruction: envStr,
     photo: 'нет',
     responsible: 'Система',
-    active: 'нет',
+    active: 'да',
     pin
   }, 12000));
 
@@ -1912,7 +2037,7 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
 
 
 let _bgEnvPushTimer = null;
-function _pushCloudEnvelopeInBackground(apiUrl) {
+function _pushCloudEnvelopeInBackground(apiUrl, delayMs) {
   if (!apiUrl || !/script\.google\.com/i.test(String(apiUrl))) return;
   if (_bgEnvPushTimer) clearTimeout(_bgEnvPushTimer);
   _bgEnvPushTimer = setTimeout(() => {
@@ -1927,12 +2052,16 @@ function _pushCloudEnvelopeInBackground(apiUrl) {
         instruction: envStr,
         photo: 'нет',
         responsible: 'Система',
-        active: 'нет',
+        active: 'да',
         pin: '1234'
       }, 12000).catch(() => {});
     } catch (_) {}
-  }, 80);
+  }, Math.max(20, Number(delayMs) || 25));
 }
+window.coffeePushCloudEnvelopeNow = function () {
+  const apiUrl = window.COFFEE && window.COFFEE.API_URL;
+  if (apiUrl) _pushCloudEnvelopeInBackground(apiUrl, 20);
+};
 
 /* Единый транспорт GAS. Успех возвращается только после JSON-подтверждения сервера. */
 function _sendCorsSafePost(url, bodyObj, timeoutMs) {
@@ -2358,7 +2487,7 @@ async function coffeeLiveSyncTick(forceSync) {
       clearTimeout(t);
     }
     const st = window.coffeeLiveSyncState; st.lastCheckAt = Date.now();
-    if (d && d.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(d.error || ''))) {
+    if (d && ((d.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(d.error || ''))) || String(d.rev || '') === '0')) {
       _legacyGetRevUnsupported = true;
     }
     if (_legacyGetRevUnsupported) {
@@ -2405,11 +2534,11 @@ function _liveNextDelay() {
   if (typeof document !== 'undefined' && document.hidden) d = 60000;
   else {
     const idle = Date.now() - _liveLastActive;
-    d = idle < 180000 ? 4000 : (idle < 900000 ? 10000 : (idle < 3600000 ? 20000 : 30000));
+    d = idle < 120000 ? 1500 : (idle < 600000 ? 3500 : (idle < 3600000 ? 15000 : 30000));
   }
   /* При ошибках сети/сервера — экспоненциальная пауза до 2 минут, чтобы не долбить недоступный сервер. */
   if (_liveFails > 0) d = Math.min(120000, Math.max(d, 4000 * Math.pow(2, Math.min(_liveFails, 5))));
-  return d + Math.floor(Math.random() * 600); /* небольшой разброс, чтобы устройства не стучались одновременно */
+  return d + Math.floor(Math.random() * 250); /* небольшой разброс, чтобы устройства не стучались одновременно */
 }
 function _liveSchedule() {
   clearTimeout(_liveTimer);
@@ -2441,9 +2570,67 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
           const localTs = Number(db.lastLocalMutationAt || 0);
           const lastEnvTs = Number(db._lastCloudEnvTs || 0);
           const isBaristaTerm = !!(typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL);
+          let anyMerged = false;
+
+          // 1. Всегда поэлементно объединяем выполненные чек-листы, черновики шагов (userDrafts) и личные задачи по времени updatedAt!
+          if (Array.isArray(env.checklists) && env.checklists.length) {
+            db.checklists = Array.isArray(db.checklists) ? db.checklists : [];
+            env.checklists.forEach((sc) => {
+              if (!sc || !sc.date || !sc.block) return;
+              const scWho = String(sc.who || 'Бариста').trim();
+              const exIdx = db.checklists.findIndex((c) => c && ((sc.sid && c.sid && c.sid === sc.sid) || (c.date === sc.date && c.block === sc.block && String(c.who || '').trim().toLowerCase() === scWho.toLowerCase())));
+              if (exIdx < 0) {
+                db.checklists.push(sc);
+                anyMerged = true;
+              }
+              try {
+                localStorage.setItem('coffee_illy_done_' + sc.date + '_' + scWho + '_' + sc.block, '1');
+              } catch (_) {}
+            });
+          }
+          if (env.userDrafts && typeof env.userDrafts === 'object') {
+            db.userDrafts = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
+            Object.keys(env.userDrafts).forEach((dKey) => {
+              const remD = env.userDrafts[dKey];
+              if (!remD || typeof remD !== 'object') return;
+              const locD = db.userDrafts[dKey];
+              if (!locD || Number(remD.updatedAt || 0) > Number(locD.updatedAt || 0)) {
+                db.userDrafts[dKey] = remD;
+                anyMerged = true;
+              }
+            });
+          }
+          if (env.userActiveState && typeof env.userActiveState === 'object') {
+            db.userActiveState = (db.userActiveState && typeof db.userActiveState === 'object') ? db.userActiveState : {};
+            Object.keys(env.userActiveState).forEach((uKey) => {
+              const remA = env.userActiveState[uKey];
+              if (!remA || typeof remA !== 'object') return;
+              const locA = db.userActiveState[uKey];
+              if (!locA || Number(remA.updatedAt || 0) > Number(locA.updatedAt || 0)) {
+                db.userActiveState[uKey] = remA;
+                anyMerged = true;
+              }
+            });
+          }
+          if (env.personalTasksDone && typeof env.personalTasksDone === 'object') {
+            db.personalTasksDone = (db.personalTasksDone && typeof db.personalTasksDone === 'object') ? db.personalTasksDone : {};
+            Object.keys(env.personalTasksDone).forEach((pKey) => {
+              const remP = env.personalTasksDone[pKey];
+              if (!remP || typeof remP !== 'object') return;
+              const locP = db.personalTasksDone[pKey];
+              if (!locP || Number(remP.updatedAt || 0) > Number(locP.updatedAt || 0)) {
+                db.personalTasksDone[pKey] = remP;
+                anyMerged = true;
+              }
+            });
+          }
+          if (env.productsByDate && typeof env.productsByDate === 'object') {
+            db.productsByDate = Object.assign({}, db.productsByDate || {}, env.productsByDate);
+          }
+
           if (envTs > 0 && envTs !== lastEnvTs && (isBaristaTerm || envTs >= localTs)) {
             db._lastCloudEnvTs = envTs;
-            db._lastEnvJustChanged = true;
+            anyMerged = true;
             if (env.location) db.location = env.location;
             if (env.plan > 0) db.plan = Number(env.plan);
             if (Array.isArray(env.settings) && env.settings.length) {
@@ -2469,8 +2656,24 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
             if (Array.isArray(env.goodDeeds) && env.goodDeeds.length) db.goodDeeds = env.goodDeeds;
             if (Array.isArray(env.ttk) && env.ttk.length) db.ttk = env.ttk;
             if (Array.isArray(env.staff) && env.staff.length) db.staff = env.staff;
-            if (Array.isArray(env.announcements) && env.announcements.length) db.announcements = env.announcements;
-            if (Array.isArray(env.serviceAudits) && env.serviceAudits.length) db.serviceAudits = env.serviceAudits;
+            if (Array.isArray(env.announcements) && env.announcements.length) {
+              const locAnnMap = {};
+              (db.announcements || []).forEach((a) => { if (a && a.id) locAnnMap[a.id] = a; });
+              db.announcements = env.announcements.filter((a) => a && !(db.deletedAnnouncementIds && db.deletedAnnouncementIds[a.id])).map((remA) => {
+                const locA = locAnnMap[remA.id];
+                if (!locA) return remA;
+                const ackMap = new Map();
+                (Array.isArray(locA.acks) ? locA.acks : []).concat(Array.isArray(remA.acks) ? remA.acks : []).forEach((k) => {
+                  if (k && k.name) ackMap.set(String(k.name).toLowerCase(), k);
+                });
+                return Object.assign({}, locA, remA, { acks: Array.from(ackMap.values()) });
+              });
+            }
+            if (Array.isArray(env.serviceAudits) && env.serviceAudits.length) {
+              db.serviceAudits = window.coffeeMergeRecordLists
+                ? window.coffeeMergeRecordLists(db.serviceAudits || [], env.serviceAudits, 'id', { tombstones: db.deletedServiceAuditIds || {} })
+                : env.serviceAudits;
+            }
             if (Array.isArray(env.auditLog) && env.auditLog.length && !(db.auditLog && db.auditLog.length > env.auditLog.length)) db.auditLog = env.auditLog;
             if (Array.isArray(env.liveNotifications) && env.liveNotifications.length) {
               const locNtfIds = new Set((db.liveNotifications || []).map((n) => n && n.id));
@@ -2481,39 +2684,47 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
                 }
               });
             }
-            if (Array.isArray(env.checklists) && env.checklists.length) {
-              db.checklists = db.checklists || [];
-              env.checklists.forEach((sc) => {
-                if (!sc || !sc.date || !sc.block) return;
-                const exIdx = db.checklists.findIndex((c) => c && ((sc.sid && c.sid === sc.sid) || (c.date === sc.date && c.block === sc.block && c.who === sc.who)));
-                if (exIdx < 0) db.checklists.push(sc);
-              });
-            }
             if (Array.isArray(env.cash) && env.cash.length) {
               db.cash = db.cash || [];
               env.cash.forEach((sc) => {
                 if (!sc || !sc.date || (db.deletedCashDates && db.deletedCashDates[sc.date])) return;
                 const exIdx = db.cash.findIndex((c) => c && c.date === sc.date);
-                if (exIdx < 0) db.cash.push(sc);
-                else if (Number(sc.cash || 0) + Number(sc.card || 0) >= Number(db.cash[exIdx].cash || 0) + Number(db.cash[exIdx].card || 0)) {
-                  db.cash[exIdx] = Object.assign({}, db.cash[exIdx], sc);
+                if (exIdx < 0) {
+                  db.cash.push(sc);
+                } else {
+                  const locC = db.cash[exIdx];
+                  const shMap = new Map();
+                  (Array.isArray(locC.shifts) ? locC.shifts : []).concat(Array.isArray(sc.shifts) ? sc.shifts : []).forEach((sh) => {
+                    if (sh && sh.name) shMap.set(String(sh.name).toLowerCase(), sh);
+                  });
+                  const mergedShifts = Array.from(shMap.values());
+                  if (Number(sc.cash || 0) + Number(sc.card || 0) >= Number(locC.cash || 0) + Number(locC.card || 0)) {
+                    db.cash[exIdx] = Object.assign({}, locC, sc, mergedShifts.length ? { shifts: mergedShifts } : {});
+                  } else if (mergedShifts.length > (Array.isArray(locC.shifts) ? locC.shifts.length : 0)) {
+                    db.cash[exIdx].shifts = mergedShifts;
+                  }
                 }
               });
             }
             if (Array.isArray(env.incidents)) {
-              if (envTs > localTs) {
-                const locPhotosById = {};
-                (db.incidents || []).forEach((i) => { if (i && i.id) locPhotosById[i.id] = { photo: i.photo, photos: i.photos }; });
-                db.incidents = env.incidents.map((inc) => {
-                  const lp = locPhotosById[inc.id];
-                  if (lp) {
-                    if (!inc.photo && lp.photo) inc.photo = lp.photo;
-                    if ((!inc.photos || !inc.photos.length) && lp.photos && lp.photos.length) inc.photos = lp.photos;
-                  }
-                  return inc;
-                });
-              }
+              const locPhotosById = {};
+              (db.incidents || []).forEach((i) => { if (i && i.id) locPhotosById[i.id] = { photo: i.photo, photos: i.photos }; });
+              const mergedIncs = window.coffeeMergeRecordLists
+                ? window.coffeeMergeRecordLists(db.incidents || [], env.incidents, 'id', { tombstones: db.deletedIncidents || {} })
+                : env.incidents;
+              db.incidents = mergedIncs.filter((inc) => inc && !(db.deletedIncidents && db.deletedIncidents[inc.id])).map((inc) => {
+                const lp = locPhotosById[inc.id];
+                if (lp) {
+                  if (!inc.photo && lp.photo) inc.photo = lp.photo;
+                  if ((!inc.photos || !inc.photos.length) && lp.photos && lp.photos.length) inc.photos = lp.photos;
+                }
+                if (db.resolvedIncidents && db.resolvedIncidents[inc.id]) inc.status = 'Решена';
+                return inc;
+              });
             }
+          }
+          if (anyMerged) {
+            db._lastEnvJustChanged = true;
             saveUDB(db);
           }
         }
@@ -2859,7 +3070,8 @@ function _renderServerBanner() {
   if (typeof document === 'undefined' || !document.body) return;
   const h = window.coffeeServerHealth;
   let el = document.getElementById('coffeeServerBanner');
-  const bad = h.state === 'old' || h.state === 'nojson' || (h.state === 'unreachable' && h.fails >= 2) || (h.state === 'slow' && h.fails >= 3);
+  const isBaristaTerm = !!(typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL);
+  const bad = !isBaristaTerm && (h.state === 'nojson' || (h.state === 'unreachable' && h.fails >= 3));
   if (!bad) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('div');

@@ -349,4 +349,44 @@ check('8. Сверка продаж v54: лист Продажи, защита �
   assert(daySeries && daySeries.counterDelta === 4 && daySeries.writeoff === 15 && daySeries.writeoffShots === 1, 'В отчёте должен учитываться циклический переход 998→2 (= 4) и раздельные списания (15 руб. и 1 порция)');
 });
 
-process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/8 успешно.\n');
+check('9. Синхронизация одного аккаунта между устройствами (save_checklist_draft, toggle_personal_task, Чек-листы в get_checklists и привязка к сотруднику)', () => {
+  const today = gasContext.isoDate_();
+  // Устройство 1 (Телефон, аккаунт Алина): проходит шаг 2 из 5 в «Карте добрых дел»
+  const draftRes = callPost({
+    action: 'save_checklist_draft',
+    date: today,
+    userName: 'Алина',
+    block: 'Карта добрых дел',
+    draft: {
+      date: today,
+      userName: 'Алина',
+      block: 'Карта добрых дел',
+      idx: 1,
+      startedAt: '16:20',
+      answers: [{ id: 'gd1', title: 'Разморозка холодильника', choiceMade: true, isIncident: false }],
+      updatedAt: 1700000005000
+    },
+    activeState: { date: today, block: 'Карта добрых дел', idx: 1, updatedAt: 1700000005000 },
+    updatedAt: 1700000005000
+  });
+  assert(draftRes.ok === true, 'save_checklist_draft должен сохранять пошаговый прогресс сотрудника на сервере');
+
+  // Устройство 1 (Телефон, аккаунт Алина): сдаёт чек-лист «Открытие»
+  const subChkRes = callPost({
+    action: 'submit_checklist',
+    userName: 'Алина',
+    block: 'Открытие',
+    deadline: '08:30',
+    isLate: false,
+    items: [{ id: 'o01', title: 'Фото-селфи', isIncident: false, photo_url: 'https://drive.google.com/file/d/1/view' }]
+  });
+  assert(subChkRes.ok === true, 'submit_checklist должен сохранять чек-лист за сотрудником Алина');
+
+  // Устройство 2 (ПК, аккаунт Алина): запрашивает get_checklists и получает и черновик шага 2/5, и сданный чек-лист «Открытие»
+  const dev2Out = JSON.parse(gasContext.doGet({ parameter: { action: 'get_checklists' } }).getContent());
+  const dKey = today + ':Алина:Карта добрых дел';
+  assert(dev2Out.ok === true && dev2Out.userDrafts && dev2Out.userDrafts[dKey] && dev2Out.userDrafts[dKey].idx === 1, 'Устройство 2 должно получить точный шаг прохождения (idx: 1) для аккаунта Алина');
+  assert(Array.isArray(dev2Out.checklists) && dev2Out.checklists.some((c) => c.date === today && c.block === 'Открытие' && c.who === 'Алина'), 'Устройство 2 должно получить сданный чек-лист «Открытие» с привязкой к сотруднику Алина');
+});
+
+process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/9 успешно.\n');

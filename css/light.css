@@ -1,199 +1,353 @@
-/* Светлая тема по умолчанию. Подключается ПОСЛЕ основных стилей и действует,
-   пока не включена тёмная (кнопка 🌙/☀️). Тёмная тема остаётся как была. */
+/* =========================================================================
+   ЕДИНЫЙ МИНИМАЛИСТИЧНЫЙ ДИЗАЙН ДЛЯ СВЕТЛОЙ И ТЁМНОЙ ТЕМ (v56)
+   В обеих темах геометрия, отступы, сетка (3 колонки чек-листов), плоская шапка,
+   карточки и кнопки 100% идентичны — меняется только цветовая палитра токенов.
+   ========================================================================= */
 
+/* 1. Палитра Светлой темы (по умолчанию) */
 :root:not([data-theme=dark]) {
   color-scheme: light;
-  --bg: #faf6f0;
+  --bg: #f6f4f0;
   --surface: #ffffff;
-  --ink: #2c2420;
-  --muted: #7b6f66;
-  --line: #ece2d6;
-  --brew: #9a5f33;
-  --crema: #c98b4f;
-  --accent: #9a5f33;
-  --good: #2c8a58;
-  --bad: #c7432b;
-  --warn: #b57a1c;
-  --espresso: #2c2420;
-  --cream: #fffaf3;
-  --chip: #f3ebe1;
-  --shadow: 0 1px 2px rgba(60, 40, 20, .05), 0 10px 24px -16px rgba(60, 40, 20, .22);
+  --chip: #eee9e1;
+  --ink: #1e1b18;
+  --muted: #6f665f;
+  --line: #e4ddd3;
+  --brew: #8c5830;
+  --crema: #c4874a;
+  --accent: #8c5830;
+  --good: #218353;
+  --bad: #c93b2b;
+  --warn: #b87514;
+  --espresso: #1e1b18;
+  --cream: #ffffff;
+  --shadow: 0 1px 2px rgba(24, 20, 16, .04), 0 8px 20px -14px rgba(24, 20, 16, .14);
 }
 
-:root:not([data-theme=dark]) body { background: var(--bg); }
-
-/* ---------- Шапка: светлая и компактная ---------- */
-:root:not([data-theme=dark]) header,
-:root:not([data-theme=dark]) .app-header {
-  background: var(--surface);
-  color: var(--ink);
-  border-radius: 0 0 20px 20px;
-  border-bottom: 1px solid var(--line);
-  box-shadow: 0 8px 24px -18px rgba(60, 40, 20, .35);
+/* 2. Палитра Тёмной темы (минималистичный графит с той же иерархией поверхностей) */
+:root[data-theme=dark] {
+  color-scheme: dark;
+  --bg: #121316;
+  --surface: #1a1c20;
+  --chip: #24272d;
+  --ink: #f1f3f5;
+  --muted: #949ba6;
+  --line: #2c3038;
+  --brew: #c98b4f;
+  --crema: #e0a76a;
+  --accent: #c98b4f;
+  --good: #34b377;
+  --bad: #ef5b4c;
+  --warn: #e5a93c;
+  --espresso: #1a1c20;
+  --cream: #f1f3f5;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .28), 0 10px 24px -16px rgba(0, 0, 0, .55);
 }
-:root:not([data-theme=dark]) header { padding-bottom: 10px; }
-:root:not([data-theme=dark]) header .sub,
-:root:not([data-theme=dark]) .app-header .sub { color: var(--muted); }
-:root:not([data-theme=dark]) .brand h1,
-:root:not([data-theme=dark]) .app-header h1 { color: var(--ink); }
-:root:not([data-theme=dark]) .brand h1 svg,
-:root:not([data-theme=dark]) .app-header h1 svg { stroke: var(--brew); }
 
-:root:not([data-theme=dark]) .theme-btn,
-:root:not([data-theme=dark]) .app-header .theme-btn,
-:root:not([data-theme=dark]) #ownerNotifBtn {
+body {
+  background: var(--bg) !important;
+  color: var(--ink) !important;
+}
+
+/* ---------- Единая минималистичная шапка в обеих темах ---------- */
+header,
+.app-header {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border-radius: 0 0 20px 20px !important;
+  border-bottom: 1px solid var(--line) !important;
+  box-shadow: var(--shadow) !important;
+}
+header { padding-bottom: 10px; }
+header .sub,
+header .brand-meta .sub,
+header .brand-meta .sub-dot,
+.app-header .sub {
+  color: var(--muted) !important;
+}
+.brand h1,
+.app-header h1 {
+  color: var(--ink) !important;
+}
+.brand h1 svg,
+.app-header h1 svg {
+  stroke: var(--brew) !important;
+}
+
+.theme-btn,
+.app-header .theme-btn,
+#ownerNotifBtn,
+.notif-btn {
   border: 1px solid var(--line) !important;
   background: var(--chip) !important;
   color: var(--ink) !important;
+  border-radius: 11px !important;
+  height: 38px !important;
+  padding: 0 11px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
-:root:not([data-theme=dark]) .barista-sel {
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
+.theme-btn,
+.app-header .theme-btn {
+  width: 38px !important;
+  padding: 0 !important;
+  font-size: 16px !important;
 }
-
-/* Переключатели в шапке */
-:root:not([data-theme=dark]) .tabs,
-:root:not([data-theme=dark]) .owner-nav,
-:root:not([data-theme=dark]) .app-header .tabs,
-:root:not([data-theme=dark]) #ownerMainNav {
-  background: var(--chip);
+.barista-sel,
+header .barista-sel {
+  border: 1px solid var(--line) !important;
+  background: var(--chip) !important;
+  color: var(--ink) !important;
+  border-radius: 11px !important;
+  height: 38px !important;
 }
-:root:not([data-theme=dark]) .tabs button,
-:root:not([data-theme=dark]) .owner-nav a,
-:root:not([data-theme=dark]) .app-header .tabs a {
-  color: var(--muted);
-}
-:root:not([data-theme=dark]) .tabs button[aria-selected=true],
-:root:not([data-theme=dark]) .owner-nav a.on,
-:root:not([data-theme=dark]) .app-header .tabs a.on {
+.barista-sel option {
   background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 1px 3px rgba(60, 40, 20, .14);
 }
-:root:not([data-theme=dark]) .steps i { background: var(--line); }
-:root:not([data-theme=dark]) .steps i.done { background: var(--crema); }
-:root:not([data-theme=dark]) .steps i.now { background: var(--brew); }
 
-/* Блоки чек-листов в терминале: три колонки, меньше высоты */
-:root:not([data-theme=dark]) #termModeSwitch {
+/* ---------- Переключатели и навигация (одинаково в светлой и тёмной темах) ---------- */
+.tabs,
+.owner-nav,
+.app-header .tabs,
+#ownerMainNav {
   background: var(--chip) !important;
-  margin: 10px 0 8px;
+  border: 1px solid var(--line) !important;
 }
-:root:not([data-theme=dark]) #termModeSwitch button {
+.tabs button,
+.owner-nav a,
+.app-header .tabs a,
+#ownerMainNav button {
   background: transparent !important;
+  border: 1px solid transparent !important;
   color: var(--muted) !important;
-  border-color: transparent !important;
-  min-height: 42px !important;
 }
-:root:not([data-theme=dark]) #termModeSwitch button.ok {
+.tabs button[aria-selected=true],
+.owner-nav a.on,
+.app-header .tabs a.on,
+#ownerMainNav button.on {
   background: var(--surface) !important;
   color: var(--ink) !important;
   border-color: var(--line) !important;
-  box-shadow: 0 1px 3px rgba(60, 40, 20, .12);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12) !important;
 }
-:root:not([data-theme=dark]) #termTimelineTabs {
+.steps i { background: var(--line) !important; }
+.steps i.done { background: var(--crema) !important; }
+.steps i.now { background: var(--brew) !important; }
+
+/* ---------- Переключатель режимов и 6 блоков чек-листов в Терминале ---------- */
+#termModeSwitch {
+  background: var(--chip) !important;
+  border: 1px solid var(--line) !important;
+  margin: 10px 0 8px !important;
+  padding: 4px !important;
+  border-radius: 13px !important;
+}
+#termModeSwitch button {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border: 1px solid transparent !important;
+  min-height: 40px !important;
+  box-shadow: none !important;
+}
+#termModeSwitch button.ok {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12) !important;
+}
+
+#termTimelineTabs {
+  display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   background: transparent !important;
   padding: 0 !important;
   gap: 6px !important;
   margin-top: 6px !important;
+  border: 0 !important;
 }
-:root:not([data-theme=dark]) #termTimelineTabs button {
-  min-height: 46px !important;
-  padding: 5px 3px !important;
+#termTimelineTabs button {
+  min-height: 48px !important;
+  padding: 6px 5px !important;
   font-size: 12.5px !important;
   background: var(--chip) !important;
   color: var(--ink) !important;
-  border: 1px solid transparent !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 11px !important;
+  box-shadow: none !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  line-height: 1.18 !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  word-break: break-word !important;
 }
-:root:not([data-theme=dark]) #termTimelineTabs button small,
-:root:not([data-theme=dark]) #termTimelineTabs button .t { color: var(--muted); }
-:root:not([data-theme=dark]) #termTimelineTabs button[aria-selected="true"] {
+#termTimelineTabs button small,
+#termTimelineTabs button .t {
+  color: var(--muted) !important;
+}
+#termTimelineTabs button[aria-selected="true"] {
   background: var(--surface) !important;
   color: var(--ink) !important;
   border-color: var(--brew) !important;
-  box-shadow: 0 1px 4px rgba(154, 95, 51, .28);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--brew) 28%, transparent) !important;
+}
+@media (max-width: 350px) {
+  #termTimelineTabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
 
-/* ---------- Карточки и кнопки ---------- */
-:root:not([data-theme=dark]) .panel,
-:root:not([data-theme=dark]) .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
+/* ---------- Карточки, кнопки и поля ввода ---------- */
+.panel,
+.card,
+.info-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--shadow) !important;
 }
-:root:not([data-theme=dark]) .btn {
-  background: var(--brew);
-  color: #fff;
-  box-shadow: 0 8px 18px -12px rgba(154, 95, 51, .8);
+.btn,
+.p,
+.btn-p {
+  background: var(--brew) !important;
+  color: #ffffff !important;
+  border: 0 !important;
+  box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--brew) 65%, transparent) !important;
 }
-:root:not([data-theme=dark]) .btn:disabled { background: #d9cdbf; color: #fff; box-shadow: none; }
-:root:not([data-theme=dark]) .seg button { background: var(--chip); border-color: transparent; color: var(--ink); }
-:root:not([data-theme=dark]) .seg button.on { background: var(--brew); color: #fff; }
-:root:not([data-theme=dark]) .seg button.ok { background: color-mix(in srgb, var(--good) 12%, #fff); color: var(--good); }
-:root:not([data-theme=dark]) .seg button.bad { background: color-mix(in srgb, var(--bad) 12%, #fff); color: var(--bad); }
-:root:not([data-theme=dark]) .seg button.warn { background: color-mix(in srgb, var(--warn) 14%, #fff); color: var(--warn); }
-:root:not([data-theme=dark]) .toast { background: var(--ink); color: #fff; }
-:root:not([data-theme=dark]) .meter { background: var(--chip); }
+.btn.ghost,
+.b,
+.btn-s {
+  background: var(--chip) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: none !important;
+}
+.btn:disabled,
+.p:disabled,
+.btn-p:disabled {
+  background: var(--line) !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+}
+.seg {
+  background: var(--chip) !important;
+  border: 1px solid var(--line) !important;
+}
+.seg button {
+  background: var(--chip) !important;
+  border: 1px solid transparent !important;
+  color: var(--ink) !important;
+}
+.seg button.on {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border-color: var(--brew) !important;
+}
+.seg button.ok,
+#btnOk.ok {
+  background: color-mix(in srgb, var(--good) 16%, var(--surface)) !important;
+  color: var(--good) !important;
+  border-color: var(--good) !important;
+  box-shadow: none !important;
+}
+.seg button.bad,
+#btnInc.bad {
+  background: color-mix(in srgb, var(--bad) 16%, var(--surface)) !important;
+  color: var(--bad) !important;
+  border-color: var(--bad) !important;
+  box-shadow: none !important;
+}
+.seg button.warn {
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface)) !important;
+  color: var(--warn) !important;
+  border-color: var(--warn) !important;
+}
 
-/* Окна */
-:root:not([data-theme=dark]) dialog {
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 22px;
+/* Ненавязчивый компактный тост */
+.toast {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 8px 14px !important;
+  border-radius: 12px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
 }
-:root:not([data-theme=dark]) dialog::backdrop { background: rgba(44, 36, 32, .38); }
+.meter { background: var(--chip) !important; }
+
+/* Диалоги и модальные окна */
+dialog,
+#quickIncDlg {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 20px !important;
+  box-shadow: var(--shadow) !important;
+  max-width: min(540px, 94vw) !important;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+dialog::backdrop,
+#quickIncDlg::backdrop {
+  background: rgba(15, 16, 19, .48) !important;
+  backdrop-filter: none !important;
+}
 
 /* Поля ввода */
-:root:not([data-theme=dark]) input,
-:root:not([data-theme=dark]) textarea,
-:root:not([data-theme=dark]) select {
-  background-color: #fff;
-  border-color: var(--line);
+input,
+textarea,
+select {
+  background-color: var(--bg) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
 }
 
-/* ---------- Навигация владельца и статусы ---------- */
-:root:not([data-theme=dark]) #ownerMainNav {
-  background: var(--chip) !important;
-  flex-wrap: nowrap !important;
+/* Индикаторы сети (одинаково контрастные в обеих темах) */
+.net-pill.online {
+  background: color-mix(in srgb, var(--good) 15%, var(--surface)) !important;
+  color: var(--good) !important;
+  border: 1px solid color-mix(in srgb, var(--good) 35%, var(--line)) !important;
 }
-:root:not([data-theme=dark]) #ownerMainNav button {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--muted);
-  padding: 7px 6px !important;
-  font-size: 13px !important;
+.net-pill.offline {
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface)) !important;
+  color: var(--warn) !important;
+  border: 1px solid color-mix(in srgb, var(--warn) 38%, var(--line)) !important;
 }
-:root:not([data-theme=dark]) #ownerMainNav button.on {
-  background: var(--surface);
-  color: var(--ink);
-  border-color: var(--line);
-  box-shadow: 0 1px 3px rgba(60, 40, 20, .12);
+.net-pill.syncing {
+  background: color-mix(in srgb, var(--crema) 16%, var(--surface)) !important;
+  color: var(--brew) !important;
+  border: 1px solid color-mix(in srgb, var(--crema) 38%, var(--line)) !important;
 }
-:root:not([data-theme=dark]) .net-pill.online { background: #e6f4ec; color: #1f7a4c; border-color: #bfe3cf; }
-:root:not([data-theme=dark]) .net-pill.offline { background: #fbf0da; color: #8a5a0b; border-color: #ecd29c; }
-:root:not([data-theme=dark]) .net-pill.syncing { background: #e4effb; color: #2b64a5; border-color: #bcd5f0; }
 
-/* Окно уведомления */
-:root:not([data-theme=dark]) .ntf-modal { background: rgba(44, 36, 32, .45); }
-:root:not([data-theme=dark]) .ntf-card { box-shadow: 0 24px 50px -24px rgba(60, 40, 20, .5); }
-:root:not([data-theme=dark]) .ntf-empty { color: var(--muted); }
-:root:not([data-theme=dark]) .ntf-media { background: var(--chip); }
+/* Окно уведомления и форма поломки */
+.ntf-modal { background: rgba(15, 16, 19, .52) !important; }
+.ntf-card {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: var(--shadow) !important;
+}
+.ntf-empty { color: var(--muted) !important; }
+.ntf-media { background: var(--chip) !important; }
+#qiCancel { background: var(--chip) !important; color: var(--ink) !important; box-shadow: none !important; }
+.sos-btn { color: var(--bad) !important; font-size: 17px; }
 
-/* Форма поломки */
-:root:not([data-theme=dark]) #quickIncDlg::backdrop { background: rgba(44, 36, 32, .4); backdrop-filter: none; }
-:root:not([data-theme=dark]) #qiCancel { background: var(--chip); color: var(--ink); box-shadow: none; }
-:root:not([data-theme=dark]) .sos-btn { color: var(--bad) !important; }
-.sos-btn { font-size: 17px; }
-
-
-/* === УНИВЕРСАЛЬНАЯ АДАПТИВНОСТЬ ПОД ЛЮБЫЕ ЭКРАНЫ (320px — 1920px) === */
+/* ---------- Адаптивная сетка под любые экраны (320px — 1920px) ---------- */
 html, body {
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow-x: clip !important;
   box-sizing: border-box;
 }
 *, *::before, *::after {
@@ -238,39 +392,9 @@ header .wrap {
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
-  height: 40px;
-  border-radius: 12px;
   padding: 0 10px;
 }
 
-/* Таймлайн чек-листов в терминале: полный текст без обрезки многоточием */
-#termTimelineTabs {
-  display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  gap: 6px !important;
-}
-#termTimelineTabs button {
-  white-space: normal !important;
-  overflow: visible !important;
-  text-overflow: clip !important;
-  line-height: 1.18 !important;
-  min-height: 48px !important;
-  height: auto !important;
-  padding: 6px 4px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  text-align: center !important;
-  word-break: break-word !important;
-}
-@media (max-width: 360px) {
-  #termTimelineTabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-/* Навигация и 9 вкладок Управления: красивая сетка без горизонтального скролла и потерь */
 .app-header .wrap {
   display: flex;
   flex-wrap: wrap;
@@ -283,10 +407,13 @@ header .wrap {
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 4px !important;
   padding: 4px !important;
-  border-radius: 14px !important;
+  border-radius: 13px !important;
 }
 #ownerMainNav button {
-  min-height: 38px !important;
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  border-radius: 9px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -354,14 +481,7 @@ header .wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-dialog {
-  max-width: min(540px, 94vw) !important;
-  max-height: 90dvh;
-  overflow-y: auto;
-}
 
-
-/* === ИЗОЛЯЦИЯ ГАБАРИТОВ В ЕДИНОЙ СИСТЕМЕ (ТЕРМИНАЛ + ПАНЕЛЬ ВЛАДЕЛЬЦА) === */
 #unifiedTerminalRoot main {
   max-width: 500px !important;
   margin: 0 auto !important;
@@ -377,8 +497,6 @@ dialog {
   margin: 0 auto !important;
 }
 
-
-/* Компактные кнопки в разделе Управление в 1 строчку */
 #panel .top {
   flex-wrap: nowrap !important;
   gap: 8px !important;

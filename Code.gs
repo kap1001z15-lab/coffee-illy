@@ -68,7 +68,7 @@ function doGet(e) {
     var p = (e && e.parameter) || {};
     var action = p.action || 'get_checklists';
     if (action === 'get_rev') return jsonOut_({ ok: true, rev: getDataRev_(), serverTs: Date.now() });
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v54', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v55', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54'] });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
@@ -154,6 +154,8 @@ function doPost(e) {
     // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
     if (action === 'upload_photo') return idempotentJsonOut_(ss, body, uploadPhotoToDrive_(ss, body));
     if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
+    if (action === 'save_checklist_draft') return idempotentJsonOut_(ss, body, saveChecklistDraft_(ss, body));
+    if (action === 'toggle_personal_task') return idempotentJsonOut_(ss, body, togglePersonalTask_(ss, body));
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
       sendTelegramServerAlert_(ss, {
@@ -1313,7 +1315,7 @@ function getChecklists_(ss) {
     /* __SYS_CONFIG_V19__ передаётся клиенту для синхронизации конверта состояния и скрывается клиентом */
     if (!titleStr && !r[1]) continue;
     var active = String(r[7] || 'да').toLowerCase();
-    if (active === 'нет') continue;
+    if (active === 'нет' && codeStr !== '__SYS_CONFIG_V19__' && titleStr !== '__SYS_SYNC__') continue;
     tasks.push({
       row: i + 1,
       id: codeStr || ('r' + (i + 1)),
@@ -1339,10 +1341,21 @@ function getChecklists_(ss) {
   var gdList = getGoodDeedsFromSheet_(ss);
   var serverTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
   var serverDate = isoDate_();
+  var chkLog = getChecklistsLogFromSheet_(ss);
+  var userDraftsMap = {};
+  var userActiveMap = {};
+  var personalTasksMap = {};
+  try { userDraftsMap = JSON.parse(map.USER_DRAFTS_JSON || '{}'); } catch (_) {}
+  try { userActiveMap = JSON.parse(map.USER_ACTIVE_STATE_JSON || '{}'); } catch (_) {}
+  try { personalTasksMap = JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'); } catch (_) {}
 
   return {
     ok: true,
-    v: 28,
+    v: 55,
+    checklists: chkLog,
+    userDrafts: userDraftsMap,
+    userActiveState: userActiveMap,
+    personalTasksDone: personalTasksMap,
     rows: tasks.length,
     sheet: 'Задачи',
     location: map.LOCATION || 'Кофейня №1',
@@ -2109,6 +2122,36 @@ function saveTask_(ss, b) {
       if (env && Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) {
         saveChecklistBlocks_(ss, { blocks: env.checklistBlocks });
       }
+      if (env && env.userDrafts && typeof env.userDrafts === 'object') {
+        try {
+          var curDrafts = getJsonProp_('COFFEE_USER_DRAFTS_JSON', {});
+          Object.keys(env.userDrafts).forEach(function(dk) {
+            var rd = env.userDrafts[dk];
+            if (rd && (!curDrafts[dk] || Number(rd.updatedAt || 0) >= Number(curDrafts[dk].updatedAt || 0))) curDrafts[dk] = rd;
+          });
+          setJsonProp_('COFFEE_USER_DRAFTS_JSON', curDrafts);
+        } catch (_) {}
+      }
+      if (env && env.userActiveState && typeof env.userActiveState === 'object') {
+        try {
+          var curAct = getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {});
+          Object.keys(env.userActiveState).forEach(function(uk) {
+            var ra = env.userActiveState[uk];
+            if (ra && (!curAct[uk] || Number(ra.updatedAt || 0) >= Number(curAct[uk].updatedAt || 0))) curAct[uk] = ra;
+          });
+          setJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', curAct);
+        } catch (_) {}
+      }
+      if (env && env.personalTasksDone && typeof env.personalTasksDone === 'object') {
+        try {
+          var curPt = getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {});
+          Object.keys(env.personalTasksDone).forEach(function(pk) {
+            var rp = env.personalTasksDone[pk];
+            if (rp && (!curPt[pk] || Number(rp.updatedAt || 0) >= Number(curPt[pk].updatedAt || 0))) curPt[pk] = rp;
+          });
+          setJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', curPt);
+        } catch (_) {}
+      }
     } catch (_) {}
   }
   var sh = ss.getSheetByName('Задачи');
@@ -2136,10 +2179,7 @@ function deleteTask_(ss, b) {
   for (var i = rows.length - 1; i >= 1; i--) {
     var rId = String(rows[i][0] || '').trim();
     var rTitle = String(rows[i][3] || '').trim();
-    if (rId === '__SYS_CONFIG_V19__' || rTitle === '__SYS_SYNC__') {
-      sh.deleteRow(i + 1);
-      continue;
-    }
+    if (rId === '__SYS_CONFIG_V19__' || rTitle === '__SYS_SYNC__') continue;
     if ((b.id && rId === String(b.id).trim()) || (b.expect && rTitle === String(b.expect).trim())) {
       sh.deleteRow(i + 1);
       return { ok: true };
@@ -2462,14 +2502,88 @@ function deleteExpense_(ss, b) {
  * При фиксации поломки в чек-листе автоматически назначаем ответственного (Техник, Шеф-бариста или Администратор),
  * указанного для этого шага регламента.
  */
+function getChecklistsLogFromSheet_(ss) {
+  var sh = ss.getSheetByName('Чек-листы');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = Math.max(1, rows.length - 60); i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] || !r[2]) continue;
+    var phs = [];
+    try { phs = JSON.parse(String(r[5] || '[]')); } catch (_) {}
+    var statusStr = String(r[7] || 'В срок');
+    list.push({
+      date: fmtIso_(r[0]),
+      time: String(r[1] || ''),
+      block: String(r[2] || 'Открытие'),
+      who: String(r[3] || 'Бариста'),
+      problems: Number(r[4]) || 0,
+      photos: Array.isArray(phs) ? phs : [],
+      deadline: String(r[6] || '08:30'),
+      isLate: statusStr === 'Просрочено',
+      status: statusStr === 'Просрочено' ? 'Просрочено' : 'Выполнено'
+    });
+  }
+  return list;
+}
+
+function saveChecklistDraft_(ss, b) {
+  resolveVerifiedStaffSession_(ss, b);
+  var map = getSettingsMap_(ss);
+  var drafts = {};
+  var activeStates = {};
+  try { drafts = JSON.parse(map.USER_DRAFTS_JSON || '{}'); } catch (_) {}
+  try { activeStates = JSON.parse(map.USER_ACTIVE_STATE_JSON || '{}'); } catch (_) {}
+  var dt = fmtIso_(b.date) || isoDate_();
+  var who = String(b.userName || 'Бариста').trim();
+  var blk = String(b.block || 'Открытие').trim();
+  var dKey = dt + ':' + who + ':' + blk;
+  var tsNow = Number(b.updatedAt) || Date.now();
+  if (b.cleared || b.completed) {
+    drafts[dKey] = { date: dt, userName: who, block: blk, idx: 0, answers: [], cleared: !!b.cleared, completed: !!b.completed, updatedAt: tsNow };
+  } else if (b.draft && typeof b.draft === 'object') {
+    drafts[dKey] = Object.assign({}, b.draft, { date: dt, userName: who, block: blk, updatedAt: Number(b.draft.updatedAt) || tsNow });
+  }
+  if (b.activeState && typeof b.activeState === 'object') {
+    activeStates[who] = Object.assign({}, b.activeState, { updatedAt: Number(b.activeState.updatedAt) || tsNow });
+    saveSetting_(ss, { id: 'USER_ACTIVE_STATE_JSON', value: JSON.stringify(activeStates) });
+  }
+  saveSetting_(ss, { id: 'USER_DRAFTS_JSON', value: JSON.stringify(drafts) });
+  return { ok: true, updatedAt: tsNow };
+}
+
+function togglePersonalTask_(ss, b) {
+  resolveVerifiedStaffSession_(ss, b);
+  var map = getSettingsMap_(ss);
+  var pMap = {};
+  try { pMap = JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'); } catch (_) {}
+  var dt = fmtIso_(b.date) || isoDate_();
+  var who = String(b.userName || 'Бариста').trim();
+  var tId = String(b.taskId || '').trim();
+  var tsNow = Number(b.updatedAt) || Date.now();
+  if (tId) {
+    pMap[dt + ':' + who + ':' + tId] = { done: !!b.done, updatedAt: tsNow };
+    saveSetting_(ss, { id: 'PERSONAL_TASKS_DONE_JSON', value: JSON.stringify(pMap) });
+  }
+  return { ok: true, updatedAt: tsNow };
+}
+
 function submitChecklist_(ss, b) {
   var sh = ss.getSheetByName('Чек-листы');
   var dt = isoDate_();
   var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
   var items = b.items || [];
   var probs = items.filter(function(x) { return x && x.isIncident; });
+  var phs = [];
+  items.forEach(function(it) {
+    if (it && it.photo_url) phs.push({ step: it.title || '', url: it.photo_url, isIncident: !!it.isIncident, comment: it.comment || '' });
+  });
 
-  sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, '[]', b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']);
+  sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, JSON.stringify(phs), b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']);
+  try {
+    saveChecklistDraft_(ss, { date: dt, userName: b.userName || 'Бариста', block: b.block || 'Открытие', completed: true, updatedAt: Date.now() });
+  } catch (_) {}
 
   var shI = ss.getSheetByName('Поломки');
   probs.forEach(function(p) {

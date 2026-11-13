@@ -115,8 +115,8 @@ function renderOwnerNotificationsDrawer() {
   const unread = list.filter((n) => n && !n.read).length;
   if ($('ownerNotifCount')) {
     $('ownerNotifCount').textContent = unread > 0 ? String(unread) : '0';
-    $('ownerNotifBtn').style.borderColor = unread > 0 ? '#ff7a5f' : 'rgba(255,255,255,.22)';
-    $('ownerNotifBtn').style.background = unread > 0 ? 'rgba(194,59,34,.35)' : 'rgba(255,255,255,.1)';
+    $('ownerNotifBtn').style.borderColor = unread > 0 ? 'var(--bad)' : '';
+    $('ownerNotifBtn').style.background = unread > 0 ? 'color-mix(in srgb, var(--bad) 16%, var(--chip, var(--bg)))' : '';
   }
   const box = $('ownerNotifDrawer');
   if (!box || box.hidden) return;

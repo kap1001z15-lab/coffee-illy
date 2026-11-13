@@ -1,14 +1,207 @@
 /* =========================================================================
-   КАМЕРА (только живая съёмка): фото, видео, фронтальная / основная камера.
-   Никакого выбора из галереи и файлов — снимок можно сделать только здесь.
+   КАМЕРА (v56): Единый пул «тёплого» потока (1 запрос доступа за всю смену)
+   + режим прямой системной камеры без браузерных запросов разрешений.
    Использование:
-     window.coffeeCamera.open({ mode: 'photo' | 'video', facing: 'environment' | 'user', stamp: 'Кофейня · Настя' })
-       .then((dataUrl) => { if (dataUrl) ... });   // null — если отменили / камеры нет
+     window.coffeeCameraPool.acquire(facing) -> Promise<MediaStream>
+     window.coffeeCameraPool.suspend(stream) -> пауза без отзыва разрешения
+     window.coffeeCameraPool.captureNative({ mode, facing, stamp }) -> Promise<string|null>
+     window.coffeeCamera.open({ mode: 'photo' | 'video', facing: 'environment' | 'user', stamp: '...' })
    ========================================================================= */
 (function () {
   'use strict';
   const VID_MAX = 15; // секунд
+  const CAM_GRANTED_KEY = 'coffee_cam_granted_v1';
+  const CAM_NATIVE_KEY = 'coffee_cam_native_mode_v1';
   let busy = false;
+
+  // Хранилище активных потоков камеры на время сессии (чтобы WebView/браузер не спрашивал доступ повторно)
+  const _warmStreams = { environment: null, user: null };
+
+  function _isStreamAlive(s) {
+    if (!s || typeof s.getVideoTracks !== 'function') return false;
+    const tracks = s.getVideoTracks();
+    return tracks.length > 0 && tracks.every((t) => t && t.readyState === 'live');
+  }
+
+  function _enableStreamTracks(s, enabled) {
+    if (!s || typeof s.getTracks !== 'function') return;
+    s.getTracks().forEach((t) => {
+      try { t.enabled = !!enabled; } catch (_) {}
+    });
+  }
+
+  function _stopStreamCompletely(s) {
+    if (!s || typeof s.getTracks !== 'function') return;
+    s.getTracks().forEach((t) => {
+      try { t.stop(); } catch (_) {}
+    });
+  }
+
+  async function acquireWarmStream(facingOpt) {
+    const facing = facingOpt === 'user' ? 'user' : 'environment';
+    // 1. Если поток для нужной камеры уже открыт и жив — мгновенно включаем его без нового запроса getUserMedia!
+    if (_isStreamAlive(_warmStreams[facing])) {
+      _enableStreamTracks(_warmStreams[facing], true);
+      return _warmStreams[facing];
+    }
+    // Очищаем мёртвый поток, если он завершился
+    if (_warmStreams[facing]) {
+      _stopStreamCompletely(_warmStreams[facing]);
+      _warmStreams[facing] = null;
+    }
+
+    if (!(typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function')) {
+      throw new Error('NO_GET_USER_MEDIA');
+    }
+
+    const tries = [
+      { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: true, audio: false }
+    ];
+    let s = null, lastErr = null;
+    for (const c of tries) {
+      try {
+        s = await navigator.mediaDevices.getUserMedia(c);
+        if (s) break;
+      } catch (e) {
+        lastErr = e;
+        if (e && /NotAllowed|Permission|Security/i.test(String(e.name || ''))) break;
+      }
+    }
+    if (!s) {
+      // Если вторая камера недоступна, но есть живой поток другой камеры — используем его
+      const alt = facing === 'user' ? 'environment' : 'user';
+      if (_isStreamAlive(_warmStreams[alt])) {
+        _enableStreamTracks(_warmStreams[alt], true);
+        return _warmStreams[alt];
+      }
+      throw lastErr || new Error('NO_CAMERA');
+    }
+
+    _warmStreams[facing] = s;
+    try { localStorage.setItem(CAM_GRANTED_KEY, '1'); } catch (_) {}
+    return s;
+  }
+
+  function suspendWarmStream(streamOpt) {
+    // Не вызываем track.stop() при закрытии окна камеры, чтобы Telegram Mini App / мобильный браузер
+    // сохранял выданное разрешение до конца смены и открывал камеру за 0 мс на следующих шагах!
+    if (streamOpt) _enableStreamTracks(streamOpt, false);
+    Object.keys(_warmStreams).forEach((k) => {
+      if (_warmStreams[k]) _enableStreamTracks(_warmStreams[k], false);
+    });
+  }
+
+  function releaseAllWarmStreams() {
+    Object.keys(_warmStreams).forEach((k) => {
+      if (_warmStreams[k]) {
+        _stopStreamCompletely(_warmStreams[k]);
+        _warmStreams[k] = null;
+      }
+    });
+  }
+
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('pagehide', releaseAllWarmStreams);
+    window.addEventListener('beforeunload', releaseAllWarmStreams);
+  }
+
+  function stampCanvas(c, stampStr) {
+    const x = c.getContext('2d');
+    const h = Math.max(16, Math.round(c.width / 45));
+    x.fillStyle = 'rgba(0,0,0,.58)';
+    x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
+    x.fillStyle = '#fff';
+    x.font = '600 ' + h + 'px system-ui,sans-serif';
+    const text = new Date().toLocaleString('ru-RU') + (stampStr ? ' · ' + stampStr : '');
+    x.fillText(text, h * 0.6, c.height - h * 0.6);
+    return c;
+  }
+
+  // Прямой захват через системную камеру устройства (<input capture>) — 0 всплывающих запросов разрешений от браузера
+  function captureNativeCanvas(opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+      if (typeof document === 'undefined' || !document.body) return resolve(null);
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = opts.mode === 'video' ? 'video/*,image/*' : 'image/*';
+      inp.setAttribute('capture', opts.facing === 'user' ? 'user' : 'environment');
+      inp.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none';
+      document.body.appendChild(inp);
+
+      let settled = false;
+      const done = (res) => {
+        if (settled) return;
+        settled = true;
+        try { inp.remove(); } catch (_) {}
+        resolve(res || null);
+      };
+
+      inp.addEventListener('cancel', () => done(null));
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return done(null);
+        if (/^video\//i.test(f.type || '')) {
+          const fr = new FileReader();
+          fr.onload = () => done({ kind: 'video', dataUrl: String(fr.result || ''), canvas: null });
+          fr.onerror = () => done(null);
+          fr.readAsDataURL(f);
+          return;
+        }
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = () => {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+          const w0 = img.naturalWidth || img.width || 1280;
+          const h0 = img.naturalHeight || img.height || 720;
+          const k = Math.min(1, 1280 / w0);
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w0 * k));
+          c.height = Math.max(1, Math.round(h0 * k));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          if (opts.stamp !== false) stampCanvas(c, opts.stamp || '');
+          done({ kind: 'photo', canvas: c, dataUrl: c.toDataURL('image/jpeg', 0.74) });
+        };
+        img.onerror = () => {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+          done(null);
+        };
+        img.src = url;
+      });
+
+      try {
+        inp.click();
+      } catch (_) {
+        done(null);
+      }
+    });
+  }
+
+  async function captureNative(opts) {
+    const res = await captureNativeCanvas(opts);
+    return res ? res.dataUrl : null;
+  }
+
+  function isNativeModePreferred() {
+    try { return localStorage.getItem(CAM_NATIVE_KEY) === '1'; } catch (_) { return false; }
+  }
+  function setNativeModePreferred(val) {
+    try {
+      if (val) localStorage.setItem(CAM_NATIVE_KEY, '1');
+      else localStorage.removeItem(CAM_NATIVE_KEY);
+    } catch (_) {}
+  }
+
+  window.coffeeCameraPool = {
+    acquire: acquireWarmStream,
+    suspend: suspendWarmStream,
+    releaseAll: releaseAllWarmStreams,
+    captureNativeCanvas,
+    captureNative,
+    isNativeModePreferred,
+    setNativeModePreferred
+  };
 
   function mk(tag, css, text) {
     const e = document.createElement(tag);
@@ -33,6 +226,9 @@
 
   function open(opts) {
     opts = opts || {};
+    if (isNativeModePreferred()) {
+      return captureNative(opts);
+    }
     return new Promise((resolve) => {
       if (busy) return resolve(null);
       busy = true;
@@ -45,13 +241,15 @@
       ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Камера');
       const video = mk('video', 'flex:1;min-height:0;width:100%;object-fit:cover;background:#000');
       video.autoplay = true; video.muted = true; video.setAttribute('playsinline', '');
-      const top = mk('div', 'position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;background:linear-gradient(#000a,#0000)');
-      const bClose = mk('button', 'border:0;border-radius:999px;background:#0008;color:#fff;font-size:18px;font-weight:700;padding:10px 16px;cursor:pointer', '✕ Отмена');
-      const bFlip = mk('button', 'border:0;border-radius:999px;background:#0008;color:#fff;font-size:15px;font-weight:700;padding:10px 16px;cursor:pointer');
-      bClose.type = bFlip.type = 'button';
-      top.append(bClose, bFlip);
-      const info = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 66px);left:0;right:0;text-align:center;font-size:14px;font-weight:600;text-shadow:0 1px 4px #000;padding:0 16px');
-      const rect = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 66px);left:50%;transform:translateX(-50%);display:none;background:#d32f2f;border-radius:999px;padding:4px 14px;font-weight:700;font-size:15px');
+      const top = mk('div', 'position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 12px;background:linear-gradient(#000a,#0000)');
+      const bClose = mk('button', 'border:0;border-radius:999px;background:#0008;color:#fff;font-size:15px;font-weight:700;padding:9px 14px;cursor:pointer', '✕ Отмена');
+      const bNative = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#0008;color:#fff;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer', '⚡ Без запросов');
+      const bFlip = mk('button', 'border:0;border-radius:999px;background:#0008;color:#fff;font-size:14px;font-weight:700;padding:9px 14px;cursor:pointer');
+      bClose.type = bNative.type = bFlip.type = 'button';
+      bNative.title = 'Открыть системную камеру устройства без запросов разрешений в браузере';
+      top.append(bClose, bNative, bFlip);
+      const info = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:0;right:0;text-align:center;font-size:13.5px;font-weight:600;text-shadow:0 1px 4px #000;padding:0 16px');
+      const rect = mk('div', 'position:absolute;top:calc(env(safe-area-inset-top,0px) + 62px);left:50%;transform:translateX(-50%);display:none;background:#d32f2f;border-radius:999px;padding:4px 14px;font-weight:700;font-size:15px');
       const bottom = mk('div', 'position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px 14px calc(env(safe-area-inset-bottom,0px) + 22px);background:linear-gradient(#0000,#000b)');
       const modes = mk('div', 'display:flex;gap:8px');
       const mPhoto = mk('button', '', '📷 Фото'), mVideo = mk('button', '', '📹 Видео');
@@ -62,10 +260,9 @@
       bottom.append(modes, shutter);
       ov.append(video, top, info, rect, bottom);
       document.body.appendChild(ov);
-      // <dialog> в верхнем слое: камера всегда поверх любых окон (в т.ч. формы поломки)
       try { if (typeof ov.showModal === 'function') ov.showModal(); else ov.setAttribute('open', ''); } catch (_) { ov.setAttribute('open', ''); }
       ov.addEventListener('cancel', (e) => { e.preventDefault(); finish(null); });
-      const onHide = () => { if (document.hidden) finish(null); };   // приложение свернули — закрываем камеру
+      const onHide = () => { if (document.hidden) finish(null); };
       document.addEventListener('visibilitychange', onHide);
 
       function paintModes() {
@@ -74,19 +271,21 @@
         mPhoto.style.cssText = mode === 'photo' ? on : off;
         mVideo.style.cssText = mode === 'video' ? on : off;
         shutter.style.background = mode === 'video' ? '#d32f2f' : '#fff3';
-        bFlip.textContent = facing === 'user' ? '🔄 Основная камера' : '🤳 Фронтальная';
+        bFlip.textContent = facing === 'user' ? '🔄 Основная' : '🤳 Селфи';
       }
       function say(t, bad) { info.textContent = t || ''; info.style.color = bad ? '#ff8a80' : '#fff'; }
 
-      function stopStream() {
-        if (stream) stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
-        stream = null; video.srcObject = null;
+      function detachStream() {
+        try { video.pause(); } catch (_) {}
+        video.srcObject = null;
+        suspendWarmStream(stream);
+        stream = null;
       }
       function finish(result) {
         if (closed) return; closed = true;
         clearInterval(recTimer);
         if (rec && rec.state === 'recording') { rec.onstop = null; try { rec.stop(); } catch (_) {} }
-        stopStream();
+        detachStream();
         document.removeEventListener('keydown', onKey, true);
         document.removeEventListener('visibilitychange', onHide);
         try { if (ov.open && ov.close) ov.close(); } catch (_) {}
@@ -98,45 +297,24 @@
       document.addEventListener('keydown', onKey, true);
 
       async function startStream() {
-        stopStream(); shutter.disabled = true;
-        const tries = [
-          { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-          { video: true, audio: false }
-        ];
-        let s = null, err;
-        for (const c of tries) {
-          try { s = await navigator.mediaDevices.getUserMedia(c); break; }
-          catch (e) { err = e; if (e && /NotAllowed|Permission|Security/i.test(e.name)) break; }
-        }
-        if (!s) throw err || new Error('no camera');
-        if (closed) { s.getTracks().forEach((t) => t.stop()); return; }
-        stream = s; video.srcObject = s;
+        shutter.disabled = true;
+        const s = await acquireWarmStream(facing);
+        if (closed) { suspendWarmStream(s); return; }
+        stream = s;
+        video.srcObject = s;
         video.style.transform = facing === 'user' ? 'scaleX(-1)' : '';
         try { await video.play(); } catch (_) {}
-        await new Promise((r) => { if (video.videoWidth) return r(); video.onloadedmetadata = () => r(); setTimeout(r, 2500); });
-        await new Promise((r) => setTimeout(r, 250));
+        await new Promise((r) => { if (video.videoWidth) return r(); video.onloadedmetadata = () => r(); setTimeout(r, 1500); });
         shutter.disabled = !video.videoWidth;
       }
-      function camError(e) {
-        const n = (e && e.name) || '';
-        say(/NotAllowed|Permission|Security/i.test(n)
-          ? 'Нет доступа к камере. Разрешите камеру в настройках браузера и повторите.'
-          : 'Камера недоступна на этом устройстве. Выбрать снимок из галереи нельзя.', true);
-      }
 
-      function stampText() {
-        return new Date().toLocaleString('ru-RU') + (opts.stamp ? ' · ' + opts.stamp : '');
-      }
       function takePhoto(n) {
         if (!video.videoWidth) return;
         const k = Math.min(1, 1280 / video.videoWidth), c = document.createElement('canvas');
         c.width = Math.round(video.videoWidth * k); c.height = Math.round(video.videoHeight * k);
         c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-        if (isBlack(c) && n < 3) return void setTimeout(() => takePhoto(n + 1), 350);
-        const x = c.getContext('2d'), h = Math.max(16, Math.round(c.width / 45));
-        x.fillStyle = 'rgba(0,0,0,.58)'; x.fillRect(0, c.height - h * 1.9, c.width, h * 1.9);
-        x.fillStyle = '#fff'; x.font = '600 ' + h + 'px system-ui,sans-serif';
-        x.fillText(stampText(), h * 0.6, c.height - h * 0.6);
+        if (isBlack(c) && n < 2) return void setTimeout(() => takePhoto(n + 1), 180);
+        stampCanvas(c, opts.stamp || '');
         finish(c.toDataURL('image/jpeg', 0.74));
       }
       function toggleRec() {
@@ -169,8 +347,13 @@
       }
 
       bClose.onclick = () => finish(null);
-      mPhoto.onclick = () => { mode = 'photo'; paintModes(); say('Наведите камеру и нажмите на кнопку'); };
-      mVideo.onclick = () => { mode = 'video'; paintModes(); say('Видео до ' + VID_MAX + ' секунд'); };
+      bNative.onclick = async () => {
+        setNativeModePreferred(true);
+        const natUrl = await captureNative({ mode, facing, stamp: opts.stamp });
+        finish(natUrl);
+      };
+      mPhoto.onclick = () => { mode = 'photo'; paintModes(); say(''); };
+      mVideo.onclick = () => { mode = 'video'; paintModes(); say('Видео до ' + VID_MAX + ' сек'); };
       shutter.onclick = () => { if (mode === 'video') toggleRec(); else takePhoto(0); };
       bFlip.onclick = async () => {
         if (rec && rec.state === 'recording') return;
@@ -178,18 +361,18 @@
         try { await startStream(); }
         catch (e) {
           facing = prev; paintModes();
-          try { await startStream(); say('Вторая камера недоступна', true); } catch (x) { camError(x); }
+          try { await startStream(); } catch (_) {}
         }
       };
 
       paintModes();
-      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-        say('Камера недоступна (нужно открыть приложение по https). Выбрать снимок из галереи нельзя.', true);
-        return;
-      }
-      say('Запускаем камеру…');
-      startStream().then(() => { if (!closed) say(mode === 'video' ? 'Видео до ' + VID_MAX + ' секунд' : 'Наведите камеру и нажмите на кнопку'); })
-        .catch((e) => { if (!closed) camError(e); });
+      startStream().then(() => { if (!closed) say(''); })
+        .catch(async () => {
+          if (closed) return;
+          // Автоматический бесшовный переход на системную камеру без ошибок и всплывающих окон
+          const natUrl = await captureNative({ mode, facing, stamp: opts.stamp });
+          finish(natUrl);
+        });
     });
   }
 

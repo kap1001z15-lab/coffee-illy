@@ -16,17 +16,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="css/terminal.css?v=54">
-<link rel="stylesheet" href="css/light.css?v=54">
-<script src="config.js?v=54"></script>
-<script src="js/defaults.js?v=54"></script>
-<script src="js/security.js?v=54"></script>
-<script src="js/storage.js?v=54"></script>
-<script src="js/analytics.js?v=54"></script>
-<script src="js/sales-reconciliation.js?v=54"></script>
-<script src="js/sync.js?v=54"></script>
-<script src="js/telegram.js?v=54"></script>
-<script src="version.js?v=54"></script>
+<link rel="stylesheet" href="css/terminal.css?v=56">
+<link rel="stylesheet" href="css/light.css?v=56">
+<script src="config.js?v=56"></script>
+<script src="js/defaults.js?v=56"></script>
+<script src="js/security.js?v=56"></script>
+<script src="js/storage.js?v=56"></script>
+<script src="js/analytics.js?v=56"></script>
+<script src="js/sales-reconciliation.js?v=56"></script>
+<script src="js/sync.js?v=56"></script>
+<script src="js/telegram.js?v=56"></script>
+<script src="version.js?v=56"></script>
 </head>
 <body>
 <header>
@@ -66,7 +66,7 @@
   <video id="camVideo" autoplay playsinline muted></video>
   <div id="camCount" hidden style="position:absolute;top:42%;left:0;right:0;text-align:center;font:700 96px var(--font-d);color:#fff;text-shadow:0 2px 20px #000;pointer-events:none"></div>
   <div id="camRec" hidden style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:0;right:0;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 8px #000">● <span id="camTime">0:00</span></div>
-  <div id="camMode" style="display:flex;justify-content:center;gap:8px;padding:8px;background:#000"><button class="cm on" id="mPhoto" type="button">Фото</button><button class="cm" id="mVideo" type="button">Видео</button></div>
+  <div id="camMode" style="display:flex;justify-content:center;gap:8px;padding:8px;background:#000"><button class="cm on" id="mPhoto" type="button">Фото</button><button class="cm" id="mVideo" type="button">Видео</button><button class="cm" id="mNativeCam" type="button" title="Системная камера без запросов разрешений">⚡ Без запросов</button></div>
   <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Снять" disabled></button><button class="x" id="camFlip" type="button" style="text-align:right" aria-label="Сменить камеру">🔄 Камера</button></div>
 </div>
 <main>
@@ -500,8 +500,8 @@
   </form>
 </dialog>
 <div class="toast" id="toast" hidden></div>
-<script src="js/camera.js?v=54"></script>
-<script src="js/page-terminal.js?v=54"></script>
-<script src="app.js?v=54" defer></script>
+<script src="js/camera.js?v=56"></script>
+<script src="js/page-terminal.js?v=56"></script>
+<script src="app.js?v=56" defer></script>
 </body>
 </html>

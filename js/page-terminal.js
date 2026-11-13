@@ -33,12 +33,15 @@ const isoToday = () => { const d = new Date(); return d.getFullYear() + "-" + St
 const tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 const tgu = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
+let _hasExplicitBaristaChoice = (function () {
+  try { return !!localStorage.getItem("coffee_active_barista"); } catch (_) { return false; }
+})();
 let userName = (function () {
   try {
     const saved = localStorage.getItem("coffee_active_barista");
     if (saved) return saved;
   } catch (_) {}
-  return tgu && tgu.first_name ? tgu.first_name : "Соня";
+  return tgu && tgu.first_name ? tgu.first_name : "Алина";
 })();
 const tap = () => { try { tg.HapticFeedback.impactOccurred("light"); } catch (e) {} };
 const tgt = (f) => { try { return f(); } catch (e) {} };
@@ -73,7 +76,7 @@ if (tg) {
   const tgTheme = () => { /* светлая тема по умолчанию: тему Telegram не копируем */ };
   tgTheme(); tgt(() => tg.onEvent("themeChanged", tgTheme));
   tgt(() => tg.setHeaderColor("#fbf6ef"));
-  tgt(() => tg.setBackgroundColor(curTheme() === "dark" ? "#161211" : "#f6ece2"));
+  tgt(() => { const d = curTheme() === "dark"; tg.setBackgroundColor(d ? "#121316" : "#f7f5f2"); if (tg.setHeaderColor) tg.setHeaderColor(d ? "#1a1c20" : "#ffffff"); });
   tgt(() => tg.BackButton.onClick(() => { const b = $("backBtn"); if (!b.hidden && !b.disabled) b.click(); }));   // системная «назад» = предыдущий шаг
   setInterval(() => {        // подтверждение закрытия, пока есть несохранённая работа; кнопка «назад» на шагах 2+
     const work = (typeof inProgress === "function" && inProgress()) || photoBusy || (!$("cashView").hidden && !!trans);
@@ -92,7 +95,19 @@ let block = "Открытие", photo = "", incident = false, priority = "Тер
 let photoUrl = "", photoBusy = false, stream = null;
 const PHOTO_MAX_AGE = 3 * 60 * 1000;   // запасной режим: фото старше 3 минут не принимаем
 const ADDON = /молоко|сироп|мёд|маршмеллоу|топпинг|открытка|десерт от бариста/i;   // добавки не попадают в «хиты дня»
-function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3200); }
+function toast(t, forceShow) {
+  const msg = String(t || "").trim();
+  if (!msg) return;
+  if (!forceShow && /^(✓ Вход выполнен|🔄 Синхронизация|✅ Данные синхронизированы|✓ Вы ознакомлены|Чек-лист начат|Поле текста смены очищено|Выбран день|Загружен пример|✓ Суммы подставлены|Рассчитано дней:|Все 5 дней распознаны)/i.test(msg)) {
+    return;
+  }
+  const el = $("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { el.hidden = true; }, 1800);
+}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 let trans = null, sales = null;
 let reportDate = isoToday();
@@ -111,10 +126,73 @@ $("rdPick").onchange = (e) => { const v = e.target.value; setReportDate(v && v <
 const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "infoView", "cashView", "doneView"];
 function show(v) { VIEWS.forEach((x) => $(x).hidden = x !== v); }
 
-/* отметки «сегодня уже сдано» */
-const doneKey = (b) => "coffee_illy_done_" + isoToday() + "_" + b;
-const isDone = (b) => { try { return !!localStorage.getItem(doneKey(b)); } catch (e) { return false; } };
-const markDone = (b) => { try { localStorage.setItem(doneKey(b), "1"); } catch (e) {} };
+/* отметки «сегодня уже сдано» с персональной привязкой к аккаунту сотрудника и синхронизацией между устройствами */
+window.coffeeGetActiveBarista = () => userName;
+const doneKey = (b, u) => "coffee_illy_done_" + isoToday() + "_" + (u || userName || "Бариста") + "_" + ((b === "КАССА" || b === "Касса") ? "Касса" : b);
+const isDone = (b) => {
+  const normB = (b === "КАССА" || b === "Касса") ? "Касса" : b;
+  if (window.coffeeIsBlockCompletedToday) {
+    return !!window.coffeeIsBlockCompletedToday(normB, undefined, userName).completed;
+  }
+  try { return !!localStorage.getItem(doneKey(normB, userName)); } catch (e) { return false; }
+};
+const markDone = (b) => {
+  const normB = (b === "КАССА" || b === "Касса") ? "Касса" : b;
+  try {
+    localStorage.setItem(doneKey(normB, userName), "1");
+    localStorage.setItem("coffee_illy_done_" + isoToday() + "_" + normB, "1");
+  } catch (e) {}
+};
+
+function migrateAndSyncAccountDoneFlags() {
+  try {
+    if (typeof getUDB !== "function") return;
+    const db = getUDB();
+    db.checklists = Array.isArray(db.checklists) ? db.checklists : [];
+    const today = isoToday();
+    const blocks = window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks(db) : [
+      { name: "Открытие" }, { name: "Лайн Чек 1" }, { name: "Лайн Чек 2" }, { name: "Закрытие" }, { name: "Касса", isCash: true }, { name: "Карта добрых дел" }
+    ];
+    let pushedNew = false;
+    blocks.forEach((bObj) => {
+      const bName = (bObj.isCash || bObj.name === "Касса") ? "Касса" : bObj.name;
+      if (bName === "Касса") return;
+      const legacyKey = "coffee_illy_done_" + today + "_" + bName;
+      const userKey = doneKey(bName, userName);
+      const hasLegacy = localStorage.getItem(legacyKey) === "1" && !localStorage.getItem("coffee_migrated_v55_" + today + "_" + bName);
+      if (hasLegacy) {
+        localStorage.setItem("coffee_migrated_v55_" + today + "_" + bName, "1");
+        localStorage.setItem(userKey, "1");
+      }
+      const hasUserLocal = localStorage.getItem(userKey) === "1";
+      const inVault = db.checklists.some((c) => c && c.date === today && c.block === bName && String(c.who || "").trim().toLowerCase() === String(userName || "").trim().toLowerCase());
+      if (hasUserLocal && !inVault) {
+        const nowHm = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+        db.checklists.push({
+          sid: "sync_" + today + "_" + userName + "_" + bName,
+          date: today,
+          time: nowHm,
+          startedAt: nowHm,
+          deadline: bObj.deadline || "23:59",
+          isLate: false,
+          status: "Выполнено",
+          totalSteps: 8,
+          block: bName,
+          who: userName,
+          problems: 0,
+          photos: []
+        });
+        pushedNew = true;
+      } else if (inVault && !hasUserLocal) {
+        localStorage.setItem(userKey, "1");
+      }
+    });
+    if (pushedNew) {
+      if (typeof saveUDB === "function") saveUDB(db);
+      if (window.coffeePushCloudEnvelopeNow) window.coffeePushCloudEnvelopeNow();
+    }
+  } catch (_) {}
+}
 function drawTabs() {
   const unreadCount = getUnreadInfoCount();
   if ($("termInfoModeLbl")) {
@@ -241,6 +319,26 @@ let infoFilter = "unread";
 const DRAFT_KEY = "coffee_shift_draft_v10";
 
 function syncStaffSelector() {
+  try {
+    if (!_hasExplicitBaristaChoice && typeof getUDB === "function") {
+      const db = getUDB();
+      const actMap = (db && db.userActiveState && typeof db.userActiveState === "object") ? db.userActiveState : {};
+      let bestUser = "";
+      let bestTs = 0;
+      Object.keys(actMap).forEach((u) => {
+        const st = actMap[u];
+        if (st && st.date === isoToday() && Number(st.updatedAt || 0) > bestTs) {
+          bestTs = Number(st.updatedAt || 0);
+          bestUser = u;
+        }
+      });
+      if (!bestUser && Array.isArray(db.checklists) && db.checklists.length) {
+        const todayChks = db.checklists.filter((c) => c && c.date === isoToday() && c.who);
+        if (todayChks.length) bestUser = todayChks[todayChks.length - 1].who;
+      }
+      if (bestUser) userName = bestUser;
+    }
+  } catch (_) {}
   const sel = $("baristaSelect");
   if (!sel) return;
   const rawList = (META && Array.isArray(META.staff) && META.staff.length)
@@ -268,7 +366,7 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
   }
   if (!dlg) {
     userName = targetName;
-    try { localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
+    try { _hasExplicitBaristaChoice = true; localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
     if ($("baristaSelect")) $("baristaSelect").value = userName;
     $("who").textContent = userName;
     drawTabs();
@@ -312,8 +410,9 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
     }
     userName = chosenName;
     try {
-      localStorage.setItem("coffee_active_barista", userName);
+      _hasExplicitBaristaChoice = true; localStorage.setItem("coffee_active_barista", userName);
       sessionStorage.setItem("coffee_term_pin_unlocked_v1", userName);
+      localStorage.setItem("coffee_term_pin_unlocked_v1", userName);
       if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
         const role = (userName === "Администратор" || /админ|владелец/i.test(userName)) ? "admin" : "staff";
         window.coffeeAuth.createLocalSession(role, userName, entered);
@@ -323,10 +422,21 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
     $("who").textContent = userName;
     if ($("shiftBaristaIn")) $("shiftBaristaIn").value = userName;
     safeCloseModal(dlg);
+    migrateAndSyncAccountDoneFlags();
+    try {
+      if (typeof getUDB === "function") {
+        const db = getUDB();
+        const actState = db.userActiveState && db.userActiveState[userName];
+        if (actState && actState.date === isoToday() && actState.block && actState.block !== "ИНФО") {
+          block = actState.block;
+        }
+      }
+    } catch (_) {}
     drawTabs();
     if (block === "ИНФО") renderInfoView();
-    else updateDeadlineUI();
-    toast("✓ Вход выполнен: " + userName);
+    else selectBlock(block);
+    if (window.coffeeLiveSyncNow) window.coffeeLiveSyncNow();
+    toast("✓ Вход выполнен: " + userName + " (профиль синхронизирован)");
   };
 }
 
@@ -334,6 +444,7 @@ if ($("baristaSelect")) {
   $("baristaSelect").addEventListener("change", (e) => {
     const nextUser = e.target.value || "Соня";
     if (nextUser === userName) return;
+    if (inProgress()) { try { saveAnswer(); saveShiftDraft(); } catch (_) {} }
     promptStaffPinAndSwitch(nextUser);
   });
 }
@@ -348,40 +459,141 @@ function getUnreadInfoCount() {
   }).length;
 }
 
-function saveShiftDraft() {
-  if (block === "КАССА" || block === "ИНФО" || !cur.length) return;
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      date: isoToday(),
-      block,
-      idx,
-      startedAt: checklistStartedAt || new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
-      userName,
-      answers
-    }));
-  } catch (_) {}
+let _draftCloudTimer = null;
+let _lastAppliedDraftTs = {};
+
+function getUserDraftKey(targetBlock, targetUser) {
+  return isoToday() + ":" + (targetUser || userName || "Бариста") + ":" + (targetBlock || block || "Открытие");
 }
 
-function clearShiftDraft() {
-  try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
+function getLocalDraftStorageKey(targetBlock, targetUser) {
+  return DRAFT_KEY + "_" + isoToday() + "_" + (targetUser || userName || "Бариста") + "_" + (targetBlock || block || "Открытие");
+}
+
+function saveShiftDraft(skipCloudPush) {
+  if (block === "КАССА" || block === "ИНФО" || !cur.length) return;
+  const nowTs = Date.now();
+  const dKey = getUserDraftKey(block, userName);
+  const compactAnswers = answers.map((a) => {
+    if (!a) return null;
+    const pUrl = a.photo_url && String(a.photo_url).length <= 35000 ? a.photo_url : "";
+    const prevShort = a.preview && String(a.preview).length <= 35000 ? a.preview : pUrl;
+    return {
+      id: a.id,
+      title: a.title,
+      choiceMade: !!a.choiceMade,
+      isIncident: !!a.isIncident,
+      incType: a.incType || "",
+      comment: a.comment || "",
+      priority: a.priority || "Терпит",
+      photos: Array.isArray(a.photos) ? a.photos.filter((p) => p && String(p).length <= 35000).slice(0, 3) : [],
+      photo_url: pUrl,
+      preview: prevShort,
+      completedAt: a.completedAt || "",
+      responsible: a.responsible || "Администратор"
+    };
+  });
+  const draftObj = {
+    date: isoToday(),
+    block,
+    idx,
+    startedAt: checklistStartedAt || new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+    userName,
+    answers,
+    updatedAt: nowTs
+  };
+  const cloudDraftObj = Object.assign({}, draftObj, { answers: compactAnswers });
+  _lastAppliedDraftTs[dKey] = nowTs;
+  try {
+    localStorage.setItem(getLocalDraftStorageKey(block, userName), JSON.stringify(draftObj));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draftObj));
+  } catch (_) {}
+  try {
+    if (typeof getUDB === "function") {
+      const db = getUDB();
+      db.userDrafts = (db.userDrafts && typeof db.userDrafts === "object") ? db.userDrafts : {};
+      db.userActiveState = (db.userActiveState && typeof db.userActiveState === "object") ? db.userActiveState : {};
+      db.userDrafts[dKey] = cloudDraftObj;
+      db.userActiveState[userName] = { date: isoToday(), block, idx, updatedAt: nowTs };
+      if (typeof saveUDB === "function") saveUDB(db);
+    }
+  } catch (_) {}
+  if (!skipCloudPush) {
+    if (_draftCloudTimer) clearTimeout(_draftCloudTimer);
+    _draftCloudTimer = setTimeout(() => {
+      if (window.coffeePushCloudEnvelopeNow) window.coffeePushCloudEnvelopeNow();
+      post({
+        action: "save_checklist_draft",
+        date: isoToday(),
+        userName,
+        block,
+        draft: cloudDraftObj,
+        activeState: { date: isoToday(), block, idx, updatedAt: nowTs },
+        updatedAt: nowTs
+      }).catch(() => {});
+    }, 100);
+  }
+}
+
+function clearShiftDraft(isCompleted) {
+  const nowTs = Date.now();
+  const dKey = getUserDraftKey(block, userName);
+  _lastAppliedDraftTs[dKey] = nowTs;
+  try {
+    localStorage.removeItem(getLocalDraftStorageKey(block, userName));
+    localStorage.removeItem(DRAFT_KEY);
+  } catch (_) {}
+  try {
+    if (typeof getUDB === "function") {
+      const db = getUDB();
+      db.userDrafts = (db.userDrafts && typeof db.userDrafts === "object") ? db.userDrafts : {};
+      db.userDrafts[dKey] = {
+        date: isoToday(),
+        userName,
+        block,
+        idx: 0,
+        answers: [],
+        cleared: !isCompleted,
+        completed: !!isCompleted,
+        updatedAt: nowTs
+      };
+      if (typeof saveUDB === "function") saveUDB(db);
+    }
+  } catch (_) {}
   if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
 }
 
 function tryRestoreShiftDraft(targetBlock) {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return false;
-    const d = JSON.parse(raw);
-    if (!d || d.date !== isoToday() || d.block !== targetBlock || !Array.isArray(d.answers) || !d.answers.length) return false;
+    const dKey = getUserDraftKey(targetBlock, userName);
+    let d = null;
+    if (typeof getUDB === "function") {
+      const db = getUDB();
+      if (db.userDrafts && db.userDrafts[dKey]) {
+        d = db.userDrafts[dKey];
+      }
+    }
+    try {
+      const rawLocal = localStorage.getItem(getLocalDraftStorageKey(targetBlock, userName)) || localStorage.getItem(DRAFT_KEY);
+      if (rawLocal) {
+        const parsedLocal = JSON.parse(rawLocal);
+        if (parsedLocal && parsedLocal.date === isoToday() && parsedLocal.block === targetBlock && (!parsedLocal.userName || parsedLocal.userName === userName)) {
+          if (!d || Number(parsedLocal.updatedAt || 0) >= Number(d.updatedAt || 0)) {
+            d = parsedLocal;
+          }
+        }
+      }
+    } catch (_) {}
+    if (!d || d.date !== isoToday() || d.block !== targetBlock || d.completed || d.cleared) return false;
+    if (d.userName && d.userName !== userName) return false;
+    if (!Array.isArray(d.answers) || !d.answers.length) return false;
     const hasProgress = d.idx > 0 || d.answers.some((a) => a && (a.choiceMade || (a.photos && a.photos.length)));
     if (!hasProgress) return false;
     idx = Math.min(d.idx || 0, Math.max(0, cur.length - 1));
-    answers = d.answers;
+    answers = d.answers.slice();
     checklistStartedAt = d.startedAt || "";
-    if ($("draftRestoreBanner")) {
-      $("draftRestoreBanner").hidden = false;
-      $("draftRestoreText").textContent = "↺ Восстановлен черновик смены (шаг " + (idx + 1) + " из " + cur.length + ") — данные сохранены";
-    }
+    _lastAppliedDraftTs[dKey] = Number(d.updatedAt) || Date.now();
+    if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
     return true;
   } catch (_) {
     return false;
@@ -390,11 +602,14 @@ function tryRestoreShiftDraft(targetBlock) {
 
 if ($("resetDraftBtn")) {
   $("resetDraftBtn").onclick = () => {
-    clearShiftDraft();
+    const nowTs = Date.now();
+    clearShiftDraft(false);
     idx = 0;
     answers = [];
     renderStep();
-    toast("Чек-лист начат с первого шага");
+    if (window.coffeePushCloudEnvelopeNow) window.coffeePushCloudEnvelopeNow();
+    post({ action: "save_checklist_draft", date: isoToday(), userName, block, cleared: true, updatedAt: nowTs }).catch(() => {});
+    toast("Чек-лист начат с первого шага (синхронизировано)");
   };
 }
 
@@ -409,7 +624,7 @@ function updateDeadlineUI() {
   if (!banner || block === "ИНФО") return true;
   const checkBlkName = block === "КАССА" ? "Касса" : block;
   const win = window.coffeeGetBlockWindow
-    ? window.coffeeGetBlockWindow(checkBlkName)
+    ? window.coffeeGetBlockWindow(checkBlkName, undefined, userName)
     : { openTime: "07:30", deadline: "08:30", isOverdue: false, isBefore: false, completed: false, canPass: true, state: "open", currentTime: "08:00" };
 
   banner.className = "dl-banner " + (win.state === "overdue_closed" ? "overdue" : "ontime");
@@ -453,7 +668,8 @@ function updateDeadlineUI() {
         lockCard.style.borderColor = "var(--good)";
         $("windowLockIcon").textContent = "✅";
         $("windowLockTitle").textContent = "Чек-лист «" + checkBlkName + "» выполнен";
-        $("windowLockDesc").textContent = "Все пункты блока «" + checkBlkName + "» сданы" + (win.completedRecord && win.completedRecord.time ? " в " + win.completedRecord.time : "") + ".";
+        const whoDone = (win.completedRecord && win.completedRecord.who) ? (" (" + win.completedRecord.who + ")") : (" (" + userName + ")");
+        $("windowLockDesc").textContent = "Все пункты блока «" + checkBlkName + "» сданы" + whoDone + (win.completedRecord && win.completedRecord.time ? " в " + win.completedRecord.time : "") + ".";
         alertBox.hidden = true;
       } else if (win.state === "before_window") {
         lockCard.style.borderColor = "var(--warn)";
@@ -712,34 +928,81 @@ function photoMsg(t, cls) { $("photoState").textContent = t; $("photoState").cla
 const VID_MAX = 15;
 let camFacing = "environment", camMode = "photo", camT = null, recT = null, rec = null, recChunks = [], armed = false;
 document.addEventListener("pointerdown", () => { armed = true; }, { once: true });
-function stopStream() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; $("camVideo").srcObject = null; }
+function stopStream() {
+  const v = $("camVideo");
+  if (v) {
+    try { v.pause(); } catch (_) {}
+    v.srcObject = null;
+  }
+  if (window.coffeeCameraPool && typeof window.coffeeCameraPool.suspend === "function") {
+    window.coffeeCameraPool.suspend(stream);
+  } else if (stream) {
+    stream.getTracks().forEach((t) => { try { t.enabled = false; } catch (_) {} });
+  }
+  stream = null;
+}
 async function startStream() {
   stopStream(); $("camShot").disabled = true;
-  const v = $("camVideo"), tries = [{ video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }, { video: true, audio: false }];
-  let s = null, err;
-  for (const c of tries) { try { s = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) { err = e; if (e && /NotAllowed|Permission|Security/i.test(e.name)) break; } }
-  if (!s) throw err || new Error("no camera");
+  const v = $("camVideo");
+  let s = null;
+  if (window.coffeeCameraPool && typeof window.coffeeCameraPool.acquire === "function") {
+    s = await window.coffeeCameraPool.acquire(camFacing);
+  } else {
+    const tries = [{ video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }, { video: true, audio: false }];
+    let err;
+    for (const c of tries) { try { s = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) { err = e; if (e && /NotAllowed|Permission|Security/i.test(e.name)) break; } }
+    if (!s) throw err || new Error("no camera");
+  }
   stream = s; v.srcObject = s; v.style.transform = camFacing === "user" ? "scaleX(-1)" : "";
   try { await v.play(); } catch (e) {}
-  await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 2500); });
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 1200); });
   $("camShot").disabled = !v.videoWidth;
 }
 function camError(e) {
   const n = (e && e.name) || "";
-  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере. Разрешите камеру в настройках браузера или Telegram и нажмите «Открыть камеру» ещё раз." : "Камера недоступна на этом устройстве. Снимок можно сделать только камерой — откройте терминал в браузере телефона.", "bad");
+  photoMsg(/NotAllowed|Permission|Security/i.test(n) ? "Нет доступа к камере. Разрешите камеру в настройках браузера или Telegram и нажмите «Открыть камеру» ещё раз." : "Камера недоступна на этом устройстве.", "bad");
+}
+async function fallbackNativeChecklistCapture(facing) {
+  if (!(window.coffeeCameraPool && typeof window.coffeeCameraPool.captureNativeCanvas === "function")) return false;
+  const natRes = await window.coffeeCameraPool.captureNativeCanvas({
+    mode: camMode,
+    facing: facing || camFacing,
+    stamp: false
+  });
+  if (!natRes) return true;
+  if (natRes.kind === "video" && natRes.dataUrl) {
+    photos.push(natRes.dataUrl);
+    photo = photos[0];
+    photoUrl = "";
+    setPhotoUI();
+    uploadNow(natRes.dataUrl);
+    saveAnswer();
+    return true;
+  }
+  if (natRes.canvas) {
+    gotPhoto(natRes.canvas);
+    return true;
+  }
+  return false;
 }
 async function openCamera() {
   if (photoBusy || !$("cam").hidden) return;
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-    camError(); return;
-  }
   camFacing = (cur[idx] && /селфи|selfie/i.test(cur[idx].title || "")) ? "user" : "environment";
+  if (window.coffeeCameraPool && window.coffeeCameraPool.isNativeModePreferred && window.coffeeCameraPool.isNativeModePreferred()) {
+    await fallbackNativeChecklistCapture(camFacing);
+    return;
+  }
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+    const okNat = await fallbackNativeChecklistCapture(camFacing);
+    if (!okNat) camError();
+    return;
+  }
   $("cam").hidden = false; setMode("photo"); photoMsg("");
   try { await startStream(); }
   catch (e) {
     closeCamera();
-    camError(e);
+    const okNat = await fallbackNativeChecklistCapture(camFacing);
+    if (!okNat) camError(e);
   }
 }
 function setMode(m) { camMode = m; cancelAuto(); $("mPhoto").classList.toggle("on", m === "photo"); $("mVideo").classList.toggle("on", m === "video"); }
@@ -789,6 +1052,17 @@ $("camCancel").onclick = closeCamera;
 $("camShot").onclick = () => { cancelAuto(); if (camMode === "video") toggleRec(); else shot(0); };
 $("mPhoto").onclick = () => { if (!(rec && rec.state === "recording")) setMode("photo"); };
 $("mVideo").onclick = () => { if (!(rec && rec.state === "recording")) setMode("video"); };
+if ($("mNativeCam")) {
+  $("mNativeCam").onclick = async () => {
+    if (rec && rec.state === "recording") return;
+    if (window.coffeeCameraPool && window.coffeeCameraPool.setNativeModePreferred) {
+      window.coffeeCameraPool.setNativeModePreferred(true);
+    }
+    const curFac = camFacing;
+    closeCamera();
+    await fallbackNativeChecklistCapture(curFac);
+  };
+}
 $("camFlip").onclick = async () => {
   if (rec && rec.state === "recording") return;
   cancelAuto(); const prev = camFacing; camFacing = prev === "user" ? "environment" : "user";
@@ -853,6 +1127,7 @@ $("backBtn").onclick = () => {
   setTimeout(() => { stepNavLock = false; }, 220);
   saveAnswer();
   idx--;
+  saveShiftDraft();
   renderStep();
 };
 $("nextBtn").onclick = async () => {
@@ -881,7 +1156,12 @@ $("nextBtn").onclick = async () => {
   setTimeout(() => { stepNavLock = false; }, 320);
   tap();
   saveAnswer();
-  if (idx < cur.length - 1) { idx++; renderStep(); return; }
+  if (idx < cur.length - 1) {
+    idx++;
+    saveShiftDraft();
+    renderStep();
+    return;
+  }
   $("loaderText").textContent = "Отправляем…"; show("loader"); $("steps").hidden = true;
   const win = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow(block) : { deadline: "08:30", isOverdue: false };
   const items = answers.map((a, i) => {
@@ -894,7 +1174,7 @@ $("nextBtn").onclick = async () => {
   });
   const n = answers.filter((a) => a && a.isIncident).length;
   const lateNote = win.isOverdue ? " · ⚠️ Статус: Выполнено с опозданием (после " + win.deadline + ")" : " · ✓ Выполнено в срок";
-  clearShiftDraft();
+  clearShiftDraft(true);
   markDone(block);
   idx = 0;
   answers = [];
@@ -995,15 +1275,22 @@ function renderPersonalTasksInInfo() {
     responsible: g.responsible + (g.reviewer ? " (Проверяющий: " + g.reviewer + ")" : "")
   }));
   if ($("personalTasksCountTag")) $("personalTasksCountTag").textContent = "Задач: " + showList.length;
+  const dbPt = (typeof getUDB === "function" && getUDB().personalTasksDone) || {};
   pBox.innerHTML = showList.map((t) => {
-    const doneKey = "coffee_ptask_done_" + isoToday() + "_" + (t.id || t.row) + "_" + userName;
+    const tId = String(t.id || t.row || "");
+    const pCloudKey = isoToday() + ":" + userName + ":" + tId;
+    const doneKey = "coffee_ptask_done_" + isoToday() + "_" + tId + "_" + userName;
     let isDoneTask = false;
-    try { isDoneTask = localStorage.getItem(doneKey) === "1"; } catch (_) {}
+    if (dbPt[pCloudKey] && typeof dbPt[pCloudKey].done === "boolean") {
+      isDoneTask = dbPt[pCloudKey].done;
+    } else {
+      try { isDoneTask = localStorage.getItem(doneKey) === "1"; } catch (_) {}
+    }
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)">' +
       '<div><b>' + esc(t.title) + '</b> <span class="tag">' + esc(t.block) + '</span>' +
       (t.instruction ? '<div class="muted" style="font-size:12.5px;margin-top:3px">' + esc(t.instruction) + '</div>' : '') +
       '<div class="muted" style="font-size:11.5px;margin-top:2px">Ответственный: <b>' + esc(t.responsible || "Бариста") + '</b></div></div>' +
-      '<button type="button" class="b-sm" data-ptaskdone="' + esc(doneKey) + '" style="padding:7px 12px;border-radius:10px;border:1px solid ' + (isDoneTask ? 'var(--good)' : 'var(--line)') + ';background:' + (isDoneTask ? 'color-mix(in srgb,var(--good) 16%,var(--bg))' : 'var(--surface,#fff)') + ';color:' + (isDoneTask ? 'var(--good)' : 'var(--ink)') + ';font-weight:700;cursor:pointer;white-space:nowrap">' + (isDoneTask ? '✓ Выполнено' : 'Отметить') + '</button>' +
+      '<button type="button" class="b-sm" data-ptaskdone="' + esc(doneKey) + '" data-ptaskid="' + esc(tId) + '" style="padding:7px 12px;border-radius:10px;border:1px solid ' + (isDoneTask ? 'var(--good)' : 'var(--line)') + ';background:' + (isDoneTask ? 'color-mix(in srgb,var(--good) 16%,var(--bg))' : 'var(--surface,#fff)') + ';color:' + (isDoneTask ? 'var(--good)' : 'var(--ink)') + ';font-weight:700;cursor:pointer;white-space:nowrap">' + (isDoneTask ? '✓ Выполнено' : 'Отметить') + '</button>' +
     '</div>';
   }).join("");
 }
@@ -1012,11 +1299,20 @@ if ($("personalTasksList")) {
     const b = e.target.closest("[data-ptaskdone]");
     if (!b) return;
     const k = b.dataset.ptaskdone;
+    const tId = b.dataset.ptaskid || "";
+    const pCloudKey = isoToday() + ":" + userName + ":" + tId;
+    let nextVal = true;
     try {
-      const curVal = localStorage.getItem(k) === "1";
-      localStorage.setItem(k, curVal ? "0" : "1");
+      const db = typeof getUDB === "function" ? getUDB() : null;
+      const curVal = (db && db.personalTasksDone && db.personalTasksDone[pCloudKey] != null)
+        ? !!db.personalTasksDone[pCloudKey].done
+        : (localStorage.getItem(k) === "1");
+      nextVal = !curVal;
+      localStorage.setItem(k, nextVal ? "1" : "0");
     } catch (_) {}
     renderPersonalTasksInInfo();
+    post({ action: "toggle_personal_task", date: isoToday(), userName, taskId: tId, done: nextVal, updatedAt: Date.now() }).catch(() => {});
+    if (window.coffeePushCloudEnvelopeNow) window.coffeePushCloudEnvelopeNow();
   });
 }
 
@@ -2397,6 +2693,7 @@ document.addEventListener("visibilitychange", () => {
 function reloadTerminalFromVault() {
   try {
     if (typeof getUDB !== 'function') return;
+    migrateAndSyncAccountDoneFlags();
     const db = getUDB();
     if (window.coffeeEnsureV19Schema) window.coffeeEnsureV19Schema(db);
     LOCATION = db.location || LOCATION;
@@ -2416,7 +2713,7 @@ function reloadTerminalFromVault() {
     if (block === 'ИНФО') {
       renderInfoView();
     } else if (block === 'КАССА' || block === 'Касса') {
-      const wCash = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow('Касса', db) : { canPass: true };
+      const wCash = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow('Касса', db, userName) : { canPass: true };
       if (!wCash.canPass) {
         $("steps").hidden = true;
         show("checklistView");
@@ -2430,6 +2727,23 @@ function reloadTerminalFromVault() {
       if (!updateDeadlineUI()) {
         $("steps").hidden = true;
       } else if (cur.length) {
+        // Проверяем, не пришёл ли с другого устройства более свежий прогресс прохождения шагов для текущего сотрудника (userName)
+        const dKey = getUserDraftKey(block, userName);
+        const remDraft = db.userDrafts && db.userDrafts[dKey];
+        const lastTs = _lastAppliedDraftTs[dKey] || 0;
+        if (remDraft && Number(remDraft.updatedAt || 0) > lastTs) {
+          _lastAppliedDraftTs[dKey] = Number(remDraft.updatedAt);
+          if (remDraft.cleared || remDraft.completed) {
+            idx = 0;
+            answers = [];
+            if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
+          } else if (Array.isArray(remDraft.answers)) {
+            idx = Math.min(remDraft.idx || 0, Math.max(0, cur.length - 1));
+            answers = remDraft.answers.slice();
+            checklistStartedAt = remDraft.startedAt || checklistStartedAt;
+            if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
+          }
+        }
         renderStep();
       }
     }
@@ -2508,7 +2822,7 @@ window.ensureTerminalPinGate = function () {
   try {
     if (typeof window !== "undefined" && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || "")) return;
     if (window.COFFEE_ACTIVE_SYSTEM_MODE === "owner") return;
-    const unlockedUser = sessionStorage.getItem("coffee_term_pin_unlocked_v1");
+    const unlockedUser = sessionStorage.getItem("coffee_term_pin_unlocked_v1") || localStorage.getItem("coffee_term_pin_unlocked_v1");
     if (!unlockedUser) {
       promptStaffPinAndSwitch(userName || "Соня", true);
     }

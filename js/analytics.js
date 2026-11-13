@@ -107,12 +107,49 @@ window.coffeeGetSamplePhotos = function (task) {
   ];
 };
 
-window.coffeeIsBlockCompletedToday = function (block, dbOpt) {
+window.coffeeIsBlockCompletedToday = function (block, dbOpt, userNameOpt) {
   const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
   const today = _isoToday();
-  const rec = (db.checklists || []).find((c) => c.date === today && c.block === block);
+  const normBlk = (block === 'КАССА' || block === 'Касса') ? 'Касса' : block;
+  const who = String(userNameOpt || '').trim();
+  const whoLower = who.toLowerCase();
+
+  const matchesUser = (wStr) => {
+    if (!whoLower) return true;
+    const raw = String(wStr || '').trim().toLowerCase();
+    if (!raw) return true;
+    return raw === whoLower || raw.split(',').map((s) => s.trim()).includes(whoLower);
+  };
+
+  if (normBlk === 'Касса') {
+    const cashRec = (db.cash || []).find((c) => c && c.date === today && ((Number(c.cash) || 0) + (Number(c.card) || 0) > 0) && matchesUser(c.barista));
+    const chkCashRec = (db.checklists || []).find((c) => c && c.date === today && (c.block === 'Касса' || c.block === 'КАССА') && matchesUser(c.who));
+    let lsCash = false;
+    try {
+      if (who) {
+        lsCash = localStorage.getItem('coffee_illy_done_' + today + '_' + who + '_Касса') === '1' ||
+                 localStorage.getItem('coffee_illy_done_' + today + '_' + who + '_КАССА') === '1';
+      } else {
+        lsCash = localStorage.getItem('coffee_illy_done_' + today + '_КАССА') === '1' ||
+                 localStorage.getItem('coffee_illy_done_' + today + '_Касса') === '1';
+      }
+    } catch (_) {}
+    return {
+      completed: !!cashRec || !!chkCashRec || lsCash,
+      record: chkCashRec || (cashRec ? { date: today, block: 'Касса', who: cashRec.barista || who, time: 'сдано' } : null)
+    };
+  }
+
+  // Ищем запись в db.checklists с привязкой к сотруднику (если передан userNameOpt)
+  const rec = (db.checklists || []).find((c) => c && c.date === today && c.block === normBlk && matchesUser(c.who));
   let lsDone = false;
-  try { lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + block) === '1'; } catch (_) {}
+  try {
+    if (who) {
+      lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + who + '_' + normBlk) === '1';
+    } else {
+      lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + normBlk) === '1';
+    }
+  } catch (_) {}
   return {
     completed: !!rec || lsDone,
     record: rec || null
@@ -647,7 +684,7 @@ window.coffeeVerifyStaffPin = function (staffName, pinInput, dbOpt) {
 };
 
 /* Переопределяем coffeeGetBlockWindow для поддержки нового таймлайна (Открытие, Лайн Чек 1, Лайн Чек 2, Закрытие, Касса и любых добавленных чек-листов) */
-window.coffeeGetBlockWindow = function (block, dbOpt) {
+window.coffeeGetBlockWindow = function (block, dbOpt, userNameOpt) {
   const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
   window.coffeeEnsureV19Schema(db);
   if (typeof window !== 'undefined' && window.META && window.META.deadlineExtensions) {
@@ -666,7 +703,10 @@ window.coffeeGetBlockWindow = function (block, dbOpt) {
   const extObj = (db.deadlineExtensions && db.deadlineExtensions[extKey]) || null;
   const effectiveOpen = (extObj && extObj.openFrom) ? extObj.openFrom : w.openTime;
   const effectiveDeadline = (extObj && extObj.until) ? extObj.until : w.deadline;
-  const comp = window.coffeeIsBlockCompletedToday(block, db);
+  const activeWho = userNameOpt !== undefined
+    ? userNameOpt
+    : (typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL && typeof window.coffeeGetActiveBarista === 'function' ? window.coffeeGetActiveBarista() : '');
+  const comp = window.coffeeIsBlockCompletedToday(block, db, activeWho);
   const completed = comp.completed;
 
   const adminForcedOpen = !!(extObj && extObj.forceOpen && curHm >= effectiveOpen && curHm <= effectiveDeadline);
