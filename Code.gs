@@ -156,6 +156,7 @@ function doPost(e) {
     if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
     if (action === 'save_checklist_draft') return idempotentJsonOut_(ss, body, saveChecklistDraft_(ss, body));
     if (action === 'toggle_personal_task') return idempotentJsonOut_(ss, body, togglePersonalTask_(ss, body));
+    if (action === 'bind_telegram_user') return idempotentJsonOut_(ss, body, bindTelegramUser_(ss, body));
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
       sendTelegramServerAlert_(ss, {
@@ -329,12 +330,12 @@ function uploadPhotoToDrive_(ss, body) {
   if (!dataUri) {
     return { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: пустые данные медиафайла; фото передаётся в составе отчёта' };
   }
-  var m = /^data:(image\/(?:jpeg|png|webp)|video\/mp4);base64,([A-Za-z0-9+/=]+)$/.exec(dataUri);
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
     return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
   }
   var mimeType = m[1];
-  var b64Data = m[2];
+  var b64Data = String(m[2] || '').replace(/\s+/g, '');
   if (b64Data.length > 10 * 1024 * 1024) {
     return { ok: false, error: 'VALIDATION_FAILED: Размер медиафайла превышает лимит 8 МБ' };
   }
@@ -346,11 +347,12 @@ function uploadPhotoToDrive_(ss, body) {
       try { folder = DriveApp.getFolderById(folderId); } catch (_) { folder = null; }
     }
     if (!folder) {
-      var iter = DriveApp.getFoldersByName('Кофейня — Медиаархив Смен');
-      folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Кофейня — Медиаархив Смен');
+      var iter = DriveApp.getFoldersByName('Coffee_ERP_Photos');
+      if (!iter.hasNext()) iter = DriveApp.getFoldersByName('Кофейня — Медиаархив Смен');
+      folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Coffee_ERP_Photos');
       props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
     }
-    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('webp') >= 0 ? 'webp' : (mimeType.indexOf('mp4') >= 0 ? 'mp4' : 'jpg'));
+    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('webp') >= 0 ? 'webp' : (mimeType.indexOf('mp4') >= 0 ? 'mp4' : (mimeType.indexOf('webm') >= 0 ? 'webm' : 'jpg')));
     var staff = String((body && body.userName) || 'Бариста').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
     var blk = String((body && body.block) || 'Смена').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
     var fname = isoDate_() + '_' + blk + '_' + staff + '_' + Date.now() + '.' + ext;
@@ -650,6 +652,7 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
         id: s.id,
         name: s.name,
         role: s.role,
+        tgId: s.tgId || '',
         location: s.location,
         active: s.active
       };
@@ -2551,6 +2554,34 @@ function saveChecklistDraft_(ss, b) {
   }
   saveSetting_(ss, { id: 'USER_DRAFTS_JSON', value: JSON.stringify(drafts) });
   return { ok: true, updatedAt: tsNow };
+}
+
+function bindTelegramUser_(ss, b) {
+  var tgId = String((b && b.tgId) || '').trim();
+  var staffName = String((b && b.staffName) || '').trim();
+  if (!tgId || !staffName) return { ok: false, error: 'VALIDATION_FAILED: Не указан tgId или staffName' };
+  var bindings = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+  bindings[tgId] = {
+    tgId: tgId,
+    tgUsername: String((b && b.tgUsername) || '').trim(),
+    tgFirstName: String((b && b.tgFirstName) || '').trim(),
+    staffName: staffName,
+    updatedAt: Number(b && b.updatedAt) || Date.now()
+  };
+  setJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', bindings);
+  try {
+    var sh = ss.getSheetByName('Сотрудники');
+    if (sh) {
+      var rows = sh.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][1] || '').trim().toLowerCase() === staffName.toLowerCase()) {
+          sh.getRange(i + 1, 7).setValue(b.tgUsername ? ('@' + String(b.tgUsername).replace(/^@/, '') + ' (' + tgId + ')') : tgId);
+          break;
+        }
+      }
+    }
+  } catch (_) {}
+  return { ok: true, tgId: tgId, staffName: staffName };
 }
 
 function togglePersonalTask_(ss, b) {

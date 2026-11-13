@@ -413,6 +413,9 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
       _hasExplicitBaristaChoice = true; localStorage.setItem("coffee_active_barista", userName);
       sessionStorage.setItem("coffee_term_pin_unlocked_v1", userName);
       localStorage.setItem("coffee_term_pin_unlocked_v1", userName);
+      if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.bindStaffToCurrentTgUser === "function") {
+        window.coffeeTgMiniApp.bindStaffToCurrentTgUser(userName);
+      }
       if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
         const role = (userName === "Администратор" || /админ|владелец/i.test(userName)) ? "admin" : "staff";
         window.coffeeAuth.createLocalSession(role, userName, entered);
@@ -504,6 +507,9 @@ function saveShiftDraft(skipCloudPush) {
   };
   const cloudDraftObj = Object.assign({}, draftObj, { answers: compactAnswers });
   _lastAppliedDraftTs[dKey] = nowTs;
+  if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.saveDraftToTelegramCloudStorage === "function") {
+    window.coffeeTgMiniApp.saveDraftToTelegramCloudStorage(cloudDraftObj);
+  }
   try {
     localStorage.setItem(getLocalDraftStorageKey(block, userName), JSON.stringify(draftObj));
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draftObj));
@@ -822,6 +828,12 @@ function renderStep() {
   photoMsg(photos.length ? ("✓ Прикреплено кадров: " + photos.length) : "", photos.length ? "good" : "");
 
   $("backBtn").hidden = idx === 0;
+  if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.syncBackButton === "function") {
+    window.coffeeTgMiniApp.syncBackButton(idx > 0 && !$("checklistView").hidden, () => {
+      if (!$("cam").hidden) { closeCamera(); return; }
+      if ($("backBtn") && !$("backBtn").hidden && !$("backBtn").disabled) $("backBtn").click();
+    });
+  }
   $("nextBtn").textContent = idx === cur.length - 1 ? "Завершить и отправить чек-лист" : "Следующая задача →";
   drawSteps();
   validate();
@@ -1043,12 +1055,12 @@ async function shot(n) {
   }
   closeCamera(); gotPhoto(c);
 }
-function pickMime() { if (!window.MediaRecorder) return null; for (const m of ["video/webm;codecs=vp8", "video/webm", "video/mp4"]) if (MediaRecorder.isTypeSupported(m)) return m; return ""; }
+function pickMime() { if (!window.MediaRecorder) return null; for (const m of ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8", "video/webm"]) if (MediaRecorder.isTypeSupported(m)) return m; return ""; }
 function toggleRec() {
   if (rec && rec.state === "recording") { rec.stop(); return; }
   const mime = pickMime(); if (mime === null) { toast("Запись видео не поддерживается — снимите фото", true); return; }
   recChunks = [];
-  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 1200000 }, mime ? { mimeType: mime } : {})); } catch (e) { toast("Не удалось начать запись видео", true); return; }
+  try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 650000 }, mime ? { mimeType: mime } : {})); } catch (e) { toast("Не удалось начать запись видео", true); return; }
   const r = rec;
   r.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
   r.onstop = () => {
@@ -2864,6 +2876,21 @@ window.ensureTerminalPinGate = function () {
   try {
     if (typeof window !== "undefined" && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || "")) return;
     if (window.COFFEE_ACTIVE_SYSTEM_MODE === "owner") return;
+    if (window.coffeeTgMiniApp) {
+      window.coffeeTgMiniApp.initMiniAppShell(curTheme());
+      window.coffeeTgMiniApp.restoreFromTelegramCloudStorage(() => {
+        syncStaffSelector();
+        reloadTerminalFromVault();
+      });
+      const tgStaff = window.coffeeTgMiniApp.resolveBoundStaffName();
+      if (tgStaff) {
+        userName = tgStaff;
+        window.coffeeTgMiniApp.bindStaffToCurrentTgUser(tgStaff);
+        syncStaffSelector();
+        drawTabs();
+        return;
+      }
+    }
     const unlockedUser = sessionStorage.getItem("coffee_term_pin_unlocked_v1") || localStorage.getItem("coffee_term_pin_unlocked_v1");
     if (!unlockedUser) {
       promptStaffPinAndSwitch(userName || "Соня", true);

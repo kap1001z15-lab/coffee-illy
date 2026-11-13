@@ -484,6 +484,7 @@ function enforceSettingsOnResponse(act, data) {
     data.userDrafts = db.userDrafts || {};
     data.userActiveState = db.userActiveState || {};
     data.personalTasksDone = db.personalTasksDone || {};
+    data.tgUserBindings = db.tgUserBindings || {};
     const forcePhoto = db.photoAll === 'да';
     data.tasks = window.coffeeNormalizeTasksTimeline(db.tasks || []).filter((t) => t.active !== 'нет').map((t) => {
       const isOC = t.block === 'Открытие' || t.block === 'Закрытие';
@@ -569,46 +570,6 @@ function enforceSettingsOnResponse(act, data) {
   return data;
 }
 
-/* Формирование компактного облачного конверта синхронизации (передаёт чек-листы, смены, инциденты и настройки между устройствами через Google Таблицу) */
-function _buildCloudSyncEnvelope(db) {
-  window.coffeeEnsureV19Schema(db);
-  const stripBigPhotos = (phs) => (phs || []).slice(0, 4).map((p) => ({
-    step: p.step || '',
-    url: (p.url && p.url.length < 35000) ? p.url : '',
-    isIncident: !!p.isIncident,
-    comment: p.comment || '',
-    completedAt: p.completedAt || ''
-  }));
-  return {
-    ts: db.updatedAt || Date.now(),
-    location: db.location,
-    plan: db.plan,
-    woNorm: db.woNorm,
-    minAvgCheck: db.minAvgCheck,
-    planChecks: db.planChecks,
-    openStart: db.openStart,
-    deadline: db.deadline,
-    dayStart: db.dayStart,
-    dayDeadline: db.dayDeadline,
-    closeStart: db.closeStart,
-    closeDeadline: db.closeDeadline,
-    checklistBlocks: db.checklistBlocks || window.COFFEE_DEFAULT_CHECKLIST_BLOCKS,
-    dailyPlans: db.dailyPlans || window.COFFEE_DEFAULT_DAILY_PLANS,
-    staff: db.staff || [],
-    ttk: db.ttk || [],
-    shiftRoster: db.shiftRoster || {},
-    deadlineExtensions: db.deadlineExtensions || {},
-    overdueIncidentsCreated: db.overdueIncidentsCreated || {},
-    cash: (db.cash || []).slice(0, 25),
-    checklists: (db.checklists || []).slice(-30).map((c) => Object.assign({}, c, { photos: stripBigPhotos(c.photos) })),
-    incidents: (db.incidents || []).slice(0, 30).map((inc) => Object.assign({}, inc, {
-      photo: (inc.photo && inc.photo.length < 35000) ? inc.photo : '',
-      photos: (inc.photos || []).filter((u) => u && u.length < 35000).slice(0, 2)
-    })),
-    expenses: (db.expenses || []).slice(0, 30),
-    announcements: (db.announcements || []).slice(0, 15)
-  };
-}
 
 function _didSheetPartChange(db, key, val, forceFromSheet) {
   db._lastServerSnapshot = db._lastServerSnapshot || {};
@@ -1207,6 +1168,7 @@ function applyLocalMutation(payload) {
       role: payload.role || 'Бариста',
       pin: rawPin,
       pinHash: window.coffeeHashPin ? window.coffeeHashPin(rawPin) : rawPin,
+      tgId: String(payload.tgId != null ? payload.tgId : '').trim(),
       shop: payload.shop || db.location || 'Кофейня №1',
       active: payload.active || 'да'
     };
@@ -1553,6 +1515,23 @@ function applyLocalMutation(payload) {
         updatedAt: Number(payload.activeState.updatedAt) || tsNow
       });
     }
+  } else if (a === 'bind_telegram_user') {
+    db.tgUserBindings = (db.tgUserBindings && typeof db.tgUserBindings === 'object') ? db.tgUserBindings : {};
+    const tgId = String(payload.tgId || '').trim();
+    const staffName = String(payload.staffName || '').trim();
+    if (tgId && staffName) {
+      db.tgUserBindings[tgId] = {
+        tgId,
+        tgUsername: String(payload.tgUsername || '').trim(),
+        tgFirstName: String(payload.tgFirstName || '').trim(),
+        staffName,
+        updatedAt: Number(payload.updatedAt) || Date.now()
+      };
+      const st = (db.staff || []).find((s) => s && String(s.name || '').toLowerCase() === staffName.toLowerCase());
+      if (st && !st.tgId) {
+        st.tgId = payload.tgUsername ? ('@' + String(payload.tgUsername).replace(/^@/, '') + ' (' + tgId + ')') : tgId;
+      }
+    }
   } else if (a === 'toggle_personal_task') {
     db.personalTasksDone = (db.personalTasksDone && typeof db.personalTasksDone === 'object') ? db.personalTasksDone : {};
     const pKey = (payload.date || _isoToday()) + ':' + String(payload.userName || 'Бариста').trim() + ':' + String(payload.taskId || '').trim();
@@ -1586,11 +1565,10 @@ function buildAdminResponse() {
     serviceAudits: db.serviceAudits || [],
     ttk: db.ttk || window.COFFEE_DEFAULT_TTK || [],
     goodDeeds: db.goodDeeds || window.COFFEE_DEFAULT_GOOD_DEEDS || [],
-    serviceAudits: db.serviceAudits || [],
     shiftRoster: db.shiftRoster || window.COFFEE_DEFAULT_ROSTER || {},
     cashHistory: db.cashHistory || [],
     minAvgCheck: db.minAvgCheck || 35,
-    planChecks: db.planChecks || 150,
+    planChecks: db.planChecks || 75,
     deadlineExtensions: db.deadlineExtensions || {}
   };
 }
@@ -1641,6 +1619,13 @@ function buildDashboardResponse(dateStr) {
     checks,
     avg: checks > 0 ? Math.round(rev / checks) : 0,
     writeoff: c ? (Number(c.writeoff) || 0) : 0,
+    writeoffShots: c ? (Number(c.writeoffShots) || 0) : 0,
+    coffeeQty: c ? (Number(c.coffeeQty) || 0) : 0,
+    nonCoffeeQty: c ? (Number(c.nonCoffeeQty) || 0) : 0,
+    reviewQty: c ? (Number(c.reviewQty) || 0) : 0,
+    counterStart: c && c.counterStart != null ? Number(c.counterStart) : null,
+    counterEnd: c && c.counterEnd != null ? Number(c.counterEnd) : null,
+    unaccountedShots: c ? (Number(c.unaccountedShots) || 0) : 0,
     barista: c ? (c.barista || '') : '',
     shifts: c ? (c.shifts || []) : [],
     openedAt: opens.length ? opens[0].time : '',
@@ -1670,6 +1655,13 @@ function buildReportResponse(fromStr, toStr) {
     series.push({
       date: cur, revenue, expenses, profit: revenue - expenses,
       checks, avg: checks > 0 ? Math.round(revenue / checks) : 0, cash, card, writeoff,
+      writeoffShots: c ? (Number(c.writeoffShots) || 0) : 0,
+      coffeeQty: c ? (Number(c.coffeeQty) || 0) : 0,
+      nonCoffeeQty: c ? (Number(c.nonCoffeeQty) || 0) : 0,
+      reviewQty: c ? (Number(c.reviewQty) || 0) : 0,
+      counterStart: c && c.counterStart != null ? Number(c.counterStart) : null,
+      counterEnd: c && c.counterEnd != null ? Number(c.counterEnd) : null,
+      unaccountedShots: c ? (Number(c.unaccountedShots) || 0) : 0,
       barista: c ? (c.barista || '') : '',
       shifts: c ? (c.shifts || []) : []
     });
@@ -1873,7 +1865,17 @@ function _buildCloudSyncEnvelope(db) {
       return out;
     })(),
     userActiveState: db.userActiveState || {},
-    personalTasksDone: db.personalTasksDone || {},
+    tgUserBindings: db.tgUserBindings || {},
+    personalTasksDone: (function () {
+      const minDate = _shiftIso(_isoToday(), -7);
+      const out = {};
+      const src = (db.personalTasksDone && typeof db.personalTasksDone === 'object') ? db.personalTasksDone : {};
+      Object.keys(src).forEach((k) => {
+        const dPart = k.slice(0, 10);
+        if (dPart >= minDate && src[k]) out[k] = src[k];
+      });
+      return out;
+    })(),
     productsByDate: db.productsByDate || {},
     cash: Array.isArray(db.cash) ? db.cash.slice(0, 30) : [],
     expenses: Array.isArray(db.expenses) ? db.expenses.slice(0, 40) : [],
@@ -1944,7 +1946,7 @@ function _rawPostJson(url, payloadObj, timeoutMs) {
   });
 }
 
-const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet|save_checklist_draft|toggle_personal_task)$/;
+const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet|save_checklist_draft|toggle_personal_task|bind_telegram_user)$/;
 
 /* Автоматический мост совместимости со старым развёртыванием Code.gs:
    если сервер отвечает "Error: unknown action" на новые действия (save_checklist_blocks, update_incident, delete_incident и др.),
@@ -2599,6 +2601,9 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
                 anyMerged = true;
               }
             });
+          }
+          if (env.tgUserBindings && typeof env.tgUserBindings === 'object') {
+            db.tgUserBindings = Object.assign({}, db.tgUserBindings || {}, env.tgUserBindings);
           }
           if (env.userActiveState && typeof env.userActiveState === 'object') {
             db.userActiveState = (db.userActiveState && typeof db.userActiveState === 'object') ? db.userActiveState : {};

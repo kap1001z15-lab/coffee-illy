@@ -303,7 +303,7 @@ function rStaff(){
   const logs=(D.auditLog||[]).slice(0,30);
   let h='<div class="top"><h2 style="font-size:18px">👥 Роли и сотрудники ('+st.length+')</h2><button class="p" data-a="staff-new">+ Добавить сотрудника</button></div>';
   h+='<p class="mu" style="margin:0 0 8px">Список учётных записей для входа в терминал бариста и распределения ответственности по ролям (п. 2.1 и 11.2 ТЗ).</p>';
-  h+=st.map((s,i)=>'<div class="row"><div><span class="t">👤 '+esc(s.name)+'</span> <span class="tag ok">'+esc(s.role||'Бариста')+'</span> <span class="tag" style="font-family:monospace">🔑 Код входа: <b>'+esc(s.pin||'1111')+'</b></span> <span class="tag">'+esc(s.shop||D.location)+'</span></div><div class="acts"><button class="b" data-a="staff-edit" data-i="'+i+'">Изменить / Код</button><button class="b del" data-a="staff-del" data-i="'+i+'">Удалить</button></div></div>').join('');
+  h+=st.map((s,i)=>'<div class="row"><div><span class="t">👤 '+esc(s.name)+'</span> <span class="tag ok">'+esc(s.role||'Бариста')+'</span> <span class="tag" style="font-family:monospace">🔑 Код входа: <b>'+esc(s.pin||'1111')+'</b></span> '+(s.tgId?'<span class="tag ok">📱 TG: '+esc(s.tgId)+'</span>':'<span class="tag">📱 TG: автопривязка при входе</span>')+' <span class="tag">'+esc(s.shop||D.location)+'</span></div><div class="acts"><button class="b" data-a="staff-edit" data-i="'+i+'">Изменить / TG / Код</button><button class="b del" data-a="staff-del" data-i="'+i+'">Удалить</button></div></div>').join('');
   h+='<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin:16px 0">' +
     '<div class="top" style="margin-bottom:8px"><h3 style="margin:0">📅 Интерактивный график смен на неделю (Пн–Вс)</h3><button class="p" type="button" data-a="roster-save">💾 Сохранить график смен</button></div>' +
     '<p class="mu" style="margin:0 0 10px">Назначьте бариста по дням недели (учитывается при контроле открытия смены и расчёте нагрузки):</p>' +
@@ -319,11 +319,12 @@ function rStaff(){
 function staffForm(s){
   const isNew=!s;
   const roles=(window.COFFEE_MVP&&window.COFFEE_MVP.ROLES)||['Бариста','Шеф-бариста','Администратор','Владелец'];
-  s=s||{name:'',role:'Бариста',pin:'1111',shop:D.location||'Кофейня №1',active:'да'};
+  s=s||{name:'',role:'Бариста',pin:'1111',tgId:'',shop:D.location||'Кофейня №1',active:'да'};
   openForm(isNew?'Добавить сотрудника и код доступа':'Изменить сотрудника и код доступа',[
     {k:'name',label:'Имя и фамилия',ph:'Например: Соня'},
     {k:'role',label:'Роль в системе (п. 2.1 ТЗ)',type:'select',opts:roles},
     {k:'pin',label:'🔑 Персональный код доступа (PIN для входа в Терминал)',ph:'Например: 1111'},
+    {k:'tgId',label:'📱 Telegram ID или @username (для авто-входа в ILLY_BOT без PIN)',ph:'Привязывается сам при первом входе или укажите ID / @username'},
     {k:'shop',label:'Кофейня',ph:'Кофейня №1'},
     {k:'active',label:'Доступ активен',type:'select',opts:YN}],
     s,(o)=>call('save_staff',Object.assign(o,isNew?{}:{id:s.id})))}

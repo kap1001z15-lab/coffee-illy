@@ -129,7 +129,7 @@
       Object.keys(input).forEach((k) => {
         if (k === 'photo' || k === 'url' || k === 'cashPhotoMachine' || k === 'cashPhotoPaper') {
           const v = String(input[k] || '');
-          out[k] = /^(data:image\/|https?:\/\/|idb:\/\/)/i.test(v) ? v : '';
+          out[k] = /^(data:(image|video)\/|https?:\/\/|idb:\/\/)/i.test(v) ? v : '';
         } else {
           out[k] = window.sanitizeRecord(input[k]);
         }

@@ -261,7 +261,7 @@
   }
   function pickMime() {
     if (!window.MediaRecorder) return null;
-    for (const m of ['video/webm;codecs=vp8', 'video/webm', 'video/mp4']) {
+    for (const m of ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8', 'video/webm']) {
       try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (_) {}
     }
     return '';
@@ -431,7 +431,7 @@
         const mime = pickMime();
         if (mime === null) { say('Запись видео не поддерживается — снимите фото', true); return; }
         chunks = [];
-        try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 1200000 }, mime ? { mimeType: mime } : {})); }
+        try { rec = new MediaRecorder(stream, Object.assign({ videoBitsPerSecond: 650000 }, mime ? { mimeType: mime } : {})); }
         catch (_) { say('Не удалось начать запись видео', true); return; }
         const r = rec;
         r.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };

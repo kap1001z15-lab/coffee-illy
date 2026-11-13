@@ -67,7 +67,7 @@ window.CoffeeIDB = (function () {
 
   // Выносит крупные base64-фото (> 2 КБ) в IndexedDB photos store и кэширует в _photoMemCache
   function offloadPhotoString(str) {
-    if (typeof str !== 'string' || str.length < 2048 || !str.startsWith('data:image/')) return str;
+    if (typeof str !== 'string' || str.length < 2048 || !/^data:(image|video)\//i.test(str)) return str;
     const hash = (window.coffeeSha256Sync ? window.coffeeSha256Sync(str.slice(0, 512) + str.length) : String(str.length)).slice(0, 20);
     const ref = 'idb://photo/' + hash;
     _photoMemCache[ref] = str;
@@ -77,6 +77,13 @@ window.CoffeeIDB = (function () {
 
   function resolvePhotoString(str) {
     if (typeof str === 'string' && str.startsWith('idb://photo/')) {
+      if (_photoMemCache[str]) return _photoMemCache[str];
+      get('photos', str).then((val) => {
+        if (val) {
+          _photoMemCache[str] = val;
+          if (window.coffeeBus) window.coffeeBus.emit('mutation', { action: 'idb_photo_hydrated' });
+        }
+      }).catch(() => {});
       return _photoMemCache[str] || str;
     }
     return str;
@@ -549,10 +556,25 @@ function saveUDB(db) {
     _lastSavedVaultAt = nowMs;
     db.updatedAt = nowMs;
     const serialized = JSON.stringify(db);
-    /* Сохраняем одновременно в бессрочный Master Vault и в ключи всех версий */
-    localStorage.setItem(MASTER_VAULT_KEY, serialized);
-    localStorage.setItem(UDB_KEY, serialized);
-    localStorage.setItem(SPA_COMPAT_KEY, serialized);
+    /* Сохраняем одновременно в бессрочный Master Vault и в ключи всех версий (с защитой от QuotaExceededError через IndexedDB) */
+    let toStore = serialized;
+    if (toStore.length > 1800000 && window.CoffeeIDB && typeof window.CoffeeIDB.offloadPhotosFromDB === 'function') {
+      toStore = JSON.stringify(window.CoffeeIDB.offloadPhotosFromDB(db));
+    }
+    try {
+      localStorage.setItem(MASTER_VAULT_KEY, toStore);
+      localStorage.setItem(UDB_KEY, toStore);
+      localStorage.setItem(SPA_COMPAT_KEY, toStore);
+    } catch (qErr) {
+      if (window.CoffeeIDB && typeof window.CoffeeIDB.offloadPhotosFromDB === 'function') {
+        const slim = JSON.stringify(window.CoffeeIDB.offloadPhotosFromDB(db));
+        try {
+          localStorage.setItem(MASTER_VAULT_KEY, slim);
+          localStorage.setItem(UDB_KEY, slim);
+          localStorage.setItem(SPA_COMPAT_KEY, slim);
+        } catch (_) {}
+      }
+    }
     localStorage.setItem('coffee_illy_tasks', JSON.stringify(db.tasks.filter((t) => t.active !== 'нет')));
     localStorage.setItem('coffee_meta_location', db.location);
     localStorage.setItem('coffee_meta_plan', String(db.plan));
@@ -606,8 +628,8 @@ window.coffeeSettings = {
     return {
       location: db.location, plan: db.plan, deadline: db.deadline,
       woNorm: db.woNorm,
-    minAvgCheck: db.minAvgCheck || 390,
-    planChecks: db.planChecks || 150, photoAll: db.photoAll, initCounter: db.initCounter,
+    minAvgCheck: db.minAvgCheck || 35,
+    planChecks: db.planChecks || 75, photoAll: db.photoAll, initCounter: db.initCounter,
       tgToken: db.tgToken || '', tgChat: db.tgChat || '', categories: db.categories, settings: db.settings
     };
   }
