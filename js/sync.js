@@ -1380,6 +1380,8 @@ function buildReportResponse(fromStr, toStr) {
         ? c.shifts
         : [{ name: c.barista || 'Бариста', cash, card, checks, writeoff, cups: checks }];
       shList.forEach((sh) => {
+        /* Если смена одна и в ней не записаны суммы — относим на неё итоги дня, иначе выручка сотрудника была 0. */
+        if (shList.length === 1 && sh.cash == null && sh.card == null) sh = Object.assign({}, sh, { cash, card, checks: sh.checks != null ? sh.checks : checks, cups: sh.cups != null ? sh.cups : checks, writeoff: sh.writeoff != null ? sh.writeoff : writeoff });
         const nm = sh.name || 'Бариста';
         const st = staffStats[nm] || (staffStats[nm] = { name: nm, shifts: 0, cash: 0, card: 0, revenue: 0, checks: 0, cups: 0, writeoff: 0 });
         st.shifts += 1;
@@ -1429,6 +1431,16 @@ function buildReportResponse(fromStr, toStr) {
         m.sum += Number(p.sum) || 0;
       });
     }
+  });
+  /* Дни, для которых нет загрузки «Продажи.csv», но позиции сохранены в самой кассовой смене. */
+  (db.cash || []).forEach((c) => {
+    if (!c || !c.date || c.date < from || c.date > to) return;
+    if ((db.productsByDate || {})[c.date] && db.productsByDate[c.date].length) return;
+    (Array.isArray(c.products) ? c.products : []).forEach((p) => {
+      const m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, qty: 0, sum: 0 });
+      m.qty += Number(p.qty) || 0;
+      m.sum += Number(p.sum) || 0;
+    });
   });
   const products = Object.values(prodMap).sort((a, b) => b.qty - a.qty);
 
@@ -2652,12 +2664,12 @@ function _renderServerBanner() {
     el = document.createElement('div');
     el.id = 'coffeeServerBanner';
     el.setAttribute('role', 'alert');
-    el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483000;background:#8a2d1c;color:#fff;padding:10px 14px;font:600 14px/1.4 system-ui,sans-serif;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 2px 10px rgba(0,0,0,.35)';
+    el.style.cssText = 'position:sticky;left:0;right:0;top:0;z-index:2147483000;background:#8a2d1c;color:#fff;padding:10px 14px;font:600 14px/1.4 system-ui,sans-serif;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 2px 10px rgba(0,0,0,.35)';
     const tx = document.createElement('span'); tx.id = 'coffeeServerBannerText';
     const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Проверить снова';
     btn.style.cssText = 'flex:none;background:#fff;color:#8a2d1c;border:0;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer';
     btn.onclick = () => { window.coffeeCheckServer(true); };
-    el.appendChild(tx); el.appendChild(btn); document.body.appendChild(el);
+    el.appendChild(tx); el.appendChild(btn); document.body.insertBefore(el, document.body.firstChild);
   }
   el.firstChild.textContent = '⚠️ ' + _serverBannerText(h.state);
 }

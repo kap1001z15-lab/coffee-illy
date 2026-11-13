@@ -405,6 +405,7 @@ function renderOwnerDashboardSection() {
 /* =========================================================================
    2. ОТЧЁТЫ — АБСОЛЮТНО ВСЯ СОБИРАЕМАЯ ИНФОРМАЦИЯ СИСТЕМЫ (7 ПОЛНЫХ БЛОКОВ)
    ========================================================================= */
+function _negRub(v) { return (Math.round(Number(v) || 0) ? '-' : '') + rub(v); }
 function renderOwnerReportSection() {
   const db = getUDB();
   if (window.coffeeEnsureV19Schema) window.coffeeEnsureV19Schema(db);
@@ -443,17 +444,21 @@ function renderOwnerReportSection() {
   const soldProducts = rep.products || [];
 
   // Полная таблица по сотрудникам (Смены, Выручка, Счётчик, Дисциплина, Аудит сервиса, Расчёт ФОТ и бонуса KPI)
+  /* Статистика смен приходит массивом rep.staffSummary; rep.staff — это анкеты сотрудников (массив), их нельзя читать как карту «имя → цифры». */
+  const repStaffMap = {};
+  (rep.staffSummary || []).forEach((x) => { if (x && x.name) repStaffMap[x.name] = x; });
   const staffNamesSet = new Set((db.staff || []).map((s) => s.name));
-  Object.keys(rep.staff || {}).forEach((nm) => staffNamesSet.add(nm));
+  Object.keys(repStaffMap).forEach((nm) => staffNamesSet.add(nm));
   (disc.byStaff || []).forEach((s) => staffNamesSet.add(s.name));
   const fullStaffRows = Array.from(staffNamesSet).filter(Boolean).map((nm) => {
     const stProfile = (db.staff || []).find((s) => s.name === nm) || { name: nm, role: 'Бариста' };
-    const sFin = (rep.staff && rep.staff[nm]) || { shifts: 0, cash: 0, card: 0, revenue: 0, checks: 0, cups: 0, writeoff: 0 };
+    const sFin = repStaffMap[nm] || { shifts: 0, cash: 0, card: 0, revenue: 0, checks: 0, cups: 0, writeoff: 0 };
     const sDisc = (disc.byStaff || []).find((d) => d.name === nm) || { onTimeTasks: 0, lateTasks: 0, missedTasks: 0, disciplinePct: 100 };
     const sAud = window.coffeeCalcServiceAudit ? window.coffeeCalcServiceAudit(nm, ownerRepFrom, ownerRepTo) : { count: 0, avgScore: 95 };
-    const sBonus = window.coffeeSmartEngine && window.coffeeSmartEngine.calcStaffBonus
+    let sBonus = window.coffeeSmartEngine && window.coffeeSmartEngine.calcStaffBonus
       ? window.coffeeSmartEngine.calcStaffBonus(sFin, sDisc.disciplinePct, sAud.avgScore, sFin.writeoff, db.woNorm || 15)
       : { baseRate: sFin.shifts * 250, bonus: Math.round(sFin.revenue * 0.05), totalPayout: sFin.shifts * 250 + Math.round(sFin.revenue * 0.05), kpiCoeff: 1 };
+    if (!sFin.shifts) { sBonus.baseRate = 0; sBonus.bonus = 0; sBonus.totalPayout = 0; } /* без смен за период выплаты нет */
     return {
       name: nm,
       role: stProfile.role || 'Бариста',
@@ -513,11 +518,11 @@ function renderOwnerReportSection() {
         '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">1. Управленческий отчёт P&amp;L (ОПиУ)</h2><span class="tag ok">Все доходы и издержки</span></div>' +
         '<div class="sx"><table class="tbl"><thead><tr><th>Статья P&amp;L</th><th>Сумма, руб.</th><th>% от выручки</th><th>Расшифровка</th></tr></thead><tbody>' +
           '<tr><td><b>Выручка (Итого)</b></td><td><b style="color:var(--good)">' + rub(fin.revenue) + '</b></td><td>100%</td><td class="mu">Нал ' + rub(fin.cashTotal) + ' + Безнал ' + rub(fin.cardTotal) + '</td></tr>' +
-          '<tr><td>— Себестоимость сырья (COGS по ТТК)</td><td style="color:var(--bad)">-' + rub(fin.cogs) + '</td><td>' + fin.foodCostPct + '%</td><td class="mu">Зерно, молоко, сиропы, стаканы по ТТК</td></tr>' +
+          '<tr><td>— Себестоимость сырья (COGS по ТТК)</td><td style="color:var(--bad)">' + _negRub(fin.cogs) + '</td><td>' + fin.foodCostPct + '%</td><td class="mu">Зерно, молоко, сиропы, стаканы по ТТК</td></tr>' +
           '<tr><td><b>= Валовая прибыль (Gross Profit)</b></td><td><b>' + rub(fin.grossProfit) + '</b></td><td><b>' + (fin.grossMarginPct || 0) + '%</b></td><td class="mu">Выручка минус себестоимость напитков</td></tr>' +
-          '<tr><td>— ФОТ бариста (' + fin.shiftsCount + ' смен)</td><td style="color:var(--bad)">-' + rub(fin.effectivePayroll) + '</td><td>' + (fin.laborCostPct || 0) + '%</td><td class="mu">Ставка ' + rub(fin.shiftBasePay || 250) + '/смена + ' + (fin.shiftBonusPct || 5) + '% от кассы</td></tr>' +
-          '<tr><td>— Операционные расходы (OpEx)</td><td style="color:var(--bad)">-' + rub(fin.nonPayrollOpex) + '</td><td>' + (fin.opexPct || 0) + '%</td><td class="mu">Аренда, закупки, коммунальные, ремонт</td></tr>' +
-          '<tr><td>— Списания и технологические потери</td><td style="color:var(--bad)">-' + rub(fin.wasteCost) + '</td><td>' + (fin.revenue > 0 ? Math.round((fin.wasteCost / fin.revenue) * 1000) / 10 : 0) + '%</td><td class="mu">Списаний: ' + fin.writeoffsTotal + ' ед.</td></tr>' +
+          '<tr><td>— ФОТ бариста (' + fin.shiftsCount + ' смен)</td><td style="color:var(--bad)">' + _negRub(fin.effectivePayroll) + '</td><td>' + (fin.laborCostPct || 0) + '%</td><td class="mu">Ставка ' + rub(fin.shiftBasePay || 250) + '/смена + ' + (fin.shiftBonusPct || 5) + '% от кассы</td></tr>' +
+          '<tr><td>— Операционные расходы (OpEx)</td><td style="color:var(--bad)">' + _negRub(fin.nonPayrollOpex) + '</td><td>' + (fin.opexPct || 0) + '%</td><td class="mu">Аренда, закупки, коммунальные, ремонт</td></tr>' +
+          '<tr><td>— Списания и технологические потери</td><td style="color:var(--bad)">' + _negRub(fin.wasteCost) + '</td><td>' + (fin.revenue > 0 ? Math.round((fin.wasteCost / fin.revenue) * 1000) / 10 : 0) + '%</td><td class="mu">Списаний: ' + fin.writeoffsTotal + ' ед.</td></tr>' +
           '<tr style="border-top:2px solid var(--line)"><td><b>= ЧИСТАЯ ОПЕРАЦИОННАЯ ПРИБЫЛЬ</b></td><td><b style="font-size:16px;color:' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + '">' + rub(fin.netProfit) + '</b></td><td><b>' + (fin.netMarginPct || 0) + '%</b></td><td class="mu">Чистый финансовый результат</td></tr>' +
         '</tbody></table></div>' +
       '</div>' +
@@ -549,9 +554,9 @@ function renderOwnerReportSection() {
             '<td><b>' + rub(r.revenue) + '</b> <span class="tag ' + (r.planPct >= 98 ? 'ok' : (r.planPct < 85 ? 'no' : '')) + '">' + r.planPct + '%</span></td>' +
             '<td>' + rub(r.zTotal) + ' ' + (r.zDiff === 0 ? '<span class="tag ok">0 расх.</span>' : '<span class="tag no">' + (r.zDiff > 0 ? '+' : '') + rub(r.zDiff) + '</span>') + '</td>' +
             '<td>' + r.checks + ' (' + rub(r.avgCheck) + ')</td>' +
-            '<td>-' + rub(r.cogs) + '</td>' +
-            '<td>-' + rub(r.payroll) + '</td>' +
-            '<td>-' + rub(r.opex + r.wasteCost) + '</td>' +
+            '<td>' + _negRub(r.cogs) + '</td>' +
+            '<td>' + _negRub(r.payroll) + '</td>' +
+            '<td>' + _negRub(r.opex + r.wasteCost) + '</td>' +
             '<td><b style="color:' + (r.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + '">' + rub(r.netProfit) + '</b></td>' +
           '</tr>'
         )).join('') : '<tr><td colspan="12" class="mu">За выбранный период закрытых кассовых смен нет.</td></tr>') +
@@ -704,6 +709,15 @@ function renderOwnerReportSection() {
         '</tbody></table></div>' +
       '</details>' +
     '</div>';
+
+  /* Вставляем готовую разметку в страницу (раньше HTML собирался, но нигде не выводился — раздел был пустым). */
+  const _repEl = $('ownerSecReport');
+  if (_repEl && _repEl._lastHtml !== _newRepHtml) {
+    const _openIds = Array.from(_repEl.querySelectorAll('details[open][data-keep]')).map((d) => d.dataset.keep);
+    _repEl._lastHtml = _newRepHtml;
+    _repEl.innerHTML = _newRepHtml;
+    _openIds.forEach((id) => { const d = _repEl.querySelector('details[data-keep="' + id + '"]'); if (d) d.open = true; });
+  }
 }
 
 document.addEventListener('click', (e) => {
