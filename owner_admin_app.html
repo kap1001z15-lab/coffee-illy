@@ -1641,10 +1641,14 @@ window.COFFEE_DEFAULT_GOOD_DEEDS = [
       const sig = _makeSessionSig(token, role || 'admin', pinHash, expiresAt);
       const sess = { token, role: role || 'admin', staffName: staffName || 'Администратор', pinHash, expiresAt, sig };
       try {
-        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
-        // В coffee_illy_pin сохраняем только sha256-хеш, чтобы открытый PIN никогда не лежал в localStorage
-        localStorage.setItem('coffee_illy_pin', 'sha256:' + pinHash);
+        if ((role || 'admin') === 'admin') {
+          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
+          localStorage.setItem('coffee_illy_pin', 'sha256:' + pinHash);
+        } else {
+          sessionStorage.setItem('coffee_staff_session_v21', JSON.stringify(sess));
+          localStorage.setItem('coffee_staff_session_v21', JSON.stringify(sess));
+        }
       } catch (_) {}
       return sess;
     },
@@ -3929,7 +3933,7 @@ function _didSheetPartChange(db, key, val, forceFromSheet) {
   const prev = db._lastServerSnapshot[key];
   if (prev === undefined) {
     db._lastServerSnapshot[key] = ser;
-    // При самом первом ответе сервера применяем данные из таблицы только если владелец ещё не делал локальных правок в этой сессии
+    if (typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL) return true;
     return !db.lastLocalMutationAt;
   }
   if (prev !== ser) {
@@ -3986,6 +3990,24 @@ function absorbServerData(url, data, options) {
     if (_didSheetPartChange(db, 'sheet:timeline', data.checklistBlocks, forceFromSheet)) {
       db.checklistBlocks = data.checklistBlocks.filter((b) => b && (forceFromSheet || !db.deletedChecklistBlocks[b.name]));
       db.blocks = db.checklistBlocks.filter((b) => b.active !== false && !b.isCash && b.name !== 'Касса').map((b) => b.name);
+      changed = true;
+    }
+  } else if (data.openStart || data.deadline || data.closeStart || data.closeDeadline) {
+    const legacyWinSig = [data.openStart, data.deadline, data.dayStart, data.dayDeadline, data.closeStart, data.closeDeadline].join('|');
+    if (_didSheetPartChange(db, 'sheet:legacyWin', legacyWinSig, forceFromSheet)) {
+      (db.checklistBlocks || []).forEach((b) => {
+        if (!b) return;
+        if (b.name === 'Открытие') {
+          if (data.openStart) b.openTime = data.openStart;
+          if (data.deadline) b.deadline = data.deadline;
+        } else if (b.name === 'Лайн Чек 1' || b.name === 'День') {
+          if (data.dayStart) b.openTime = data.dayStart;
+          if (data.dayDeadline) b.deadline = data.dayDeadline;
+        } else if (b.name === 'Закрытие') {
+          if (data.closeStart) b.openTime = data.closeStart;
+          if (data.closeDeadline) b.deadline = data.closeDeadline;
+        }
+      });
       changed = true;
     }
   }
@@ -5080,31 +5102,46 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
   } else if (act === 'save_checklist_blocks' || act === 'add_checklist_block' || act === 'delete_checklist_block') {
     const blocks = Array.isArray(db.checklistBlocks) ? db.checklistBlocks : [];
     const openB = blocks.find((b) => b && b.name === 'Открытие') || blocks[0];
-    const dayB = blocks.find((b) => b && (b.name === 'Лайн Чек 1' || b.name === 'День')) || blocks[1];
+    const lc1B = blocks.find((b) => b && b.name === 'Лайн Чек 1') || blocks[1];
+    const lc2B = blocks.find((b) => b && b.name === 'Лайн Чек 2') || blocks[2];
     const closeB = blocks.find((b) => b && b.name === 'Закрытие') || blocks[3];
+    const cashB = blocks.find((b) => b && (b.isCash || b.name === 'Касса')) || blocks[4];
     const kv = [{ key: 'CHECKLIST_BLOCKS_JSON', value: JSON.stringify(blocks) }];
     if (openB) {
-      if (openB.start) kv.push({ key: 'OPEN_START', value: openB.start });
+      if (openB.openTime || openB.start) kv.push({ key: 'OPEN_START', value: openB.openTime || openB.start });
       if (openB.deadline) kv.push({ key: 'DEADLINE', value: openB.deadline });
     }
-    if (dayB) {
-      if (dayB.start) kv.push({ key: 'DAY_START', value: dayB.start });
-      if (dayB.deadline) kv.push({ key: 'DAY_DEADLINE', value: dayB.deadline });
+    if (lc1B) {
+      if (lc1B.openTime || lc1B.start) {
+        kv.push({ key: 'LC1_START', value: lc1B.openTime || lc1B.start });
+        kv.push({ key: 'DAY_START', value: lc1B.openTime || lc1B.start });
+      }
+      if (lc1B.deadline) {
+        kv.push({ key: 'LC1_DEADLINE', value: lc1B.deadline });
+        kv.push({ key: 'DAY_DEADLINE', value: lc1B.deadline });
+      }
+    }
+    if (lc2B) {
+      if (lc2B.openTime || lc2B.start) kv.push({ key: 'LC2_START', value: lc2B.openTime || lc2B.start });
+      if (lc2B.deadline) kv.push({ key: 'LC2_DEADLINE', value: lc2B.deadline });
     }
     if (closeB) {
-      if (closeB.start) kv.push({ key: 'CLOSE_START', value: closeB.start });
+      if (closeB.openTime || closeB.start) kv.push({ key: 'CLOSE_START', value: closeB.openTime || closeB.start });
       if (closeB.deadline) kv.push({ key: 'CLOSE_DEADLINE', value: closeB.deadline });
     }
+    if (cashB) {
+      if (cashB.openTime || cashB.start) kv.push({ key: 'CASH_START', value: cashB.openTime || cashB.start });
+      if (cashB.deadline) kv.push({ key: 'CASH_DEADLINE', value: cashB.deadline });
+    }
     kv.forEach((item) => {
-      calls.push(_rawPostJson(url, { action: 'save_setting', key: item.key, value: item.value, pin }, 10000));
+      calls.push(_rawPostJson(url, { action: 'save_setting', id: item.key, key: item.key, value: item.value, pin }, 10000));
     });
   } else if (act === 'save_daily_plans') {
     const dp = db.dailyPlans || {};
-    const tStr = getTodayStr();
-    calls.push(_rawPostJson(url, { action: 'save_setting', key: 'DAILY_PLANS_JSON', value: JSON.stringify(dp), pin }, 10000));
-    if (dp[tStr] != null) {
-      calls.push(_rawPostJson(url, { action: 'save_setting', key: 'PLAN', value: String(dp[tStr]), pin }, 10000));
-    }
+    calls.push(_rawPostJson(url, { action: 'save_setting', id: 'DAILY_PLANS_JSON', key: 'DAILY_PLANS_JSON', value: JSON.stringify(dp), pin }, 10000));
+  } else if (act === 'extend_deadline') {
+    const extMap = db.deadlineExtensions || {};
+    calls.push(_rawPostJson(url, { action: 'save_setting', id: 'DEADLINE_EXTENSIONS_JSON', key: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap), pin }, 10000));
   }
 
   // Всегда сохраняем актуальный конверт состояния __SYS_CONFIG_V19__ в лист Задачи через поддерживаемый старым сервером save_task
@@ -5177,6 +5214,13 @@ function _sendCorsSafePost(url, bodyObj, timeoutMs) {
     if (!response.ok) return Object.assign({}, data || {}, { ok: false, httpStatus: response.status });
     if (!data || typeof data !== 'object' || typeof data.ok !== 'boolean') {
       return { ok: false, networkError: true, error: 'INVALID_SERVER_RESPONSE', httpStatus: response.status };
+    }
+    if (data.ok === false && /PIN_INVALID/i.test(String(data.error || '')) && bodyObj && (bodyObj.pinHash || bodyObj.staffPinHash)) {
+      const cleanBody = Object.assign({}, bodyObj);
+      delete cleanBody.pinHash;
+      delete cleanBody.staffPinHash;
+      const retryNoHash = await _rawPostJson(url, cleanBody, timeout);
+      if (retryNoHash && retryNoHash.ok === true) return retryNoHash;
     }
     if (data.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(data.error || ''))) {
       const bridged = await _bridgeLegacyServerAction(url, bodyObj);
@@ -5623,7 +5667,8 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
           const envTs = Number(env.ts || 0);
           const localTs = Number(db.lastLocalMutationAt || 0);
           const lastEnvTs = Number(db._lastCloudEnvTs || 0);
-          if (envTs > lastEnvTs && envTs >= localTs) {
+          const isBaristaTerm = !!(typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL);
+          if (envTs > 0 && envTs !== lastEnvTs && (isBaristaTerm || envTs >= localTs)) {
             db._lastCloudEnvTs = envTs;
             if (env.location) db.location = env.location;
             if (env.plan > 0) db.plan = Number(env.plan);
@@ -5766,11 +5811,14 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
     const _sessNow = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
     const defPinHash = 'sha256:' + (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
     const compatPin = (payload.pin === defPinHash || !payload.pin) ? '1234' : payload.pin;
+    const isOwnerMutation = OWNER_MUTATION_ACTIONS.test(payload.action || '');
     const operation = Object.assign({}, payload, {
       pin: compatPin,
-      pinHash: payload.pinHash || (_sessNow && _sessNow.pinHash) || payload.pin || defPinHash,
       operationId: payload.operationId || _newCoffeeOperationId()
     });
+    if (isOwnerMutation || payload.pinHash) {
+      operation.pinHash = payload.pinHash || (_sessNow && _sessNow.pinHash) || defPinHash;
+    }
     if (sessionToken && !operation.sessionToken) operation.sessionToken = sessionToken;
 
     // Сохраняем совместимость с серверным контрактом чек-листа, но не отправляем base64-фото.

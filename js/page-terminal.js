@@ -1997,7 +1997,7 @@ function reloadTerminalFromVault() {
 }
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
-    if (msg && (msg.type === 'mutation' || msg.type === 'server_sync')) {
+    if (msg && (msg.type === 'mutation' || msg.type === 'server_sync' || msg.type === 'outbox_synced')) {
       reloadTerminalFromVault();
     }
   });

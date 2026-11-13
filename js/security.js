@@ -257,10 +257,14 @@
       const sig = _makeSessionSig(token, role || 'admin', pinHash, expiresAt);
       const sess = { token, role: role || 'admin', staffName: staffName || 'Администратор', pinHash, expiresAt, sig };
       try {
-        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
-        // В coffee_illy_pin сохраняем только sha256-хеш, чтобы открытый PIN никогда не лежал в localStorage
-        localStorage.setItem('coffee_illy_pin', 'sha256:' + pinHash);
+        if ((role || 'admin') === 'admin') {
+          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
+          localStorage.setItem('coffee_illy_pin', 'sha256:' + pinHash);
+        } else {
+          sessionStorage.setItem('coffee_staff_session_v21', JSON.stringify(sess));
+          localStorage.setItem('coffee_staff_session_v21', JSON.stringify(sess));
+        }
       } catch (_) {}
       return sess;
     },
