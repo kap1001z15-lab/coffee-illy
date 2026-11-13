@@ -198,7 +198,7 @@ async function loadTasks() {
   $("cacheNote").hidden = true;
   if (saved.length) { tasks = saved; try { selectBlock(block); } catch (_) {} } else show("loader");
   try {
-    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1");
+    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1&_t=" + Date.now());
     if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
     tasks = (Array.isArray(d.tasks) && d.tasks.length > 0) ? (window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(d.tasks) : d.tasks) : defTasks;
     META = d;
@@ -207,7 +207,13 @@ async function loadTasks() {
     if (d.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = d.initCounter;
     renderCash();
     try { localStorage.setItem("coffee_illy_tasks", JSON.stringify(tasks)); } catch (e) {}
-    if (!inProgress() && !photoBusy) selectBlock(block);
+    syncStaffSelector();
+    drawTabs();
+    if (!inProgress() && !photoBusy) {
+      selectBlock(block);
+    } else {
+      reloadTerminalFromVault();
+    }
   } catch (e) {
     if (!tasks.length) tasks = defTasks;
     if (!tasks.length && block !== "КАССА") { show("errorView"); return; }
@@ -1954,6 +1960,37 @@ document.querySelectorAll('label.file').forEach((lbl) => {
 });
 
 queueUI(); flush(); loadTasks();
+
+/* Ручное принудительное обновление по нажатию на индикатор сети (🟢 Онлайн / 🟡 Офлайн) в шапке Терминала и Telegram Mini App */
+(function bindNetStatusBadgeTapSync() {
+  const badge = $("netStatusBadge");
+  if (!badge) return;
+  badge.style.cursor = "pointer";
+  badge.addEventListener("click", async () => {
+    try {
+      toast("🔄 Синхронизация с сервером…");
+      if (window.coffeeFlushOutbox) await window.coffeeFlushOutbox(true);
+      await loadTasks();
+      reloadTerminalFromVault();
+      toast("✅ Данные синхронизированы с сервером");
+    } catch (_) {
+      reloadTerminalFromVault();
+    }
+  });
+})();
+
+/* В Telegram Mini App (ILLY_BOT) обновляем данные при разворачивании окна и возврате на экран */
+if (tg) {
+  tgt(() => tg.onEvent("viewportChanged", () => {
+    reloadTerminalFromVault();
+  }));
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    loadTasks();
+  }
+});
+
 
 
 /* Мгновенное применение всех изменений из Панели управления владельца (окна, задачи, планы, ТТК, информирование, коды) */

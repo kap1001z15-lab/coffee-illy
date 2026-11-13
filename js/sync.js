@@ -1925,9 +1925,15 @@ async function coffeeFlushOutbox(force) {
       _writeCoffeeOutbox(queue);
       sent++;
     }
-    if (sent && window.coffeeBus) {
-      window.coffeeCache && window.coffeeCache.invalidate && window.coffeeCache.invalidate('all');
-      window.coffeeBus.emit('outbox_synced', { sent, pending: queue.length });
+    if (sent) {
+      try {
+        const apiBase = window.COFFEE && window.COFFEE.API_URL;
+        if (apiBase && queue.length === 0) _pushCloudEnvelopeInBackground(apiBase);
+      } catch (_) {}
+      if (window.coffeeBus) {
+        window.coffeeCache && window.coffeeCache.invalidate && window.coffeeCache.invalidate('all');
+        window.coffeeBus.emit('outbox_synced', { sent, pending: queue.length });
+      }
     }
     return { sent, pending: queue.length };
   })().finally(() => { _outboxFlushPromise = null; });
@@ -2055,12 +2061,15 @@ window.coffeeOutboxHelp = function () {
     }
   });
   _writeCoffeeOutbox(_deduplicateCoffeeOutbox(q));
-  coffeeFlushOutbox(true).then((r) => {
-    const rem = _readCoffeeOutbox();
-    if (rem.length > 0) {
-      rem.forEach((x) => { if (x && x.payload) { try { applyLocalMutation(x.payload); } catch (_) {} } });
-      _writeCoffeeOutbox([]);
-    }
+  coffeeFlushOutbox(true).then(async (r) => {
+    try {
+      const apiBase = window.COFFEE && window.COFFEE.API_URL;
+      if (apiBase && !window.COFFEE_IS_BARISTA_TERMINAL) {
+        _pushCloudEnvelopeInBackground(apiBase);
+        if (window.coffeePushAllToGoogleSheet) await window.coffeePushAllToGoogleSheet();
+      }
+      if (window.coffeeLiveSyncNow) await window.coffeeLiveSyncNow();
+    } catch (_) {}
     window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0);
   });
 };
@@ -2083,7 +2092,16 @@ if (typeof window !== 'undefined' && window.addEventListener) {
       localStorage.removeItem(COFFEE_OUTBOX_FAILED_KEY);
     } catch (_) {}
     if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-      coffeeFlushOutbox(true).then((r) => window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0));
+      coffeeFlushOutbox(true).then((r) => {
+        window.coffeeRenderNetBadge(r && r.sent > 0 ? r.sent : 0);
+        try {
+          const db0 = getUDB();
+          const apiBase = window.COFFEE && window.COFFEE.API_URL;
+          if (apiBase && !window.COFFEE_IS_BARISTA_TERMINAL && Number(db0.lastLocalMutationAt || 0) > 0) {
+            _pushCloudEnvelopeInBackground(apiBase);
+          }
+        } catch (_) {}
+      });
     }
   };
   if (typeof document !== 'undefined' && document.readyState === 'loading') {
@@ -2160,7 +2178,15 @@ async function coffeeLiveSyncTick(forceSync) {
       } catch (_) {}
       if (window.coffeeCache && window.coffeeCache.invalidate) window.coffeeCache.invalidate('all');
       if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
-    } else if (_liveRev === null) { _liveRev = rev; st.lastRev = rev; }
+    } else if (_liveRev === null) {
+      _liveRev = rev; st.lastRev = rev;
+      if (_readCoffeeOutbox().length === 0) {
+        try {
+          await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
+          if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
+        } catch (_) {}
+      }
+    }
   } finally { _liveBusy = false; }
 }
 function _liveNextDelay() {
@@ -2195,9 +2221,8 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
         if (env && env._v === 19) {
           const envTs = Number(env.ts || 0);
           const localTs = Number(db.lastLocalMutationAt || 0);
-          const lastEnvTs = Number(db._lastCloudEnvTs || 0);
           const isBaristaTerm = !!(typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL);
-          if (envTs > 0 && envTs !== lastEnvTs && (isBaristaTerm || envTs >= localTs)) {
+          if (envTs > 0 && (isBaristaTerm || envTs >= localTs)) {
             db._lastCloudEnvTs = envTs;
             if (env.location) db.location = env.location;
             if (env.plan > 0) db.plan = Number(env.plan);
@@ -2291,16 +2316,16 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
   const dashUrl = window.COFFEE.API_URL + '?action=dashboard&nocache=1' + dateParam + '&pin=' + encodeURIComponent(pinToUse);
   const admUrl = window.COFFEE.API_URL + '?action=admin&nocache=1&pin=' + encodeURIComponent(pinToUse);
 
-  const chkUrl = window.COFFEE.API_URL + '?action=get_checklists&nocache=1';
+  const tsNow = Date.now();
+  const chkUrl = window.COFFEE.API_URL + '?action=get_checklists&nocache=1&_t=' + tsNow;
   Promise.allSettled([
-    fetch(chkUrl).then((r) => r.json()),
-    fetch(dashUrl).then((r) => r.json()),
-    fetch(admUrl).then((r) => r.json())
+    fetch(chkUrl, { cache: 'no-store' }).then((r) => r.json()),
+    fetch(dashUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json()),
+    fetch(admUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json())
   ]).then((results) => {
-    const db = getUDB();
-    if (results[0] && results[0].status === 'fulfilled' && results[0].value && Array.isArray(results[0].value.tasks)) {
-      _extractAndAbsorbSysTaskRow(results[0].value.tasks, db);
-    }
+    const rawSysTasks = (results[0] && results[0].status === 'fulfilled' && results[0].value && Array.isArray(results[0].value.tasks))
+      ? results[0].value.tasks.slice()
+      : null;
     _bgSyncInFlight = false;
     let anyAbsorbed = false;
     results.forEach((res) => {
@@ -2309,6 +2334,10 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
         anyAbsorbed = true;
       }
     });
+    if (rawSysTasks) {
+      _extractAndAbsorbSysTaskRow(rawSysTasks, getUDB());
+      anyAbsorbed = true;
+    }
     if (anyAbsorbed) {
       window.coffeeCache.invalidate('all');
       window.coffeeBus.emit('server_sync', { ts: Date.now(), live: !!live });
@@ -2452,18 +2481,24 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
     let srvRes = null;
     try {
       const ac = new AbortController();
-      const t = setTimeout(() => ac.abort(), 6000);
-      const r = await fetch(url, { signal: ac.signal });
+      const t = setTimeout(() => ac.abort(), 8000);
+      const bustUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_t=' + Date.now();
+      const r = await fetch(bustUrl, { signal: ac.signal, cache: 'no-store' });
       clearTimeout(t);
       srvRes = await r.json();
     } catch (_) {}
 
     if (srvRes && srvRes.ok !== false) {
-      if (Array.isArray(srvRes.tasks)) {
-        srvRes.tasks = _extractAndAbsorbSysTaskRow(srvRes.tasks, db);
-      }
+      const rawTasks = Array.isArray(srvRes.tasks) ? srvRes.tasks.slice() : [];
       absorbServerData(url, srvRes);
-      return enforceSettingsOnResponse('get_checklists', srvRes);
+      if (rawTasks.length) {
+        srvRes.tasks = _extractAndAbsorbSysTaskRow(rawTasks, getUDB());
+      }
+      const enforced = enforceSettingsOnResponse('get_checklists', srvRes);
+      if (window.coffeeBus) {
+        try { window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, source: 'get_checklists' }); } catch (_) {}
+      }
+      return enforced;
     }
     return enforceSettingsOnResponse('get_checklists', {
       ok: true, v: 18, rows: db.tasks.length, sheet: 'Задачи',
@@ -2532,19 +2567,22 @@ window.coffeePullFromGoogleSheet = async function () {
   const pinToUse = (rawSavedPin === defHash) ? '1234' : rawSavedPin;
   const admUrl = window.COFFEE.API_URL + '?action=admin&nocache=1&pin=' + encodeURIComponent(pinToUse);
   const chkUrl = window.COFFEE.API_URL + '?action=get_checklists&nocache=1';
+  const tsNow = Date.now();
   const [admRes, chkRes] = await Promise.allSettled([
-    fetch(admUrl).then((r) => r.json()),
-    fetch(chkUrl).then((r) => r.json())
+    fetch(admUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json()),
+    fetch(chkUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json())
   ]);
   let absorbed = false;
   if (chkRes.status === 'fulfilled' && chkRes.value && chkRes.value.ok !== false) {
-    if (Array.isArray(chkRes.value.tasks)) chkRes.value.tasks = _extractAndAbsorbSysTaskRow(chkRes.value.tasks, getUDB());
+    const rawChkTasks = Array.isArray(chkRes.value.tasks) ? chkRes.value.tasks.slice() : [];
     absorbServerData(chkUrl, chkRes.value, { forceFromSheet: true });
+    if (rawChkTasks.length) chkRes.value.tasks = _extractAndAbsorbSysTaskRow(rawChkTasks, getUDB());
     absorbed = true;
   }
   if (admRes.status === 'fulfilled' && admRes.value && admRes.value.ok !== false) {
-    if (Array.isArray(admRes.value.tasks)) admRes.value.tasks = _extractAndAbsorbSysTaskRow(admRes.value.tasks, getUDB());
+    const rawAdmTasks = Array.isArray(admRes.value.tasks) ? admRes.value.tasks.slice() : [];
     absorbServerData(admUrl, admRes.value, { forceFromSheet: true });
+    if (rawAdmTasks.length) admRes.value.tasks = _extractAndAbsorbSysTaskRow(rawAdmTasks, getUDB());
     absorbed = true;
   }
   if (window.coffeeCache) window.coffeeCache.invalidate('all');

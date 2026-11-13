@@ -114,7 +114,18 @@
   }
 
   function init() {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js?v=47').then((reg) => {
+        try { reg.update(); } catch (_) {}
+      }).catch(() => {});
+    }
+    if (typeof caches !== 'undefined' && caches.keys) {
+      caches.keys().then((keys) => {
+        keys.forEach((k) => {
+          if (k !== 'kofeinya-enterprise-v47-tg-sync') caches.delete(k).catch(() => {});
+        });
+      }).catch(() => {});
+    }
 
     if (page === 'index' || page === 'barista' || page === 'barista_terminal') {
       document.documentElement.classList.remove('gate');

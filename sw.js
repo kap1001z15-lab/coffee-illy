@@ -1,5 +1,5 @@
-/* Service Worker v22 — Offline-First PWA с раздельным кэшированием модулей JS, CSS, HTML и иконок */
-const CACHE_NAME = 'kofeinya-enterprise-v22.9';
+/* Service Worker v47 — Network-First для мгновенной синхронизации в Telegram Mini App (ILLY_BOT) и браузере */
+const CACHE_NAME = 'kofeinya-enterprise-v47-tg-sync';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -37,11 +37,11 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(() => self.skipWaiting())
+      .catch(() => {})
   );
 });
 
@@ -58,10 +58,10 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Запросы к Google Apps Script API никогда не берём из статики — только сеть с офлайн-ответом
+  // Запросы к Google Apps Script API всегда идут напрямую в сеть без кэша
   if (url.hostname.includes('script.google.com') || url.hostname.includes('googleusercontent.com')) {
     event.respondWith(
-      fetch(req).catch(() =>
+      fetch(req, { cache: 'no-store' }).catch(() =>
         new Response(JSON.stringify({ ok: false, offline: true, error: 'Офлайн-режим: запрос к серверу недоступен; локальная очередь API используется приложением' }), {
           headers: { 'Content-Type': 'application/json; charset=utf-8' }
         })
@@ -70,19 +70,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Для локальной статики (CSS, JS, иконки, HTML) — Stale-While-Revalidate
+  // Network-First для HTML, JS, CSS (чтобы Telegram Mini App ILLY_BOT всегда получал актуальный код)
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const netFetch = fetch(req)
-        .then((res) => {
-          if (res && res.status === 200 && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => cached || caches.match('./index.html'));
-      return cached || netFetch;
-    })
+    fetch(req, { cache: 'no-store' })
+      .then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(req, { ignoreSearch: true }).then((c) => c || caches.match('./index.html')))
   );
 });

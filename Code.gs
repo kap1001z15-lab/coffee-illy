@@ -1056,6 +1056,12 @@ function fmtHmCell_(v, fallback) {
 }
 
 function getChecklistBlocksFromSheet_(ss, map) {
+  if (map && map.CHECKLIST_BLOCKS_JSON) {
+    try {
+      var parsed = JSON.parse(map.CHECKLIST_BLOCKS_JSON);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch (_) {}
+  }
   var sh = ss.getSheetByName('Таймлайн');
   if (sh && sh.getLastRow() > 1) {
     var rows = sh.getDataRange().getValues();
@@ -1077,12 +1083,6 @@ function getChecklistBlocksFromSheet_(ss, map) {
       });
     }
     if (list.length) return list;
-  }
-  if (map && map.CHECKLIST_BLOCKS_JSON) {
-    try {
-      var parsed = JSON.parse(map.CHECKLIST_BLOCKS_JSON);
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    } catch (_) {}
   }
   return [
     { id: 'blk_open', name: 'Открытие', openTime: (map && map.OPEN_START) || '07:30', deadline: (map && map.DEADLINE) || '08:30', isCash: false, active: true },
@@ -1931,6 +1931,14 @@ function deleteTtk_(ss, b) {
 }
 
 function saveTask_(ss, b) {
+  if (b && (String(b.id || '') === '__SYS_CONFIG_V19__' || String(b.title || '') === '__SYS_SYNC__') && b.instruction) {
+    try {
+      var env = JSON.parse(String(b.instruction));
+      if (env && Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) {
+        saveChecklistBlocks_(ss, { blocks: env.checklistBlocks });
+      }
+    } catch (_) {}
+  }
   var sh = ss.getSheetByName('Задачи');
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || ('t_' + Date.now().toString(36))).trim();
