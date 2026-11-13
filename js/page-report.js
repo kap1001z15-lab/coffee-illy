@@ -53,7 +53,7 @@ async function load(fresh) {
   $('err').hidden = true;
   if (saved && saved.finance) { R = saved; render(saved); } else $('main').classList.add('loading');
   try {
-    const d = await apiGet('action=report&from=' + from + '&to=' + to + (fresh ? '&nocache=1' : ''));
+    const d = await apiGet('action=report&from=' + from + '&to=' + to + (fresh ? '&nocache=1' : (fresh === false ? '&localonly=1' : '')));
     if (!d || d.ok === false || !d.finance) throw new Error((d && d.error) || 'сервер вернул неожиданный ответ. Обновите код в Apps Script и разверните новую версию');
     coffeeCache.set(ck, d); R = d; render(d);
   } catch (e) {
@@ -293,12 +293,15 @@ paintTheme();
   preset('7');
 })();
 $('xCat').addEventListener('focus', () => { if (R && R.categories) { const cur = $('xCat').value; $('xCat').innerHTML = R.categories.map((c) => '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>').join(''); } }, { once: true });
+let _repSyncTimer = null;
 window.addEventListener('storage', (e) => {
-  if (!e.key || /coffee_/.test(e.key)) {
-    if (typeof load === 'function') load(true, true);
+  if (e && e.key === 'coffee_owner_master_vault') {
+    if (_repSyncTimer) clearTimeout(_repSyncTimer);
+    _repSyncTimer = setTimeout(() => {
+      const ae = document.activeElement;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+      if (typeof load === 'function') load(false);
+    }, 200);
   }
-});
-window.addEventListener('focus', () => {
-  if (typeof load === 'function') load(true, true);
 });
 

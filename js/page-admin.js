@@ -70,7 +70,12 @@ async function act(action,data,ok){try{await call(action,data);toast(ok||'Гот
 const YN=['да','нет'];
 function render(){
   document.querySelectorAll('#tabs button').forEach((b)=>b.classList.toggle('on',b.dataset.t===tab));
-  const f={checklists:rChecklists,tasks:rTasksAndInfo,info:rTasksAndInfo,ttk:rTtk,cash:rCash,exp:rExp,inc:rInc,audit:rAudit,staff:rStaff,set:rSet}[tab]||rChecklists;$('panel').innerHTML=f()}
+  const f={checklists:rChecklists,tasks:rTasksAndInfo,info:rTasksAndInfo,ttk:rTtk,cash:rCash,exp:rExp,inc:rInc,audit:rAudit,staff:rStaff,set:rSet}[tab]||rChecklists;
+  const newHtml = f();
+  const pnl = $('panel');
+  if (pnl && pnl._lastTab === tab && pnl._lastHtml === newHtml) return;
+  if (pnl) { pnl._lastTab = tab; pnl._lastHtml = newHtml; pnl.innerHTML = newHtml; }
+}
 $('tabs').addEventListener('click',(e)=>{const b=e.target.closest('[data-t]');if(!b||!D)return;tab=b.dataset.t;try{localStorage.setItem('adm_tab',tab)}catch(x){}render()});
 
 function rChecklists(){
@@ -707,12 +712,16 @@ document.addEventListener('click', (e) => {
   '</div>';
 });
 
+let _admStorageTimer = null;
 window.addEventListener('storage', (e) => {
-  if (!e.key || /coffee_/.test(e.key)) {
-    if (typeof load === 'function') load(true, true);
+  if (e && e.key === 'coffee_owner_master_vault') {
+    if (_admStorageTimer) clearTimeout(_admStorageTimer);
+    _admStorageTimer = setTimeout(() => {
+      if (document.querySelector('dialog[open]')) return;
+      const ae = document.activeElement;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+      if (typeof load === 'function') load();
+    }, 200);
   }
-});
-window.addEventListener('focus', () => {
-  if (typeof load === 'function') load(true, true);
 });
 

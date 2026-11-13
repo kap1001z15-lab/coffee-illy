@@ -515,10 +515,11 @@ window.coffeeDeduplicateDB = function (db) {
   return db;
 };
 
+let _lastSavedVaultSig = '';
+let _lastSavedVaultAt = 0;
 function saveUDB(db) {
   try {
     if (window.coffeeDeduplicateDB) window.coffeeDeduplicateDB(db);
-    db.updatedAt = Date.now();
     db.schemaVersion = 13;
     syncSettingsFields(db);
     /* Помечаем все текущие настройки как утверждённые владельцем */
@@ -530,6 +531,23 @@ function saveUDB(db) {
     });
     (db.cash || []).sort((a, b) => b.date.localeCompare(a.date));
     (db.expenses || []).sort((a, b) => b.date.localeCompare(a.date));
+    const prevUpd = db.updatedAt;
+    const prevSnap = db._lastServerSnapshot;
+    const prevAct = db._currentAbsorbAct;
+    db.updatedAt = 0;
+    delete db._lastServerSnapshot;
+    delete db._currentAbsorbAct;
+    const sig = JSON.stringify(db);
+    if (prevSnap) db._lastServerSnapshot = prevSnap;
+    if (prevAct) db._currentAbsorbAct = prevAct;
+    const nowMs = Date.now();
+    if (sig === _lastSavedVaultSig && (nowMs - _lastSavedVaultAt < 2000)) {
+      db.updatedAt = prevUpd || nowMs;
+      return;
+    }
+    _lastSavedVaultSig = sig;
+    _lastSavedVaultAt = nowMs;
+    db.updatedAt = nowMs;
     const serialized = JSON.stringify(db);
     /* Сохраняем одновременно в бессрочный Master Vault и в ключи всех версий */
     localStorage.setItem(MASTER_VAULT_KEY, serialized);
@@ -541,7 +559,6 @@ function saveUDB(db) {
     localStorage.setItem('coffee_meta_init_counter', String(db.initCounter));
     const openCnt = (db.incidents || []).filter((i) => window.coffeeIsIncActive(i.status)).length;
     localStorage.setItem('coffee_meta_open_inc', String(openCnt));
-    localStorage.setItem('coffee_sync_ping', String(db.updatedAt) + '_' + Math.random().toString(36).slice(2, 6));
     _idbSaveVault(db);
   } catch (_) {}
 }

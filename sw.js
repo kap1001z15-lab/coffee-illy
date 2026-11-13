@@ -1,5 +1,5 @@
-/* Service Worker v47 — Network-First для мгновенной синхронизации в Telegram Mini App (ILLY_BOT) и браузере */
-const CACHE_NAME = 'kofeinya-enterprise-v47-tg-sync';
+/* Service Worker v48 — Network-First для мгновенной синхронизации в Telegram Mini App (ILLY_BOT) и браузере */
+const CACHE_NAME = 'kofeinya-enterprise-v48-tg-sync';
 const STATIC_ASSETS = [
   './',
   './index.html',

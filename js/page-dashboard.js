@@ -18,7 +18,7 @@ async function load(silent, fresh) {
     else $('main').classList.add('ld');
   }
   try {
-    const r = await coffeeFetch(API_URL + '?action=dashboard&date=' + day + '&pin=' + encodeURIComponent(getPin()) + (fresh ? '&nocache=1' : ''));
+    const r = await coffeeFetch(API_URL + '?action=dashboard&date=' + day + '&pin=' + encodeURIComponent(getPin()) + (fresh ? '&nocache=1' : (silent ? '&localonly=1' : '')));
     if (r && r.ok === false && /PIN_REQUIRED/.test(r.error || '') && window.coffeeGetInstantDashboard) { const inst = window.coffeeGetInstantDashboard(day); D = inst; render(inst); return; }
     if (!r || r.ok === false || !r.days) throw new Error((r && r.error) || 'сервер вернул неожиданный ответ');
     if (window.coffeeCache) coffeeCache.set(ck, r);
@@ -310,38 +310,21 @@ paint();
 $('pick').value = new URLSearchParams(location.search).get('date') || iso(new Date());
 load(false, true);
 
-/* Мгновенная синхронизация между Терминалом и Дашбордом (вкладки, фокус и облако каждые 12 сек) */
-window.addEventListener('storage', (e) => {
-  if (!e.key || /coffee_/.test(e.key)) {
+/* Спокойная синхронизация между Терминалом и Дашбордом без дублирования и мигания */
+let _dashSyncTimer = null;
+function _scheduleDashLoad() {
+  if (_dashSyncTimer) clearTimeout(_dashSyncTimer);
+  _dashSyncTimer = setTimeout(() => {
     if (window.coffeeCache) window.coffeeCache.invalidate('all');
     load(true, false);
-  }
-});
-window.addEventListener('focus', () => {
-  if (window.coffeeCache) window.coffeeCache.invalidate('all');
-  load(true, true);
-});
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    if (window.coffeeCache) window.coffeeCache.invalidate('all');
-    load(true, true);
-  }
+  }, 200);
+}
+window.addEventListener('storage', (e) => {
+  if (e && e.key === 'coffee_owner_master_vault') _scheduleDashLoad();
 });
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
-    if (msg && (msg.type === 'mutation' || msg.type === 'server_sync')) {
-      if (window.coffeeCache) window.coffeeCache.invalidate('all');
-      load(true, false);
-    }
+    if (msg && (msg.type === 'mutation' || msg.type === 'server_sync')) _scheduleDashLoad();
   });
 }
-setInterval(() => { if (!document.hidden) load(true, true); }, 12000);
-window.addEventListener('storage', (e) => {
-  if (!e.key || /coffee_/.test(e.key)) {
-    if (typeof load === 'function') load(true, true);
-  }
-});
-window.addEventListener('focus', () => {
-  if (typeof load === 'function') load(true, true);
-});
 

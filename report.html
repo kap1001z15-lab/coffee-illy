@@ -15,12 +15,12 @@
 <script id="tgWebViewCachePurgeV47">
 (function(){
   try {
-    var VER = 'v47_tg_sync';
+    var VER = 'v48_tg_sync';
     if (localStorage.getItem('coffee_sw_ver') !== VER) {
       localStorage.setItem('coffee_sw_ver', VER);
       if (typeof caches !== 'undefined' && caches.keys) {
         caches.keys().then(function(ks){
-          ks.forEach(function(k){ if (k !== 'kofeinya-enterprise-v47-tg-sync') caches.delete(k); });
+          ks.forEach(function(k){ if (k !== 'kofeinya-enterprise-v48-tg-sync') caches.delete(k); });
         });
       }
       if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {

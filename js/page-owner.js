@@ -333,7 +333,7 @@ function renderOwnerDashboardSection() {
   const stCol = statusLevel === 'ok' ? 'var(--good)' : (statusLevel === 'warn' ? 'var(--warn)' : 'var(--bad)');
   const hasUrgentItems = redFlagsOnly.length > 0 || openIncs.length > 0 || overdueBlocksNow.length > 0;
 
-  $('ownerSecDashboard').innerHTML =
+  const _newDashHtml =
     '<div class="card">' +
       '<div class="top" style="margin-bottom:14px">' +
         '<div><h2 style="margin:0">🏎️ Дашборд состояния · ' + esc(periodLabel) + '</h2></div>' +
@@ -395,6 +395,11 @@ function renderOwnerDashboardSection() {
         '</div>'
       ) : '') +
     '</div>';
+  const _dashEl = $('ownerSecDashboard');
+  if (_dashEl && _dashEl._lastHtml !== _newDashHtml) {
+    _dashEl._lastHtml = _newDashHtml;
+    _dashEl.innerHTML = _newDashHtml;
+  }
 }
 
 /* =========================================================================
@@ -472,7 +477,7 @@ function renderOwnerReportSection() {
     };
   });
 
-  $('ownerSecReport').innerHTML =
+  const _newRepHtml =
     /* ШАПКА ОТЧЁТОВ И ВЫБОР ПЕРИОДА */
     '<div class="card">' +
       '<div class="top" style="margin-bottom:10px">' +
@@ -853,17 +858,33 @@ setTimeout(() => {
     ensureOwnerPinGate(false);
   }
 }, 30);
+let _ownerRefreshTimer = null;
+function _refreshOwnerActiveSectionSafe(isFromBusOrStorage) {
+  if (document.querySelector('dialog[open]')) return;
+  const ae = document.activeElement;
+  if (isFromBusOrStorage && ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+  renderOwnerNotificationsDrawer();
+  if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
+  if (ownerTopSection === 'report') renderOwnerReportSection();
+  if (ownerTopSection === 'admin') load();
+}
+function _scheduleOwnerRefresh() {
+  if (typeof window !== 'undefined' && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || '')) {
+    _refreshOwnerActiveSectionSafe(false);
+    return;
+  }
+  if (_ownerRefreshTimer) clearTimeout(_ownerRefreshTimer);
+  _ownerRefreshTimer = setTimeout(() => _refreshOwnerActiveSectionSafe(true), 180);
+}
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
-    renderOwnerNotificationsDrawer();
     if (msg && msg.type === 'live_notification' && msg.payload) {
+      renderOwnerNotificationsDrawer();
       toast('🔔 ' + (msg.payload.title || 'Новое уведомление'));
+      return;
     }
     if (msg && (msg.type === 'mutation' || msg.type === 'server_sync')) {
-      if (msg.type === 'server_sync' && document.querySelector('dialog[open]')) return; /* не мешаем редактированию */
-      if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
-      if (ownerTopSection === 'report') renderOwnerReportSection();
-      if (ownerTopSection === 'admin') load();
+      _scheduleOwnerRefresh();
     }
   });
 }
@@ -902,16 +923,7 @@ window.coffeeSwitchAppMode = function (targetMode, sectionOpt) {
 };
 
 window.addEventListener('storage', (e) => {
-  if (!e.key || /coffee_/.test(e.key)) {
-    renderOwnerNotificationsDrawer();
-    if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
-    if (ownerTopSection === 'report') renderOwnerReportSection();
-    if (ownerTopSection === 'admin') load();
+  if (e && e.key === 'coffee_owner_master_vault') {
+    _scheduleOwnerRefresh();
   }
-});
-window.addEventListener('focus', () => {
-  renderOwnerNotificationsDrawer();
-  if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
-  if (ownerTopSection === 'report') renderOwnerReportSection();
-  if (ownerTopSection === 'admin') load();
 });

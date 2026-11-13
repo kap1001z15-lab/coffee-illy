@@ -139,7 +139,7 @@ function drawTabs() {
       { name: "Касса", openTime: "22:00", deadline: "23:59", isCash: true },
       { name: "Карта добрых дел", openTime: "11:00", deadline: "22:00" }
     ];
-    tlBar.innerHTML = dynBlocks.map((bObj) => {
+    const newTabsHtml = dynBlocks.map((bObj) => {
       const bVal = (bObj.isCash || bObj.name === "Касса") ? "КАССА" : bObj.name;
       const isSel = block === bVal;
       const done = isDone(bVal);
@@ -150,6 +150,10 @@ function drawTabs() {
         '<div style="font-size:10px;opacity:0.78;font-weight:500;margin-top:1px">' + esc(bObj.openTime || '') + '–' + esc(bObj.deadline || '') + '</div>' +
       '</button>';
     }).join("");
+    if (tlBar._lastHtml !== newTabsHtml) {
+      tlBar._lastHtml = newTabsHtml;
+      tlBar.innerHTML = newTabsHtml;
+    }
   }
 }
 
@@ -1199,42 +1203,14 @@ setTimeout(_autoFlush, 1500);
 setInterval(_autoFlush, 8000);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") _autoFlush(); });
 
-/* Реактивное обновление терминала при любых изменениях в разделе «Управление» */
-async function syncFromAdminChanges() {
-  try {
-    const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1");
-    if (d && d.ok !== false && Array.isArray(d.tasks)) {
-      tasks = d.tasks;
-      META = d;
-      if (d.plan > 0) PLAN = d.plan;
-      if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
-      if (d.initCounter > 0 && $("initCounterIn")) $("initCounterIn").value = d.initCounter;
-      syncStaffSelector();
-      drawTabs();
-      if (block === "ИНФО") {
-        renderInfoView();
-      } else if (block === "КАССА") {
-        renderCash();
-      } else {
-        cur = tasks.filter((t) => t.block === block && t.active !== "нет");
-        if (idx >= cur.length) idx = Math.max(0, cur.length - 1);
-        updateDeadlineUI();
-        if (cur.length && !$("taskStepWrap").hidden) renderStep();
-      }
-    }
-  } catch (_) {}
+/* Реактивное обновление терминала при любых изменениях в разделе «Управление» (без сетевых петель и мигания) */
+let _termSyncDebounceTimer = null;
+function syncFromAdminChanges() {
+  if (_termSyncDebounceTimer) clearTimeout(_termSyncDebounceTimer);
+  _termSyncDebounceTimer = setTimeout(() => {
+    if (typeof reloadTerminalFromVault === "function") reloadTerminalFromVault();
+  }, 150);
 }
-if (window.coffeeBus) {
-  window.coffeeBus.on((msg) => {
-    if (msg && (msg.type === "mutation" || (msg.type === "server_sync" && msg.detail && msg.detail.live))) syncFromAdminChanges();
-  });
-}
-window.addEventListener("storage", (e) => {
-  if (e && (e.key === "coffee_unified_hybrid_db_v3" || e.key === "coffee_sync_signal" || e.key === "coffee_illy_tasks")) {
-    syncFromAdminChanges();
-  }
-});
-window.addEventListener("focus", syncFromAdminChanges);
 
 
 function finish(ok, text) {
@@ -1985,9 +1961,11 @@ if (tg) {
     reloadTerminalFromVault();
   }));
 }
+let _lastTermVisPull = Date.now();
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    loadTasks();
+  if (document.visibilityState === "visible" && (Date.now() - _lastTermVisPull > 15000)) {
+    _lastTermVisPull = Date.now();
+    if (window.coffeeLiveSyncNow) window.coffeeLiveSyncNow();
   }
 });
 
@@ -2032,17 +2010,35 @@ function reloadTerminalFromVault() {
     }
   } catch (_) {}
 }
+let _vaultReloadTimer = null;
+function scheduleReloadTerminalFromVault() {
+  if (_vaultReloadTimer) clearTimeout(_vaultReloadTimer);
+  _vaultReloadTimer = setTimeout(() => {
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.id !== 'baristaSelect') {
+      syncStaffSelector();
+      drawTabs();
+      return;
+    }
+    reloadTerminalFromVault();
+  }, 120);
+}
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
     if (msg && (msg.type === 'mutation' || msg.type === 'server_sync' || msg.type === 'outbox_synced')) {
-      reloadTerminalFromVault();
+      if (typeof window !== 'undefined' && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || '')) {
+        reloadTerminalFromVault();
+      } else {
+        scheduleReloadTerminalFromVault();
+      }
     }
   });
 }
 window.addEventListener('storage', (e) => {
-  if (!e.key || /coffee_/.test(e.key)) reloadTerminalFromVault();
+  if (e && (e.key === 'coffee_owner_master_vault' || e.key === 'coffee_sync_signal')) {
+    scheduleReloadTerminalFromVault();
+  }
 });
-window.addEventListener('focus', reloadTerminalFromVault);
 
 
 

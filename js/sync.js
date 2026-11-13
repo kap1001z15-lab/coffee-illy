@@ -453,6 +453,7 @@ function _buildCloudSyncEnvelope(db) {
 
 function _didSheetPartChange(db, key, val, forceFromSheet) {
   db._lastServerSnapshot = db._lastServerSnapshot || {};
+  key = (db._currentAbsorbAct || 'srv') + ':' + key;
   let ser = '';
   try { ser = JSON.stringify(val); } catch (_) { ser = String(val); }
   if (forceFromSheet) {
@@ -478,7 +479,13 @@ function absorbServerData(url, data, options) {
   if (!data || data.ok === false) return data;
   const opts = options || {};
   const forceFromSheet = !!opts.forceFromSheet;
+  let srcAct = 'srv';
+  try {
+    const m = String(url || '').match(/[?&]action=([^&]+)/);
+    if (m && m[1]) srcAct = m[1];
+  } catch (_) {}
   const db = getUDB();
+  db._currentAbsorbAct = srcAct;
   let changed = false;
 
   db.deletedTaskIds = db.deletedTaskIds || {};
@@ -697,6 +704,7 @@ function absorbServerData(url, data, options) {
   }
 
   if (Array.isArray(data.incidents)) data.incidents = (db.incidents || []).filter((i) => i && i.step !== '__SYS_TERM_SYNC__' && i.block !== '__SYS__');
+  data._absorbedChanges = !!changed;
   if (changed) saveUDB(db);
   return data;
 }
@@ -1511,9 +1519,12 @@ function _stripLargeBase64FromMediaList(arr) {
 
 function _buildCloudSyncEnvelope(db) {
   db = db || getUDB();
+  const envTs = Date.now();
+  db._lastCloudEnvTs = envTs;
+  try { saveUDB(db); } catch (_) {}
   return {
     _v: 19,
-    ts: Date.now(),
+    ts: envTs,
     location: db.location || 'Кофейня №1',
     plan: Number(db.plan) || 2200,
     settings: Array.isArray(db.settings) ? db.settings.filter((s) => s && !s.secret) : [],
@@ -2097,7 +2108,7 @@ if (typeof window !== 'undefined' && window.addEventListener) {
         try {
           const db0 = getUDB();
           const apiBase = window.COFFEE && window.COFFEE.API_URL;
-          if (apiBase && !window.COFFEE_IS_BARISTA_TERMINAL && Number(db0.lastLocalMutationAt || 0) > 0) {
+          if (r && r.sent > 0 && apiBase && !window.COFFEE_IS_BARISTA_TERMINAL) {
             _pushCloudEnvelopeInBackground(apiBase);
           }
         } catch (_) {}
@@ -2180,18 +2191,12 @@ async function coffeeLiveSyncTick(forceSync) {
       if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
     } else if (_liveRev === null) {
       _liveRev = rev; st.lastRev = rev;
-      if (_readCoffeeOutbox().length === 0) {
-        try {
-          await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
-          if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
-        } catch (_) {}
-      }
     }
   } finally { _liveBusy = false; }
 }
 function _liveNextDelay() {
   if (typeof document !== 'undefined' && document.hidden) return 30000;
-  return (Date.now() - _liveLastActive < 180000) ? 1200 : 4000;
+  return (Date.now() - _liveLastActive < 180000) ? 4000 : 10000;
 }
 function _liveSchedule() {
   clearTimeout(_liveTimer);
@@ -2221,9 +2226,11 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
         if (env && env._v === 19) {
           const envTs = Number(env.ts || 0);
           const localTs = Number(db.lastLocalMutationAt || 0);
+          const lastEnvTs = Number(db._lastCloudEnvTs || 0);
           const isBaristaTerm = !!(typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL);
-          if (envTs > 0 && (isBaristaTerm || envTs >= localTs)) {
+          if (envTs > 0 && envTs !== lastEnvTs && (isBaristaTerm || envTs >= localTs)) {
             db._lastCloudEnvTs = envTs;
+            db._lastEnvJustChanged = true;
             if (env.location) db.location = env.location;
             if (env.plan > 0) db.plan = Number(env.plan);
             if (Array.isArray(env.settings) && env.settings.length) {
@@ -2306,7 +2313,8 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
 
 function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
   const now = Date.now();
-  if (_bgSyncInFlight || (!forceNow && (now - _lastBgSyncAt < 3500))) return;
+  const minGap = forceNow === 'manual' ? 1000 : 8000;
+  if (_bgSyncInFlight || (now - _lastBgSyncAt < minGap)) return;
   _bgSyncInFlight = true;
   _lastBgSyncAt = now;
   const rawSavedPin = (function(){ try { return localStorage.getItem('coffee_illy_pin') || '1234'; } catch(e){ return '1234'; } })() || '1234';
@@ -2327,18 +2335,30 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
       ? results[0].value.tasks.slice()
       : null;
     _bgSyncInFlight = false;
-    let anyAbsorbed = false;
-    results.forEach((res) => {
-      if (res.status === 'fulfilled' && res.value && res.value.ok !== false) {
-        absorbServerData(dashUrl, res.value);
-        anyAbsorbed = true;
+    let actuallyChanged = false;
+    const admOk = results[2] && results[2].status === 'fulfilled' && results[2].value && results[2].value.ok !== false;
+    const dashOk = results[1] && results[1].status === 'fulfilled' && results[1].value && results[1].value.ok !== false;
+    const chkOk = results[0] && results[0].status === 'fulfilled' && results[0].value && results[0].value.ok !== false;
+    if (admOk) {
+      absorbServerData(admUrl, results[2].value);
+      if (results[2].value._absorbedChanges) actuallyChanged = true;
+    } else {
+      if (dashOk) {
+        absorbServerData(dashUrl, results[1].value);
+        if (results[1].value._absorbedChanges) actuallyChanged = true;
       }
-    });
-    if (rawSysTasks) {
-      _extractAndAbsorbSysTaskRow(rawSysTasks, getUDB());
-      anyAbsorbed = true;
+      if (chkOk) {
+        absorbServerData(chkUrl, results[0].value);
+        if (results[0].value._absorbedChanges) actuallyChanged = true;
+      }
     }
-    if (anyAbsorbed) {
+    if (rawSysTasks) {
+      const dbCur = getUDB();
+      dbCur._lastEnvJustChanged = false;
+      _extractAndAbsorbSysTaskRow(rawSysTasks, dbCur);
+      if (dbCur._lastEnvJustChanged) actuallyChanged = true;
+    }
+    if (actuallyChanged || live) {
       window.coffeeCache.invalidate('all');
       window.coffeeBus.emit('server_sync', { ts: Date.now(), live: !!live });
     }
@@ -2468,7 +2488,8 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
 
   let act = '', qDate = '', qFrom = '', qTo = '', qPin = '';
   try {
-    const u = new URL(url, location.href);
+    const baseHref = (typeof location !== 'undefined' && location && location.href && /^https?:/i.test(location.href)) ? location.href : 'https://localhost/';
+    const u = new URL(url, baseHref);
     act = u.searchParams.get('action') || '';
     qDate = u.searchParams.get('date') || '';
     qFrom = u.searchParams.get('from') || '';
@@ -2494,11 +2515,7 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
       if (rawTasks.length) {
         srvRes.tasks = _extractAndAbsorbSysTaskRow(rawTasks, getUDB());
       }
-      const enforced = enforceSettingsOnResponse('get_checklists', srvRes);
-      if (window.coffeeBus) {
-        try { window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, source: 'get_checklists' }); } catch (_) {}
-      }
-      return enforced;
+      return enforceSettingsOnResponse('get_checklists', srvRes);
     }
     return enforceSettingsOnResponse('get_checklists', {
       ok: true, v: 18, rows: db.tasks.length, sheet: 'Задачи',
@@ -2533,8 +2550,10 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
   }
 
   /* МГНОВЕННЫЙ ОТВЕТ (0 мс ожидания!): сразу возвращаем данные из Permanent Owner Vault,
-     а синхронизацию с сервером запускаем в фоне без задержки интерфейса */
-  _triggerBackgroundSync(qPin, url.indexOf('nocache=1') >= 0, qDate);
+     а синхронизацию с сервером запускаем в фоне без задержки интерфейса (кроме локальных перерисовок localonly=1) */
+  if (String(url || '').indexOf('localonly=1') < 0) {
+    _triggerBackgroundSync(qPin, url.indexOf('nocache=1') >= 0, qDate);
+  }
 
   if (act === 'admin') {
     return enforceSettingsOnResponse('admin', buildAdminResponse());

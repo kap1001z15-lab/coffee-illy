@@ -122,7 +122,7 @@
     if (typeof caches !== 'undefined' && caches.keys) {
       caches.keys().then((keys) => {
         keys.forEach((k) => {
-          if (k !== 'kofeinya-enterprise-v47-tg-sync') caches.delete(k).catch(() => {});
+          if (k !== 'kofeinya-enterprise-v48-tg-sync') caches.delete(k).catch(() => {});
         });
       }).catch(() => {});
     }
