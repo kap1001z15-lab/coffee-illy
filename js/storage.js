@@ -123,6 +123,24 @@ window.CoffeeIDB = (function () {
 })();
 
 function ensureMvpFields(db) {
+  if (db && window.coffeeCleanTime) {
+    if (Array.isArray(db.incidents)) {
+      db.incidents.forEach((inc) => {
+        if (!inc) return;
+        if (inc.time) inc.time = window.coffeeCleanTime(inc.time);
+        if (Array.isArray(inc.history)) {
+          inc.history.forEach((h) => { if (h && h.time) h.time = window.coffeeCleanTime(h.time); });
+        }
+      });
+    }
+    if (Array.isArray(db.checklists)) {
+      db.checklists.forEach((chk) => {
+        if (!chk) return;
+        if (chk.time) chk.time = window.coffeeCleanTime(chk.time);
+        if (chk.startedAt) chk.startedAt = window.coffeeCleanTime(chk.startedAt);
+      });
+    }
+  }
   const t = _isoToday();
   if (!Array.isArray(db.staff)) {
     db.staff = window.COFFEE_MVP.DEFAULT_STAFF.map((x) => Object.assign({}, x));

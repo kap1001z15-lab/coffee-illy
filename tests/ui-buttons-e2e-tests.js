@@ -484,3 +484,46 @@ check('13. Проверка 6 модулей полного ERP v61: Склад 
 
 process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/13 успешно.\n');
 process.exit(0);
+
+check('14. Концепция Coffee Illy v66 (Barista Simple, Owner Combined 7 разделов, история версий ТТК и дизайн-система Premium)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.resolve(__dirname, '..');
+  const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const ownerHtml = fs.readFileSync(path.join(root, 'owner.html'), 'utf8');
+  const lightCss = fs.readFileSync(path.join(root, 'css/light.css'), 'utf8');
+
+  assert(indexHtml.includes('id="myShiftSummaryCard"'), 'В index.html должен быть главный блок Моя смена (#myShiftSummaryCard)');
+  assert(indexHtml.includes('id="baristaBottomNav"'), 'В index.html должна быть нижняя навигация из 4 разделов (#baristaBottomNav)');
+  assert(indexHtml.includes('id="cashModeTabs"'), 'В index.html должно быть визуальное разделение Сдать смену и Расширенная касса (#cashModeTabs)');
+  assert(ownerHtml.includes('id="ownerCombinedNav"'), 'В owner.html должна быть 7-раздельная навигация (#ownerCombinedNav)');
+  assert(lightCss.includes('#F7F5F0') && lightCss.includes('#795548'), 'В css/light.css должна быть применена палитра Coffee Illy Premium (#F7F5F0, #795548)');
+
+  window.applyLocalMutation({
+    action: 'save_ttk',
+    id: 'ttk_v66_test',
+    name: 'Капучино ILLY v66',
+    volume: '250 мл',
+    category: 'Классика',
+    price: 45,
+    costBeans: 6.5,
+    costMilk: 4.5,
+    costCup: 2.3,
+    recipe: 'Эспрессо 30 мл + молоко 180 мл'
+  });
+  window.applyLocalMutation({
+    action: 'save_ttk',
+    id: 'ttk_v66_test',
+    name: 'Капучино ILLY v66',
+    volume: '250 мл',
+    category: 'Классика',
+    price: 50,
+    costBeans: 6.5,
+    costMilk: 4.5,
+    costCup: 2.3,
+    recipe: 'Эспрессо 30 мл + молоко 190 мл (обновлено)'
+  });
+  const adm = window.coffeeGetInstantAdmin();
+  assert(Array.isArray(adm.ttkHistory) && adm.ttkHistory.some((h) => h.id === 'ttk_v66_test' && h.prevPrice === 45 && h.newPrice === 50), 'История версий ТТК должна фиксировать предыдущую и новую цену/рецептуру');
+  window.applyLocalMutation({ action: 'delete_ttk', id: 'ttk_v66_test' });
+});

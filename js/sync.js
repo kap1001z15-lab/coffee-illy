@@ -1259,8 +1259,36 @@ function applyLocalMutation(payload) {
       serving: String(payload.serving || '').trim()
     };
     const idx = db.ttk.findIndex((x) => x.id === item.id);
-    if (idx >= 0) db.ttk[idx] = item;
-    else db.ttk.push(item);
+    db.ttkHistory = Array.isArray(db.ttkHistory) ? db.ttkHistory : [];
+    const nowHm = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    if (idx >= 0) {
+      const prevT = db.ttk[idx];
+      db.ttkHistory.unshift({
+        time: _isoToday().split('-').reverse().join('.') + ' ' + nowHm,
+        actor: payload.actor || 'Администратор',
+        id: item.id,
+        name: item.name,
+        action: 'Изменена техкарта',
+        prevPrice: prevT.price,
+        newPrice: item.price,
+        prevRecipe: prevT.recipe,
+        newRecipe: item.recipe
+      });
+      db.ttk[idx] = item;
+    } else {
+      db.ttkHistory.unshift({
+        time: _isoToday().split('-').reverse().join('.') + ' ' + nowHm,
+        actor: payload.actor || 'Администратор',
+        id: item.id,
+        name: item.name,
+        action: 'Создана техкарта',
+        prevPrice: null,
+        newPrice: item.price,
+        prevRecipe: '',
+        newRecipe: item.recipe
+      });
+      db.ttk.push(item);
+    }
     appendAudit(db, 'Администратор', 'Обновление техкарты напитка (ТТК)', item.name + ' (' + item.volume + ')');
   } else if (a === 'delete_ttk') {
     if (!Array.isArray(db.ttk) || !db.ttk.length) db.ttk = (window.COFFEE_DEFAULT_TTK || []).map((x) => Object.assign({}, x));
@@ -1741,6 +1769,7 @@ function buildAdminResponse() {
     goodDeeds: db.goodDeeds || window.COFFEE_DEFAULT_GOOD_DEEDS || [],
     shiftRoster: db.shiftRoster || window.COFFEE_DEFAULT_ROSTER || {},
     cashHistory: db.cashHistory || [],
+    ttkHistory: db.ttkHistory || [],
     minAvgCheck: db.minAvgCheck || 35,
     planChecks: db.planChecks || 75,
     deadlineExtensions: db.deadlineExtensions || {},

@@ -114,14 +114,45 @@ window.coffeeRuErr = function (e) {
   return 'Ошибка обмена: ' + m;
 };
 
+window.coffeeCleanTime = function (v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  // Если строка содержит дату + время 1899 из Google Sheets (например "2026-11-13 Sat Dec 30 1899 12:20:00 GMT+0155...")
+  const isoPrefix = /^(\d{4}-\d{2}-\d{2})\s+/.exec(s);
+  const tmMatch = /(\d{1,2}:\d{2})(?::\d{2})?/.exec(isoPrefix ? s.slice(isoPrefix[0].length) : s);
+  if (tmMatch && (s.indexOf('1899') >= 0 || s.indexOf('GMT') >= 0 || /^\d{1,2}:\d{2}(:\d{2})?$/.test(s))) {
+    const p = tmMatch[1].split(':');
+    const hhmm = ('0' + p[0]).slice(-2) + ':' + p[1];
+    return isoPrefix ? (isoPrefix[1] + ' ' + hhmm) : hhmm;
+  }
+  return s;
+};
+
 window.coffeeMediaHtml = function (url, label) {
   const resolved = window.CoffeeIDB ? window.CoffeeIDB.getPhotoSync(url) : url;
   const u = String(resolved || '').trim();
   const safeLabel = window.escapeAttr ? window.escapeAttr(label || 'Фото') : 'Фото';
-  if (!u) return '';
-  const safeUrl = window.escapeAttr ? window.escapeAttr(u) : u;
-  if (/^data:video\/|\.(mp4|webm|mov)(\?|$)/i.test(u)) {
-    return '<video src="' + safeUrl + '" controls playsinline style="max-width:160px;max-height:110px;border-radius:8px;border:1px solid var(--border);background:#000"></video>';
+  if (!u || /^(нет|no|false|—|-|null|undefined)$/i.test(u)) return '';
+  if (/^idb:\/\/photo\//i.test(u)) {
+    const safeRef = window.escapeAttr ? window.escapeAttr(u) : u;
+    return '<div class="idb-lazy-photo" data-idb-ref="' + safeRef + '" data-idb-label="' + safeLabel + '" style="margin-top:6px;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;border:1px solid var(--line,#2c3a3e);background:var(--bg,#12191b);font-size:12px;color:var(--muted,#8fa3a8)">📷 Фото в памяти терминала (' + safeLabel + ')</div>';
   }
-  return '<a href="' + safeUrl + '" target="_blank" rel="noopener"><img class="ph" src="' + safeUrl + '" alt="' + safeLabel + '" loading="lazy"></a>';
+  if (!/^(data:|blob:|https?:\/\/)/i.test(u)) return '';
+  let imgSrc = u;
+  let linkHref = u;
+  const drvMatch = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i.exec(u) || /[?&]id=([a-zA-Z0-9_-]+)/i.exec(u);
+  if (drvMatch && drvMatch[1]) {
+    imgSrc = 'https://drive.google.com/thumbnail?id=' + drvMatch[1] + '&sz=w1000';
+    linkHref = 'https://drive.google.com/file/d/' + drvMatch[1] + '/view';
+  }
+  const safeImg = window.escapeAttr ? window.escapeAttr(imgSrc) : imgSrc;
+  const safeHref = window.escapeAttr ? window.escapeAttr(linkHref) : linkHref;
+  if (/^data:video\/|\.(mp4|webm|mov)(\?|$)/i.test(u)) {
+    return '<video src="' + safeHref + '" controls playsinline style="max-width:160px;max-height:110px;border-radius:8px;border:1px solid var(--border);background:#000;margin-top:6px"></video>';
+  }
+  return '<a href="' + safeHref + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;text-decoration:none">' +
+    '<img class="ph" src="' + safeImg + '" alt="' + safeLabel + '" loading="lazy" onerror="this.style.display=\'none\';if(this.nextElementSibling)this.nextElementSibling.style.display=\'inline-flex\'">' +
+    '<span style="display:none;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;border:1px solid var(--line,#2c3a3e);background:var(--bg,#12191b);font-size:12px;color:var(--ink,#f6ece2)">📎 Открыть медиафайл (' + safeLabel + ') ↗</span>' +
+  '</a>';
 };

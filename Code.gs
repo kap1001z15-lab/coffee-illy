@@ -47,10 +47,10 @@ function RUN_ONE_CLICK_SETUP() {
   var trigRes = setupAutonomousTriggers_(ss);
   var rev = bumpDataRev_();
   try { onOpen(); } catch (_) {}
-  var msg = '✅ СИСТЕМА КОФЕЙНЯ v65 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v67 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
   try { Logger.log(msg); } catch (_) {}
   try { console.log(msg); } catch (_) {}
-  try { ss.toast(msg, '☕ Кофейня ERP v65', 8); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v67', 8); } catch (_) {}
   return { ok: true, message: msg, rev: rev, drive: folderStatus };
 }
 
@@ -147,7 +147,7 @@ function doGet(e) {
       }
       return jsonOut_(revOut);
     }
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v65', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54', 'save_checklist_draft'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v67', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54', 'save_checklist_draft'] });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
@@ -480,15 +480,19 @@ function uploadPhotoToDrive_(ss, body) {
     var decoded = Utilities.base64Decode(b64Data);
     var blob = Utilities.newBlob(decoded, mimeType, fname);
     var file = folder.createFile(blob);
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_) {}
     var retentionDays = Number(props.getProperty('MEDIA_RETENTION_DAYS') || 90);
     var expiresAt = isoDate_(new Date(Date.now() + retentionDays * 86400000));
+    var directMediaUrl = /^video\//i.test(mimeType)
+      ? ('https://drive.google.com/uc?export=download&id=' + file.getId())
+      : ('https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200');
     var shM = ss.getSheetByName('Медиафайлы');
     if (!shM) {
       shM = ss.insertSheet('Медиафайлы');
       shM.appendRow(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']);
     }
-    shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, file.getUrl()]);
-    return { ok: true, fileId: file.getId(), url: file.getUrl(), expiresAt: expiresAt };
+    shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, directMediaUrl]);
+    return { ok: true, fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
@@ -1007,6 +1011,20 @@ function jsonOut_(obj) {
 
 function isoDate_(d) {
   return Utilities.formatDate(d || new Date(), Session.getScriptTimeZone() || 'GMT+2', 'yyyy-MM-dd');
+}
+
+function fmtTime_(v) {
+  if (!v) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  }
+  var s = String(v).trim();
+  var m = /(\d{1,2}:\d{2})(?::\d{2})?/.exec(s);
+  if (m && (s.indexOf('1899') >= 0 || s.indexOf('GMT') >= 0 || /^\d{1,2}:\d{2}(:\d{2})?$/.test(s))) {
+    var parts = m[1].split(':');
+    return ('0' + parts[0]).slice(-2) + ':' + parts[1];
+  }
+  return s;
 }
 
 function fmtIso_(v) {
@@ -1678,7 +1696,7 @@ function getAdmin_(ss) {
     incidents.push({
       id: String(ri[0]),
       date: fmtIso_(ri[1]),
-      time: String(ri[2] || ''),
+      time: fmtTime_(ri[2]),
       step: String(ri[3] || 'Проблема'),
       text: String(ri[4] || ''),
       priority: String(ri[5] || 'Терпит'),
@@ -1761,7 +1779,7 @@ function getDashboard_(ss, dateStr) {
   for (var j = 1; j < chkRows.length; j++) {
     var r = chkRows[j];
     if (fmtIso_(r[0]) === day) {
-      var tm = String(r[1] || '');
+      var tm = fmtTime_(r[1]);
       var blk = String(r[2] || '');
       if (blk === 'Открытие' && (!openedAt || tm < openedAt)) openedAt = tm;
       var phs = [];
@@ -2735,7 +2753,7 @@ function getChecklistsLogFromSheet_(ss) {
     var statusStr = String(r[7] || 'В срок');
     list.push({
       date: fmtIso_(r[0]),
-      time: String(r[1] || ''),
+      time: fmtTime_(r[1]),
       block: String(r[2] || 'Открытие'),
       who: String(r[3] || 'Бариста'),
       problems: Number(r[4]) || 0,

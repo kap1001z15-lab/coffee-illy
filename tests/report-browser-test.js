@@ -39,6 +39,19 @@ if (playwrightChromium && process.env.USE_PLAYWRIGHT === '1') {
   const path = require('path');
   const root = path.resolve(__dirname, '..');
 
+  const vm = require('vm');
+  ['index.html', 'owner.html', 'dashboard.html', 'report.html', 'admin.html', 'diag.html'].forEach((hf) => {
+    const html = fs.readFileSync(path.join(root, hf), 'utf8');
+    const scripts = [...html.matchAll(/<script(?:\s+[^>]*src="([^"?]+)[^"]*"[^>]*)?>([\s\S]*?)<\/script>/gi)];
+    let combined = '';
+    for (const m of scripts) {
+      if (m[1] && !/^https?:/i.test(m[1])) combined += '\n' + fs.readFileSync(path.join(root, m[1]), 'utf8') + '\n';
+      else if (!m[1] && m[2].trim()) combined += '\n' + m[2] + '\n';
+    }
+    new vm.Script(combined, { filename: hf + '-global-scope.js' });
+  });
+
+
   const els = {};
   function makeNode(id) {
     return {
@@ -100,8 +113,13 @@ if (playwrightChromium && process.env.USE_PLAYWRIGHT === '1') {
   eval(fs.readFileSync(path.join(root, 'js/page-admin.js'), 'utf8'));
   eval(fs.readFileSync(path.join(root, 'js/page-owner.js'), 'utf8'));
 
-  window.renderOwnerDashboardSection();
-  window.renderOwnerReportSection();
+  window.switchOwnerTopSection('dashboard');
+  if (els.ownerSecDashboard.hidden || !els.ownerSecReport.hidden || !els.content.hidden) throw new Error('Dashboard visibility mismatch');
+  window.switchOwnerTopSection('report');
+  if (!els.ownerSecDashboard.hidden || els.ownerSecReport.hidden || !els.content.hidden) throw new Error('Report visibility mismatch');
+  window.switchOwnerTopSection('admin');
+  if (!els.ownerSecDashboard.hidden || !els.ownerSecReport.hidden || els.content.hidden) throw new Error('Admin visibility mismatch');
+  if (window.coffeeCleanTime('Sat Dec 30 1899 12:20:00 GMT+0155 (Восточная Европа)') !== '12:20') throw new Error('coffeeCleanTime 1899 failed');
 
   const dashHtml = els.ownerSecDashboard.innerHTML;
   const repHtml = els.ownerSecReport.innerHTML;

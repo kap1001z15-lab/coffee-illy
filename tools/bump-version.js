@@ -21,7 +21,7 @@ if (fs.existsSync(gasPath)) {
     .replace(/☕ Кофейня ERP v\d+/g, '☕ Кофейня ERP v' + n);
   if (g1 !== g0) { fs.writeFileSync(gasPath, g1); files++; }
 }
-['PATCH_NOTES.md', 'ARCHITECTURE_V22.md', 'AUDIT_REPORT.md', 'SALES_RECONCILIATION_README.md'].forEach((md) => {
+['PATCH_NOTES.md', 'ARCHITECTURE_V22.md', 'AUDIT_REPORT.md', 'SALES_RECONCILIATION_README.md', 'TECHNICAL_SPECIFICATION.md', 'COFFEE_ILLY_CONCEPT.md', 'BUSINESS_LOGIC_MAP.md', 'API_CONTRACTS.md', 'DESIGN_SYSTEM.md', 'BARISTA_UX_SPEC.md', 'OWNER_UX_SPEC.md', 'MIGRATION_PLAN.md', 'TEST_PLAN.md'].forEach((md) => {
   const mp = path.join(root, md);
   if (fs.existsSync(mp)) {
     const m0 = fs.readFileSync(mp, 'utf8');

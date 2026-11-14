@@ -123,7 +123,7 @@ $("rdToday").onclick = () => setReportDate(isoToday());
 $("rdYest").onclick = () => setReportDate(shiftIso(isoToday(), -1));
 $("rdPick").onchange = (e) => { const v = e.target.value; setReportDate(v && v <= isoToday() ? v : reportDate); };
 
-const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "infoView", "cashView", "doneView"];
+const VIEWS = ["loader", "errorView", "emptyView", "checklistView", "infoView", "cashView", "doneView", "incidentsBaristaSection"];
 function show(v) { VIEWS.forEach((x) => $(x).hidden = x !== v); }
 
 /* отметки «сегодня уже сдано» с персональной привязкой к аккаунту сотрудника и синхронизацией между устройствами */
@@ -1668,11 +1668,13 @@ function syncFromAdminChanges() {
 function finish(ok, text) {
   tgt(() => tg.HapticFeedback.notificationOccurred("success"));
   $("steps").hidden = true; show("doneView");
-  $("doneTitle").textContent = "✅ Отчёт успешно выполнен";
   const pendingCnt = window.coffeeGetTotalPendingCount ? window.coffeeGetTotalPendingCount() : getQ().length;
   const isOffline = !ok || (typeof navigator !== "undefined" && navigator.onLine === false) || pendingCnt > 0;
+  $("doneTitle").textContent = isOffline
+    ? "💾 Сохранено на устройстве · ожидает отправки"
+    : "✅ Выполнено · подтверждено сервером";
   $("doneText").textContent = isOffline
-    ? ((text ? text + " · " : "") + "Сохранено офлайн — данные автоматически отправятся в систему при появлении интернета.")
+    ? ((text ? text + " · " : "") + "Сохранено на устройстве — данные автоматически отправятся на сервер при появлении интернета.")
     : (text || "Данные успешно записаны в систему.");
   if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0);
 }
@@ -3041,33 +3043,229 @@ window.ensureTerminalPinGate = function () {
   }, 120);
 })();
 
-})();
-/* UNIFIED_IIFE_END */
 
+/* === COFFEE ILLY v66: BARISTA SIMPLE (МОЯ СМЕНА + НИЖНЯЯ НАВИГАЦИЯ + РАЗДЕЛ ПРОБЛЕМ + РЕЖИМЫ КАССЫ) === */
+let activeBaristaNav = "shift";
+let activeCashMode = "simple";
 
-
-if ($("reconciliationPanel")) {
-  $("reconciliationPanel").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-nclassify]");
-    if (!b) return;
-    const itemName = b.dataset.nclassify;
-    const kind = b.dataset.nkind || "coffee";
-    post({ action: "save_nomenclature_rule", itemName, kind, userName }).catch(() => {});
-    if (sales && window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.summarizeProductsList) {
-      const targetProds = Array.isArray(sales.products) ? sales.products : (Array.isArray(sales) ? sales : []);
-      const sum = window.CoffeeSalesReconciliation.summarizeProductsList(targetProds);
-      sales.coffeeQty = sum.coffeeQty;
-      sales.coffeeCups = sum.coffeeQty;
-      sales.nonCoffeeQty = sum.nonCoffeeQty;
-      sales.reviewQty = sum.reviewQty;
-      if (trans && trans.fromSalesOnly) {
-        trans.coffeeQty = sum.coffeeQty;
-        trans.nonCoffeeQty = sum.nonCoffeeQty;
-        trans.reviewQty = sum.reviewQty;
+function updateMyShiftSummaryCard() {
+  try {
+    const card = $("myShiftSummaryCard");
+    if (!card) return;
+    if ($("myShiftBaristaLbl")) $("myShiftBaristaLbl").textContent = userName || "Бариста";
+    const normB = (block === "КАССА" || block === "Касса") ? "Касса" : (block === "ИНФО" ? "Открытие" : block);
+    if ($("myShiftBlockLbl")) $("myShiftBlockLbl").textContent = normB;
+    const hr = new Date().getHours();
+    const stageLabel = hr < 11 ? "Открытие" : (hr >= 20 ? "Закрытие" : "Работа в смене");
+    if ($("myShiftStageTitle")) $("myShiftStageTitle").textContent = "Этап: " + stageLabel + " · " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const total = Array.isArray(cur) ? cur.length : 0;
+    const answeredCnt = Array.isArray(answers) ? answers.filter(Boolean).length : 0;
+    const doneFlag = isDone(normB);
+    const pct = doneFlag ? 100 : (total > 0 ? Math.min(100, Math.round((answeredCnt / total) * 100)) : 0);
+    if ($("myShiftPctLbl")) {
+      $("myShiftPctLbl").textContent = doneFlag ? ("100% (" + total + "/" + total + ")") : (pct + "% (" + answeredCnt + "/" + total + ")");
+    }
+    const nextTaskObj = (!doneFlag && Array.isArray(cur) && cur[idx]) ? cur[idx] : (Array.isArray(cur) && cur[0] ? cur[0] : null);
+    if ($("myShiftNextTaskLbl")) {
+      $("myShiftNextTaskLbl").textContent = doneFlag
+        ? ("Чек-лист «" + normB + "» сдан ✓")
+        : (nextTaskObj ? nextTaskObj.title : "Все задачи текущего блока выполнены");
+    }
+    const pendingCnt = window.coffeeGetTotalPendingCount ? window.coffeeGetTotalPendingCount() : getQ().length;
+    const badge = $("myShiftStatusBadge");
+    if (badge) {
+      if (pendingCnt > 0) {
+        badge.className = "kpi-pill warn";
+        badge.textContent = "💾 На устройстве · ожидает отправки (" + pendingCnt + ")";
+      } else if (doneFlag) {
+        badge.className = "kpi-pill ok";
+        badge.textContent = "✓ Чек-лист подтверждён";
+      } else {
+        badge.className = "kpi-pill ok";
+        badge.textContent = "🟢 Смена активна";
       }
     }
-    renderCash();
-  });
+    const unreadCnt = typeof getUnreadInfoCount === "function" ? getUnreadInfoCount() : 0;
+    if ($("bnavKnowledgeSub")) {
+      $("bnavKnowledgeSub").textContent = unreadCnt > 0 ? ("ТТК · " + unreadCnt) : "ТТК";
+    }
+    const stepBadge = $("taskStepStatusBadge");
+    if (stepBadge) {
+      const curAns = Array.isArray(answers) ? answers[idx] : null;
+      if (incident) {
+        stepBadge.className = "kpi-pill bad";
+        stepBadge.textContent = "⚠️ Есть проблема";
+      } else if (curAns || photo) {
+        stepBadge.className = pendingCnt > 0 ? "kpi-pill warn" : "kpi-pill ok";
+        stepBadge.textContent = pendingCnt > 0 ? "💾 Сохранено на устройстве" : "✓ Выполнено";
+      } else {
+        stepBadge.className = "kpi-pill warn";
+        stepBadge.textContent = "🟤 В процессе";
+      }
+    }
+  } catch (_) {}
 }
 
+function renderBaristaIncidentsSection() {
+  try {
+    const box = $("baristaIncidentsList");
+    if (!box) return;
+    const db = typeof getUDB === "function" ? getUDB() : { incidents: [] };
+    const list = Array.isArray(db.incidents) ? db.incidents.slice(0, 20) : [];
+    if ($("baristaIncCountLbl")) $("baristaIncCountLbl").textContent = list.length + " обращ.";
+    if (!list.length) {
+      box.innerHTML = '<p class="muted" style="margin:0;font-size:13px">На текущей смене открытых обращений нет.</p>';
+      return;
+    }
+    const pendingCnt = window.coffeeGetTotalPendingCount ? window.coffeeGetTotalPendingCount() : getQ().length;
+    box.innerHTML = list.map((inc) => {
+      const normSt = window.coffeeNormIncStatus ? window.coffeeNormIncStatus(inc.status) : (inc.status || "Новая проблема");
+      const stCls = (normSt === "Решена" || normSt === "Закрыта") ? "ok" : (normSt === "Новая проблема" ? "bad" : "warn");
+      const syncTag = pendingCnt > 0 ? "💾 Сохранено на устройстве · ожидает отправки" : "✓ Доставлено на сервер";
+      return '<div style="padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);font-size:13px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">' +
+          '<b>#' + esc(inc.id || "INC") + " · " + esc(inc.step || "Оборудование") + '</b>' +
+          '<span class="kpi-pill ' + stCls + '">' + esc(normSt) + '</span>' +
+        '</div>' +
+        '<div style="margin-bottom:4px">' + esc(inc.text || "") + '</div>' +
+        '<div class="muted" style="font-size:11.5px">' + esc(inc.date || "") + " " + esc(inc.time || "") + " · Срочность: <b>" + esc(inc.priority || "Терпит") + "</b> · " + syncTag + '</div>' +
+      '</div>';
+    }).join("");
+  } catch (_) {}
+}
 
+function applyCashModeUI(mode) {
+  activeCashMode = mode === "advanced" ? "advanced" : "simple";
+  document.querySelectorAll("#cashModeTabs button[data-cmode]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.cmode === activeCashMode);
+  });
+  const adv = $("cashAdvancedTools");
+  const minCard = $("minimalBaristaCashCard");
+  const extCard = $("cashExtendedReconcileCard");
+  const subBtn = $("submitCashBtn");
+  if (activeCashMode === "advanced") {
+    if (adv) { adv.hidden = false; adv.setAttribute("open", "open"); }
+    if (extCard) extCard.hidden = false;
+    if (subBtn) subBtn.hidden = false;
+    if (minCard) minCard.hidden = true;
+  } else {
+    if (adv) { adv.removeAttribute("open"); adv.hidden = true; }
+    if (extCard) extCard.hidden = true;
+    if (subBtn) subBtn.hidden = true;
+    if (minCard) { minCard.hidden = false; minCard.style.opacity = "1"; }
+  }
+}
+
+function switchBaristaBottomNav(targetNav) {
+  activeBaristaNav = targetNav || "shift";
+  document.querySelectorAll("#baristaBottomNav button[data-bnav]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.bnav === activeBaristaNav);
+  });
+  if (activeBaristaNav === "shift") {
+    if (block === "КАССА" || block === "Касса" || block === "ИНФО") {
+      selectBlock("Открытие");
+    } else {
+      selectBlock(block || "Открытие");
+    }
+  } else if (activeBaristaNav === "cash") {
+    selectBlock("КАССА");
+    applyCashModeUI(activeCashMode);
+  } else if (activeBaristaNav === "knowledge") {
+    block = "ИНФО";
+    drawTabs();
+    renderInfoView();
+    show("infoView");
+  } else if (activeBaristaNav === "incidents") {
+    renderBaristaIncidentsSection();
+    show("incidentsBaristaSection");
+  }
+  updateMyShiftSummaryCard();
+}
+window.switchBaristaBottomNav = switchBaristaBottomNav;
+window.updateMyShiftSummaryCard = updateMyShiftSummaryCard;
+
+(function initBaristaSimpleV66() {
+  const bnav = $("baristaBottomNav");
+  if (bnav) {
+    bnav.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-bnav]");
+      if (!btn) return;
+      switchBaristaBottomNav(btn.dataset.bnav);
+    });
+  }
+  const contBtn = $("continueShiftBtn");
+  if (contBtn) {
+    contBtn.addEventListener("click", () => {
+      if (block === "КАССА" || block === "Касса") {
+        switchBaristaBottomNav("cash");
+      } else {
+        switchBaristaBottomNav("shift");
+        const taskPanel = document.querySelector(".panel.task");
+        if (taskPanel && typeof taskPanel.scrollIntoView === "function") {
+          try { taskPanel.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
+        }
+      }
+    });
+  }
+  const cmode = $("cashModeTabs");
+  if (cmode) {
+    cmode.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-cmode]");
+      if (!btn) return;
+      applyCashModeUI(btn.dataset.cmode);
+    });
+  }
+  const incBtnTab = $("openQuickIncFromTabBtn");
+  if (incBtnTab) {
+    incBtnTab.addEventListener("click", () => {
+      if (typeof openQuickInc === "function") openQuickInc();
+    });
+  }
+  const logoutBtn = $("staffLogoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+      if (typeof promptStaffPinAndSwitch === "function") {
+        promptStaffPinAndSwitch(userName, true);
+      }
+    });
+  }
+  const ktabs = $("knowledgeSubTabs");
+  if (ktabs) {
+    ktabs.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-kmode]");
+      if (!btn) return;
+      const km = btn.dataset.kmode || "all";
+      document.querySelectorAll("#knowledgeSubTabs button[data-kmode]").forEach((b) => {
+        b.classList.toggle("on", b.dataset.kmode === km);
+      });
+      const annCard = $("infoAnnouncementsCard");
+      const annList = $("infoCardsList");
+      const ttkSec = $("ttkCardsSection");
+      const searchIn = $("ttkSearchIn");
+      if (km === "ttk") {
+        if (annCard) annCard.hidden = true;
+        if (annList) annList.hidden = true;
+        if (ttkSec) ttkSec.hidden = false;
+        if (searchIn && searchIn.value === "Стандарт") { searchIn.value = ""; renderTtkCatalog(); }
+      } else if (km === "standards") {
+        if (annCard) annCard.hidden = true;
+        if (annList) annList.hidden = true;
+        if (ttkSec) ttkSec.hidden = false;
+        if (searchIn) { searchIn.value = ""; renderTtkCatalog(); }
+      } else if (km === "info") {
+        if (annCard) annCard.hidden = false;
+        if (annList) annList.hidden = false;
+        if (ttkSec) ttkSec.hidden = true;
+      } else {
+        if (annCard) annCard.hidden = false;
+        if (annList) annList.hidden = false;
+        if (ttkSec) ttkSec.hidden = false;
+      }
+    });
+  }
+  applyCashModeUI("simple");
+  setInterval(updateMyShiftSummaryCard, 2500);
+  setTimeout(updateMyShiftSummaryCard, 120);
+})();
+
+})();

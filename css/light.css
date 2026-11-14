@@ -7,21 +7,22 @@
 /* 1. Палитра Светлой темы (по умолчанию) */
 :root:not([data-theme=dark]) {
   color-scheme: light;
-  --bg: #f6f4f0;
-  --surface: #ffffff;
-  --chip: #eee9e1;
-  --ink: #1e1b18;
-  --muted: #6f665f;
-  --line: #e4ddd3;
-  --brew: #8c5830;
-  --crema: #c4874a;
-  --accent: #8c5830;
-  --good: #218353;
-  --bad: #c93b2b;
-  --warn: #b87514;
-  --espresso: #1e1b18;
-  --cream: #ffffff;
-  --shadow: 0 1px 2px rgba(24, 20, 16, .04), 0 8px 20px -14px rgba(24, 20, 16, .14);
+  --bg: #F7F5F0;
+  --surface: #FFFFFF;
+  --chip: #EFECE4;
+  --ink: #262522;
+  --muted: #85817A;
+  --line: #E6E1D8;
+  --brew: #795548;
+  --crema: #A67C68;
+  --accent: #795548;
+  --good: #398568;
+  --bad: #C65C50;
+  --warn: #D69A43;
+  --espresso: #262522;
+  --cream: #FFFFFF;
+  --shadow: 0 2px 6px rgba(38, 37, 34, .04), 0 10px 24px -14px rgba(38, 37, 34, .09);
+  --font-d: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* 2. Палитра Тёмной темы (минималистичный графит с той же иерархией поверхностей) */
@@ -527,4 +528,182 @@ header .wrap {
     overflow-x: auto !important;
     max-width: 100% !important;
   }
+}
+
+
+/* === COFFEE ILLY PREMIUM DESIGN SYSTEM ADDONS (v66) === */
+body, button, input, select, textarea {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
+}
+.num, .total, .stat .num, .kpi-val, .tbl td {
+  font-variant-numeric: tabular-nums;
+}
+main {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.my-shift-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brew);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.my-shift-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.my-shift-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.my-shift-cell {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.my-shift-cell b {
+  display: block;
+  font-size: 14px;
+  color: var(--ink);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.my-shift-next {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+.barista-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 20px rgba(38, 37, 34, 0.08);
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.barista-bottom-nav-inner {
+  max-width: 520px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.barista-bottom-nav button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 12px;
+  padding: 6px 4px;
+  min-height: 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.barista-bottom-nav button .bnav-ico {
+  font-size: 17px;
+  line-height: 1.1;
+}
+.barista-bottom-nav button .bnav-sub {
+  font-size: 10px;
+  opacity: 0.8;
+  font-weight: 500;
+}
+.barista-bottom-nav button.on {
+  background: color-mix(in srgb, var(--brew) 12%, var(--surface));
+  color: var(--brew);
+  border-color: color-mix(in srgb, var(--brew) 32%, var(--line));
+  font-weight: 700;
+}
+.cash-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px;
+}
+.cash-mode-tabs button {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.cash-mode-tabs button.on {
+  background: var(--brew);
+  color: #ffffff;
+}
+.owner-combined-nav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.owner-combined-nav button {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: 12px;
+  min-height: 38px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.owner-combined-nav button.on {
+  background: var(--brew) !important;
+  color: #ffffff !important;
+  border-color: var(--brew) !important;
+}
+.owner-subbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  align-items: center;
+}
+.owner-subbar-lbl {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-right: 4px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }

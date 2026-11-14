@@ -1,11 +1,13 @@
 /* Клиентский модуль страницы admin.html (v21 Enterprise) */
-const API_URL=window.COFFEE.API_URL,PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
-const getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
-const setPin=(v)=>{try{localStorage.setItem(PIN_KEY,v)}catch(e){}};
-const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' руб.';
-const dmy=(s)=>s?s.slice(8)+'.'+s.slice(5,7)+'.'+s.slice(0,4):'';
-let D=null,tab='checklists';
+var API_URL=window.COFFEE.API_URL,PIN_KEY='coffee_illy_pin',$=(i)=>document.getElementById(i);
+var getPin=()=>{try{return localStorage.getItem(PIN_KEY)||''}catch(e){return ''}};
+var setPin=(v)=>{try{localStorage.setItem(PIN_KEY,v)}catch(e){}};
+var esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+var rub=(n)=>Math.round(Number(n||0)).toLocaleString('ru-RU')+' руб.';
+var dmy=(s)=>s?s.slice(8)+'.'+s.slice(5,7)+'.'+s.slice(0,4):'';
+var ownerTopSection=['dashboard','report','admin'].includes(window.OWNER_START_SECTION)?window.OWNER_START_SECTION:'dashboard';
+window.ownerTopSection=ownerTopSection;
+var D=null,tab='checklists';
 try{tab=new URLSearchParams(location.search).get('tab')||localStorage.getItem('adm_tab')||'checklists'}catch(e){}
 
 function toast(t){const el=$('toast');el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3000)}
@@ -26,8 +28,8 @@ async function load(){
     const inst = window.coffeeGetInstantAdmin();
     if(inst && inst.tasks){
       D = inst;
-      if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden = false;
-      if(inst.location && $('sub')) $('sub').textContent = 'Управление · ' + inst.location;
+      var _curSec = window.ownerTopSection || ownerTopSection || window.OWNER_START_SECTION || 'dashboard'; if ($('content')) $('content').hidden = (_curSec !== 'admin');
+      if ((typeof inst !== 'undefined' ? inst : data).location && $('sub') && (window.ownerTopSection || ownerTopSection) === 'admin') $('sub').textContent = 'Управление · ' + (typeof inst !== 'undefined' ? inst : data).location;
       render();
       if (typeof window !== "undefined" && (!window.navigator || !/jsdom|node/i.test(window.navigator.userAgent || ""))) {
         if (window.coffeeLiveSyncNow) setTimeout(() => window.coffeeLiveSyncNow(), 40);
@@ -40,13 +42,13 @@ async function load(){
     const data = (d && d.tasks) ? d : (window.coffeeGetInstantAdmin ? window.coffeeGetInstantAdmin() : { tasks: [], settings: [] });
     if (window.coffeeCache) coffeeCache.set('admin',data);
     D=data;
-    if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden=false;
-    if(data.location && $('sub'))$('sub').textContent='Управление · '+data.location;
+    var _curSec = window.ownerTopSection || ownerTopSection || window.OWNER_START_SECTION || 'dashboard'; if ($('content')) $('content').hidden = (_curSec !== 'admin');
+    if ((typeof inst !== 'undefined' ? inst : data).location && $('sub') && (window.ownerTopSection || ownerTopSection) === 'admin') $('sub').textContent = 'Управление · ' + (typeof inst !== 'undefined' ? inst : data).location;
     render();
   }catch(e){
     if(window.coffeeGetInstantAdmin){
       D = window.coffeeGetInstantAdmin();
-      if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden = false;
+      var _curSec = window.ownerTopSection || ownerTopSection || window.OWNER_START_SECTION || 'dashboard'; if ($('content')) $('content').hidden = (_curSec !== 'admin');
       render();
     }
   }}
@@ -70,7 +72,7 @@ $('dcancel').onclick=()=>{try{if($('dlg').open&&typeof $('dlg').close==='functio
 async function act(action,data,ok){try{await call(action,data);toast(ok||'Готово');await load()}catch(e){toast('Ошибка: '+errText(e))}}
 
 /* ----- отрисовка ----- */
-const YN=['да','нет'];
+var YN=['да','нет'];
 function render(){
   document.querySelectorAll('#tabs button').forEach((b)=>b.classList.toggle('on',b.dataset.t===tab));
   const f={checklists:rChecklists,tasks:rTasksAndInfo,info:rTasksAndInfo,ttk:rTtk,cash:rCash,exp:rExp,inc:rInc,audit:rAudit,staff:rStaff,set:rSet}[tab]||rChecklists;
@@ -186,6 +188,24 @@ function rAudit(){
     '<div class="mu">'+dmy(a.date)+' · Проверяющий: '+esc(a.auditor)+' · Приветствие: '+a.greet+'% · Уточнение: '+a.clarify+'% · Upsell: '+a.upsell+'% · Прощание: '+a.farewell+'%</div>'+
     (a.comment?'<div style="font-size:13px;margin-top:4px">💬 '+esc(a.comment)+'</div>':'')+'</div>'+
     '<div class="acts"><button class="b del" data-a="audit-del" data-i="'+i+'">Удалить</button></div></div>').join('');
+  const outboxSt = window.coffeeGetOutboxStatus ? window.coffeeGetOutboxStatus() : { pending: 0, failed: 0 };
+  const cashDiffs = (D.cash || []).filter((r) => Number(r.unaccountedShots) > 0 || (r.zTotal != null && ((Number(r.cash)||0)+(Number(r.card)||0)) !== Number(r.zTotal)));
+  const cHist = (D.cashHistory || []).slice(0, 10);
+  const aLogs = (D.auditLog || []).slice(0, 15);
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:18px">' +
+    '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+      '<b>🔄 Состояние синхронизации и очереди</b>' +
+      '<div class="mu" style="margin-top:6px">Ожидает отправки: <b>' + (outboxSt.pending || 0) + '</b> · Ошибок загрузки: <b>' + (outboxSt.failed || 0) + '</b></div>' +
+    '</div>' +
+    '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+      '<b>⚖️ Расхождения в кассе и счётчиках</b>' +
+      '<div class="mu" style="margin-top:6px">Дней с расхождением Z-отчёта или помолов: <b>' + cashDiffs.length + '</b></div>' +
+    '</div>' +
+  '</div>';
+  h += '<h3 style="font-size:16px;margin:18px 0 8px">📜 История корректировок кассы (' + cHist.length + ')</h3>' +
+    (cHist.length ? cHist.map((c) => '<div class="row" style="padding:8px 0"><div><b>' + dmy(c.date) + ' · ' + esc(c.action) + '</b><div class="mu">' + esc(c.time) + ' · Автор: ' + esc(c.actor) + ' · Исходная сумма: ' + rub(c.origTotal) + ' → Новая: ' + rub(c.newTotal) + ' · ' + esc(c.note || '') + '</div></div></div>').join('') : '<p class="mu">Корректировок пока не зафиксировано</p>');
+  h += '<h3 style="font-size:16px;margin:18px 0 8px">🛡 Журнал действий пользователей (' + aLogs.length + ')</h3>' +
+    (aLogs.length ? '<div class="sx"><table class="tbl"><thead><tr><th>Дата и время</th><th>Кто выполнил</th><th>Действие</th><th>Детали</th></tr></thead><tbody>' + aLogs.map((l) => '<tr><td>' + dmy(l.date) + ' ' + esc(l.time) + '</td><td><b>' + esc(l.actor) + '</b></td><td>' + esc(l.action) + '</td><td style="text-align:left">' + esc(l.details) + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="mu">Журнал пуст</p>');
   return h;
 }
 function auditForm(){
@@ -202,7 +222,13 @@ function auditForm(){
   ],{date:D.today,barista:'Соня',auditor:'Шеф-бариста Максим',greet:100,clarify:100,upsell:90,farewell:100,comment:''},(o)=>call('save_service_audit',o));
 }
 function rCash(){
-  let h='<div class="top"><h2 style="font-size:18px">⚖️ Выручка и сверка кассы (ТЗ п. 9.2)</h2><button class="p" data-a="cash-new">+ Внести / сверить Z-отчёт</button></div><p class="mu" style="margin:0 0 8px">Автоматическая сверка данных, введённых бариста в Терминале, с фискальным Z-отчётом кассы. Исходные данные сохраняются в истории корректировок.</p>';
+  const totalDays = (D.cash||[]).length;
+  const diffDays = (D.cash||[]).filter((r)=>((Number(r.cash)||0)+(Number(r.card)||0))!==Number(r.zTotal!=null?r.zTotal:((Number(r.cash)||0)+(Number(r.card)||0))) || Number(r.unaccountedShots)>0).length;
+  let h='<div class="top"><h2 style="font-size:18px">⚖️ Выручка и сверка кассы (ТЗ п. 9.2)</h2><button class="p" data-a="cash-new">+ Внести / сверить Z-отчёт</button></div>' +
+  '<div style="padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg);margin-bottom:12px;font-size:12.5px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px"><b>🔍 Регламент сверки смены (8 шагов контроля без перезаписи первоисточника):</b><span class="kpi-pill '+(diffDays===0?'ok':'warn')+'">'+(diffDays===0?'Все смены сходятся ('+totalDays+')':'Требуют внимания: '+diffDays+' из '+totalDays)+'</span></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;color:var(--muted)"><span>1. Выбор даты</span>➔<span>2. Исходные CSV</span>➔<span>3. Смены сотрудников</span>➔<span>4. Нал/Безнал vs Z-отчёт</span>➔<span>5. Счётчики (0–999)</span>➔<span>6. Списания</span>➔<span>7. Выделение расхождений</span>➔<span>8. Корректировка с сохранением оригинала</span></div>' +
+  '</div>';
   if(!D.cash.length)return h+'<p class="mu">Данных пока нет</p>';
   const tbl='<div class="sx"><table class="tbl"><thead><tr><th>Дата</th><th>Наличные</th><th>Безнал</th><th>Факт (Бариста)</th><th>Z-отчёт кассы</th><th>Сверка (ТЗ 9.2)</th><th>Чеков</th><th>Списания</th><th></th></tr></thead><tbody>'+D.cash.map((r,i)=>{
     const tot=(Number(r.cash)||0)+(Number(r.card)||0);
@@ -290,6 +316,9 @@ function rTtk(){
     const low=Number(it.stock)<=Number(it.minStock||0);
     return '<tr><td><b>'+esc(it.name)+'</b></td><td>'+esc(it.category||'Сырьё')+'</td><td><b style="font-size:15px;color:'+(low?'var(--bad)':'var(--good)')+'">'+it.stock+' '+esc(it.unit)+'</b></td><td>'+it.minStock+' '+esc(it.unit)+'</td><td><span class="kpi-pill '+(low?'bad':'ok')+'">'+(low?'⚠️ Пора заказать':'✓ В норме')+'</span></td><td><div class="acts"><button class="b ok" type="button" data-a="inv-restock" data-i="'+idx+'">+ Приход</button><button class="b" type="button" data-a="inv-edit" data-i="'+idx+'">Ревизия</button></div></td></tr>';
   }).join('')+'</tbody></table></div>';
+  const tHist = (D.ttkHistory || []).slice(0, 10);
+  h += '<h3 style="font-size:16px;margin:18px 0 8px">🕓 История версий техкарт ТТК (кто, когда и что изменил)</h3>' +
+    (tHist.length ? tHist.map((th) => '<div class="row" style="padding:8px 0"><div><b>' + esc(th.name) + ' · ' + esc(th.action) + '</b><div class="mu">' + esc(th.time) + ' · Автор: ' + esc(th.actor) + (th.prevPrice != null ? (' · Цена: ' + rub(th.prevPrice) + ' → ' + rub(th.newPrice)) : '') + (th.newRecipe ? (' · Рецептура: ' + esc(th.newRecipe)) : '') + '</div></div></div>').join('') : '<p class="mu">Изменений техкарт в текущей сессии пока не было — все правки автоматически сохраняются в историю версий.</p>');
   return h;
 }
 function invForm(item,isRestock){
@@ -330,7 +359,12 @@ function rStaff(){
   const logs=(D.auditLog||[]).slice(0,30);
   let h='<div class="top"><h2 style="font-size:18px">👥 Роли и сотрудники ('+st.length+')</h2><button class="p" data-a="staff-new">+ Добавить сотрудника</button></div>';
   h+='<p class="mu" style="margin:0 0 8px">Список учётных записей для входа в терминал бариста и распределения ответственности по ролям (п. 2.1 и 11.2 ТЗ).</p>';
-  h+=st.map((s,i)=>'<div class="row"><div><span class="t">👤 '+esc(s.name)+'</span> <span class="tag ok">'+esc(s.role||'Бариста')+'</span> <span class="tag" style="font-family:monospace">🔑 Код входа: <b>'+esc(s.pin||'1111')+'</b></span> '+(s.tgId?'<span class="tag ok">📱 TG: '+esc(s.tgId)+'</span>':'<span class="tag">📱 TG: автопривязка при входе</span>')+' <span class="tag">'+esc(s.shop||D.location)+'</span></div><div class="acts"><button class="b" data-a="staff-edit" data-i="'+i+'">Изменить / TG / Код</button><button class="b del" data-a="staff-del" data-i="'+i+'">Удалить</button></div></div>').join('');
+  h+=st.map((s,i)=>{
+    const sName = String(s.name||'').trim();
+    const sCash = (D.cash||[]).filter((c)=>String(c.barista||'').toLowerCase().indexOf(sName.toLowerCase())>=0);
+    const sIncs = (D.incidents||[]).filter((inc)=>String(inc.who||'').toLowerCase().indexOf(sName.toLowerCase())>=0);
+    return '<div class="row"><div><span class="t">👤 '+esc(s.name)+'</span> <span class="tag ok">'+esc(s.role||'Бариста')+'</span> <span class="tag" style="font-family:monospace">🔑 Код входа: <b>'+esc(s.pin||'1111')+'</b></span> '+(s.tgId?'<span class="tag ok">📱 TG: '+esc(s.tgId)+'</span>':'<span class="tag">📱 TG: автопривязка при входе</span>')+' <span class="tag">'+esc(s.shop||D.location)+'</span><div class="mu" style="margin-top:4px">Кассовых смен: <b>'+sCash.length+'</b> · Обращений/поломок: <b>'+sIncs.length+'</b> · Статус доступа: <b>'+(s.active==='нет'?'Закрыт':'Активен')+'</b></div></div><div class="acts"><button class="b" data-a="staff-profile" data-i="'+i+'">Карточка профиля</button><button class="b" data-a="staff-edit" data-i="'+i+'">Изменить / TG / Код</button><button class="b del" data-a="staff-del" data-i="'+i+'">Удалить</button></div></div>';
+  }).join('');
   h+='<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin:16px 0">' +
     '<div class="top" style="margin-bottom:8px"><h3 style="margin:0">📅 Интерактивный график смен на неделю (Пн–Вс)</h3><button class="p" type="button" data-a="roster-save">💾 Сохранить график смен</button></div>' +
     '<p class="mu" style="margin:0 0 10px">Назначьте бариста по дням недели (учитывается при контроле открытия смены и расчёте нагрузки):</p>' +
@@ -375,9 +409,9 @@ function rInc(){
       (x.priority==='Критично'?'<span class="tag no">🔴 критично</span>':'<span class="tag">🟡 терпит</span>') +
       stBadge +
       '<div style="margin-top:4px">'+esc(x.text)+'</div>' +
-      '<div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(x.time)+(x.who?' · зарегистрировал: <b>'+esc(x.who)+'</b>':'')+(x.owner&&x.owner!=='—'?' · ответственный: <b>'+esc(x.owner)+'</b>':'')+(x.resolvedAt?' · устранено: <b>'+esc(x.resolvedAt)+'</b>':'')+'</div>' +
+      '<div class="mu">'+esc(x.id)+' · '+dmy(x.date)+' '+esc(window.coffeeCleanTime?window.coffeeCleanTime(x.time):x.time)+(x.who?' · зарегистрировал: <b>'+esc(x.who)+'</b>':'')+(x.owner&&x.owner!=='—'?' · ответственный: <b>'+esc(x.owner)+'</b>':'')+(x.resolvedAt?' · устранено: <b>'+esc(x.resolvedAt)+'</b>':'')+'</div>' +
       media +
-      (hist.length?'<details style="margin-top:6px;font-size:12.5px;color:var(--muted)"><summary style="cursor:pointer;font-weight:600">История изменений ('+hist.length+')</summary><div style="padding:6px 0 0 8px;border-left:2px solid var(--line);margin-top:4px">'+hist.map((hItem)=>'<div>• <b>'+esc(hItem.time)+'</b> ['+esc(hItem.status)+'] '+esc(hItem.actor)+': '+esc(hItem.note||'')+'</div>').join('')+'</div></details>':'') +
+      (hist.length?'<details style="margin-top:6px;font-size:12.5px;color:var(--muted)"><summary style="cursor:pointer;font-weight:600">История изменений ('+hist.length+')</summary><div style="padding:6px 0 0 8px;border-left:2px solid var(--line);margin-top:4px">'+hist.map((hItem)=>'<div>• <b>'+esc(window.coffeeCleanTime?window.coffeeCleanTime(hItem.time):hItem.time)+'</b> ['+esc(hItem.status)+'] '+esc(hItem.actor)+': '+esc(hItem.note||'')+'</div>').join('')+'</div></details>':'') +
     '</div><div class="acts">' +
       (normSt==='Новая проблема'?'<button class="b" data-a="inc-work" data-i="'+idx+'">▶ Принять в работу</button>':'') +
       (isAct(x)?'<button class="b ok" data-a="inc-res" data-i="'+idx+'">✓ Решена</button>':'') +

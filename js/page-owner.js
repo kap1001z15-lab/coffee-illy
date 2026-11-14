@@ -8,7 +8,8 @@ if (typeof dmy === 'undefined') { var dmy = (s) => s ? s.slice(8) + '.' + s.slic
    Любое изменение в «Управлении» в ту же миллисекунду отражается на Дашборде,
    в Отчётах и в Мобильном Терминале бариста.
    ========================================================================= */
-let ownerTopSection = ['dashboard', 'report', 'admin'].includes(window.OWNER_START_SECTION) ? window.OWNER_START_SECTION : 'dashboard'; // 'dashboard' | 'report' | 'admin'
+var ownerTopSection = ['dashboard', 'report', 'admin'].includes(window.OWNER_START_SECTION) ? window.OWNER_START_SECTION : (window.ownerTopSection || 'dashboard');
+window.ownerTopSection = ownerTopSection;
 let ownerDashDate = window._isoToday ? window._isoToday() : new Date().toISOString().slice(0, 10);
 try { const qd = new URLSearchParams(location.search).get('date'); if (/^\d{4}-\d{2}-\d{2}$/.test(qd || '')) ownerDashDate = qd; } catch (_) {}
 let ownerDashFrom = ownerDashDate;
@@ -85,6 +86,12 @@ function ensureOwnerPinGate(forceShow) {
       if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
         window.coffeeAuth.createLocalSession('admin', 'Владелец', expHash);
       }
+      if (window.coffeeAuth && window.coffeeAuth.loginOwner) {
+        try { window.coffeeAuth.loginOwner(pinVal); } catch (_) {}
+      }
+      document.documentElement.classList.remove('gate');
+      const gOld = document.getElementById('gate');
+      if (gOld) gOld.remove();
       const m = document.getElementById('ownerPinGateModal');
       if (m) m.remove();
       switchOwnerTopSection(ownerTopSection);
@@ -96,6 +103,7 @@ window.ensureOwnerPinGate = ensureOwnerPinGate;
 
 function switchOwnerTopSection(sec, focusDateOpt) {
   ownerTopSection = sec || 'dashboard';
+  window.ownerTopSection = ownerTopSection;
   if (focusDateOpt) {
     ownerDashDate = focusDateOpt;
     ownerDashFrom = focusDateOpt;
@@ -105,12 +113,23 @@ function switchOwnerTopSection(sec, focusDateOpt) {
   document.querySelectorAll('#ownerMainNav button[data-osec]').forEach((b) => {
     b.classList.toggle('on', b.dataset.osec === ownerTopSection);
   });
-  $('ownerSecDashboard').hidden = ownerTopSection !== 'dashboard';
-  $('ownerSecReport').hidden = ownerTopSection !== 'report';
-  $('content').hidden = ownerTopSection !== 'admin';
-  if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
-  if (ownerTopSection === 'report') renderOwnerReportSection();
-  if (ownerTopSection === 'admin') load();
+  if ($('ownerSecDashboard')) $('ownerSecDashboard').hidden = ownerTopSection !== 'dashboard';
+  if ($('ownerSecReport')) $('ownerSecReport').hidden = ownerTopSection !== 'report';
+  if ($('content')) $('content').hidden = ownerTopSection !== 'admin';
+  try {
+    const db = typeof getUDB === 'function' ? getUDB() : null;
+    const loc = (db && db.location) || 'Кофейня №1';
+    if ($('sub')) {
+      $('sub').textContent = (ownerTopSection === 'dashboard' ? 'Дашборд · ' : (ownerTopSection === 'report' ? 'Отчёты и P&L · ' : 'Управление · ')) + loc;
+    }
+  } catch (_) {}
+  try {
+    if (ownerTopSection === 'dashboard') renderOwnerDashboardSection();
+    else if (ownerTopSection === 'report') renderOwnerReportSection();
+    else if (ownerTopSection === 'admin' && typeof load === 'function') load();
+  } catch (err) {
+    console.error('switchOwnerTopSection render error:', err);
+  }
 }
 
 function renderOwnerNotificationsDrawer() {
@@ -473,6 +492,42 @@ function renderOwnerDashboardSection() {
         '</div>';
       })()) +
       /* ПОКАЗЫВАЕМ СПИСОК ТОЛЬКО ЕСЛИ ЕСТЬ АКТИВНЫЕ ОТКЛОНЕНИЯ ИЛИ ПОЛОМКИ */
+      /* ТРЕТИЙ И ЧЕТВЁРТЫЙ БЛОКИ КОНЦЕПЦИИ: ФИНАНСОВАЯ ДИНАМИКА И ХРОНОЛОГИЧЕСКАЯ ЛЕНТА ПОСЛЕДНИХ СОБЫТИЙ */
+      ((function () {
+        const periodCash = (db.cash || []).filter((c) => c && c.date >= ownerDashFrom && c.date <= ownerDashTo);
+        const totCashSum = periodCash.reduce((s, c) => s + (Number(c.cash) || 0), 0);
+        const totCardSum = periodCash.reduce((s, c) => s + (Number(c.card) || 0), 0);
+        const totRevSum = Math.max(1, totCashSum + totCardSum);
+        const cashShare = Math.round((totCashSum / totRevSum) * 100);
+        const cardShare = 100 - cashShare;
+        const periodExp = (db.expenses || []).filter((e) => e && e.date >= ownerDashFrom && e.date <= ownerDashTo);
+        const expSum = periodExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const events = [];
+        (db.checklists || []).slice(0, 4).forEach((c) => {
+          events.push({ time: (c.date ? dmy(c.date) + ' ' : '') + (c.time || ''), title: 'Чек-лист «' + (c.block || 'Смена') + '» завершён (' + (c.who || 'Бариста') + ')', nav: 'operations', tab: 'checklists' });
+        });
+        (db.cash || []).slice(0, 3).forEach((c) => {
+          const t = (Number(c.cash) || 0) + (Number(c.card) || 0);
+          events.push({ time: dmy(c.date), title: 'Кассовый отчёт: ' + rub(t) + ' (' + (c.barista || 'Бариста') + ')', nav: 'finance', tab: 'cash' });
+        });
+        (db.incidents || []).slice(0, 3).forEach((inc) => {
+          events.push({ time: (inc.date ? dmy(inc.date) + ' ' : '') + (inc.time || ''), title: 'Поломка / обращение: ' + (inc.step || 'Оборудование') + ' (' + (inc.status || 'Новая') + ')', nav: 'operations', tab: 'inc' });
+        });
+        return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:14px">' +
+          '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">📈 Финансовая динамика и структура выручки</b><span class="tag ok">Расходы: ' + rub(expSum) + '</span></div>' +
+            '<div style="font-size:12.5px;margin-bottom:6px">💵 Наличные: <b>' + rub(totCashSum) + ' (' + cashShare + '%)</b> · 💳 Безнал: <b>' + rub(totCardSum) + ' (' + cardShare + '%)</b></div>' +
+            '<div class="pro-progress-bar" style="height:8px;margin-bottom:6px"><i style="width:' + cashShare + '%"></i></div>' +
+            '<div class="mu" style="font-size:12px">Завершённых кассовых дней в периоде: <b>' + periodCash.length + '</b> · Средний чек: <b>' + rub(factAvg) + '</b></div>' +
+          '</div>' +
+          '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">🕒 Последние события (хронологическая лента)</b><span class="tag">Операции</span></div>' +
+            '<div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px">' +
+              (events.slice(0, 5).map((ev) => '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--line)"><span>' + esc(ev.title) + '</span><span class="mu" style="white-space:nowrap">' + esc(ev.time) + '</span></div>').join('') || '<span class="mu">Событий пока нет</span>') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      })()) +
       (hasUrgentItems ? (
         '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
           '<div class="top" style="margin-bottom:6px"><b style="color:var(--bad)">⚠️ Пункты, требующие реакции руководителя:</b></div>' +
@@ -830,7 +885,7 @@ function renderOwnerReportSection() {
       '<div class="sx"><table class="tbl"><thead><tr><th>Дата и время</th><th>Чек-лист (Блок)</th><th>Бариста</th><th>Начало → Сдача (Дедлайн)</th><th>Статус</th><th>Пунктов</th><th>Проблем</th><th>Фото / Видео</th></tr></thead><tbody>' +
         (periodChecklists.length ? periodChecklists.map((c) => (
           '<tr>' +
-            '<td><b>' + dmy(c.date) + '</b> ' + esc(c.time || '') + '</td>' +
+            '<td><b>' + dmy(c.date) + '</b> ' + esc(window.coffeeCleanTime ? window.coffeeCleanTime(c.time || '') : (c.time || '')) + '</td>' +
             '<td><b>' + esc(c.block) + '</b></td>' +
             '<td>' + esc(c.who || 'Бариста') + '</td>' +
             '<td class="mu">' + esc(c.startedAt || c.time || '—') + ' → ' + esc(c.time || '—') + ' (до ' + esc(c.deadline || '—') + ')</td>' +
@@ -863,8 +918,8 @@ function renderOwnerReportSection() {
           '<div class="row">' +
             '<div><b>' + esc(inc.id || '') + ' · ' + esc(inc.step) + '</b> <span class="tag ' + (window.coffeeIsIncActive(inc.status) ? 'no' : 'ok') + '">' + esc(inc.status) + '</span> <span class="tag">' + esc(inc.priority || 'Терпит') + '</span>' +
             '<div class="mu">' + esc(inc.incType || '') + ': ' + esc(inc.text) + '</div>' +
-            '<div class="mu">' + dmy(inc.date) + ' ' + esc(inc.time || '') + ' · Сообщил: <b>' + esc(inc.who || 'Бариста') + '</b> · Исполнитель: <b>' + esc(inc.owner || 'Техник') + '</b> · Проверяющий: <b>' + esc(inc.reviewer || 'Управляющий') + '</b></div>' +
-            (Array.isArray(inc.history) && inc.history.length ? '<div class="mu" style="font-size:11.5px;margin-top:3px">История: ' + inc.history.map((h) => esc(h.time) + ' ' + esc(h.status) + ' (' + esc(h.actor) + ')').join(' → ') + '</div>' : '') +
+            '<div class="mu">' + dmy(inc.date) + ' ' + esc(window.coffeeCleanTime ? window.coffeeCleanTime(inc.time || '') : (inc.time || '')) + ' · Сообщил: <b>' + esc(inc.who || 'Бариста') + '</b> · Исполнитель: <b>' + esc(inc.owner || 'Техник') + '</b> · Проверяющий: <b>' + esc(inc.reviewer || 'Управляющий') + '</b></div>' +
+            (Array.isArray(inc.history) && inc.history.length ? '<div class="mu" style="font-size:11.5px;margin-top:3px">История: ' + inc.history.map((h) => esc(window.coffeeCleanTime ? window.coffeeCleanTime(h.time) : h.time) + ' ' + esc(h.status) + ' (' + esc(h.actor) + ')').join(' → ') + '</div>' : '') +
             '</div>' +
           '</div>'
         )).join('') : '<p class="mu">За выбранный период инцидентов и поломок не зафиксировано.</p>') +
@@ -1166,3 +1221,154 @@ window.addEventListener('storage', (e) => {
 window.renderOwnerDashboardSection = renderOwnerDashboardSection;
 window.renderOwnerReportSection = renderOwnerReportSection;
 window.switchOwnerTopSection = switchOwnerTopSection;
+try {
+  if (typeof document !== 'undefined' && document.getElementById('ownerSecDashboard')) {
+    switchOwnerTopSection(ownerTopSection);
+  }
+} catch (_) {}
+
+
+/* === COFFEE ILLY v66: 7-РАЗДЕЛЬНАЯ НАВИГАЦИЯ OWNER COMBINED === */
+var ownerCombinedSection = 'overview';
+var OWNER_COMBINED_MAP = {
+  overview:   { osec: 'dashboard', tabs: [] },
+  operations: { osec: 'admin',     tabs: ['checklists', 'tasks', 'inc'], defaultTab: 'checklists' },
+  finance:    { osec: 'report',    tabs: ['report', 'cash', 'exp'],      defaultTab: 'report' },
+  staff:      { osec: 'admin',     tabs: ['staff'],                      defaultTab: 'staff' },
+  standards:  { osec: 'admin',     tabs: ['ttk', 'tasks'],               defaultTab: 'ttk' },
+  control:    { osec: 'admin',     tabs: ['audit'],                      defaultTab: 'audit' },
+  settings:   { osec: 'admin',     tabs: ['set'],                        defaultTab: 'set' }
+};
+
+
+var OWNER_SUBBAR_DEFS = {
+  overview: [
+    { label: '📊 Сводные показатели (Сегодня)', action: () => { const b = document.querySelector('[data-odp="today"]'); if (b) b.click(); } },
+    { label: '📅 За 7 дней', action: () => { const b = document.querySelector('[data-odp="7"]'); if (b) b.click(); } },
+    { label: '📆 За 30 дней', action: () => { const b = document.querySelector('[data-odp="30"]'); if (b) b.click(); } },
+    { label: '💰 Перейти к полной сводке P&L', action: () => switchOwnerCombinedSection('finance', 'report') }
+  ],
+  operations: [
+    { key: 'checklists', label: '📋 Таймлайн и окна смен', action: () => switchOwnerCombinedSection('operations', 'checklists') },
+    { key: 'tasks',      label: '📝 Задачи и Карта добрых дел', action: () => switchOwnerCombinedSection('operations', 'tasks') },
+    { key: 'inc',        label: '🔧 Поломки и обращения (5 статусов)', action: () => switchOwnerCombinedSection('operations', 'inc') }
+  ],
+  finance: [
+    { key: 'report', label: '📊 Прибыль, P&L и 6 листов Excel', action: () => switchOwnerCombinedSection('finance', 'report') },
+    { key: 'cash',   label: '⚖️ Выручка и пошаговая Сверка Z-отчётов', action: () => switchOwnerCombinedSection('finance', 'cash') },
+    { key: 'exp',    label: '💸 Расходы OpEx и Списания', action: () => switchOwnerCombinedSection('finance', 'exp') }
+  ],
+  staff: [
+    { key: 'staff', label: '👥 Сотрудники, профили и график смен Пн–Вс', action: () => switchOwnerCombinedSection('staff', 'staff') }
+  ],
+  standards: [
+    { key: 'ttk',   label: '☕ Техкарты ТТК (история версий) и Склад', action: () => switchOwnerCombinedSection('standards', 'ttk') },
+    { key: 'info',  label: '📢 Информирование, стандарты и архив', action: () => { if (typeof tab !== 'undefined') tab = 'info'; switchOwnerTopSection('admin'); if (typeof render === 'function') render(); syncOwnerCombinedNavHighlight(); } }
+  ],
+  control: [
+    { key: 'audit', label: '🛡 Аудит сервиса, журнал действий, история корректировок и синхронизация', action: () => switchOwnerCombinedSection('control', 'audit') }
+  ],
+  settings: [
+    { key: 'set', label: '⚙️ Кофейня, планы Пн–Вс, PIN-коды, интеграции TG/Sheets и резервные копии', action: () => switchOwnerCombinedSection('settings', 'set') }
+  ]
+};
+
+function renderOwnerSectionSubbar() {
+  try {
+    const bar = document.getElementById('ownerSectionSubbar');
+    if (!bar) return;
+    const cnav = ownerCombinedSection || 'overview';
+    const items = OWNER_SUBBAR_DEFS[cnav] || [];
+    const curSub = ownerTopSection === 'report' ? 'report' : (typeof tab !== 'undefined' ? tab : '');
+    const titles = {
+      overview: 'Обзор кофейни:',
+      operations: 'Операции:',
+      finance: 'Финансы:',
+      staff: 'Персонал:',
+      standards: 'Стандарты:',
+      control: 'Контроль:',
+      settings: 'Настройки:'
+    };
+    bar.innerHTML = '<span class="owner-subbar-lbl">' + (titles[cnav] || 'Раздел:') + '</span>' +
+      items.map((it, idx) => {
+        const isOn = it.key ? (it.key === curSub) : (idx === 0 && ownerDashPeriodMode === 'today');
+        return '<button type="button" class="b ' + (isOn ? 'on' : '') + '" data-subidx="' + idx + '" style="font-size:12.5px;min-height:32px;padding:4px 10px;' + (isOn ? 'background:var(--brew);color:#fff;border-color:var(--brew)' : '') + '">' + it.label + '</button>';
+      }).join('');
+    bar.onclick = (ev) => {
+      const b = ev.target && ev.target.closest && ev.target.closest('button[data-subidx]');
+      if (!b) return;
+      const idx = Number(b.dataset.subidx);
+      if (items[idx] && typeof items[idx].action === 'function') {
+        items[idx].action();
+        renderOwnerSectionSubbar();
+      }
+    };
+  } catch (_) {}
+}
+
+function syncOwnerCombinedNavHighlight() {
+  try {
+    if (typeof document === 'undefined' || !document.querySelectorAll) return;
+    let activeCnav = 'overview';
+    if (ownerTopSection === 'dashboard') {
+      activeCnav = 'overview';
+    } else if (ownerTopSection === 'report') {
+      activeCnav = 'finance';
+    } else if (ownerTopSection === 'admin') {
+      const curTab = typeof tab !== 'undefined' ? tab : 'checklists';
+      if (['checklists', 'tasks', 'inc'].includes(curTab)) activeCnav = 'operations';
+      else if (['cash', 'exp'].includes(curTab)) activeCnav = 'finance';
+      else if (curTab === 'staff') activeCnav = 'staff';
+      else if (['ttk', 'info'].includes(curTab)) activeCnav = 'standards';
+      else if (curTab === 'audit') activeCnav = 'control';
+      else if (curTab === 'set') activeCnav = 'settings';
+    }
+    ownerCombinedSection = activeCnav;
+    document.querySelectorAll('#ownerCombinedNav button[data-cnav]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.cnav === activeCnav);
+    });
+    renderOwnerSectionSubbar();
+  } catch (_) {}
+}
+
+function switchOwnerCombinedSection(cnav, subTarget) {
+  const cfg = OWNER_COMBINED_MAP[cnav] || OWNER_COMBINED_MAP.overview;
+  ownerCombinedSection = cnav;
+  if (cnav === 'overview') {
+    switchOwnerTopSection('dashboard');
+  } else if (cnav === 'finance') {
+    const t = subTarget || cfg.defaultTab;
+    if (t === 'report') {
+      switchOwnerTopSection('report');
+    } else {
+      if (typeof tab !== 'undefined') tab = t;
+      switchOwnerTopSection('admin');
+      if (typeof render === 'function') render();
+    }
+  } else {
+    const t = subTarget || cfg.defaultTab || 'checklists';
+    if (typeof tab !== 'undefined') tab = t;
+    switchOwnerTopSection('admin');
+    if (typeof render === 'function') render();
+  }
+  syncOwnerCombinedNavHighlight();
+}
+window.switchOwnerCombinedSection = switchOwnerCombinedSection;
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest && e.target.closest('#ownerCombinedNav button[data-cnav]');
+    if (btn) {
+      e.preventDefault();
+      switchOwnerCombinedSection(btn.dataset.cnav);
+      return;
+    }
+    const osecBtn = e.target && e.target.closest && e.target.closest('#ownerMainNav button[data-osec]');
+    const tabBtn = e.target && e.target.closest && e.target.closest('#tabs button[data-t]');
+    if (osecBtn || tabBtn) {
+      setTimeout(syncOwnerCombinedNavHighlight, 20);
+    }
+  });
+}
+
+setTimeout(syncOwnerCombinedNavHighlight, 60);

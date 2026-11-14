@@ -115,7 +115,7 @@
 
   function init() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js?v=65').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=67').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }
@@ -147,6 +147,9 @@
       const pick = document.getElementById('pick') || document.getElementById('rdPick');
       if (pick) pick.addEventListener('change', syncNavLinks);
       setInterval(syncNavLinks, 1500);
+    } else if (typeof window.ensureOwnerPinGate === 'function') {
+      document.documentElement.classList.remove('gate');
+      window.ensureOwnerPinGate(false);
     } else {
       gate(() => location.reload());
     }
@@ -158,7 +161,7 @@
         if ((msg.type === 'mutation' || liveSync) && isAdmin()) {
           /* Не перерисовываем экран под руками у пользователя, пока открыт диалог редактирования */
           if (liveSync && document.querySelector('dialog[open]')) return;
-          if (typeof window.load === 'function') {
+          if (typeof window.load === 'function' && (!window.ownerTopSection || window.ownerTopSection === 'admin')) {
             try { window.load(true, true); } catch (_) {}
           }
           syncNavLinks();
