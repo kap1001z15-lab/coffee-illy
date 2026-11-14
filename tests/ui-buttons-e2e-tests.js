@@ -419,5 +419,68 @@ check('12. Полный финансовый сбор P&L: точный COGS п�
   assert(Array.isArray(fin.dayByDayPnL) && fin.dayByDayPnL.length === 1 && fin.dayByDayPnL[0].netProfit === fin.netProfit, 'Посуточная ведомость P&L должна точно совпадать с итоговым отчётом');
 });
 
-process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/12 успешно.\n');
+
+check('13. Проверка 6 модулей полного ERP v61: Склад по ТТК, Обучаемый классификатор CSV, Личный ФОТ бариста, Маркировки сроков и Мульти-точка', () => {
+  // 1) Обучаемый классификатор CSV: обучаем «Напиток от Бариста» как Двойной кофе (2 шота)
+  window.applyLocalMutation({
+    action: 'save_nomenclature_rule',
+    itemName: 'Напиток от Бариста',
+    kind: 'coffee_2',
+    userName: 'Алина'
+  });
+  const sum = window.CoffeeSalesReconciliation.summarizeProductsList([
+    { name: 'Напиток от Бариста', price: 45, qty: 5, sum: 225 },
+    { name: 'Капучино ILLY', price: 19, qty: 10, sum: 190 }
+  ]);
+  assert(sum.reviewQty === 0 && sum.coffeeQty === 20, 'После обучения «Напиток от Бариста» как coffee_2 (2 шота) 5 порций должны давать 10 шотов кофе + 10 Капучино = 20 шотов');
+
+  // 2) Автосписание склада по ТТК при отправке смены с продажами
+  const dbBefore = window.getUDB();
+  const beansBefore = (dbBefore.inventory.find((x) => x.id === 'inv_beans') || {}).stock || 6000;
+  window.applyLocalMutation({
+    action: 'submit_cash',
+    sid: 'sid_erp_inv_1',
+    date: '2026-11-14',
+    barista: 'Алина',
+    cash: 1500,
+    card: 500,
+    checks: 50,
+    writeoffShots: 1,
+    products: [
+      { name: 'Капучино ILLY', qty: 10, sum: 190, kind: 'coffee' }
+    ]
+  });
+  const beansAfter = (window.getUDB().inventory.find((x) => x.id === 'inv_beans') || {}).stock;
+  assert(beansAfter < beansBefore, 'Зерно на складе должно автоматически списываться по проданным напиткам и списаниям');
+
+  // 3) Личный расчётный лист и мотивация бариста
+  const payCard = window.coffeeCalcStaffPayrollCard(window.getUDB(), 'Алина', '2026-11');
+  assert(payCard && payCard.shiftsCount >= 1 && payCard.totalEarned >= 350, 'Личный расчётный лист бариста должен считать смены, ставку 250 руб. и 5% от выручки');
+
+  // 4) Контроль сроков годности и маркировки
+  window.applyLocalMutation({
+    action: 'add_expiry_item',
+    id: 'EXPIR-TEST-1',
+    title: 'Альтернативное молоко Barista',
+    category: 'Молоко',
+    shelfLifeHours: 2,
+    userName: 'Алина'
+  });
+  let expAlerts = window.coffeeGetActiveExpiryAlerts();
+  assert(expAlerts.allActive.some((x) => x.id === 'EXPIR-TEST-1') && expAlerts.urgentCount >= 1, 'Новая маркировка со сроком <= 4ч должна попадать в активные срочные предупреждения');
+  window.applyLocalMutation({ action: 'dispose_expiry_item', id: 'EXPIR-TEST-1', userName: 'Алина' });
+  expAlerts = window.coffeeGetActiveExpiryAlerts();
+  assert(!expAlerts.allActive.some((x) => x.id === 'EXPIR-TEST-1'), 'После списания маркировка должна уходить из активных');
+
+  // 5) Мульти-точка (добавление и переключение кофейни)
+  window.applyLocalMutation({
+    action: 'save_shop',
+    shop: { name: 'Кофейня №2 (Парк)', plan: 2600, initCounter: 250 },
+    location: 'Кофейня №2 (Парк)'
+  });
+  assert(window.getUDB().location === 'Кофейня №2 (Парк)' && window.getUDB().plan === 2600, 'Переключение мульти-точки должно менять активную локацию и план');
+  window.applyLocalMutation({ action: 'switch_shop_location', location: 'Кофейня №1' });
+});
+
+process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/13 успешно.\n');
 process.exit(0);

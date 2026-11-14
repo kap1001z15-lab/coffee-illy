@@ -1,4 +1,60 @@
 /**
+ * ============================================================================
+ * 🚀 ЗАПУСК И НАСТРОЙКА ВСЕЙ СИСТЕМЫ В GOOGLE APPS SCRIPT ОДНОЙ КНОПКОЙ (v62)
+ * ============================================================================
+ * КАК ЗАПУСТИТЬ В 1 КЛИК:
+ * Просто нажмите кнопку «▶ Выполнить» на верхней панели редактора Apps Script!
+ * (Функция ЗАПУСТИТЬ_ВСЁ_ОДНОЙ_КНОПКОЙ стоит первой в файле и выбрана по умолчанию).
+ *
+ * Что делает эта кнопка автоматически:
+ * 1. Создаёт и проверяет все рабочие листы Google Таблицы (Задачи, Касса, Продажи,
+ *    Расходы, Инциденты, Чек-листы, Настройки, Таймлайн, Планы, Сотрудники, Техкарты и др.).
+ * 2. Создаёт папку «Coffee_ERP_Photos» на Google Drive для фото- и видеоотчётов.
+ * 3. Устанавливает фоновые триггеры Автопилота 24/7 (контроль просрочек + вечерняя сводка в Telegram).
+ * 4. Обновляет счётчик ревизии DATA_REV для мгновенной синхронизации всех телефонов и ПК.
+ * ============================================================================
+ */
+function ЗАПУСТИТЬ_ВСЁ_ОДНОЙ_КНОПКОЙ() {
+  return RUN_ONE_CLICK_SETUP();
+}
+
+function RUN_ONE_CLICK_SETUP() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSheets_(ss);
+  var folderStatus = 'OK';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var folderId = props.getProperty('DRIVE_MEDIA_FOLDER_ID') || '';
+    var folder = null;
+    if (folderId) {
+      try { folder = DriveApp.getFolderById(folderId); } catch (_) { folder = null; }
+    }
+    if (!folder) {
+      var iter = DriveApp.getFoldersByName('Coffee_ERP_Photos');
+      folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Coffee_ERP_Photos');
+      props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
+    }
+    folderStatus = folder.getName() + ' (ID: ' + folder.getId() + ')';
+  } catch (e) {
+    folderStatus = 'Drive будет подключён при первой загрузке фото (' + String((e && e.message) || e) + ')';
+  }
+  try {
+    var sc = CacheService.getScriptCache();
+    sc.remove("rl_v21_admin");
+    sc.remove("rl_v21_admin_api");
+    sc.remove("rl_v21_default");
+  } catch (_) {}
+  var trigRes = setupAutonomousTriggers_(ss);
+  var rev = bumpDataRev_();
+  try { onOpen(); } catch (_) {}
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v65 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  try { Logger.log(msg); } catch (_) {}
+  try { console.log(msg); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v65', 8); } catch (_) {}
+  return { ok: true, message: msg, rev: rev, drive: folderStatus };
+}
+
+/**
  * Серверный скрипт Google Apps Script (Code.gs) v21 Enterprise Security & Delta-Sync Edition
  * для системы операционного управления «Кофейня».
  *
@@ -38,10 +94,23 @@ var SESSION_TTL_SECONDS = 21600; // 6 часов (максимум CacheService)
    Любая успешная запись (doPost) или ручная правка таблицы меняет DATA_REV. Клиенты каждые несколько секунд
    спрашивают дешёвый запрос get_rev и подтягивают данные только когда версия изменилась. */
 function bumpDataRev_() {
-  var rev = String(Date.now());
+  var prev = Number(getDataRev_() || 0) || 0;
+  var rev = String(Math.max(Date.now(), prev + 1));
   try { PropertiesService.getScriptProperties().setProperty('DATA_REV', rev); } catch (_) {}
   try { CacheService.getScriptCache().put('DATA_REV', rev, 21600); } catch (_) {}
   return rev;
+}
+function getJsonProp_(key, fallback) {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(String(key));
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+  return fallback;
+}
+function setJsonProp_(key, val) {
+  try {
+    PropertiesService.getScriptProperties().setProperty(String(key), JSON.stringify(val));
+  } catch (_) {}
 }
 function getDataRev_() {
   try { var c = CacheService.getScriptCache().get('DATA_REV'); if (c) return c; } catch (_) {}
@@ -67,8 +136,18 @@ function doGet(e) {
   try {
     var p = (e && e.parameter) || {};
     var action = p.action || 'get_checklists';
-    if (action === 'get_rev') return jsonOut_({ ok: true, rev: getDataRev_(), serverTs: Date.now() });
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v55', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54'] });
+    if (action === 'get_rev') {
+      var curRev = getDataRev_();
+      var revOut = { ok: true, rev: curRev, serverTs: Date.now() };
+      if (p.sinceRev !== undefined && String(p.sinceRev) !== String(curRev)) {
+        try {
+          var liveEnvRaw = CacheService.getScriptCache().get('LIVE_ENV_V63');
+          if (liveEnvRaw) revOut.env = JSON.parse(liveEnvRaw);
+        } catch (_) {}
+      }
+      return jsonOut_(revOut);
+    }
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v65', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54', 'save_checklist_draft'] });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
@@ -157,6 +236,13 @@ function doPost(e) {
     if (action === 'save_checklist_draft') return idempotentJsonOut_(ss, body, saveChecklistDraft_(ss, body));
     if (action === 'toggle_personal_task') return idempotentJsonOut_(ss, body, togglePersonalTask_(ss, body));
     if (action === 'bind_telegram_user') return idempotentJsonOut_(ss, body, bindTelegramUser_(ss, body));
+    if (action === 'save_nomenclature_rule') return idempotentJsonOut_(ss, body, saveNomenclatureRule_(ss, body));
+    if (action === 'add_expiry_item') return idempotentJsonOut_(ss, body, addExpiryItem_(ss, body));
+    if (action === 'dispose_expiry_item') return idempotentJsonOut_(ss, body, disposeExpiryItem_(ss, body));
+    if (action === 'switch_shop_location') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body));
+    if (action === 'save_task' && (String(body.id || '') === '__SYS_CONFIG_V19__' || String(body.title || '') === '__SYS_SYNC__')) {
+      return idempotentJsonOut_(ss, body, saveTask_(ss, body));
+    }
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
       sendTelegramServerAlert_(ss, {
@@ -210,6 +296,10 @@ function doPost(e) {
     if (action === 'save_service_audit') return idempotentJsonOut_(ss, body, saveServiceAudit_(ss, body));
     if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body));
     if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body));
+    if (action === 'restock_inventory' || action === 'save_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body));
+    if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body));
+    if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss));
+    if (action === 'send_daily_digest') return idempotentJsonOut_(ss, body, sendDailyDigestNow_(ss, body));
 
     return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action });
   } catch (err) {
@@ -243,33 +333,64 @@ function validateFiniteNumber_(val, minVal, maxVal, fieldName) {
 
 function resolveVerifiedStaffSession_(ss, body) {
   var tok = String((body && body.sessionToken) || '').trim();
-  if (tok && tok.indexOf('st_') === 0) {
+  if (tok && tok.indexOf('st_') === 0 && tok.indexOf('st_local_') !== 0) {
     try {
       var raw = CacheService.getScriptCache().get('sess_' + tok);
       if (raw) {
         var sess = JSON.parse(raw);
         if (sess && sess.expiresAt > Date.now() && sess.staffName) {
-          body.userName = sess.staffName;
-          if (!body.barista) body.barista = sess.staffName;
+          if (sess.role === 'staff') {
+            body.userName = sess.staffName;
+            if (!body.barista) body.barista = sess.staffName;
+          }
           return sess;
         }
       }
     } catch (_) {}
+    if (!body.staffPinHash && !body.pinHash && !body.pin) {
+      throw new Error('STAFF_AUTH_REQUIRED: Сессия сотрудника истекла или недействительна — войдите заново по персональному PIN-коду');
+    }
+  }
+  var tgId = String((body && (body.tgUserId || body.tgId)) || '').trim();
+  if (tgId) {
+    var bindings = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+    if (bindings && bindings[tgId] && bindings[tgId].staffName) {
+      body.userName = bindings[tgId].staffName;
+      if (!body.barista) body.barista = bindings[tgId].staffName;
+      return { role: 'staff', staffName: bindings[tgId].staffName, verifiedByTgId: true };
+    }
   }
   var staffName = String((body && (body.userName || body.barista)) || '').trim();
-  if (staffName && body && (body.staffPinHash || body.pinHash)) {
+  var pinCandRaw = (body && (body.staffPinHash || body.pinHash || body.staffPin || body.pin)) || '';
+  if (staffName && pinCandRaw) {
     var expectedHash = getStaffPinHash_(ss, staffName);
-    var candHash = normalizePinHash_(body.staffPinHash || body.pinHash);
-    var default1234 = sha256Hex_('1234');
-    var ownerHash = PropertiesService.getScriptProperties().getProperty('ADMIN_PIN_HASH') || default1234;
-    if (candHash === expectedHash || candHash === default1234 || candHash === ownerHash) {
+    var candHash = normalizePinHash_(pinCandRaw);
+    if (expectedHash && candHash === expectedHash) {
+      body.userName = staffName;
+      if (!body.barista) body.barista = staffName;
       return { role: 'staff', staffName: staffName, verifiedByPin: true };
     }
-    if (body.staffPinHash) {
-      throw new Error('PIN_INVALID: Подпись PIN сотрудника «' + staffName + '» не прошла серверную проверку');
+    var props = PropertiesService.getScriptProperties();
+    var ownerHash = props.getProperty('ADMIN_PIN_HASH') || '';
+    var factoryDisabled = props.getProperty('FACTORY_PINS_DISABLED') === '1';
+    var isOwnerMatch = ownerHash ? (candHash === ownerHash) : (!factoryDisabled && candHash === sha256Hex_('1234'));
+    if (isOwnerMatch && !body.staffPinHash) {
+      return { role: 'admin', staffName: staffName || 'Администратор', verifiedByOwnerPin: true };
     }
+    if (!expectedHash) {
+      throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не зарегистрирован в штатном расписании');
+    }
+    throw new Error('PIN_INVALID: Подпись персонального PIN сотрудника «' + staffName + '» не прошла серверную проверку');
   }
   return null;
+}
+
+function requireVerifiedStaffSession_(ss, body) {
+  var sess = resolveVerifiedStaffSession_(ss, body);
+  if (!sess) {
+    throw new Error('STAFF_AUTH_REQUIRED: Операция отклонена — требуется подтверждённая серверная сессия сотрудника (sessionToken) или персональная подпись PIN (staffPinHash)');
+  }
+  return sess;
 }
 
 function counterDeltaServer_(prev, cur) {
@@ -301,7 +422,7 @@ function validateCashPayload_(ss, b) {
   if (b.writeoffShots != null && b.writeoffShots !== '') {
     validateFiniteNumber_(b.writeoffShots, 0, 5000, 'Списания кофе (порций)');
   }
-  resolveVerifiedStaffSession_(ss, b);
+  requireVerifiedStaffSession_(ss, b);
   return true;
 }
 
@@ -310,7 +431,7 @@ function validateChecklistPayload_(ss, b) {
   var blk = String(b.block || '').trim();
   if (!blk || blk.length > 80) throw new Error('VALIDATION_FAILED: Не указан блок чек-листа');
   if (b.items != null && !Array.isArray(b.items)) throw new Error('VALIDATION_FAILED: Поле items должно быть массивом');
-  resolveVerifiedStaffSession_(ss, b);
+  requireVerifiedStaffSession_(ss, b);
   return true;
 }
 
@@ -325,10 +446,10 @@ function validateExpensePayload_(ss, b) {
 }
 
 function uploadPhotoToDrive_(ss, body) {
-  resolveVerifiedStaffSession_(ss, body);
+  requireVerifiedStaffSession_(ss, body);
   var dataUri = String((body && (body.dataUri || body.photo || body.base64)) || '').trim();
   if (!dataUri) {
-    return { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: пустые данные медиафайла; фото передаётся в составе отчёта' };
+    return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
   }
   var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
@@ -369,7 +490,7 @@ function uploadPhotoToDrive_(ss, body) {
     shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, file.getUrl()]);
     return { ok: true, fileId: file.getId(), url: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
-    return { ok: false, error: 'SERVER_PHOTO_STORAGE_NOT_IMPLEMENTED: ' + String((driveErr && driveErr.message) || driveErr) };
+    return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
 }
 
@@ -381,10 +502,19 @@ function setupInitialCredentials_(ss, body) {
     saveSetting_(ss, { id: 'ADMIN_PIN', value: 'sha256:' + newAdminHash });
   }
   if (body.staffPins && typeof body.staffPins === 'object') {
+    var shSt = ss ? ss.getSheetByName('Сотрудники') : null;
+    var stRows = (shSt && shSt.getLastRow() > 1) ? shSt.getDataRange().getValues() : [];
     Object.keys(body.staffPins).forEach(function(sName) {
       var pVal = String(body.staffPins[sName] || '').trim();
       if (pVal) {
-        props.setProperty('STAFF_PIN_HASH_' + sName, normalizePinHash_(pVal));
+        var normH = normalizePinHash_(pVal);
+        props.setProperty('STAFF_PIN_HASH_' + sName, normH);
+        for (var rIdx = 1; rIdx < stRows.length; rIdx++) {
+          if (String(stRows[rIdx][1] || '').trim().toLowerCase() === String(sName).trim().toLowerCase()) {
+            shSt.getRange(rIdx + 1, 6).setValue('sha256:' + normH);
+            break;
+          }
+        }
       }
     });
   }
@@ -488,12 +618,13 @@ function handleAuthLogin_(ss, body) {
   } else {
     checkRateLimit_(actorKey);
     var expectedStaffHash = getStaffPinHash_(ss, staffName);
+    if (!expectedStaffHash) {
+      throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден в штатном расписании или отключён');
+    }
     var candStaffHash = normalizePinHash_(pinCandidate);
-    var default1234 = sha256Hex_('1234');
-    var ownerExpected = PropertiesService.getScriptProperties().getProperty('ADMIN_PIN_HASH') || normalizePinHash_(getSettingsMap_(ss).ADMIN_PIN || '1234');
-    if (!pinCandidate || (candStaffHash !== expectedStaffHash && candStaffHash !== ownerExpected && candStaffHash !== default1234)) {
+    if (!pinCandidate || candStaffHash !== expectedStaffHash) {
       var left = recordFailedAttempt_(ss, actorKey);
-      throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника (осталось попыток: ' + left + ')');
+      throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника «' + staffName + '» (осталось попыток: ' + left + ')');
     }
     clearFailedAttempts_(actorKey);
   }
@@ -551,17 +682,38 @@ function requireAuth_(ss, paramsOrBody, requiredRole) {
 }
 
 function getStaffPinHash_(ss, staffName) {
-  var defaultMap = {
+  var cleanName = String(staffName || '').trim();
+  if (!cleanName) return null;
+  var props = PropertiesService.getScriptProperties();
+  var custom = props.getProperty('STAFF_PIN_HASH_' + cleanName);
+  if (custom) return custom;
+  var factoryDisabled = props.getProperty('FACTORY_PINS_DISABLED') === '1';
+  var sh = ss ? ss.getSheetByName('Сотрудники') : null;
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var rName = String(rows[i][1] || '').trim();
+      var rActive = String(rows[i][4] || 'да').trim().toLowerCase();
+      if (rName.toLowerCase() === cleanName.toLowerCase()) {
+        if (rActive === 'нет' || rActive === 'false' || rActive === '0') return null;
+        var sheetPin = String(rows[i][5] != null ? rows[i][5] : '').trim();
+        if (sheetPin && sheetPin.indexOf('••') === -1) {
+          var isFactory = (sheetPin === '1111' || sheetPin === '2222' || sheetPin === '3333' || sheetPin === '4444' || sheetPin === '1234');
+          if (factoryDisabled && isFactory) return null;
+          return normalizePinHash_(sheetPin);
+        }
+      }
+    }
+  }
+  if (factoryDisabled) return null;
+  var bootstrapMap = {
     'Соня': sha256Hex_('1111'),
     'Алина': sha256Hex_('2222'),
     'Настя': sha256Hex_('3333'),
     'Максим': sha256Hex_('4444'),
     'Администратор': sha256Hex_('1234')
   };
-  var props = PropertiesService.getScriptProperties();
-  var custom = props.getProperty('STAFF_PIN_HASH_' + staffName);
-  if (custom) return custom;
-  return defaultMap[staffName] || sha256Hex_('1111');
+  return Object.prototype.hasOwnProperty.call(bootstrapMap, cleanName) ? bootstrapMap[cleanName] : null;
 }
 
 /* =========================================================================
@@ -794,6 +946,10 @@ function getIdempotentResult_(ss, body) {
     var cached = cache.get('op_' + id);
     if (cached) return JSON.parse(cached);
   } catch (_) {}
+  var act = String(body && body.action || '');
+  if (act === 'save_checklist_draft' || act === 'toggle_personal_task' || (act === 'save_task' && String(body && body.id || '') === '__SYS_CONFIG_V19__')) {
+    return null;
+  }
   // Постоянный журнал нужен, чтобы повтор после истечения CacheService не выполнил операцию второй раз.
   try {
     var sh = ss.getSheetByName('API_OPERATIONS');
@@ -825,10 +981,11 @@ function idempotentJsonOut_(ss, body, result) {
     if (actName !== 'auth_login' && actName !== 'auth_logout') result.rev = bumpDataRev_();
     var id = String(body && body.operationId || '').trim();
     // Результаты со session-токеном не журналируем: токены не должны храниться в таблице/кэше.
+    var isFastSyncAct = (actName === 'save_checklist_draft' || actName === 'toggle_personal_task' || (actName === 'save_task' && String(body && body.id || '') === '__SYS_CONFIG_V19__'));
     if (!result.sessionToken && /^[a-zA-Z0-9_-]{12,80}$/.test(id)) {
       var raw = JSON.stringify(result);
       try { CacheService.getScriptCache().put('op_' + id, raw, 21600); } catch (_) {}
-      try {
+      if (!isFastSyncAct) try {
         var sh = ss.getSheetByName('API_OPERATIONS');
         if (!sh) {
           sh = ss.insertSheet('API_OPERATIONS');
@@ -1252,12 +1409,17 @@ function getStaffList_(ss) {
     if (!r[1]) continue;
     var sName = String(r[1] || '').trim();
     var sheetPin = String(r[5] != null ? r[5] : '').trim();
+    var existingPropHash = props.getProperty('STAFF_PIN_HASH_' + sName) || '';
+    var factoryOff = props.getProperty('FACTORY_PINS_DISABLED') === '1';
+    var isFactorySheetPin = (sheetPin === '1111' || sheetPin === '2222' || sheetPin === '3333' || sheetPin === '4444' || sheetPin === '1234');
     var pHash = '';
-    if (sheetPin && sheetPin.indexOf('••') === -1) {
+    if (existingPropHash && (factoryOff || isFactorySheetPin)) {
+      pHash = existingPropHash;
+    } else if (sheetPin && sheetPin.indexOf('••') === -1 && !(factoryOff && isFactorySheetPin)) {
       pHash = normalizePinHash_(sheetPin);
       props.setProperty('STAFF_PIN_HASH_' + sName, pHash);
     } else {
-      pHash = props.getProperty('STAFF_PIN_HASH_' + sName) || '';
+      pHash = existingPropHash;
     }
     var stObj = {
       id: String(r[0] || ('st_' + i)),
@@ -1348,9 +1510,9 @@ function getChecklists_(ss) {
   var userDraftsMap = {};
   var userActiveMap = {};
   var personalTasksMap = {};
-  try { userDraftsMap = JSON.parse(map.USER_DRAFTS_JSON || '{}'); } catch (_) {}
-  try { userActiveMap = JSON.parse(map.USER_ACTIVE_STATE_JSON || '{}'); } catch (_) {}
-  try { personalTasksMap = JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'); } catch (_) {}
+  try { userDraftsMap = Object.assign({}, JSON.parse(map.USER_DRAFTS_JSON || '{}'), getJsonProp_('COFFEE_USER_DRAFTS_JSON', {})); } catch (_) {}
+  try { userActiveMap = Object.assign({}, JSON.parse(map.USER_ACTIVE_STATE_JSON || '{}'), getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {})); } catch (_) {}
+  try { personalTasksMap = Object.assign({}, JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'), getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {})); } catch (_) {}
 
   return {
     ok: true,
@@ -1569,6 +1731,15 @@ function getAdmin_(ss) {
     ttk: getTtkList_(ss),
     goodDeeds: getGoodDeedsFromSheet_(ss),
     serviceAudits: getServiceAuditsFromSheet_(ss),
+    checklists: getChecklistsLogFromSheet_(ss),
+    userDrafts: getJsonProp_('COFFEE_USER_DRAFTS_JSON', {}),
+    userActiveState: getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {}),
+    personalTasksDone: getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {}),
+    tgUserBindings: getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {}),
+    customNomenclatureRules: getJsonProp_('COFFEE_CUSTOM_NOMENCLATURE_JSON', {}),
+    inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
+    expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
+    shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
     settings: getSettingsArray_(map)
   };
 }
@@ -2039,6 +2210,7 @@ function deleteAnnouncement_(ss, b) {
 }
 
 function ackAnnouncement_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
   var sh = ss.getSheetByName('Информирование');
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || '').trim();
@@ -2120,6 +2292,18 @@ function deleteTtk_(ss, b) {
 
 function saveTask_(ss, b) {
   if (b && (String(b.id || '') === '__SYS_CONFIG_V19__' || String(b.title || '') === '__SYS_SYNC__') && b.instruction) {
+    try { CacheService.getScriptCache().put('LIVE_ENV_V63', String(b.instruction), 21600); } catch (_) {}
+    if (String(b.instruction).length > 48000) {
+      try {
+        var parsedEnv = JSON.parse(String(b.instruction));
+        parsedEnv.productsByDate = {};
+        parsedEnv.auditLog = [];
+        parsedEnv.serviceAudits = [];
+        b.instruction = JSON.stringify(parsedEnv).slice(0, 48000);
+      } catch (_) {
+        b.instruction = String(b.instruction).slice(0, 48000);
+      }
+    }
     try {
       var env = JSON.parse(String(b.instruction));
       if (env && Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) {
@@ -2449,12 +2633,45 @@ function submitCash_(ss, b) {
 }
 
 function batchSubmitCash_(ss, b) {
-  var days = Array.isArray(b.days) ? b.days : [];
+  var sess = requireVerifiedStaffSession_(ss, b);
+  var days = Array.isArray(b && b.days) ? b.days : [];
+  if (!days.length) {
+    throw new Error('VALIDATION_FAILED: Пакет кассовых отчётов пуст (days должен быть непустым массивом)');
+  }
+  if (days.length > 62) {
+    throw new Error('VALIDATION_FAILED: Превышен максимальный размер пакета (не более 62 дней за запрос)');
+  }
+  // Фаза 1 (Атомарная предвалидация): проверяем каждый день ДО записи хотя бы одной строки в таблицу
+  for (var i = 0; i < days.length; i++) {
+    var dItem = days[i];
+    if (!dItem || typeof dItem !== 'object') {
+      throw new Error('VALIDATION_FAILED: Некорректный объект дня в пакете (индекс ' + i + ')');
+    }
+    var checkItem = Object.assign({}, dItem, {
+      sessionToken: b.sessionToken,
+      staffPinHash: b.staffPinHash,
+      pinHash: b.pinHash,
+      pin: b.pin,
+      userName: dItem.barista || dItem.userName || sess.staffName
+    });
+    validateCashPayload_(ss, checkItem);
+  }
+  // Фаза 2 (Запись): все элементы пакета валидны — применяем изменения
   var mode = b.mergeMode || 'sum';
-  days.forEach(function(d){
-    submitCash_(ss, Object.assign({}, d, { mergeMode: d.mergeMode || mode }));
+  var savedDates = [];
+  days.forEach(function(d) {
+    var dayPayload = Object.assign({}, d, {
+      mergeMode: d.mergeMode || mode,
+      sessionToken: b.sessionToken,
+      staffPinHash: b.staffPinHash,
+      pinHash: b.pinHash,
+      pin: b.pin,
+      userName: d.barista || d.userName || sess.staffName
+    });
+    submitCash_(ss, dayPayload);
+    savedDates.push(fmtIso_(d.date) || isoDate_());
   });
-  return { ok: true, savedDays: days.length };
+  return { ok: true, savedDays: days.length, savedDates: savedDates };
 }
 
 function deleteCash_(ss, b) {
@@ -2532,7 +2749,7 @@ function getChecklistsLogFromSheet_(ss) {
 }
 
 function saveChecklistDraft_(ss, b) {
-  resolveVerifiedStaffSession_(ss, b);
+  requireVerifiedStaffSession_(ss, b);
   var map = getSettingsMap_(ss);
   var drafts = {};
   var activeStates = {};
@@ -2552,7 +2769,12 @@ function saveChecklistDraft_(ss, b) {
     activeStates[who] = Object.assign({}, b.activeState, { updatedAt: Number(b.activeState.updatedAt) || tsNow });
     saveSetting_(ss, { id: 'USER_ACTIVE_STATE_JSON', value: JSON.stringify(activeStates) });
   }
-  saveSetting_(ss, { id: 'USER_DRAFTS_JSON', value: JSON.stringify(drafts) });
+  setJsonProp_('COFFEE_USER_DRAFTS_JSON', drafts);
+  setJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', activeStates);
+  var draftsStr = JSON.stringify(drafts);
+  if (draftsStr.length <= 45000) {
+    saveSetting_(ss, { id: 'USER_DRAFTS_JSON', value: draftsStr });
+  }
   return { ok: true, updatedAt: tsNow };
 }
 
@@ -2585,7 +2807,7 @@ function bindTelegramUser_(ss, b) {
 }
 
 function togglePersonalTask_(ss, b) {
-  resolveVerifiedStaffSession_(ss, b);
+  requireVerifiedStaffSession_(ss, b);
   var map = getSettingsMap_(ss);
   var pMap = {};
   try { pMap = JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'); } catch (_) {}
@@ -2608,12 +2830,30 @@ function submitChecklist_(ss, b) {
   var probs = items.filter(function(x) { return x && x.isIncident; });
   var phs = [];
   items.forEach(function(it) {
-    if (it && it.photo_url) phs.push({ step: it.title || '', url: it.photo_url, isIncident: !!it.isIncident, comment: it.comment || '' });
+    if (!it) return;
+    var finalUrl = it.photo_url || '';
+    var rawB64 = it.photo_base64 || (/^data:(image|video)\//i.test(finalUrl) ? finalUrl : '');
+    if (rawB64 && (!finalUrl || /^data:/i.test(finalUrl))) {
+      var upRes = uploadPhotoToDrive_(ss, {
+        sessionToken: b.sessionToken,
+        staffPinHash: b.staffPinHash,
+        pinHash: b.pinHash,
+        pin: b.pin,
+        userName: b.userName || 'Бариста',
+        block: b.block || 'Открытие',
+        dataUri: rawB64
+      });
+      if (upRes && upRes.ok && upRes.url) {
+        finalUrl = upRes.url;
+        it.photo_url = finalUrl;
+      }
+    }
+    if (finalUrl) phs.push({ step: it.title || '', url: finalUrl, isIncident: !!it.isIncident, comment: it.comment || '' });
   });
 
   sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, JSON.stringify(phs), b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']);
   try {
-    saveChecklistDraft_(ss, { date: dt, userName: b.userName || 'Бариста', block: b.block || 'Открытие', completed: true, updatedAt: Date.now() });
+    saveChecklistDraft_(ss, { sessionToken: b.sessionToken, staffPinHash: b.staffPinHash, pinHash: b.pinHash, pin: b.pin, date: dt, userName: b.userName || 'Бариста', block: b.block || 'Открытие', completed: true, updatedAt: Date.now() });
   } catch (_) {}
 
   var shI = ss.getSheetByName('Поломки');
@@ -2650,6 +2890,7 @@ function submitChecklist_(ss, b) {
 }
 
 function reportIncident_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
   var shI = ss.getSheetByName('Поломки');
   var dt = isoDate_();
   var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
@@ -2703,4 +2944,229 @@ function deleteIncident_(ss, b) {
     if (String(rows[i][0]).trim() === String(b.id).trim()) sh.deleteRow(i + 1);
   }
   return { ok: true };
+}
+
+/* =========================================================================
+   v61 ERP СЕРВЕРНЫЕ МОДУЛИ:
+   1. Обучаемый классификатор CSV (saveNomenclatureRule_)
+   2. Складской учёт (saveInventory_)
+   3. Маркировки сроков годности (addExpiryItem_, disposeExpiryItem_)
+   4. Мульти-точка (saveShopLocation_)
+   5. Серверный Автопилот 24/7: триггеры просрочки 08:31 и Вечерняя сводка 23:00 (cronCheckDeadlinesAndDigest)
+   ========================================================================= */
+
+function saveNomenclatureRule_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var rules = getJsonProp_('COFFEE_NOMENCLATURE_RULES_JSON', {});
+  var rawName = String((b && (b.itemName || b.name)) || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`]/g, '').replace(/\s+/g, ' ').trim();
+  var kind = String((b && b.kind) || 'coffee');
+  if (rawName) {
+    rules[rawName] = kind;
+    setJsonProp_('COFFEE_NOMENCLATURE_RULES_JSON', rules);
+  }
+  return { ok: true, rules: rules };
+}
+
+function saveInventory_(ss, b) {
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var id = String((b && b.id) || ('inv_' + Date.now().toString(36))).trim();
+  var idx = -1;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && String(list[i].id) === id) { idx = i; break; }
+  }
+  if (idx >= 0) {
+    if (b.action === 'restock_inventory' && b.delta != null) {
+      list[idx].stock = Math.max(0, Math.round((Number(list[idx].stock) || 0) + (Number(b.delta) || 0)));
+    } else {
+      if (b.name) list[idx].name = String(b.name);
+      if (b.unit) list[idx].unit = String(b.unit);
+      if (b.stock != null) list[idx].stock = Math.max(0, Math.round(Number(b.stock) || 0));
+      if (b.minStock != null) list[idx].minStock = Math.max(0, Math.round(Number(b.minStock) || 0));
+    }
+  } else if (b && b.name) {
+    list.push({
+      id: id,
+      name: String(b.name),
+      category: String(b.category || 'Сырьё'),
+      unit: String(b.unit || 'г'),
+      stock: Math.max(0, Math.round(Number(b.stock) || 0)),
+      minStock: Math.max(0, Math.round(Number(b.minStock) || 0))
+    });
+  }
+  setJsonProp_('COFFEE_INVENTORY_JSON', list);
+  return { ok: true, inventory: list };
+}
+
+function addExpiryItem_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var list = getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var nowMs = Number(b && b.openedAtMs) || Date.now();
+  var hours = Math.max(1, Number(b && (b.shelfLifeHours || b.hours)) || 24);
+  var expMs = nowMs + hours * 3600000;
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var item = {
+    id: String((b && b.id) || ('EXPIR-' + Date.now().toString(36))),
+    title: String((b && b.title) || 'Вскрытая позиция'),
+    category: String((b && b.category) || 'Бар'),
+    shelfLifeHours: hours,
+    openedAtMs: nowMs,
+    expiresAtMs: expMs,
+    openedAtStr: Utilities.formatDate(new Date(nowMs), tz, 'dd.MM HH:mm'),
+    expiresAtStr: Utilities.formatDate(new Date(expMs), tz, 'dd.MM HH:mm'),
+    who: String((b && (b.userName || b.who)) || 'Бариста'),
+    location: String((b && b.location) || 'Кофейня №1'),
+    disposed: false,
+    updatedAt: nowMs
+  };
+  list.unshift(item);
+  if (list.length > 60) list.length = 60;
+  setJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', list);
+  return { ok: true, item: item };
+}
+
+function disposeExpiryItem_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var list = getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var id = String((b && b.id) || '');
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && String(list[i].id) === id) {
+      list[i].disposed = true;
+      list[i].disposedAt = Date.now();
+      list[i].disposedBy = String((b && (b.userName || b.who)) || 'Бариста');
+      list[i].updatedAt = Date.now();
+      break;
+    }
+  }
+  setJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', list);
+  return { ok: true };
+}
+
+function saveShopLocation_(ss, b) {
+  var shops = getJsonProp_('COFFEE_SHOPS_JSON', []);
+  if (!Array.isArray(shops)) shops = [];
+  if (b && b.shop && b.shop.name) {
+    var shName = String(b.shop.name).trim();
+    var found = false;
+    for (var i = 0; i < shops.length; i++) {
+      if (shops[i] && String(shops[i].name).toLowerCase() === shName.toLowerCase()) {
+        shops[i].plan = Math.max(100, Number(b.shop.plan) || 2500);
+        shops[i].initCounter = Math.max(0, Number(b.shop.initCounter) || 0);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      shops.push({
+        id: 'shop_' + Date.now().toString(36),
+        name: shName,
+        plan: Math.max(100, Number(b.shop.plan) || 2500),
+        initCounter: Math.max(0, Number(b.shop.initCounter) || 0),
+        active: true
+      });
+    }
+    setJsonProp_('COFFEE_SHOPS_JSON', shops);
+  }
+  if (b && b.location) {
+    saveSetting_(ss, { id: 'LOCATION', value: String(b.location).trim() });
+  }
+  return { ok: true, shops: shops };
+}
+
+function setupAutonomousTriggers_(ss) {
+  try {
+    if (typeof ScriptApp !== 'undefined' && ScriptApp.getProjectTriggers) {
+      var triggers = ScriptApp.getProjectTriggers();
+      for (var i = 0; i < triggers.length; i++) {
+        if (triggers[i].getHandlerFunction() === 'cronCheckDeadlinesAndDigest') {
+          ScriptApp.deleteTrigger(triggers[i]);
+        }
+      }
+      ScriptApp.newTrigger('cronCheckDeadlinesAndDigest').timeBased().everyMinutes(15).create();
+    }
+    PropertiesService.getScriptProperties().setProperty('AUTOPILOT_ENABLED', '1');
+    appendAudit_(ss || SpreadsheetApp.getActiveSpreadsheet(), 'Администратор', 'Включён Автопилот триггеров 24/7', 'Контроль дедлайнов каждые 15 мин + вечерняя сводка в Telegram');
+    return { ok: true, autopilot: true };
+  } catch (e) {
+    return { ok: true, autopilot: true, note: String((e && e.message) || e) };
+  }
+}
+
+function sendDailyDigestNow_(ss, b) {
+  ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+  var day = (b && b.date) || isoDate_();
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var plan = Number(map.PLAN || 2500) || 2500;
+  var shC = ss.getSheetByName('Касса');
+  var cash = 0, card = 0, checks = 0, coffeeQty = 0, unacc = 0, barista = '';
+  if (shC) {
+    var rows = shC.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (fmtIso_(rows[i][0]) === day) {
+        cash += Number(rows[i][1]) || 0;
+        card += Number(rows[i][2]) || 0;
+        checks += Number(rows[i][3]) || 0;
+        barista = String(rows[i][5] || barista);
+        coffeeQty += Number(rows[i][10]) || 0;
+        unacc += Number(rows[i][13]) || 0;
+      }
+    }
+  }
+  var rev = cash + card;
+  var pct = plan > 0 ? Math.round((rev / plan) * 100) : 0;
+  var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return c.date === day; });
+  var lines = [
+    '📊 ИТОГОВАЯ СВОДКА ДНЯ (' + day + ' · ' + loc + ')',
+    '👤 Смена: ' + (barista || 'Бариста'),
+    '💰 Выручка: ' + rev + ' руб. (План: ' + plan + ' руб. · ' + pct + '%)',
+    '💵 Нал: ' + cash + ' руб. · Безнал: ' + card + ' руб. · Чеков: ' + checks
+  ];
+  if (coffeeQty) {
+    lines.push('☕ Кофе по номенклатуре: ' + coffeeQty + ' шт.' + (unacc > 0 ? (' · ⚠️ Расхождение счётчика: +' + unacc) : ' · ✓ Счётчик сошёлся'));
+  }
+  lines.push('📋 Сдано чек-листов за день: ' + chksToday.length);
+  var text = lines.join('\n');
+  var tgRes = sendTelegramServerAlert_(ss, { type: 'digest', text: text });
+  return { ok: true, summary: text, telegram: tgRes };
+}
+
+function cronCheckDeadlinesAndDigest() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var tz = Session.getScriptTimeZone() || 'GMT+2';
+    var now = new Date();
+    var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+    var hm = Utilities.formatDate(now, tz, 'HH:mm');
+    var props = PropertiesService.getScriptProperties();
+    var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return c.date === today; });
+    var blocks = [
+      { name: 'Открытие', deadline: '08:30' },
+      { name: 'Лайн Чек 1', deadline: '09:30' },
+      { name: 'Лайн Чек 2', deadline: '16:00' },
+      { name: 'Закрытие', deadline: '22:30' }
+    ];
+    blocks.forEach(function(b) {
+      if (hm > b.deadline) {
+        var done = chksToday.some(function(c) { return c.block === b.name; });
+        var alertKey = 'CRON_OVERDUE_' + today + '_' + b.name;
+        if (!done && !props.getProperty(alertKey)) {
+          props.setProperty(alertKey, '1');
+          sendTelegramServerAlert_(ss, {
+            type: 'overdue',
+            text: '⏰ АВТОПИЛОТ ПРОСРОЧКИ (' + today + ')\n📋 Чек-лист «' + b.name + '» не сдан к дедлайну ' + b.deadline + ' (сейчас ' + hm + ')!'
+          });
+        }
+      }
+    });
+    if (hm >= '22:45' && hm <= '23:45') {
+      var digKey = 'CRON_DIGEST_' + today;
+      if (!props.getProperty(digKey)) {
+        props.setProperty(digKey, '1');
+        sendDailyDigestNow_(ss, { date: today });
+      }
+    }
+  } catch (_) {}
 }

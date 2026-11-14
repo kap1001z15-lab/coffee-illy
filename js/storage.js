@@ -133,6 +133,15 @@ function ensureMvpFields(db) {
     db.announcements = window.COFFEE_MVP.DEFAULT_ANNOUNCEMENTS(t);
   }
   db.deadlineExtensions = db.deadlineExtensions || {};
+  if (!Array.isArray(db.inventory) || !db.inventory.length) {
+    db.inventory = (window.COFFEE_DEFAULT_INVENTORY || []).map((x) => Object.assign({}, x));
+  }
+  db.inventoryDeductedKeys = (db.inventoryDeductedKeys && typeof db.inventoryDeductedKeys === 'object') ? db.inventoryDeductedKeys : {};
+  db.customNomenclatureRules = (db.customNomenclatureRules && typeof db.customNomenclatureRules === 'object') ? db.customNomenclatureRules : {};
+  if (!Array.isArray(db.expiryItems)) db.expiryItems = [];
+  if (!Array.isArray(db.shops) || !db.shops.length) {
+    db.shops = (window.COFFEE_DEFAULT_SHOPS || [{ id: 'shop_1', name: db.location || 'Кофейня №1', plan: db.plan || 2500, initCounter: db.initCounter || 600, active: true }]).map((x) => Object.assign({}, x));
+  }
   if (!Array.isArray(db.auditLog)) {
     db.auditLog = [];
   }

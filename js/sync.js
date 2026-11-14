@@ -409,8 +409,12 @@ function mergeOrSaveCashDay(db, payload) {
     cur.localUpdated = true;
   }
 
-  /* Суммируем позиции продаж (Продажи.csv) за этот день и сохраняем в журнал Продажи (salesLog) */
+  /* Суммируем позиции продаж (Продажи.csv) за этот день, списываем сырьё со склада по ТТК и сохраняем в журнал Продажи (salesLog) */
   if (normalizedProds.length && !isDuplicateCsv) {
+    if (window.coffeeDeductInventoryFromSales) {
+      const dedShiftKey = dt + ':' + (incomingBarista || 'shift') + ':' + (incomingHashes[0] || payload.sid || normalizedProds.length);
+      window.coffeeDeductInventoryFromSales(db, normalizedProds, incomingWoShots, dt, dedShiftKey);
+    }
     if (mode === 'replace' || !db.productsByDate[dt] || !db.productsByDate[dt].length) {
       db.productsByDate[dt] = normalizedProds.slice().sort((a, b) => b.qty - a.qty);
       db.salesLog = (db.salesLog || []).filter((r) => r.date !== dt);
@@ -485,6 +489,10 @@ function enforceSettingsOnResponse(act, data) {
     data.userActiveState = db.userActiveState || {};
     data.personalTasksDone = db.personalTasksDone || {};
     data.tgUserBindings = db.tgUserBindings || {};
+    data.inventory = db.inventory || window.COFFEE_DEFAULT_INVENTORY || [];
+    data.customNomenclatureRules = db.customNomenclatureRules || {};
+    data.expiryItems = db.expiryItems || [];
+    data.shops = db.shops || window.COFFEE_DEFAULT_SHOPS || [];
     const forcePhoto = db.photoAll === 'да';
     data.tasks = window.coffeeNormalizeTasksTimeline(db.tasks || []).filter((t) => t.active !== 'нет').map((t) => {
       const isOC = t.block === 'Открытие' || t.block === 'Закрытие';
@@ -583,8 +591,7 @@ function _didSheetPartChange(db, key, val, forceFromSheet) {
   const prev = db._lastServerSnapshot[key];
   if (prev === undefined) {
     db._lastServerSnapshot[key] = ser;
-    if (typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL) return true;
-    return !db.lastLocalMutationAt;
+    return true;
   }
   if (prev !== ser) {
     // Данные в самой Google Таблице изменились! Применяем новые данные из таблицы
@@ -723,7 +730,17 @@ function absorbServerData(url, data, options) {
   if (Array.isArray(data.announcements)) {
     if (_didSheetPartChange(db, 'sheet:announcements', data.announcements, forceFromSheet)) {
       if (forceFromSheet) db.deletedAnnouncementIds = {};
-      db.announcements = data.announcements.filter((a) => a && !db.deletedAnnouncementIds[a.id]);
+      const locAnnMap = {};
+      (db.announcements || []).forEach((a) => { if (a && a.id) locAnnMap[a.id] = a; });
+      db.announcements = data.announcements.filter((a) => a && !db.deletedAnnouncementIds[a.id]).map((remA) => {
+        const locA = locAnnMap[remA.id];
+        if (!locA) return remA;
+        const ackMap = new Map();
+        (Array.isArray(locA.acks) ? locA.acks : []).concat(Array.isArray(remA.acks) ? remA.acks : []).forEach((k) => {
+          if (k && k.name) ackMap.set(String(k.name).toLowerCase(), k);
+        });
+        return Object.assign({}, locA, remA, { acks: Array.from(ackMap.values()) });
+      });
       changed = true;
     }
   }
@@ -906,6 +923,27 @@ function absorbServerData(url, data, options) {
     });
   }
 
+  if (data.tgUserBindings && typeof data.tgUserBindings === 'object') {
+    db.tgUserBindings = Object.assign({}, db.tgUserBindings || {}, data.tgUserBindings);
+    changed = true;
+  }
+  if (data.customNomenclatureRules && typeof data.customNomenclatureRules === 'object') {
+    db.customNomenclatureRules = Object.assign({}, db.customNomenclatureRules || {}, data.customNomenclatureRules);
+    changed = true;
+  }
+  if (Array.isArray(data.inventory) && data.inventory.length) {
+    db.inventory = data.inventory;
+    changed = true;
+  }
+  if (Array.isArray(data.expiryItems) && data.expiryItems.length) {
+    db.expiryItems = window.coffeeMergeRecordLists
+      ? window.coffeeMergeRecordLists(db.expiryItems || [], data.expiryItems, 'id')
+      : data.expiryItems;
+    changed = true;
+  }
+  if (Array.isArray(data.shops) && data.shops.length) {
+    db.shops = data.shops;
+  }
   if (Array.isArray(data.incidents)) data.incidents = (db.incidents || []).filter((i) => i && i.step !== '__SYS_TERM_SYNC__' && i.block !== '__SYS__');
   data._absorbedChanges = !!changed;
   if (changed) saveUDB(db);
@@ -1532,6 +1570,142 @@ function applyLocalMutation(payload) {
         st.tgId = payload.tgUsername ? ('@' + String(payload.tgUsername).replace(/^@/, '') + ' (' + tgId + ')') : tgId;
       }
     }
+  } else if (a === 'save_nomenclature_rule') {
+    db.customNomenclatureRules = (db.customNomenclatureRules && typeof db.customNomenclatureRules === 'object') ? db.customNomenclatureRules : {};
+    const rawName = String(payload.itemName || payload.name || '').trim();
+    const normFn = (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.normName)
+      ? window.CoffeeSalesReconciliation.normName
+      : ((s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`]/g, '').replace(/\s+/g, ' ').trim());
+    const nKey = normFn(rawName);
+    const kindVal = payload.kind || 'coffee'; // 'coffee' | 'coffee_2' | 'non_coffee'
+    if (nKey) {
+      db.customNomenclatureRules[nKey] = kindVal;
+      // Пересчитываем уже загруженные дни с учётом нового правила
+      if (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.summarizeProductsList) {
+        Object.keys(db.productsByDate || {}).forEach((dKey) => {
+          const arr = db.productsByDate[dKey];
+          if (Array.isArray(arr) && arr.length) {
+            const sum = window.CoffeeSalesReconciliation.summarizeProductsList(arr, db.customNomenclatureRules);
+            const cRec = (db.cash || []).find((c) => c && c.date === dKey);
+            if (cRec) {
+              cRec.coffeeQty = sum.coffeeQty;
+              cRec.nonCoffeeQty = sum.nonCoffeeQty;
+              cRec.reviewQty = sum.reviewQty;
+              if (cRec.counterStart != null && cRec.counterEnd != null && window.coffeeCounterDelta) {
+                const gDelta = window.coffeeCounterDelta(cRec.counterStart, cRec.counterEnd);
+                if (gDelta !== null) {
+                  cRec.unaccountedShots = Math.max(0, gDelta - (sum.coffeeQty + (Number(cRec.writeoffShots) || 0)));
+                }
+              }
+            }
+          }
+        });
+      }
+      appendAudit(db, payload.userName || 'Администратор', 'Обучение классификатора CSV', 'Позиция «' + rawName + '» → ' + (kindVal === 'coffee_2' ? 'Двойной кофе (2 шота)' : (kindVal === 'coffee' ? 'Кофе (1 шот)' : 'Не кофе')));
+    }
+  } else if (a === 'restock_inventory' || a === 'save_inventory') {
+    if (!Array.isArray(db.inventory) || !db.inventory.length) {
+      db.inventory = (window.COFFEE_DEFAULT_INVENTORY || []).map((x) => Object.assign({}, x));
+    }
+    const invId = String(payload.id || '').trim();
+    let item = db.inventory.find((x) => x && x.id === invId);
+    if (!item && payload.name) {
+      item = {
+        id: invId || ('inv_' + Date.now().toString(36)),
+        name: String(payload.name).trim(),
+        unit: String(payload.unit || 'г').trim(),
+        stock: Math.max(0, Number(payload.stock) || 0),
+        minStock: Math.max(0, Number(payload.minStock) || 0),
+        category: String(payload.category || 'Сырьё').trim()
+      };
+      db.inventory.push(item);
+    }
+    if (item) {
+      if (a === 'restock_inventory' && payload.delta != null) {
+        item.stock = Math.max(0, Math.round((Number(item.stock) || 0) + (Number(payload.delta) || 0)));
+        appendAudit(db, payload.userName || 'Администратор', 'Приход на склад: ' + item.name, '+' + payload.delta + ' ' + item.unit + ' (итого: ' + item.stock + ' ' + item.unit + ')');
+      } else {
+        if (payload.name) item.name = String(payload.name).trim();
+        if (payload.unit) item.unit = String(payload.unit).trim();
+        if (payload.stock != null) item.stock = Math.max(0, Math.round(Number(payload.stock) || 0));
+        if (payload.minStock != null) item.minStock = Math.max(0, Math.round(Number(payload.minStock) || 0));
+        appendAudit(db, payload.userName || 'Администратор', 'Ревизия склада: ' + item.name, 'Остаток: ' + item.stock + ' ' + item.unit + ' (мин. ' + item.minStock + ' ' + item.unit + ')');
+      }
+    }
+  } else if (a === 'add_expiry_item') {
+    db.expiryItems = Array.isArray(db.expiryItems) ? db.expiryItems : [];
+    const nowMs = Number(payload.openedAtMs) || Date.now();
+    const hours = Math.max(1, Number(payload.shelfLifeHours || payload.hours) || 24);
+    const expMs = nowMs + hours * 3600000;
+    const fmtDt = (ms) => {
+      const d = new Date(ms);
+      return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    };
+    const newExpItem = {
+      id: payload.id || ('EXPIR-' + Date.now().toString(36)),
+      title: String(payload.title || 'Вскрытая позиция').trim(),
+      category: String(payload.category || 'Бар').trim(),
+      shelfLifeHours: hours,
+      openedAtMs: nowMs,
+      expiresAtMs: expMs,
+      openedAtStr: fmtDt(nowMs),
+      expiresAtStr: fmtDt(expMs),
+      who: String(payload.userName || payload.who || 'Бариста').trim(),
+      location: String(payload.location || db.location || 'Кофейня №1').trim(),
+      disposed: false,
+      updatedAt: nowMs
+    };
+    db.expiryItems.unshift(newExpItem);
+    if (db.expiryItems.length > 80) db.expiryItems.length = 80;
+    appendAudit(db, newExpItem.who, 'Маркировка срока годности (' + hours + 'ч)', newExpItem.title + ' (годен до ' + newExpItem.expiresAtStr + ')');
+  } else if (a === 'dispose_expiry_item') {
+    db.expiryItems = Array.isArray(db.expiryItems) ? db.expiryItems : [];
+    const target = db.expiryItems.find((x) => x && x.id === payload.id);
+    if (target) {
+      target.disposed = true;
+      target.disposedAt = Date.now();
+      target.disposedBy = String(payload.userName || payload.who || 'Бариста').trim();
+      target.updatedAt = Date.now();
+      appendAudit(db, target.disposedBy, 'Списание / закрытие маркировки', target.title);
+    }
+  } else if (a === 'switch_shop_location' || a === 'save_shop') {
+    db.shops = Array.isArray(db.shops) && db.shops.length ? db.shops : (window.COFFEE_DEFAULT_SHOPS || []).map((x) => Object.assign({}, x));
+    if (payload.shop && payload.shop.name) {
+      const shName = String(payload.shop.name).trim();
+      const ex = db.shops.find((s) => s && (s.id === payload.shop.id || s.name.toLowerCase() === shName.toLowerCase()));
+      if (ex) {
+        ex.name = shName;
+        if (payload.shop.plan != null) ex.plan = Math.max(100, Number(payload.shop.plan) || 2500);
+        if (payload.shop.initCounter != null) ex.initCounter = Math.max(0, Number(payload.shop.initCounter) || 0);
+      } else {
+        db.shops.push({
+          id: payload.shop.id || ('shop_' + Date.now().toString(36)),
+          name: shName,
+          plan: Math.max(100, Number(payload.shop.plan) || 2500),
+          initCounter: Math.max(0, Number(payload.shop.initCounter) || 0),
+          active: true
+        });
+      }
+    }
+    if (payload.location) {
+      const locName = String(payload.location).trim();
+      db.location = locName;
+      const sLoc = (db.settings || []).find((x) => x.id === 'LOCATION');
+      if (sLoc) sLoc.value = locName;
+      const matchedShop = db.shops.find((s) => s && s.name === locName);
+      if (matchedShop) {
+        if (matchedShop.plan > 0) {
+          db.plan = matchedShop.plan;
+          const sPlan = (db.settings || []).find((x) => x.id === 'PLAN');
+          if (sPlan) sPlan.value = String(matchedShop.plan);
+        }
+        if (matchedShop.initCounter != null) {
+          db.initCounter = matchedShop.initCounter;
+          const sCnt = (db.settings || []).find((x) => x.id === 'INIT_COUNTER');
+          if (sCnt) sCnt.value = String(matchedShop.initCounter);
+        }
+      }
+    }
   } else if (a === 'toggle_personal_task') {
     db.personalTasksDone = (db.personalTasksDone && typeof db.personalTasksDone === 'object') ? db.personalTasksDone : {};
     const pKey = (payload.date || _isoToday()) + ':' + String(payload.userName || 'Бариста').trim() + ':' + String(payload.taskId || '').trim();
@@ -1569,7 +1743,11 @@ function buildAdminResponse() {
     cashHistory: db.cashHistory || [],
     minAvgCheck: db.minAvgCheck || 35,
     planChecks: db.planChecks || 75,
-    deadlineExtensions: db.deadlineExtensions || {}
+    deadlineExtensions: db.deadlineExtensions || {},
+    inventory: db.inventory || window.COFFEE_DEFAULT_INVENTORY || [],
+    customNomenclatureRules: db.customNomenclatureRules || {},
+    expiryItems: db.expiryItems || [],
+    shops: db.shops || window.COFFEE_DEFAULT_SHOPS || []
   };
 }
 
@@ -1799,7 +1977,7 @@ function isPinAuthorized(pinArg) {
   }
   return false;
 }
-const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|extend_deadline|save_block_windows|simulate_overdue|save_announcement|delete_announcement|save_staff|delete_staff|save_service_audit|delete_service_audit|save_ttk|delete_ttk|save_shift_roster|save_checklist_blocks|add_checklist_block|delete_checklist_block|save_daily_plans|save_staff_pins|save_good_deed|delete_good_deed|sync_all_to_sheet)$/;
+const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|extend_deadline|save_block_windows|simulate_overdue|save_announcement|delete_announcement|save_staff|delete_staff|save_service_audit|delete_service_audit|save_ttk|delete_ttk|save_shift_roster|save_checklist_blocks|add_checklist_block|delete_checklist_block|save_daily_plans|save_staff_pins|save_good_deed|delete_good_deed|sync_all_to_sheet|save_inventory|restock_inventory|save_shop|setup_autonomous_triggers|send_daily_digest)$/;
 
 /* Мгновенные синхронные селекторы (0 мс ожидания сети) для мгновенной отрисовки интерфейса */
 window.coffeeCheckPin = isPinAuthorized;
@@ -1822,6 +2000,25 @@ function _stripLargeBase64FromMediaList(arr) {
     const s = String(u || '');
     return s.length > 1800 ? '' : s;
   }).filter(Boolean);
+}
+
+function _serializeCloudSyncEnvelopeSafe(db) {
+  const env = _buildCloudSyncEnvelope(db);
+  let str = JSON.stringify(env);
+  if (str.length > 38000) {
+    env.productsByDate = {};
+    env.auditLog = (env.auditLog || []).slice(0, 10);
+    env.serviceAudits = (env.serviceAudits || []).slice(0, 10);
+    env.checklists = (env.checklists || []).slice(-15);
+    env.cash = (env.cash || []).slice(0, 10);
+    str = JSON.stringify(env);
+  }
+  if (str.length > 44000) {
+    env.announcements = (env.announcements || []).slice(0, 10);
+    env.incidents = (env.incidents || []).slice(0, 15);
+    str = JSON.stringify(env);
+  }
+  return str;
 }
 
 function _buildCloudSyncEnvelope(db) {
@@ -1860,12 +2057,37 @@ function _buildCloudSyncEnvelope(db) {
       const out = {};
       const src = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
       Object.keys(src).forEach((k) => {
-        if (k.indexOf(today + ':') === 0 && src[k]) out[k] = src[k];
+        if (k.indexOf(today + ':') === 0 && src[k]) {
+          const d = src[k];
+          const slimAns = Array.isArray(d.answers) ? d.answers.map((a) => {
+            if (!a) return null;
+            const cleanUrl = (a.photo_url && !/^data:/i.test(String(a.photo_url)) && String(a.photo_url).length <= 600) ? a.photo_url : '';
+            return {
+              id: a.id,
+              title: a.title,
+              choiceMade: !!a.choiceMade,
+              isIncident: !!a.isIncident,
+              incType: a.incType || '',
+              comment: String(a.comment || '').slice(0, 250),
+              priority: a.priority || 'Терпит',
+              hasPhoto: !!(cleanUrl || a.hasPhoto || (Array.isArray(a.photos) && a.photos.length) || a.preview),
+              photoCount: Array.isArray(a.photos) ? a.photos.length : (a.photoCount || (a.preview ? 1 : 0)),
+              photo_url: cleanUrl,
+              completedAt: a.completedAt || '',
+              responsible: a.responsible || 'Администратор'
+            };
+          }) : [];
+          out[k] = Object.assign({}, d, { answers: slimAns });
+        }
       });
       return out;
     })(),
     userActiveState: db.userActiveState || {},
     tgUserBindings: db.tgUserBindings || {},
+    inventory: Array.isArray(db.inventory) ? db.inventory : [],
+    customNomenclatureRules: db.customNomenclatureRules || {},
+    expiryItems: Array.isArray(db.expiryItems) ? db.expiryItems.slice(0, 40) : [],
+    shops: Array.isArray(db.shops) ? db.shops : [],
     personalTasksDone: (function () {
       const minDate = _shiftIso(_isoToday(), -7);
       const out = {};
@@ -1876,8 +2098,24 @@ function _buildCloudSyncEnvelope(db) {
       });
       return out;
     })(),
-    productsByDate: db.productsByDate || {},
-    cash: Array.isArray(db.cash) ? db.cash.slice(0, 30) : [],
+    productsByDate: (function () {
+      const src = (db.productsByDate && typeof db.productsByDate === 'object') ? db.productsByDate : {};
+      const keys = Object.keys(src).sort().slice(-7);
+      const out = {};
+      keys.forEach((k) => {
+        if (Array.isArray(src[k])) {
+          out[k] = src[k].slice(0, 45).map((p) => ({
+            name: p.name, price: p.price, qty: p.qty, sum: p.sum, kind: p.kind, date: p.date, barista: p.barista
+          }));
+        }
+      });
+      return out;
+    })(),
+    cash: Array.isArray(db.cash) ? db.cash.slice(0, 20).map((c) => {
+      const copy = Object.assign({}, c);
+      delete copy.products;
+      return copy;
+    }) : [],
     expenses: Array.isArray(db.expenses) ? db.expenses.slice(0, 40) : [],
     checklists: Array.isArray(db.checklists) ? db.checklists.slice(-40).map((c) => ({
       sid: c.sid || '',
@@ -1915,7 +2153,7 @@ function _buildCloudSyncEnvelope(db) {
       photo: (inc.photo && String(inc.photo).length <= 1800) ? inc.photo : '',
       photos: _stripLargeBase64FromMediaList(inc.photos),
       resolvedAt: inc.resolvedAt || '',
-      history: Array.isArray(inc.history) ? inc.history.slice(-5) : []
+      history: Array.isArray(inc.history) ? inc.history.slice(-3) : []
     })) : []
   };
 }
@@ -1946,7 +2184,7 @@ function _rawPostJson(url, payloadObj, timeoutMs) {
   });
 }
 
-const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet|save_checklist_draft|toggle_personal_task|bind_telegram_user)$/;
+const BRIDGEABLE_V19_ACTIONS = /^(save_checklist_blocks|add_checklist_block|delete_checklist_block|update_incident|delete_incident|report_standalone_incident|save_daily_plans|save_good_deed|delete_good_deed|save_ttk|delete_ttk|save_staff|delete_staff|save_staff_pins|save_announcement|delete_announcement|ack_announcement|save_shift_roster|extend_deadline|save_service_audit|delete_service_audit|sync_all_to_sheet|save_checklist_draft|toggle_personal_task|bind_telegram_user|save_nomenclature_rule|restock_inventory|save_inventory|add_expiry_item|dispose_expiry_item|switch_shop_location|save_shop|setup_autonomous_triggers|send_daily_digest)$/;
 
 /* Автоматический мост совместимости со старым развёртыванием Code.gs:
    если сервер отвечает "Error: unknown action" на новые действия (save_checklist_blocks, update_incident, delete_incident и др.),
@@ -2015,7 +2253,7 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
 
   // Всегда сохраняем актуальный конверт состояния __SYS_CONFIG_V19__ в лист Задачи с active: 'да',
   // чтобы публичный запрос get_checklists на любом устройстве гарантированно получал конверт синхронизации!
-  const envStr = JSON.stringify(_buildCloudSyncEnvelope(db));
+  const envStr = _serializeCloudSyncEnvelopeSafe(db);
   calls.push(_rawPostJson(url, {
     action: 'save_task',
     id: '__SYS_CONFIG_V19__',
@@ -2045,7 +2283,7 @@ function _pushCloudEnvelopeInBackground(apiUrl, delayMs) {
   _bgEnvPushTimer = setTimeout(() => {
     try {
       const db = getUDB();
-      const envStr = JSON.stringify(_buildCloudSyncEnvelope(db));
+      const envStr = _serializeCloudSyncEnvelopeSafe(db);
       _rawPostJson(apiUrl, {
         action: 'save_task',
         id: '__SYS_CONFIG_V19__',
@@ -2072,6 +2310,9 @@ function _sendCorsSafePost(url, bodyObj, timeoutMs) {
     return Promise.resolve({ ok: false, networkError: true, error: 'OFFLINE' });
   }
   if (typeof fetch !== 'function') return Promise.resolve({ ok: false, networkError: true, error: 'FETCH_UNAVAILABLE' });
+  if (window._coffeeLegacyBridgeActive && /script\.google\.com/i.test(String(url)) && bodyObj && BRIDGEABLE_V19_ACTIONS.test(String(bodyObj.action || ''))) {
+    return _bridgeLegacyServerAction(url, bodyObj).then((bRes) => bRes || { ok: false, error: 'BRIDGE_FAILED' });
+  }
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer = null;
   if (ac) timer = setTimeout(() => ac.abort(), timeout);
@@ -2096,7 +2337,7 @@ function _sendCorsSafePost(url, bodyObj, timeoutMs) {
       const retryNoHash = await _rawPostJson(url, cleanBody, timeout);
       if (retryNoHash && retryNoHash.ok === true) return retryNoHash;
     }
-    if (data.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(data.error || ''))) {
+    if (data.ok === false && (/UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(data.error || '')) || (window.COFFEE_IS_BARISTA_TERMINAL && /FORBIDDEN|PIN_REQUIRED/i.test(String(data.error || ''))))) {
       const bridged = await _bridgeLegacyServerAction(url, bodyObj);
       if (bridged && bridged.ok === true) return bridged;
     }
@@ -2482,7 +2723,8 @@ async function coffeeLiveSyncTick(forceSync) {
     let d = null;
     if (!_legacyGetRevUnsupported) {
       try {
-        const r = await fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=get_rev&t=' + Date.now(), { signal: ac ? ac.signal : undefined, cache: 'no-store' });
+        const revUrl = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'action=get_rev&sinceRev=' + encodeURIComponent(_liveRev || '') + '&t=' + Date.now();
+        const r = await fetch(revUrl, { signal: ac ? ac.signal : undefined, cache: 'no-store' });
         d = await r.json();
       } catch (_) {} finally { if (t) clearTimeout(t); }
     } else if (t) {
@@ -2515,17 +2757,36 @@ async function coffeeLiveSyncTick(forceSync) {
     // Пока есть неподтверждённые локальные правки, чужие данные не накатываем поверх них — сначала отправим свои.
     if ((changed || forceSync) && _readCoffeeOutbox().length === 0) {
       _liveRev = rev; st.lastRev = rev; st.lastChangeAt = Date.now();
+      // Если сервер вернул RAM-конверт d.env прямо в get_rev — применяем его за 0 мс без ожидания второго круга!
+      if (d.env && typeof d.env === 'object' && d.env._v === 19) {
+        try {
+          _extractAndAbsorbSysTaskRow([{ id: '__SYS_CONFIG_V19__', title: '__SYS_SYNC__', instruction: JSON.stringify(d.env) }], getUDB());
+          if (window.coffeeCache && window.coffeeCache.invalidate) window.coffeeCache.invalidate('all');
+          if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev, fastEnv: true });
+        } catch (_) {}
+      }
       try {
         await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
-        if (isPinAuthorized()) {
+        if (isPinAuthorized() || !window.COFFEE_IS_BARISTA_TERMINAL) {
           _bgSyncInFlight = false;
-          _triggerBackgroundSync('', true, '', false);
+          _triggerBackgroundSync('', 'manual', '', true);
         }
       } catch (_) {}
       if (window.coffeeCache && window.coffeeCache.invalidate) window.coffeeCache.invalidate('all');
       if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
     } else if (_liveRev === null) {
       _liveRev = rev; st.lastRev = rev;
+      if (_readCoffeeOutbox().length === 0) {
+        try {
+          await window.coffeeFetch(base + '?action=get_checklists&nocache=1');
+          if (isPinAuthorized() || !window.COFFEE_IS_BARISTA_TERMINAL) {
+            _bgSyncInFlight = false;
+            _triggerBackgroundSync('', 'manual', '', true);
+          }
+          if (window.coffeeCache && window.coffeeCache.invalidate) window.coffeeCache.invalidate('all');
+          if (window.coffeeBus) window.coffeeBus.emit('server_sync', { ts: Date.now(), live: true, rev });
+        } catch (_) {}
+      }
     }
   } finally { _liveBusy = false; }
 }
@@ -2536,7 +2797,7 @@ function _liveNextDelay() {
   if (typeof document !== 'undefined' && document.hidden) d = 60000;
   else {
     const idle = Date.now() - _liveLastActive;
-    d = idle < 120000 ? 1500 : (idle < 600000 ? 3500 : (idle < 3600000 ? 15000 : 30000));
+    d = idle < 120000 ? 900 : (idle < 600000 ? 2200 : (idle < 3600000 ? 10000 : 25000));
   }
   /* При ошибках сети/сервера — экспоненциальная пауза до 2 минут, чтобы не долбить недоступный сервер. */
   if (_liveFails > 0) d = Math.min(120000, Math.max(d, 4000 * Math.pow(2, Math.min(_liveFails, 5))));
@@ -2549,7 +2810,7 @@ function _liveSchedule() {
 window.coffeeLiveSyncNow = function () { return coffeeLiveSyncTick(true); };
 if (typeof window !== 'undefined' && window.addEventListener && typeof document !== 'undefined') {
   ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, () => { _liveLastActive = Date.now(); }, { passive: true }));
-  const kick = () => { _liveLastActive = Date.now(); coffeeLiveSyncTick(); };
+  const kick = () => { _liveLastActive = Date.now(); coffeeLiveSyncTick(true); };
   window.addEventListener('focus', kick);
   window.addEventListener('online', kick);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') kick(); });
@@ -2605,6 +2866,21 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
           if (env.tgUserBindings && typeof env.tgUserBindings === 'object') {
             db.tgUserBindings = Object.assign({}, db.tgUserBindings || {}, env.tgUserBindings);
           }
+          if (env.customNomenclatureRules && typeof env.customNomenclatureRules === 'object') {
+            db.customNomenclatureRules = Object.assign({}, db.customNomenclatureRules || {}, env.customNomenclatureRules);
+          }
+          if (Array.isArray(env.inventory) && env.inventory.length) {
+            db.inventory = env.inventory;
+            anyMerged = true;
+          }
+          if (Array.isArray(env.expiryItems) && env.expiryItems.length) {
+            db.expiryItems = window.coffeeMergeRecordLists
+              ? window.coffeeMergeRecordLists(db.expiryItems || [], env.expiryItems, 'id')
+              : env.expiryItems;
+          }
+          if (Array.isArray(env.shops) && env.shops.length) {
+            db.shops = env.shops;
+          }
           if (env.userActiveState && typeof env.userActiveState === 'object') {
             db.userActiveState = (db.userActiveState && typeof db.userActiveState === 'object') ? db.userActiveState : {};
             Object.keys(env.userActiveState).forEach((uKey) => {
@@ -2633,7 +2909,7 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
             db.productsByDate = Object.assign({}, db.productsByDate || {}, env.productsByDate);
           }
 
-          if (envTs > 0 && envTs !== lastEnvTs && (isBaristaTerm || envTs >= localTs)) {
+          if (envTs > 0 && envTs !== lastEnvTs) {
             db._lastCloudEnvTs = envTs;
             anyMerged = true;
             if (env.location) db.location = env.location;
@@ -2740,10 +3016,16 @@ function _extractAndAbsorbSysTaskRow(tasksArr, db) {
   return window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(cleanTasks) : cleanTasks;
 }
 
+let _bgSyncQueuedFollowUp = false;
 function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
   const now = Date.now();
-  const minGap = forceNow === 'manual' ? 1000 : 8000;
-  if (_bgSyncInFlight || (now - _lastBgSyncAt < minGap)) return;
+  const isForced = (forceNow === 'manual' || forceNow === true || !!live);
+  const minGap = isForced ? 250 : 3500;
+  if (_bgSyncInFlight) {
+    if (isForced) _bgSyncQueuedFollowUp = true;
+    return;
+  }
+  if (now - _lastBgSyncAt < minGap) return;
   _bgSyncInFlight = true;
   _lastBgSyncAt = now;
   const rawSavedPin = (function(){ try { return localStorage.getItem('coffee_illy_pin') || '1234'; } catch(e){ return '1234'; } })() || '1234';
@@ -2768,18 +3050,16 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
     const admOk = results[2] && results[2].status === 'fulfilled' && results[2].value && results[2].value.ok !== false;
     const dashOk = results[1] && results[1].status === 'fulfilled' && results[1].value && results[1].value.ok !== false;
     const chkOk = results[0] && results[0].status === 'fulfilled' && results[0].value && results[0].value.ok !== false;
+    if (chkOk) {
+      absorbServerData(chkUrl, results[0].value);
+      if (results[0].value._absorbedChanges) actuallyChanged = true;
+    }
     if (admOk) {
       absorbServerData(admUrl, results[2].value);
       if (results[2].value._absorbedChanges) actuallyChanged = true;
-    } else {
-      if (dashOk) {
-        absorbServerData(dashUrl, results[1].value);
-        if (results[1].value._absorbedChanges) actuallyChanged = true;
-      }
-      if (chkOk) {
-        absorbServerData(chkUrl, results[0].value);
-        if (results[0].value._absorbedChanges) actuallyChanged = true;
-      }
+    } else if (dashOk) {
+      absorbServerData(dashUrl, results[1].value);
+      if (results[1].value._absorbedChanges) actuallyChanged = true;
     }
     if (rawSysTasks) {
       const dbCur = getUDB();
@@ -2790,6 +3070,10 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
     if (actuallyChanged || live) {
       window.coffeeCache.invalidate('all');
       window.coffeeBus.emit('server_sync', { ts: Date.now(), live: !!live });
+    }
+    if (_bgSyncQueuedFollowUp) {
+      _bgSyncQueuedFollowUp = false;
+      setTimeout(() => _triggerBackgroundSync(qPin, 'manual', focusDate, true), 300);
     }
   }).catch(() => {
     _bgSyncInFlight = false;
@@ -2813,29 +3097,41 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
     }
 
     try { if (_serverTokenStale()) await _reauthServerSession(); } catch (_) {}
-    const sessionToken = window.coffeeAuth && window.coffeeAuth.getSessionToken
-      ? window.coffeeAuth.getSessionToken() : '';
-    const _sessNow = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
+    const isOwnerMutation = OWNER_MUTATION_ACTIONS.test(payload.action || '');
+    const _sessNow = window.coffeeAuth && window.coffeeAuth.getSession
+      ? window.coffeeAuth.getSession(isOwnerMutation ? 'admin' : undefined) : null;
+    const sessionToken = _sessNow && _sessNow.token ? _sessNow.token : '';
     const defPinHash = 'sha256:' + (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
     const compatPin = (payload.pin === defPinHash || !payload.pin) ? '1234' : payload.pin;
-    const isOwnerMutation = OWNER_MUTATION_ACTIONS.test(payload.action || '');
     const operation = Object.assign({}, payload, {
       pin: compatPin,
       operationId: payload.operationId || _newCoffeeOperationId()
     });
     if (isOwnerMutation || payload.pinHash) {
       operation.pinHash = payload.pinHash || (_sessNow && _sessNow.pinHash) || defPinHash;
+    } else if (!operation.staffPinHash && window.coffeeAuth && typeof window.coffeeAuth.getStaffPinHash === 'function') {
+      const targetWho = operation.userName || operation.barista || (_sessNow && _sessNow.staffName) || (window.coffeeGetActiveBarista && window.coffeeGetActiveBarista()) || 'Соня';
+      if (!operation.userName) operation.userName = targetWho;
+      const sHash = window.coffeeAuth.getStaffPinHash(targetWho);
+      if (sHash) operation.staffPinHash = 'sha256:' + sHash.replace(/^sha256:/i, '');
     }
-    if (sessionToken && !operation.sessionToken) operation.sessionToken = sessionToken;
+    if (sessionToken && !operation.sessionToken && !/^st_local_/.test(sessionToken) && (!isOwnerMutation || (_sessNow && _sessNow.role === 'admin'))) {
+      operation.sessionToken = sessionToken;
+    }
 
-    // Сохраняем совместимость с серверным контрактом чек-листа, но не отправляем base64-фото.
+    // Сохраняем совместимость с серверным контрактом чек-листа; если фото ещё не получило ссылку Drive (офлайн), передаём photo_base64 для догрузки в Drive на сервере.
     if (operation.action === 'submit_checklist' && Array.isArray(operation.items)) {
-      operation.items = operation.items.map((it) => ({
-        id: it.id, title: it.title, status: it.status, isIncident: !!it.isIncident,
-        incType: it.incType || '', priority: it.priority || 'Терпит',
-        comment: it.comment || '', responsible: it.responsible || '',
-        photo_url: it.photo_url || ''
-      }));
+      operation.items = operation.items.map((it) => {
+        const hasRemoteUrl = !!(it.photo_url && /^https?:\/\//i.test(String(it.photo_url)));
+        const fallbackB64 = !hasRemoteUrl ? (it.photo_base64 || (/^data:(image|video)\//i.test(String(it.photo_url || '')) ? it.photo_url : '')) : '';
+        return {
+          id: it.id, title: it.title, status: it.status, isIncident: !!it.isIncident,
+          incType: it.incType || '', priority: it.priority || 'Терпит',
+          comment: it.comment || '', responsible: it.responsible || '',
+          photo_url: hasRemoteUrl ? it.photo_url : '',
+          photo_base64: fallbackB64 || undefined
+        };
+      });
     }
 
     // Мгновенно (за 0 мс!) применяем изменение локально и оповещаем соседние вкладки/окна до ожидания ответа сервера

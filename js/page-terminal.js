@@ -217,15 +217,30 @@ function drawTabs() {
       { name: "Касса", openTime: "22:00", deadline: "23:59", isCash: true },
       { name: "Карта добрых дел", openTime: "11:00", deadline: "22:00" }
     ];
+    let nextActiveMarked = false;
     const newTabsHtml = dynBlocks.map((bObj) => {
       const bVal = (bObj.isCash || bObj.name === "Касса") ? "КАССА" : bObj.name;
       const isSel = block === bVal;
       const done = isDone(bVal);
-      const locked = false;
+      const winSt = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow(bObj.name, undefined, userName) : { state: "open", canPass: true };
+      const locked = !done && !winSt.canPass;
+      let stageBadge = "";
+      if (done) {
+        stageBadge = "✓ Выполнено";
+      } else if (winSt.state === "overdue_closed") {
+        stageBadge = "🔒 Закрыто (" + esc(bObj.deadline || "") + ")";
+      } else if (winSt.state === "before_window") {
+        stageBadge = "⏳ с " + esc(bObj.openTime || "");
+      } else if (!nextActiveMarked) {
+        nextActiveMarked = true;
+        stageBadge = "🟢 Сейчас (" + esc(bObj.openTime || "") + "–" + esc(bObj.deadline || "") + ")";
+      } else {
+        stageBadge = esc(bObj.openTime || "") + "–" + esc(bObj.deadline || "");
+      }
       return '<button role="tab" type="button" data-b="' + esc(bVal) + '" data-l="' + esc(bObj.name) + '" aria-selected="' + (isSel ? 'true' : 'false') + '" class="' + (locked ? 'locked' : '') + '">' +
         '<span>' + esc(bObj.name) + '</span>' +
         (done ? '<span class="ck">✓</span>' : '') +
-        '<div style="font-size:10px;opacity:0.78;font-weight:500;margin-top:1px">' + esc(bObj.openTime || '') + '–' + esc(bObj.deadline || '') + '</div>' +
+        '<div style="font-size:10px;opacity:0.84;font-weight:600;margin-top:1px">' + stageBadge + '</div>' +
       '</button>';
     }).join("");
     if (tlBar._lastHtml !== newTabsHtml) {
@@ -416,9 +431,15 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
       if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.bindStaffToCurrentTgUser === "function") {
         window.coffeeTgMiniApp.bindStaffToCurrentTgUser(userName);
       }
-      if (window.coffeeAuth && window.coffeeAuth.createLocalSession) {
+      if (window.coffeeAuth) {
         const role = (userName === "Администратор" || /админ|владелец/i.test(userName)) ? "admin" : "staff";
-        window.coffeeAuth.createLocalSession(role, userName, entered);
+        if (role === "staff" && typeof window.coffeeAuth.loginStaff === "function") {
+          window.coffeeAuth.loginStaff(userName, entered).catch(() => {});
+        } else if (role === "admin" && typeof window.coffeeAuth.loginOwner === "function") {
+          window.coffeeAuth.loginOwner(entered).catch(() => {});
+        } else if (window.coffeeAuth.createLocalSession) {
+          window.coffeeAuth.createLocalSession(role, userName, entered);
+        }
       }
     } catch (_) {}
     if ($("baristaSelect")) $("baristaSelect").value = userName;
@@ -464,6 +485,7 @@ function getUnreadInfoCount() {
 
 let _draftCloudTimer = null;
 let _lastAppliedDraftTs = {};
+let _lastAppliedActiveStateTs = {};
 
 function getUserDraftKey(targetBlock, targetUser) {
   return isoToday() + ":" + (targetUser || userName || "Бариста") + ":" + (targetBlock || block || "Открытие");
@@ -479,19 +501,22 @@ function saveShiftDraft(skipCloudPush) {
   const dKey = getUserDraftKey(block, userName);
   const compactAnswers = answers.map((a) => {
     if (!a) return null;
-    const pUrl = a.photo_url && String(a.photo_url).length <= 35000 ? a.photo_url : "";
-    const prevShort = a.preview && String(a.preview).length <= 35000 ? a.preview : pUrl;
+    const rawUrl = String(a.photo_url || "");
+    const cleanHttpUrl = (rawUrl && !/^data:/i.test(rawUrl) && rawUrl.length <= 600) ? rawUrl : "";
+    const pCount = Array.isArray(a.photos) ? a.photos.length : (a.preview || a.photo_url ? 1 : 0);
     return {
       id: a.id,
       title: a.title,
       choiceMade: !!a.choiceMade,
       isIncident: !!a.isIncident,
       incType: a.incType || "",
-      comment: a.comment || "",
+      comment: String(a.comment || "").slice(0, 300),
       priority: a.priority || "Терпит",
-      photos: Array.isArray(a.photos) ? a.photos.filter((p) => p && String(p).length <= 35000).slice(0, 3) : [],
-      photo_url: pUrl,
-      preview: prevShort,
+      hasPhoto: pCount > 0 || !!a.hasPhoto,
+      photoCount: pCount || a.photoCount || 0,
+      photos: cleanHttpUrl ? [cleanHttpUrl] : [],
+      photo_url: cleanHttpUrl,
+      preview: cleanHttpUrl,
       completedAt: a.completedAt || "",
       responsible: a.responsible || "Администратор"
     };
@@ -507,6 +532,7 @@ function saveShiftDraft(skipCloudPush) {
   };
   const cloudDraftObj = Object.assign({}, draftObj, { answers: compactAnswers });
   _lastAppliedDraftTs[dKey] = nowTs;
+  _lastAppliedActiveStateTs[userName] = nowTs;
   if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.saveDraftToTelegramCloudStorage === "function") {
     window.coffeeTgMiniApp.saveDraftToTelegramCloudStorage(cloudDraftObj);
   }
@@ -527,7 +553,6 @@ function saveShiftDraft(skipCloudPush) {
   if (!skipCloudPush) {
     if (_draftCloudTimer) clearTimeout(_draftCloudTimer);
     _draftCloudTimer = setTimeout(() => {
-      if (window.coffeePushCloudEnvelopeNow) window.coffeePushCloudEnvelopeNow();
       post({
         action: "save_checklist_draft",
         date: isoToday(),
@@ -537,7 +562,7 @@ function saveShiftDraft(skipCloudPush) {
         activeState: { date: isoToday(), block, idx, updatedAt: nowTs },
         updatedAt: nowTs
       }).catch(() => {});
-    }, 100);
+    }, 30);
   }
 }
 
@@ -740,6 +765,24 @@ function selectBlock(b) {
       return;
     }
     $("steps").hidden = true;
+    try {
+      if ($("counterStartIn") && $("counterStartIn").value === "") {
+        const db = typeof getUDB === "function" ? getUDB() : null;
+        let lastEnd = null;
+        if (db && Array.isArray(db.cash) && db.cash.length) {
+          const sortedCash = db.cash.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+          const withEnd = sortedCash.find((c) => c && c.counterEnd != null && c.counterEnd !== "");
+          if (withEnd) lastEnd = Number(withEnd.counterEnd);
+        }
+        if (lastEnd === null || !isFinite(lastEnd)) {
+          lastEnd = Number(($("initCounterIn") && $("initCounterIn").value) || (db && db.initCounter) || META.initCounter || 600) || 600;
+        }
+        $("counterStartIn").value = String(lastEnd);
+      }
+      if ($("shiftBaristaIn") && !$("shiftBaristaIn").value) {
+        $("shiftBaristaIn").value = userName;
+      }
+    } catch (_) {}
     show("cashView");
     renderCash();
     return;
@@ -825,7 +868,13 @@ function renderStep() {
   const showPhoto = (pMode === "да") || (choiceMade && incident);
   $("photoBlock").hidden = !showPhoto;
   setPhotoUI();
-  photoMsg(photos.length ? ("✓ Прикреплено кадров: " + photos.length) : "", photos.length ? "good" : "");
+  if (!photos.length) {
+    photoMsg("", "");
+  } else if (photoUrl && /^https?:\/\//i.test(String(photoUrl))) {
+    photoMsg("☁️ Загружено на сервер Google Drive (кадров: " + photos.length + ")", "good");
+  } else {
+    photoMsg("📸 Сохранено локально на устройстве (кадров: " + photos.length + ")", "");
+  }
 
   $("backBtn").hidden = idx === 0;
   if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.syncBackButton === "function") {
@@ -1135,15 +1184,39 @@ function gotPhoto(c) {
   uploadNow(newShot);
   saveAnswer();
 }
+let photoSyncState = "none"; // none | local | uploading | uploaded | queued | failed
 async function uploadNow(targetShot) {
   const my = targetShot || photo, step = (idx + 1) + " " + (cur[idx] ? cur[idx].title : "");
+  photoSyncState = "local";
+  photoMsg("📸 Снято и сохранено локально (кадров: " + photos.length + ") · загружаем на сервер…", "");
   photoBusy = true; setPhotoUI(); validate();
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    photoBusy = false;
+    photoSyncState = "queued";
+    setPhotoUI(); validate();
+    photoMsg("⏳ Офлайн: фото сохранено локально и ожидает отправки в Google Drive (кадров: " + photos.length + ")", "warn");
+    return;
+  }
+  photoSyncState = "uploading";
   try {
-    const d = await api({ action: "upload_photo", block, step, photo: my, kind: /^data:video/.test(my) ? "video" : "photo" });
-    photoUrl = d.url || "";
-    photoMsg("✓ Сохранено кадров: " + photos.length, "good");
+    const d = await api({ action: "upload_photo", block, step, userName, photo: my, dataUri: my, kind: /^data:video/.test(my) ? "video" : "photo" });
+    if (d && d.ok && d.url && /^https?:\/\//i.test(String(d.url))) {
+      photoUrl = d.url;
+      photoSyncState = "uploaded";
+      photoMsg("☁️ Загружено на сервер Google Drive (кадров: " + photos.length + ")", "good");
+    } else if (d && d.pending) {
+      photoUrl = "";
+      photoSyncState = "queued";
+      photoMsg("⏳ Сохранено локально · поставлено в очередь отправки на сервер (кадров: " + photos.length + ")", "warn");
+    } else {
+      photoUrl = "";
+      photoSyncState = "failed";
+      photoMsg("⚠️ Прямая загрузка в Drive не удалась — фото сохранено локально и уйдёт с отчётом (кадров: " + photos.length + ")", "warn");
+    }
   } catch (e) {
-    photoMsg("✓ Кадров прикреплено: " + photos.length + " (отправятся с отчётом)", "good");
+    photoUrl = "";
+    photoSyncState = "failed";
+    photoMsg("⚠️ Отправка на сервер отложена — фото сохранено локально в составе отчёта (кадров: " + photos.length + ")", "warn");
   }
   photoBusy = false; setPhotoUI(); validate();
 }
@@ -1369,6 +1442,7 @@ if ($("personalTasksList")) {
     if (window.coffeePushCloudEnvelopeNow) window.coffeePushCloudEnvelopeNow();
   });
 }
+
 
 function renderInfoView() {
   renderPersonalTasksInInfo();
@@ -2379,6 +2453,18 @@ $("shiftCalcResult").addEventListener("click", (e) => {
 ["counterStartIn", "counterEndIn", "writeOffShots", "writeOffs"].forEach((id) => {
   if ($(id)) $(id).addEventListener("input", () => renderCash());
 });
+if ($("quickCounterIn")) {
+  $("quickCounterIn").addEventListener("input", () => {
+    if ($("counterEndIn")) $("counterEndIn").value = $("quickCounterIn").value;
+    renderCash();
+  });
+}
+if ($("quickPaperCashIn")) {
+  $("quickPaperCashIn").addEventListener("input", () => {
+    if ($("manCashIn")) $("manCashIn").value = $("quickPaperCashIn").value;
+    applyManualCashInputs();
+  });
+}
 
 function getActiveCounterInfo() {
   const startRaw = $("counterStartIn") ? $("counterStartIn").value : "";
@@ -2437,7 +2523,25 @@ function renderCash() {
           '<div>🗑 Списания, порции: <b>' + woShots + ' шт.</b> · Руб.: <b>' + rub(woRub) + '</b></div>' +
           '<div>⚠️ Необъяснённая разница: <b style="color:' + (rec && rec.unaccountedShots > 0 ? 'var(--bad)' : 'var(--good)') + '">' + (rec ? rec.unaccountedShots : '—') + '</b></div>' +
         '</div>' +
-        (cntInfo.wrapped ? '<div style="margin-top:6px;font-size:12px;color:var(--warn)">ℹ️ Зафиксирован переход счётчика через 999 → 0 (' + cntInfo.counterStart + ' → ' + cntInfo.counterEnd + '). Проверьте показание физически на дисплее прибора.</div>' : '');
+        (cntInfo.wrapped ? '<div style="margin-top:6px;font-size:12px;color:var(--warn)">ℹ️ Зафиксирован переход счётчика через 999 → 0 (' + cntInfo.counterStart + ' → ' + cntInfo.counterEnd + '). Проверьте показание физически на дисплее прибора.</div>' : '') +
+        ((function () {
+          const allProds = (sales && Array.isArray(sales.products) && sales.products.length) ? sales.products : (Array.isArray(sales) ? sales : []);
+          const revItems = allProds.filter((p) => p && p.kind === 'review');
+          if (!revItems.length) return '';
+          return '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">' +
+            '<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--warn)">🏷 Обучаемый классификатор спорных позиций (нажмите 1 раз — система запомнит правило):</div>' +
+            revItems.map((it) =>
+              '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 0;font-size:12.5px">' +
+                '<span>❓ <b>' + esc(it.name) + '</b> (' + it.qty + ' шт.)</span>' +
+                '<span style="display:inline-flex;gap:4px;flex-wrap:wrap">' +
+                  '<button type="button" data-nclassify="' + esc(it.name) + '" data-nkind="coffee" style="border:1px solid var(--good);background:var(--surface);color:var(--good);border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:700;cursor:pointer">☕ Кофе (1 шот)</button>' +
+                  '<button type="button" data-nclassify="' + esc(it.name) + '" data-nkind="coffee_2" style="border:1px solid var(--brew);background:var(--surface);color:var(--brew);border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:700;cursor:pointer">☕×2 (2 шота)</button>' +
+                  '<button type="button" data-nclassify="' + esc(it.name) + '" data-nkind="non_coffee" style="border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:700;cursor:pointer">🥤 Не кофе</button>' +
+                '</span>' +
+              '</div>'
+            ).join('') +
+          '</div>';
+        })());
     } else {
       recPanel.hidden = true;
     }
@@ -2764,6 +2868,15 @@ function reloadTerminalFromVault() {
     if (window._coffeeSubmittingChecklistNow || ($("doneView") && !$("doneView").hidden) || ($("loader") && !$("loader").hidden)) {
       return;
     }
+    // Если этот же сотрудник на другом устройстве только что переключил активный чек-лист — переключаемся синхронно
+    const remActive = db.userActiveState && db.userActiveState[userName];
+    if (remActive && remActive.date === isoToday() && Number(remActive.updatedAt || 0) > (_lastAppliedActiveStateTs[userName] || 0)) {
+      _lastAppliedActiveStateTs[userName] = Number(remActive.updatedAt);
+      if (remActive.block && remActive.block !== block && remActive.block !== 'ИНФО' && !photoBusy && (!$("cam") || $("cam").hidden)) {
+        block = remActive.block;
+        drawTabs();
+      }
+    }
     if (block === 'ИНФО') {
       renderInfoView();
     } else if (block === 'КАССА' || block === 'Касса') {
@@ -2793,7 +2906,17 @@ function reloadTerminalFromVault() {
             if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
           } else if (Array.isArray(remDraft.answers)) {
             idx = Math.min(remDraft.idx || 0, Math.max(0, cur.length - 1));
-            answers = remDraft.answers.slice();
+            answers = remDraft.answers.map((ra, aIdx) => {
+              if (!ra) return answers[aIdx] || null;
+              const prevLocal = answers[aIdx] || {};
+              const localPhotos = (Array.isArray(prevLocal.photos) && prevLocal.photos.length) ? prevLocal.photos : [];
+              const mergedPhotos = (Array.isArray(ra.photos) && ra.photos.length) ? ra.photos : localPhotos;
+              return Object.assign({}, prevLocal, ra, {
+                photos: mergedPhotos,
+                preview: ra.preview || prevLocal.preview || mergedPhotos[0] || "",
+                photo_url: ra.photo_url || prevLocal.photo_url || ""
+              });
+            });
             checklistStartedAt = remDraft.startedAt || checklistStartedAt;
             if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
           }
@@ -2842,6 +2965,19 @@ if ($("goToInfoFromLockBtn")) {
 }
 if ($("doneHomeBtn")) {
   $("doneHomeBtn").onclick = () => {
+    try {
+      const dynBlocks = window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks() : [];
+      const nextOpen = dynBlocks.find((bObj) => {
+        const bVal = (bObj.isCash || bObj.name === "Касса") ? "КАССА" : bObj.name;
+        if (isDone(bVal)) return false;
+        const w = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow(bObj.name, undefined, userName) : { canPass: true };
+        return w && w.canPass;
+      });
+      if (nextOpen) {
+        selectBlock((nextOpen.isCash || nextOpen.name === "Касса") ? "КАССА" : nextOpen.name);
+        return;
+      }
+    } catch (_) {}
     selectBlock(block === "КАССА" ? "Открытие" : block);
   };
 }
@@ -2907,3 +3043,31 @@ window.ensureTerminalPinGate = function () {
 
 })();
 /* UNIFIED_IIFE_END */
+
+
+
+if ($("reconciliationPanel")) {
+  $("reconciliationPanel").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-nclassify]");
+    if (!b) return;
+    const itemName = b.dataset.nclassify;
+    const kind = b.dataset.nkind || "coffee";
+    post({ action: "save_nomenclature_rule", itemName, kind, userName }).catch(() => {});
+    if (sales && window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.summarizeProductsList) {
+      const targetProds = Array.isArray(sales.products) ? sales.products : (Array.isArray(sales) ? sales : []);
+      const sum = window.CoffeeSalesReconciliation.summarizeProductsList(targetProds);
+      sales.coffeeQty = sum.coffeeQty;
+      sales.coffeeCups = sum.coffeeQty;
+      sales.nonCoffeeQty = sum.nonCoffeeQty;
+      sales.reviewQty = sum.reviewQty;
+      if (trans && trans.fromSalesOnly) {
+        trans.coffeeQty = sum.coffeeQty;
+        trans.nonCoffeeQty = sum.nonCoffeeQty;
+        trans.reviewQty = sum.reviewQty;
+      }
+    }
+    renderCash();
+  });
+}
+
+

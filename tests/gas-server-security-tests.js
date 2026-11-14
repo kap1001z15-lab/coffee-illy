@@ -196,7 +196,7 @@ check('1. Серверная аутентификация владельца и 
     action: 'setup_initial_credentials',
     sessionToken: loginDefault.sessionToken,
     newAdminPin: '8492',
-    staffPins: { 'Соня': '5719' }
+    staffPins: { 'Соня': '5719', 'Алина': '6820' }
   });
   assert(rotated.ok === true && rotated.factoryPinsDisabled === true, 'Ротация PIN должна отключить заводские PIN-коды');
 
@@ -238,16 +238,16 @@ check('3. Серверная валидация входных данных ка
 
 check('4. Серверная идемпотентность (operationId предотвращает дублирование записи в Кассу)', () => {
   const opId = 'op_test_idempotency_20261111_0001';
-  const r1 = callPost({ action: 'submit_cash', operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня' });
+  const r1 = callPost({ action: 'submit_cash', operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня', staffPin: '5719' });
   const rowsAfterFirst = sheetsStore['Касса']._rows.length;
-  const r2 = callPost({ action: 'submit_cash', operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня' });
+  const r2 = callPost({ action: 'submit_cash', operationId: opId, date: '2026-11-11', cash: 1200, card: 800, checks: 60, writeoff: 2, userName: 'Соня', staffPin: '5719' });
   const rowsAfterSecond = sheetsStore['Касса']._rows.length;
   assert(r1.ok === true && r2.ok === true && rowsAfterFirst === rowsAfterSecond, 'Повторный запрос с тем же operationId не должен дублировать строку');
 });
 
 check('5. Серверное сохранение фотографий в Google Drive (upload_photo -> DriveApp + лист Медиафайлы)', () => {
   const validPngB64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
-  const upRes = callPost({ action: 'upload_photo', block: 'Открытие', userName: 'Соня', dataUri: validPngB64 });
+  const upRes = callPost({ action: 'upload_photo', block: 'Открытие', userName: 'Соня', staffPin: '5719', dataUri: validPngB64 });
   assert(upRes.ok === true && upRes.fileId && upRes.url.indexOf('https://drive.google.com/') === 0, 'upload_photo должен сохранять файл в DriveApp и возвращать URL');
   assert(sheetsStore['Медиафайлы'] && sheetsStore['Медиафайлы']._rows.length >= 2, 'Запись о медиафайле со сроком хранения должна добавляться в лист Медиафайлы');
 });
@@ -311,6 +311,7 @@ check('8. Сверка продаж v54: лист Продажи, защита �
 
   const cashPayload = {
     action: 'submit_cash',
+    sessionToken: tok,
     date: '2026-11-04',
     userName: 'Алина',
     barista: 'Алина',
@@ -356,6 +357,7 @@ check('9. Синхронизация одного аккаунта между у
     action: 'save_checklist_draft',
     date: today,
     userName: 'Алина',
+    staffPin: '6820',
     block: 'Карта добрых дел',
     draft: {
       date: today,
@@ -375,6 +377,7 @@ check('9. Синхронизация одного аккаунта между у
   const subChkRes = callPost({
     action: 'submit_checklist',
     userName: 'Алина',
+    staffPin: '6820',
     block: 'Открытие',
     deadline: '08:30',
     isLate: false,
@@ -389,4 +392,81 @@ check('9. Синхронизация одного аккаунта между у
   assert(Array.isArray(dev2Out.checklists) && dev2Out.checklists.some((c) => c.date === today && c.block === 'Открытие' && c.who === 'Алина'), 'Устройство 2 должно получить сданный чек-лист «Открытие» с привязкой к сотруднику Алина');
 });
 
-process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/9 успешно.\n');
+
+check('10. Серверные модули ERP v61 (save_nomenclature_rule, save_inventory, add_expiry_item, setup_autonomous_triggers, send_daily_digest)', () => {
+  const rRule = callPost({ action: 'save_nomenclature_rule', userName: 'Соня', staffPin: '5719', itemName: 'Напиток от Бариста', kind: 'coffee_2' });
+  assert(rRule.ok === true && rRule.rules['напиток от бариста'] === 'coffee_2', 'Сервер должен сохранять пользовательские правила классификации CSV');
+
+  const rExp = callPost({ action: 'add_expiry_item', id: 'EXP-SRV-1', title: 'Сливки 10%', shelfLifeHours: 24, userName: 'Соня', staffPin: '5719' });
+  assert(rExp.ok === true && rExp.item && rExp.item.title === 'Сливки 10%', 'Сервер должен сохранять маркировку срока годности');
+
+  const loginAdm = callPost({ action: 'auth_login', role: 'admin', pin: '8492' });
+  const rAuto = callPost({ action: 'setup_autonomous_triggers', sessionToken: loginAdm.sessionToken });
+  assert(rAuto.ok === true && rAuto.autopilot === true, 'Сервер должен включать триггеры Автопилота 24/7');
+
+  const rDig = callPost({ action: 'send_daily_digest', date: '2026-11-04', sessionToken: loginAdm.sessionToken });
+  assert(rDig.ok === true && /ИТОГОВАЯ СВОДКА ДНЯ/.test(rDig.summary), 'Сервер должен формировать итоговую вечернюю сводку дня для Telegram');
+});
+
+
+check('11. Закрытие замечаний аудита v64 (P0/P1): запрет анонимных операций STAFF_AUTH_REQUIRED, запрет обхода PIN, атомарность batch_submit_cash и догрузка офлайн-фото в Drive', () => {
+  // P0.1: Запрет анонимных вызовов submit_cash, submit_checklist, batch_submit_cash, report_standalone_incident, ack_announcement без сессии/PIN
+  const unauthCash = callPost({ action: 'submit_cash', date: '2026-11-12', cash: 500, card: 200, checks: 15, userName: 'Соня' });
+  assert(unauthCash.ok === false && /STAFF_AUTH_REQUIRED/.test(unauthCash.error), 'submit_cash без подтверждённой сессии или PIN должен отклоняться STAFF_AUTH_REQUIRED');
+
+  const unauthChk = callPost({ action: 'submit_checklist', block: 'Открытие', userName: 'Соня', items: [] });
+  assert(unauthChk.ok === false && /STAFF_AUTH_REQUIRED/.test(unauthChk.error), 'submit_checklist без подтверждённой сессии должен отклоняться STAFF_AUTH_REQUIRED');
+
+  const unauthInc = callPost({ action: 'report_standalone_incident', step: 'Кофемолка', text: 'Шум', userName: 'Соня' });
+  assert(unauthInc.ok === false && /STAFF_AUTH_REQUIRED/.test(unauthInc.error), 'report_standalone_incident без подтверждённой сессии должен отклоняться STAFF_AUTH_REQUIRED');
+
+  const unauthAck = callPost({ action: 'ack_announcement', id: 'INFO-101', userName: 'Соня' });
+  assert(unauthAck.ok === false && /STAFF_AUTH_REQUIRED/.test(unauthAck.error), 'ack_announcement без подтверждённой сессии должен отклоняться STAFF_AUTH_REQUIRED');
+
+  // P0.2: Бариста не может войти по PIN владельца (8492) или заводскому 1234, а неизвестное имя сотрудника отклоняется STAFF_NOT_FOUND
+  const ownerPinForStaff = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '8492' });
+  assert(ownerPinForStaff.ok === false && /PIN_INVALID/.test(ownerPinForStaff.error), 'Вход бариста по PIN владельца должен быть строго запрещён');
+
+  const unknownStaff = callPost({ action: 'auth_login', role: 'staff', staffName: 'НеизвестныйСотрудник', pin: '1111' });
+  assert(unknownStaff.ok === false && /STAFF_NOT_FOUND/.test(unknownStaff.error), 'Неизвестное имя сотрудника не должно получать резервный PIN 1111');
+
+  // P1.1: Атомарная предвалидация batch_submit_cash — если 2-й день в пакете невалиден, 1-й день НЕ записывается в таблицу!
+  const staffLogin = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  const cashRowsBeforeBatch = sheetsStore['Касса']._rows.length;
+  const badBatch = callPost({
+    action: 'batch_submit_cash',
+    sessionToken: staffLogin.sessionToken,
+    days: [
+      { date: '2026-11-12', cash: 1000, card: 500, checks: 35, writeoff: 0 },
+      { date: 'НЕВЕРНАЯ-ДАТА', cash: -200, card: 100, checks: 10, writeoff: 0 }
+    ]
+  });
+  assert(badBatch.ok === false && /VALIDATION_FAILED/.test(badBatch.error), 'Пакет с некорректным днём должен отклоняться VALIDATION_FAILED');
+  assert(sheetsStore['Касса']._rows.length === cashRowsBeforeBatch, 'При ошибке в любом дне пакета ни одна строка не должна частично сохраняться в таблицу');
+
+  const goodBatch = callPost({
+    action: 'batch_submit_cash',
+    sessionToken: staffLogin.sessionToken,
+    days: [
+      { date: '2026-11-12', cash: 1100, card: 400, checks: 38, writeoff: 5 },
+      { date: '2026-11-13', cash: 1300, card: 600, checks: 45, writeoff: 0 }
+    ]
+  });
+  assert(goodBatch.ok === true && goodBatch.savedDays === 2, 'Валидный пакет кассы успешно сохраняет оба дня');
+
+  // P1.2: Автоматическая догрузка офлайн base64-фото в Google Drive при отправке submit_checklist
+  const validPngB64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  const driveCountBefore = driveFiles.length;
+  const chkWithOfflinePhoto = callPost({
+    action: 'submit_checklist',
+    sessionToken: staffLogin.sessionToken,
+    block: 'Закрытие',
+    deadline: '22:30',
+    isLate: false,
+    items: [{ id: 'c01', title: 'Чистка группы', isIncident: false, photo_url: '', photo_base64: validPngB64 }]
+  });
+  assert(chkWithOfflinePhoto.ok === true && driveFiles.length === driveCountBefore + 1, 'Офлайн-фото из photo_base64 при сдаче чек-листа должно автоматически загружаться в Google Drive');
+});
+
+process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/11 успешно.\n');
+

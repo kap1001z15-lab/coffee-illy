@@ -268,10 +268,48 @@
       } catch (_) {}
       return sess;
     },
-    getSession() {
+    getStaffSession() {
+      try {
+        const raw = sessionStorage.getItem('coffee_staff_session_v21') || localStorage.getItem('coffee_staff_session_v21');
+        if (!raw) return null;
+        const sess = JSON.parse(raw);
+        if (!sess || !sess.token || !sess.expiresAt || Date.now() > sess.expiresAt) return null;
+        const expectedSig = _makeSessionSig(sess.token, sess.role, sess.pinHash, sess.expiresAt);
+        if (sess.sig !== expectedSig) return null;
+        return sess;
+      } catch (_) {
+        return null;
+      }
+    },
+    getStaffPinHash(staffName, dbOpt) {
+      const cleanName = String(staffName || '').trim();
+      const sSess = this.getStaffSession();
+      if (sSess && sSess.pinHash && (!cleanName || String(sSess.staffName || '').toLowerCase() === cleanName.toLowerCase())) {
+        return sSess.pinHash;
+      }
+      const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+      if (db && Array.isArray(db.staff)) {
+        const found = db.staff.find((x) => x && String(x.name || '').trim().toLowerCase() === cleanName.toLowerCase());
+        if (found) {
+          if (found.pinHash) return window.coffeeHashPin(found.pinHash);
+          if (found.pin && String(found.pin).indexOf('••') === -1) return window.coffeeHashPin(found.pin);
+        }
+      }
+      const defPins = { 'Соня': '1111', 'Алина': '2222', 'Настя': '3333', 'Максим': '4444' };
+      if (!db.factoryPinsDisabled && cleanName && defPins[cleanName]) {
+        return window.coffeeHashPin(defPins[cleanName]);
+      }
+      return '';
+    },
+    getSession(preferRole) {
+      if (preferRole === 'staff') return this.getStaffSession();
+      if (preferRole !== 'admin' && typeof window !== 'undefined' && window.COFFEE_IS_BARISTA_TERMINAL) {
+        const st = this.getStaffSession();
+        if (st) return st;
+      }
       try {
         const raw = sessionStorage.getItem(SESSION_STORAGE_KEY) || localStorage.getItem(SESSION_STORAGE_KEY);
-        if (!raw) return null;
+        if (!raw) return preferRole === 'admin' ? null : this.getStaffSession();
         const sess = JSON.parse(raw);
         if (!sess || !sess.token || !sess.expiresAt || Date.now() > sess.expiresAt) {
           this.logout();
@@ -287,8 +325,8 @@
         return null;
       }
     },
-    getSessionToken() {
-      const s = this.getSession();
+    getSessionToken(preferRole) {
+      const s = this.getSession(preferRole);
       return s ? s.token : '';
     },
     isAuthorized(requiredRole, dbOpt) {

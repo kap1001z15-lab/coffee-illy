@@ -1198,3 +1198,193 @@ window.coffeeCalculateFinancialModel = function (dbOpt, fromStr, toStr) {
     hasLoggedExpenses: expRows.length > 0
   };
 };
+
+
+/* =========================================================================
+   v61 ERP МОДУЛИ:
+   1. Автосписание склада по ТТК и номенклатуре продаж (coffeeDeductInventoryFromSales)
+   2. Личный расчётный лист и KPI мотивации бариста (coffeeCalcStaffPayrollCard)
+   3. Контроль сроков годности и маркировок заготовок (coffeeGetActiveExpiryAlerts)
+   ========================================================================= */
+
+window.coffeeGetCustomNomenclatureRules = function (dbOpt) {
+  try {
+    const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : null);
+    return (db && db.customNomenclatureRules && typeof db.customNomenclatureRules === 'object')
+      ? db.customNomenclatureRules
+      : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+window.coffeeDeductInventoryFromSales = function (db, products, writeoffShots, dateStr, shiftKey) {
+  if (!db) return { deducted: false, lowItems: [] };
+  if (!Array.isArray(db.inventory) || !db.inventory.length) {
+    db.inventory = (window.COFFEE_DEFAULT_INVENTORY || []).map((x) => Object.assign({}, x));
+  }
+  db.inventoryDeductedKeys = (db.inventoryDeductedKeys && typeof db.inventoryDeductedKeys === 'object') ? db.inventoryDeductedKeys : {};
+  const dedKey = String(shiftKey || (dateStr + ':' + (products || []).length));
+  if (dedKey && db.inventoryDeductedKeys[dedKey]) {
+    return { deducted: false, alreadyProcessed: true, lowItems: [] };
+  }
+  if (dedKey) db.inventoryDeductedKeys[dedKey] = Date.now();
+
+  const findInv = (id) => db.inventory.find((x) => x && x.id === id);
+  const beans = findInv('inv_beans');
+  const milk = findInv('inv_milk');
+  const altMilk = findInv('inv_alt_milk');
+  const syrup = findInv('inv_syrup');
+  const cupsS = findInv('inv_cups_s');
+  const cupsL = findInv('inv_cups_l');
+
+  const rules = window.coffeeGetCustomNomenclatureRules(db);
+  const classify = (window.CoffeeSalesReconciliation && window.CoffeeSalesReconciliation.classifyCoffee)
+    ? ((nm) => window.CoffeeSalesReconciliation.classifyCoffee(nm, rules))
+    : (() => 'coffee');
+
+  let beansUsed = (Math.max(0, Number(writeoffShots) || 0)) * 18;
+  let milkUsed = 0, altMilkUsed = 0, syrupUsed = 0, cupsSUsed = 0, cupsLUsed = 0;
+
+  (Array.isArray(products) ? products : []).forEach((p) => {
+    if (!p || !p.name) return;
+    const qty = Math.max(0, Number(p.qty) || 0);
+    if (!qty) return;
+    const nm = String(p.name || '').toLowerCase();
+    const k = p.kind || classify(p.name);
+    const shots = k === 'coffee_2' || /двойн|доппио|больш|400|450/i.test(nm) ? 2 : (k === 'coffee' ? 1 : 0);
+    if (shots > 0) {
+      beansUsed += qty * 18 * shots;
+      if (/350|400|450|больш|раф|айс/i.test(nm)) cupsLUsed += qty;
+      else cupsSUsed += qty;
+      if (/капучино|латте|лате|раф|флэт|flat|мокко|мокка|макиато|кортадо/i.test(nm)) {
+        milkUsed += qty * 180;
+      }
+      if (/раф|карамел|ванил|орех|мохито|бабл/i.test(nm)) {
+        syrupUsed += qty * 20;
+      }
+    } else {
+      if (/альтернативн.*молок|овсян|кокосов|миндальн/i.test(nm)) altMilkUsed += qty * 180;
+      if (/сироп/i.test(nm)) syrupUsed += qty * 20;
+    }
+  });
+
+  if (beans) beans.stock = Math.max(0, Math.round((Number(beans.stock) || 0) - beansUsed));
+  if (milk) milk.stock = Math.max(0, Math.round((Number(milk.stock) || 0) - milkUsed));
+  if (altMilk) altMilk.stock = Math.max(0, Math.round((Number(altMilk.stock) || 0) - altMilkUsed));
+  if (syrup) syrup.stock = Math.max(0, Math.round((Number(syrup.stock) || 0) - syrupUsed));
+  if (cupsS) cupsS.stock = Math.max(0, Math.round((Number(cupsS.stock) || 0) - cupsSUsed));
+  if (cupsL) cupsL.stock = Math.max(0, Math.round((Number(cupsL.stock) || 0) - cupsLUsed));
+
+  const lowItems = db.inventory.filter((x) => x && Number(x.stock) <= Number(x.minStock || 0));
+  if (lowItems.length && window.coffeeNotify) {
+    const namesStr = lowItems.map((x) => x.name + ' (' + x.stock + ' ' + x.unit + ')').join(', ');
+    window.coffeeNotify.push(db, {
+      level: 'warn',
+      type: 'inventory_low',
+      actor: 'Склад ТТК',
+      title: '📦 Низкий остаток на складе (' + lowItems.length + ' поз.)',
+      text: 'Требуется пополнение: ' + namesStr,
+      telegramText: "📦 СКЛАД КОФЕЙНИ — НИЗКИЙ ОСТАТОК:\n" + lowItems.map((x) => "• " + x.name + ": осталось " + x.stock + " " + x.unit + " (мин. " + x.minStock + " " + x.unit + ")").join("\n")
+    });
+  }
+  return {
+    deducted: true,
+    beansUsed,
+    milkUsed,
+    altMilkUsed,
+    syrupUsed,
+    cupsUsed: cupsSUsed + cupsLUsed,
+    lowItems
+  };
+};
+
+window.coffeeCalcStaffPayrollCard = function (db, staffName, monthPrefixOpt) {
+  db = db || (typeof getUDB === 'function' ? getUDB() : {});
+  const who = String(staffName || 'Соня').trim();
+  const whoLow = who.toLowerCase();
+  const today = typeof _isoToday === 'function' ? _isoToday() : new Date().toISOString().slice(0, 10);
+  const monthPrefix = monthPrefixOpt || today.slice(0, 7); // YYYY-MM
+
+  const baseShiftRate = 250; // руб. ПМР за выход
+  const revPercent = 0.05;   // 5% от выручки смены
+  const planMetBonus = 50;   // +50 руб. ПМР за выполнение дневного плана выручки
+
+  let shiftsCount = 0;
+  let totalRevenue = 0;
+  let totalCoffeeCups = 0;
+  let planMetDays = 0;
+
+  (Array.isArray(db.cash) ? db.cash : []).forEach((c) => {
+    if (!c || !c.date || c.date.indexOf(monthPrefix) !== 0) return;
+    const dayPlan = window.coffeeGetDayPlan ? window.coffeeGetDayPlan(c.date, db).revenue : (Number(db.plan) || 2500);
+    const dayRev = (Number(c.cash) || 0) + (Number(c.card) || 0);
+    const shifts = Array.isArray(c.shifts) && c.shifts.length
+      ? c.shifts
+      : [{ name: c.barista || '', cash: c.cash, card: c.card, coffeeQty: c.coffeeQty, cups: c.checks }];
+
+    shifts.forEach((sh) => {
+      const shName = String(sh && sh.name || '').trim().toLowerCase();
+      if (shName === whoLow || (shName.indexOf(whoLow) >= 0 && whoLow.length >= 3)) {
+        shiftsCount += 1;
+        const shRev = (Number(sh.cash) || 0) + (Number(sh.card) || 0) || (shifts.length === 1 ? dayRev : 0);
+        totalRevenue += shRev;
+        totalCoffeeCups += Number(sh.coffeeQty != null ? sh.coffeeQty : (sh.cups || 0)) || 0;
+        if (dayRev >= dayPlan && dayPlan > 0) planMetDays += 1;
+      }
+    });
+  });
+
+  const monthChks = (Array.isArray(db.checklists) ? db.checklists : []).filter((chk) => {
+    return chk && chk.date && chk.date.indexOf(monthPrefix) === 0 && String(chk.who || '').trim().toLowerCase() === whoLow;
+  });
+  const onTimeChks = monthChks.filter((chk) => !chk.isLate && chk.status !== 'Просрочено').length;
+  const lateChks = monthChks.length - onTimeChks;
+  const disciplineRate = monthChks.length > 0 ? Math.round((onTimeChks / monthChks.length) * 100) : 100;
+
+  const basePay = shiftsCount * baseShiftRate;
+  const revBonus = Math.round(totalRevenue * revPercent);
+  const planBonus = planMetDays * planMetBonus;
+  const totalEarned = basePay + revBonus + planBonus;
+
+  return {
+    staffName: who,
+    monthPrefix,
+    shiftsCount,
+    totalRevenue: Math.round(totalRevenue),
+    totalCoffeeCups,
+    baseShiftRate,
+    basePay,
+    revBonus,
+    planMetDays,
+    planBonus,
+    totalEarned,
+    checklistsTotal: monthChks.length,
+    onTimeChks,
+    lateChks,
+    disciplineRate
+  };
+};
+
+window.coffeeGetActiveExpiryAlerts = function (dbOpt) {
+  const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
+  const items = Array.isArray(db.expiryItems) ? db.expiryItems : [];
+  const now = Date.now();
+  const active = items.filter((it) => it && !it.disposed).map((it) => {
+    const expMs = Number(it.expiresAtMs) || (Number(it.openedAtMs || now) + (Number(it.shelfLifeHours || 24) * 3600000));
+    const hoursLeft = Math.round(((expMs - now) / 3600000) * 10) / 10;
+    return Object.assign({}, it, {
+      expiresAtMs: expMs,
+      hoursLeft,
+      isExpired: hoursLeft <= 0,
+      isExpiringSoon: hoursLeft > 0 && hoursLeft <= 4
+    });
+  }).sort((a, b) => a.expiresAtMs - b.expiresAtMs);
+
+  return {
+    allActive: active,
+    expired: active.filter((x) => x.isExpired),
+    expiringSoon: active.filter((x) => x.isExpiringSoon),
+    urgentCount: active.filter((x) => x.isExpired || x.isExpiringSoon).length
+  };
+};

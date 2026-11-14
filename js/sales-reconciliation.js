@@ -146,9 +146,30 @@
     /лимонад/, /чизкейк/, /эклер/, /десерт/, /фрукт/, /стикер/, /круассан/, /торт/
   ];
 
-  function classifyCoffee(name) {
+  function getCustomRules(customRulesOpt) {
+    if (customRulesOpt && typeof customRulesOpt === 'object') return customRulesOpt;
+    try {
+      if (root && typeof root.coffeeGetCustomNomenclatureRules === 'function') {
+        return root.coffeeGetCustomNomenclatureRules() || {};
+      }
+      if (root && typeof root.getUDB === 'function') {
+        var db = root.getUDB();
+        if (db && db.customNomenclatureRules && typeof db.customNomenclatureRules === 'object') {
+          return db.customNomenclatureRules;
+        }
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  function classifyCoffee(name, customRulesOpt) {
     var n = norm(name);
-    if (!n || EXCLUDE_RULES.some(function (r) { return r.test(n); })) return 'non_coffee';
+    if (!n) return 'non_coffee';
+    var rules = getCustomRules(customRulesOpt);
+    if (rules && rules[n]) {
+      return rules[n]; // 'coffee' | 'coffee_2' | 'non_coffee'
+    }
+    if (EXCLUDE_RULES.some(function (r) { return r.test(n); })) return 'non_coffee';
     return COFFEE_RULES.some(function (r) { return r.test(n); }) ? 'coffee' : 'review';
   }
 
@@ -156,9 +177,16 @@
     return String(raw || '').replace(/^["']+|["']+$/g, '').replace(/""/g, '"').replace(/\s{2,}/g, ' ').trim();
   }
 
-  function summarizeProductsList(products) {
+  function summarizeProductsList(products, customRulesOpt) {
+    var rules = getCustomRules(customRulesOpt);
+    products.forEach(function (p) {
+      if (!p) return;
+      var k = classifyCoffee(p.name, rules);
+      p.kind = k === 'coffee_2' ? 'coffee' : k;
+      p.shotsPerUnit = k === 'coffee_2' ? 2 : (k === 'coffee' ? 1 : 0);
+    });
     var coffeeQty = products.filter(function (p) { return p.kind === 'coffee'; })
-      .reduce(function (a, p) { return a + p.qty; }, 0);
+      .reduce(function (a, p) { return a + p.qty * (p.shotsPerUnit || 1); }, 0);
     var reviewQty = products.filter(function (p) { return p.kind === 'review'; })
       .reduce(function (a, p) { return a + p.qty; }, 0);
     var nonCoffeeQty = products.filter(function (p) { return p.kind === 'non_coffee'; })
@@ -375,7 +403,7 @@
   }
 
   // Сверка счётчика со строго проданными кофейными напитками по номенклатуре (чеки НЕ подменяют кофейные напитки!).
-  function reconcile(grinderDelta, sales, writeoffShots, tolerance) {
+  function reconcile(grinderDelta, sales, writeoffShots, tolerance, options) {
     var sold = Number(sales && (sales.coffeeQty != null ? sales.coffeeQty : sales.soldCoffee)) || 0;
     var nonCoffee = Number(sales && sales.nonCoffeeQty) || 0;
     var review = Number(sales && sales.reviewQty) || 0;
@@ -389,6 +417,9 @@
       warnings = warnings.concat(sales.warnings);
     } else if (review > 0) {
       warnings.push('Есть ' + review + ' шт. неопределённой номенклатуры (требует ручной классификации)');
+    }
+    if (options && options.wrapped) {
+      warnings.push('ℹ️ Переход счётчика через 999 → 0: убедитесь, что это естественный цикл кофемолки, а не физический сброс прибора');
     }
     if (Math.abs(diff) > tol) {
       if (diff > 0) {
@@ -408,6 +439,7 @@
       overAccountedShots: Math.max(0, -diff),
       diff: diff,
       status: Math.abs(diff) <= tol ? 'ok' : 'warning',
+      requiresVerification: Math.abs(diff) > tol || review > 0 || !!(options && options.wrapped),
       warnings: warnings
     };
   }
@@ -421,6 +453,8 @@
     resolveCashierName: resolveCashierName,
     csvHash: csvHash,
     classifyCoffee: classifyCoffee,
+    summarizeProductsList: summarizeProductsList,
+    normName: norm,
     counterDelta: counterDelta,
     counterDeltaInfo: counterDeltaInfo,
     reconcile: reconcile

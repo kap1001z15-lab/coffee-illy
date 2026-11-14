@@ -263,3 +263,26 @@ window.COFFEE_DEFAULT_GOOD_DEEDS = [
     }
   });
 })();
+
+
+/* === v61 ERP: СКЛАДСКОЙ УЧЁТ ПО ТТК, МАРКИРОВКИ СРОКОВ ГОДНОСТИ И МУЛЬТИ-ТОЧКИ === */
+window.COFFEE_DEFAULT_INVENTORY = [
+  { id: 'inv_beans', name: 'Зерно кофе ILLY (эспрессо)', unit: 'г', stock: 6000, minStock: 1500, perCoffeeShot: 18, category: 'Кофе' },
+  { id: 'inv_milk', name: 'Молоко классическое 3.2%', unit: 'мл', stock: 18000, minStock: 4000, perMilkDrink: 180, category: 'Молоко' },
+  { id: 'inv_alt_milk', name: 'Альтернативное молоко (овсяное/кокосовое)', unit: 'мл', stock: 4000, minStock: 1000, perAltDrink: 180, category: 'Молоко' },
+  { id: 'inv_syrup', name: 'Сиропы в ассортименте', unit: 'мл', stock: 3500, minStock: 700, perSyrupDrink: 20, category: 'Сиропы' },
+  { id: 'inv_cups_s', name: 'Стаканы 180–250 мл с крышкой', unit: 'шт', stock: 350, minStock: 80, category: 'Тара' },
+  { id: 'inv_cups_l', name: 'Стаканы 350–450 мл с крышкой', unit: 'шт', stock: 300, minStock: 80, category: 'Тара' }
+];
+
+window.COFFEE_DEFAULT_EXPIRY_PRESETS = [
+  { label: '🥛 Альт. молоко (48ч)', title: 'Альтернативное молоко Barista (вскрытая пачка)', category: 'Молоко', hours: 48 },
+  { label: '🍶 Сливки / молоко (24ч)', title: 'Сливки / молоко открытое', category: 'Молоко', hours: 24 },
+  { label: '🍰 Десерт витрины (48ч)', title: 'Десерт / выпечка на витрине', category: 'Витрина', hours: 48 },
+  { label: '🍋 Заготовка / сироп (72ч)', title: 'Домашняя заготовка / открытый сироп', category: 'Бар', hours: 72 }
+];
+
+window.COFFEE_DEFAULT_SHOPS = [
+  { id: 'shop_1', name: 'Кофейня №1', plan: 2500, initCounter: 600, active: true },
+  { id: 'shop_2', name: 'Кофейня №2', plan: 2200, initCounter: 100, active: true }
+];

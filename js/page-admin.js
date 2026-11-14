@@ -29,6 +29,9 @@ async function load(){
       if ($('content') && (typeof ownerTopSection === 'undefined' || ownerTopSection === 'admin')) $('content').hidden = false;
       if(inst.location && $('sub')) $('sub').textContent = 'Управление · ' + inst.location;
       render();
+      if (typeof window !== "undefined" && (!window.navigator || !/jsdom|node/i.test(window.navigator.userAgent || ""))) {
+        if (window.coffeeLiveSyncNow) setTimeout(() => window.coffeeLiveSyncNow(), 40);
+      }
       return;
     }
   }
@@ -280,7 +283,31 @@ function rTtk(){
     const fcCls=fc<=28?'ok':(fc<=34?'warn':'bad');
     return '<tr><td><b>'+esc(t.name)+'</b><div class="mu">'+esc(t.volume)+' · '+esc(t.category)+'</div></td><td><b>'+rub(price)+'</b></td><td>'+rub(cost)+'<div class="mu" style="font-size:11px">Зерно '+t.costBeans+' + Мол. '+t.costMilk+' + Стакан '+t.costCup+'</div></td><td><span class="kpi-pill '+fcCls+'">'+fc+'%</span></td><td style="color:var(--good)"><b>+'+rub(margin)+'</b></td><td style="text-align:left;max-width:280px;font-size:12px">'+esc(t.recipe)+'</td><td><div class="acts"><button class="b" data-a="ttk-edit" data-i="'+i+'">Изменить</button><button class="b del" data-a="ttk-del" data-i="'+i+'">Удалить</button></div></td></tr>';
   }).join('')+'</tbody></table></div>';
+  const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);
+  h+='<div class="top" style="margin-top:22px"><h2 style="font-size:18px;margin:0">📦 Складской учёт и автосписание по ТТК ('+inv.length+' поз.)</h2><button class="p" type="button" data-a="inv-new">+ Добавить позицию склада</button></div>';
+  h+='<p class="mu" style="margin:4px 0 10px">При загрузке «Продажи.csv» в Кассе система автоматически списывает зерно (18 г/шот), молоко (180 мл), стаканы и сиропы, а при снижении ниже минимального запаса отправляет уведомление в Telegram.</p>';
+  h+='<div class="sx"><table class="tbl"><thead><tr><th>Позиция склада</th><th>Категория</th><th>Текущий остаток</th><th>Мин. порог</th><th>Статус</th><th></th></tr></thead><tbody>'+inv.map((it,idx)=>{
+    const low=Number(it.stock)<=Number(it.minStock||0);
+    return '<tr><td><b>'+esc(it.name)+'</b></td><td>'+esc(it.category||'Сырьё')+'</td><td><b style="font-size:15px;color:'+(low?'var(--bad)':'var(--good)')+'">'+it.stock+' '+esc(it.unit)+'</b></td><td>'+it.minStock+' '+esc(it.unit)+'</td><td><span class="kpi-pill '+(low?'bad':'ok')+'">'+(low?'⚠️ Пора заказать':'✓ В норме')+'</span></td><td><div class="acts"><button class="b ok" type="button" data-a="inv-restock" data-i="'+idx+'">+ Приход</button><button class="b" type="button" data-a="inv-edit" data-i="'+idx+'">Ревизия</button></div></td></tr>';
+  }).join('')+'</tbody></table></div>';
   return h;
+}
+function invForm(item,isRestock){
+  const isNew=!item;
+  item=item||{id:'inv_'+Date.now().toString(36),name:'',category:'Кофе',unit:'г',stock:1000,minStock:300};
+  if(isRestock){
+    openForm('📦 Приход на склад: '+item.name,[
+      {k:'delta',label:'Количество прихода ('+item.unit+')',type:'number'}
+    ],{delta:1000},(o)=>call('restock_inventory',{id:item.id,delta:Number(o.delta)||0}));
+    return;
+  }
+  openForm(isNew?'📦 Новая позиция склада':'Ревизия остатка: '+item.name,[
+    {k:'name',label:'Наименование сырья / расходника'},
+    {k:'category',label:'Категория',opts:['Кофе','Молоко','Сиропы','Тара','Десерты','Хозтовары']},
+    {k:'unit',label:'Единица измерения (г, мл, шт)',opts:['г','мл','шт','уп']},
+    {k:'stock',label:'Фактический остаток на складе',type:'number'},
+    {k:'minStock',label:'Минимальный порог (для уведомления в Telegram)',type:'number'}
+  ],item,(o)=>call('save_inventory',Object.assign({},item,o)));
 }
 function ttkForm(t){
   const isNew=!t;
@@ -387,7 +414,7 @@ function rSet(){
     if(s.id==='PLAN'||s.id==='WO_NORM'||s.id==='INIT_COUNTER')return '<input id="s_'+i+'" type="number" min="0" step="any" inputmode="decimal" value="'+esc(s.value)+'">';
     return '<input id="s_'+i+'" type="'+(s.secret?'password':'text')+'" autocomplete="off" value="'+esc(s.value)+'" placeholder="'+(s.secret?(s.set?'••••••  задано — введите новый код, чтобы заменить':'не задано'):'')+'">';
   };
-  const tgBox='<div style="background:color-mix(in srgb,var(--crema) 14%,var(--bg));border:1px solid var(--crema);border-radius:16px;padding:14px;margin-bottom:14px"><div class="top" style="margin-bottom:6px"><b>🤖 Telegram-уведомления администратору о поломках (с фото и видео)</b><div class="acts"><button class="b" type="button" data-a="tg-detect">🔍 Найти мой Chat ID</button><button class="p" type="button" data-a="tg-test">📲 Тест: отправить фото поломки в Telegram</button></div></div><div class="mu">1. Создайте бота в <b>@BotFather</b> и вставьте его токен в поле <code>TG_TOKEN</code> ниже.<br>2. Напишите вашему боту <code>/start</code> в Telegram и нажмите <b>«🔍 Найти мой Chat ID»</b> — поле <code>TG_CHAT</code> заполнится автоматически.<br>3. Теперь как только бариста отметит «⚠️ Поломка» в терминале, бот мгновенно пришлёт вам в Telegram сообщение вместе с отснятым фото или видео!</div></div>';
+  const tgBox='<div style="background:color-mix(in srgb,var(--crema) 14%,var(--bg));border:1px solid var(--crema);border-radius:16px;padding:14px;margin-bottom:14px"><div class="top" style="margin-bottom:6px"><b>🤖 Telegram-уведомления администратору о поломках (с фото и видео)</b><div class="acts"><button class="b" type="button" data-a="tg-detect">🔍 Найти мой Chat ID</button><button class="b ok" type="button" data-a="enable-autopilot">🤖 Включить Автопилот 24/7</button><button class="b" type="button" data-a="send-daily-digest">📨 Сводка дня в TG</button><button class="p" type="button" data-a="tg-test">📲 Тест в Telegram</button></div></div><div class="mu">1. Создайте бота в <b>@BotFather</b> и вставьте его токен в поле <code>TG_TOKEN</code> ниже.<br>2. Напишите вашему боту <code>/start</code> в Telegram и нажмите <b>«🔍 Найти мой Chat ID»</b> — поле <code>TG_CHAT</code> заполнится автоматически.<br>3. Теперь как только бариста отметит «⚠️ Поломка» в терминале, бот мгновенно пришлёт вам в Telegram сообщение вместе с отснятым фото или видео!</div></div>';
   const st=window.coffeeVault?window.coffeeVault.getStats():{settingsCount:(D.settings||[]).length,tasksCount:(D.tasks||[]).length,cashDays:(D.cash||[]).length,incidentsCount:(D.incidents||[]).length,updatedAt:'активно'};
   const gSheetBox='<div style="background:color-mix(in srgb,var(--good) 12%,var(--bg));border:1.5px solid var(--good);border-radius:16px;padding:14px;margin-bottom:14px">' +
     '<div class="top" style="margin-bottom:6px"><b>📊 Двусторонняя синхронизация с привязанной Google Таблицей (все листы и настройки)</b>' +
@@ -420,7 +447,16 @@ function rSet(){
     '<button type="button" class="p" id="runUnitTestsBtn" style="padding:7px 14px;font-size:13px">🧪 Запустить 19 автотестов</button></div>' +
     '<div class="mu">Все изменения настроек, планов Пн–Вс, временных окон и кодов доступа мгновенно синхронизируются с Терминалом бариста, Дашбордом и Отчётами.</div>' +
     '<div id="unitTestsResultBox" style="margin-top:10px" hidden></div></div>';
-  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
+  const shopsList = Array.isArray(D.shops) && D.shops.length ? D.shops : (window.COFFEE_DEFAULT_SHOPS || []);
+  const shopsBox = '<div style="background:color-mix(in srgb,var(--crema) 9%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px">' +
+    '<div class="top" style="margin-bottom:8px"><b>🏪 Сеть кофеен (Мульти-точка): активна «' + esc(D.location || 'Кофейня №1') + '»</b><button class="b" type="button" data-a="shop-new">+ Добавить кофейню</button></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      shopsList.map((sh) => {
+        const isCur = sh.name === D.location;
+        return '<button type="button" class="' + (isCur ? 'p' : 'b') + '" data-a="shop-switch" data-shop="' + esc(sh.name) + '">📍 ' + esc(sh.name) + ' (план ' + (sh.plan || 2500) + ' руб.)</button>';
+      }).join('') +
+    '</div></div>';
+  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+shopsBox+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
 
 /* ----- действия ----- */
 $('panel').addEventListener('input',(e)=>{
@@ -726,3 +762,17 @@ window.addEventListener('storage', (e) => {
   }
 });
 
+
+if (window.coffeeBus) {
+  window.coffeeBus.on((msg) => {
+    if (msg && (msg.type === "mutation" || msg.type === "server_sync")) {
+      if (typeof document !== "undefined" && document.querySelector("dialog[open]")) return;
+      const ae = typeof document !== "undefined" ? document.activeElement : null;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+      if (typeof window.coffeeGetInstantAdmin === "function") {
+        D = window.coffeeGetInstantAdmin();
+        render();
+      }
+    }
+  });
+}

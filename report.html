@@ -11,9 +11,9 @@
 <script>try{var t=localStorage.getItem('coffee_illy_theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}</script>
 <script>window.OWNER_START_SECTION='report';</script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="css/owner.css?v=60">
-<link rel="stylesheet" href="css/light.css?v=60">
-<script src="version.js?v=60"></script>
+<link rel="stylesheet" href="css/owner.css?v=65">
+<link rel="stylesheet" href="css/light.css?v=65">
+<script src="version.js?v=65"></script>
 </head>
 <body>
 <header class="app-header"><div class="wrap">
@@ -37,16 +37,16 @@
 
   <!-- 3. УПРАВЛЕНИЕ И НАСТРОЙКИ (9 ВКЛАДОК В 1 СТРОЧКУ) -->
   <div id="content" hidden>
-    <div class="seg" id="tabs" role="tablist" aria-label="Что редактировать">
-      <button data-t="checklists">📋 Таймлайн</button>
-      <button data-t="tasks">📝 Задачи</button>
-      <button data-t="inc">🔧 Поломки</button>
-      <button data-t="ttk">☕ Техкарты</button>
-      <button data-t="cash">⚖️ Выручка</button>
-      <button data-t="exp">💸 Расходы</button>
-      <button data-t="staff">👥 Штат</button>
-      <button data-t="audit">⭐ Аудит</button>
-      <button data-t="set">⚙️ Настройки</button>
+    <div class="seg" id="tabs" role="tablist" aria-label="Разделы управления (Операции · Финансы · Персонал и стандарты · Система)">
+      <button data-t="checklists" title="Операции: Таймлайн и окна смен">📋 Таймлайн</button>
+      <button data-t="tasks" title="Операции: Задачи, Карта добрых дел и Информирование">📝 Задачи</button>
+      <button data-t="inc" title="Операции: Реестр поломок и инцидентов">🔧 Поломки</button>
+      <button data-t="cash" title="Финансы: Выручка, Z-отчёты и сверка кассы">⚖️ Выручка</button>
+      <button data-t="exp" title="Финансы: Операционные расходы OpEx">💸 Расходы</button>
+      <button data-t="staff" title="Персонал: Штат, графики и PIN-коды">👥 Штат</button>
+      <button data-t="ttk" title="Стандарты: Технологические карты напитков">☕ Техкарты</button>
+      <button data-t="audit" title="Стандарты: Чек-листы аудита сервиса">⭐ Аудит</button>
+      <button data-t="set" title="Система: Настройки, Безопасность, Склад и Резервные копии">⚙️ Настройки</button>
     </div>
     <section class="card" id="panel"></section>
   </div>
@@ -54,17 +54,17 @@
 <dialog id="dlg"><form id="dform" method="dialog"><h2 id="dtitle" style="font-size:20px"></h2><div id="dfields"></div><div id="derr" style="color:var(--bad);font-size:14px;margin-top:8px"></div>
   <div class="acts" style="margin-top:12px"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" id="dsave" value="ok">Сохранить</button></div></form></dialog>
 <div class="toast" id="toast" hidden></div>
-<script src="config.js?v=60"></script>
-<script src="js/defaults.js?v=60"></script>
-<script src="js/security.js?v=60"></script>
-<script src="js/storage.js?v=60"></script>
-<script src="js/analytics.js?v=60"></script>
-<script src="js/sales-reconciliation.js?v=60"></script>
-<script src="js/sync.js?v=60"></script>
-<script src="js/telegram.js?v=60"></script>
+<script src="config.js?v=65"></script>
+<script src="js/defaults.js?v=65"></script>
+<script src="js/security.js?v=65"></script>
+<script src="js/storage.js?v=65"></script>
+<script src="js/analytics.js?v=65"></script>
+<script src="js/sales-reconciliation.js?v=65"></script>
+<script src="js/sync.js?v=65"></script>
+<script src="js/telegram.js?v=65"></script>
 <script src="tests/unit-tests.js"></script>
-<script src="js/page-admin.js?v=60"></script>
-<script src="js/page-owner.js?v=60"></script>
-<script src="app.js?v=60" defer></script>
+<script src="js/page-admin.js?v=65"></script>
+<script src="js/page-owner.js?v=65"></script>
+<script src="app.js?v=65" defer></script>
 </body>
 </html>

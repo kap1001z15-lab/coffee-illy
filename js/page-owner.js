@@ -1,3 +1,7 @@
+if (typeof $ === 'undefined') { var $ = (id) => document.getElementById(id); }
+if (typeof esc === 'undefined') { var esc = window.escapeHtml || ((s) => String(s == null ? '' : s)); }
+if (typeof rub === 'undefined') { var rub = (n) => Math.round(Number(n || 0)).toLocaleString('ru-RU') + ' руб.'; }
+if (typeof dmy === 'undefined') { var dmy = (s) => s ? s.slice(8) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
 /* =========================================================================
    ЕДИНОЕ ПРИЛОЖЕНИЕ ВЛАДЕЛЬЦА И АДМИНИСТРАТОРА (ДАШБОРД + ОТЧЁТЫ + УПРАВЛЕНИЕ)
    Бесшовное переключение в одном окне без перезагрузки страницы и без диалогов!
@@ -385,6 +389,89 @@ function renderOwnerDashboardSection() {
         '</div>' +
       '</div>' +
 
+      /* ПОЛНАЯ ОПЕРАЦИОННАЯ СВОДКА АДМИНИСТРАТОРА НА ДАШБОРДЕ: СВЕРКА СЧЁТЧИКА, АКТИВНОСТЬ СМЕНЫ И СКЛАД */
+      ((function () {
+        const periodCash = (db.cash || []).filter((c) => c && c.date >= ownerDashFrom && c.date <= ownerDashTo);
+        let totCoffee = 0, totNonCoffee = 0, totReview = 0, totWoShots = 0, totGrinder = 0, totUnacc = 0;
+        periodCash.forEach((c) => {
+          totCoffee += Number(c.coffeeQty) || 0;
+          totNonCoffee += Number(c.nonCoffeeQty) || 0;
+          totReview += Number(c.reviewQty) || 0;
+          totWoShots += Number(c.writeoffShots) || 0;
+          totUnacc += Number(c.unaccountedShots) || 0;
+          if (c.counterStart != null && c.counterEnd != null && window.coffeeCounterDelta) {
+            const d = window.coffeeCounterDelta(c.counterStart, c.counterEnd);
+            if (d !== null) totGrinder += d;
+          }
+        });
+        const invList = Array.isArray(db.inventory) && db.inventory.length ? db.inventory : (window.COFFEE_DEFAULT_INVENTORY || []);
+        const lowInv = invList.filter((x) => x && Number(x.stock) <= Number(x.minStock || 0));
+        const actStates = (db.userActiveState && typeof db.userActiveState === 'object') ? db.userActiveState : {};
+        const todayIso = _isoToday();
+        const activeBaristasNow = Object.keys(actStates).filter((u) => actStates[u] && actStates[u].date === todayIso).map((u) => {
+          const st = actStates[u];
+          return '👤 <b>' + esc(u) + '</b>: ' + esc(st.block || 'Чек-лист') + ' (шаг ' + ((Number(st.idx) || 0) + 1) + ')';
+        });
+
+        return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:14px">' +
+          '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">☕ Сверка кофемолки и номенклатуры</b><span class="tag ' + (totUnacc > 0 || totReview > 0 ? 'no' : 'ok') + '">' + (totUnacc > 0 ? ('Разница: +' + totUnacc) : 'Сходится') + '</span></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12.5px">' +
+              '<div>Кофе по CSV: <b>' + totCoffee + ' шт.</b></div>' +
+              '<div>Не кофе: <b>' + totNonCoffee + ' шт.</b></div>' +
+              '<div>Срабатываний счётчика: <b>' + (totGrinder || '—') + '</b></div>' +
+              '<div>Списано порций: <b>' + totWoShots + ' шт.</b></div>' +
+              '<div>Спорных позиций: <b style="color:' + (totReview > 0 ? 'var(--warn)' : 'inherit') + '">' + totReview + ' шт.</b></div>' +
+              '<div>Необъяснённая разница: <b style="color:' + (totUnacc > 0 ? 'var(--bad)' : 'var(--good)') + '">' + totUnacc + '</b></div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">📦 Остатки склада (автосписание по ТТК)</b><span class="tag ' + (lowInv.length > 0 ? 'no' : 'ok') + '">' + (lowInv.length > 0 ? ('Мало: ' + lowInv.length + ' поз.') : 'Запас в норме') + '</span></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:12.5px">' +
+              invList.slice(0, 6).map((it) => {
+                const isLow = Number(it.stock) <= Number(it.minStock || 0);
+                return '<div>' + esc(it.name.split(' ')[0]) + ': <b style="color:' + (isLow ? 'var(--bad)' : 'inherit') + '">' + it.stock + ' ' + esc(it.unit) + '</b></div>';
+              }).join('') +
+            '</div>' +
+          '</div>' +
+
+          '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">📡 Онлайн-активность сотрудников</b><span class="tag ok">Live Sync</span></div>' +
+            '<div style="font-size:12.5px;line-height:1.5">' +
+              (activeBaristasNow.length ? activeBaristasNow.join('<br>') : '<span class="mu">Все открытые чек-листы завершены или ожидают начала окна</span>') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      })()) +
+
+      /* ЕДИНЫЙ ЦЕНТР КОНТРОЛЯ СОБЫТИЙ И ОТКЛОНЕНИЙ (ТЗ Аудита п. 5) */
+      ((function () {
+        const unreadAnns = (db.announcements || []).filter((a) => {
+          const acks = Array.isArray(a.acks) ? a.acks : [];
+          const targets = Array.isArray(a.targetStaff) && a.targetStaff.length ? a.targetStaff : ['Соня', 'Алина', 'Настя'];
+          return targets.some((tName) => !acks.some((k) => String(k.name || '').toLowerCase() === String(tName).toLowerCase()));
+        });
+        const outboxSt = window.coffeeGetOutboxStatus ? window.coffeeGetOutboxStatus() : { pending: 0, failed: 0, blocked: '' };
+        const periodCash = (db.cash || []).filter((c) => c && c.date >= ownerDashFrom && c.date <= ownerDashTo);
+        const cashDiffDays = periodCash.filter((c) => Number(c.unaccountedShots) > 0 || Number(c.reviewQty) > 0 || (c.zTotal != null && (Number(c.cash) + Number(c.card)) !== Number(c.zTotal)));
+        const expiredStickers = (db.expiryItems || []).filter((e) => e && !e.disposed && Number(e.expiresAtMs) <= Date.now());
+        const totalEvents = overdueBlocksNow.length + openIncs.length + cashDiffDays.length + unreadAnns.length + outboxSt.pending + outboxSt.failed + expiredStickers.length;
+        return '<div style="margin-top:14px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+            '<b style="font-size:14px">🎯 Центр контроля событий и операционных отклонений</b>' +
+            '<span class="tag ' + (totalEvents === 0 ? 'ok' : 'no') + '">' + (totalEvents === 0 ? '0 активных событий' : ('Событий: ' + totalEvents)) + '</span>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;font-size:12.5px">' +
+            '<div style="padding:8px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)">⏰ Просроченные чек-листы: <b style="color:' + (overdueBlocksNow.length ? 'var(--bad)' : 'var(--good)') + '">' + overdueBlocksNow.length + '</b></div>' +
+            '<div style="padding:8px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)">⚖️ Сверка кассы / счётчика: <b style="color:' + (cashDiffDays.length ? 'var(--warn)' : 'var(--good)') + '">' + (cashDiffDays.length ? (cashDiffDays.length + ' дн. на проверку') : 'Без расхождений') + '</b></div>' +
+            '<div style="padding:8px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)">🔧 Необработанные поломки: <b style="color:' + (openIncs.length ? 'var(--bad)' : 'var(--good)') + '">' + openIncs.length + '</b></div>' +
+            '<div style="padding:8px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)">📢 Непрочитанные объявления: <b style="color:' + (unreadAnns.length ? 'var(--warn)' : 'var(--good)') + '">' + unreadAnns.length + '</b></div>' +
+            '<div style="padding:8px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)">🏷 Просроченные маркировки: <b style="color:' + (expiredStickers.length ? 'var(--bad)' : 'var(--good)') + '">' + expiredStickers.length + '</b></div>' +
+            '<div style="padding:8px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line)">🔄 Очередь синхронизации: <b style="color:' + (outboxSt.pending || outboxSt.failed ? 'var(--warn)' : 'var(--good)') + '">' + (outboxSt.pending ? ('В очереди: ' + outboxSt.pending) : (outboxSt.failed ? ('Ошибок: ' + outboxSt.failed) : 'Синхронизировано (0)')) + '</b></div>' +
+          '</div>' +
+        '</div>';
+      })()) +
       /* ПОКАЗЫВАЕМ СПИСОК ТОЛЬКО ЕСЛИ ЕСТЬ АКТИВНЫЕ ОТКЛОНЕНИЯ ИЛИ ПОЛОМКИ */
       (hasUrgentItems ? (
         '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
@@ -584,6 +671,12 @@ function renderOwnerReportSection() {
         '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">5. Гости, Чеки и CAC</div><div style="font-size:22px;font-weight:800;margin:4px 0">' + fin.checksTotal + ' чек. · ' + rub(fin.avgCheck) + '</div><div class="mu">Ср. выручка смены: ' + rub(fin.avgRevPerShift || 0) + ' · CAC: ' + rub(fin.cac) + '</div><div>' + _dlt(fin.checksTotal, prevFin && prevFin.checksTotal) + ' <span class="mu">(чеки)</span></div></div>' +
       '</div>' +
       '<div class="rep-hl"><b>Главное за период:</b> ' + _highlights.join(' · ') + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px;font-size:12.5px">' +
+        '<div style="padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--good) 45%,var(--line));background:color-mix(in srgb,var(--good) 7%,var(--bg))"><b>🟢 ФАКТИЧЕСКИЕ ПОКАЗАТЕЛИ (Касса и Расходы):</b><div class="mu" style="margin-top:3px">Выручка: <b>' + rub(fin.revenue) + '</b> (Нал: ' + rub(fin.cashTotal) + ' · Безнал: ' + rub(fin.cardTotal) + ') · Внесённые расходы OpEx: <b>' + rub(fin.nonPayrollOpex) + '</b> · Списания: <b>' + rub(fin.wasteCost) + '</b></div></div>' +
+        '<div style="padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)"><b>🔵 РАСЧЁТНЫЕ ПОКАЗАТЕЛИ (ТТК и смены):</b><div class="mu" style="margin-top:3px">Средний чек: <b>' + rub(fin.avgCheck) + '</b> · Себестоимость COGS по ТТК: <b>' + rub(fin.cogs) + '</b> · Расчётный ФОТ (' + (fin.shiftsCount || 0) + ' см.): <b>' + rub(fin.effectivePayroll) + '</b></div></div>' +
+        '<div style="padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)"><b>🟣 ПРОГНОЗНЫЕ И ПЛАНОВЫЕ ОРИЕНТИРЫ:</b><div class="mu" style="margin-top:3px">План выручки периода: <b>' + rub(rep.plan || 0) + '</b> (' + (rep.pct || 0) + '% факт) · Точка безубыточности: <b>' + rub(sim.breakEvenRevenue || 30000) + '/мес.</b></div></div>' +
+      '</div>' +
+      (fin.revenue > 0 && fin.nonPayrollOpex === 0 ? '<div style="margin-top:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--bg));font-size:12.5px"><b>⚠️ Статус неполных данных OpEx:</b> за выбранный период в раздел «Расходы» ещё не внесены постоянные операционные издержки (аренда, коммунальные, прочие счета). Показатель прибыли отражает <b>операционный результат смены</b> (Выручка − COGS по ТТК − ФОТ − Списания) без вычета аренды.</div>' : '') +
     '</div>' +
 
     /* БЛОК 1: ПОЛНЫЙ УПРАВЛЕНЧЕСКИЙ ОТЧЁТ P&L (ОПиУ) И СТРУКТУРА РАСХОДОВ */
@@ -662,6 +755,32 @@ function renderOwnerReportSection() {
         '</tbody></table></div>' +
       '</div>' +
     '</div>' +
+
+    /* БЛОК 3.1: СКЛАДСКОЙ УЧЁТ ОСТАТКОВ ПО ТТК И МАРКИРОВКИ СРОКОВ ГОДНОСТИ */
+    ((function () {
+      const invList = Array.isArray(db.inventory) && db.inventory.length ? db.inventory : (window.COFFEE_DEFAULT_INVENTORY || []);
+      const expAlerts = window.coffeeGetActiveExpiryAlerts ? window.coffeeGetActiveExpiryAlerts(db) : { allActive: [], urgentCount: 0 };
+      return '<div class="card" style="margin-top:14px">' +
+        '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">📦 Складской учёт остатков (автосписание по ТТК) и контроль сроков годности</h2><button type="button" class="b" data-jumpadm="ttk">Управление складом и ТТК</button></div>' +
+        '<div class="sx"><table class="tbl"><thead><tr><th>Сырьё / Расходник</th><th>Категория</th><th>Текущий остаток</th><th>Мин. норматив</th><th>Статус запаса</th></tr></thead><tbody>' +
+          invList.map((it) => {
+            const low = Number(it.stock) <= Number(it.minStock || 0);
+            return '<tr><td><b>' + esc(it.name) + '</b></td><td>' + esc(it.category || 'Сырьё') + '</td><td><b style="color:' + (low ? 'var(--bad)' : 'var(--good)') + '">' + it.stock + ' ' + esc(it.unit) + '</b></td><td>' + it.minStock + ' ' + esc(it.unit) + '</td><td><span class="tag ' + (low ? 'no' : 'ok') + '">' + (low ? '⚠️ Требуется закупка' : '✓ Запас в норме') + '</span></td></tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+        (expAlerts.allActive.length ? (
+          '<div style="margin-top:12px"><h3>⏱ Активные маркировки вскрытых позиций (' + expAlerts.allActive.length + ')</h3>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;margin-top:6px">' +
+            expAlerts.allActive.map((it) => (
+              '<div style="padding:8px 11px;border-radius:10px;border:1px solid ' + (it.isExpired ? 'var(--bad)' : 'var(--line)') + ';background:var(--bg);font-size:12.5px">' +
+                '<b>' + esc(it.title) + '</b> · <span style="color:' + (it.isExpired ? 'var(--bad)' : 'var(--good)') + ';font-weight:700">' + (it.isExpired ? 'Срок истёк!' : ('осталось ' + it.hoursLeft + ' ч')) + '</span>' +
+                '<div class="mu" style="font-size:11.5px">Открыто: ' + esc(it.openedAtStr || '') + ' → До: ' + esc(it.expiresAtStr || '') + ' (' + esc(it.who || '') + ')</div>' +
+              '</div>'
+            )).join('') +
+          '</div></div>'
+        ) : '') +
+      '</div>';
+    })()) +
 
     /* БЛОК 4: ПЕРСОНАЛ: СМЕНЫ, ВЫРУЧКА, ДИСЦИПЛИНА, АУДИТЫ СЕРВИСА, ФОТ И ОЗНАКОМЛЕНИЕ С РЕГЛАМЕНТАМИ */
     '<div class="card" id="rep-s4" style="margin-top:14px">' +
@@ -1043,3 +1162,7 @@ window.addEventListener('storage', (e) => {
     _scheduleOwnerRefresh();
   }
 });
+
+window.renderOwnerDashboardSection = renderOwnerDashboardSection;
+window.renderOwnerReportSection = renderOwnerReportSection;
+window.switchOwnerTopSection = switchOwnerTopSection;
