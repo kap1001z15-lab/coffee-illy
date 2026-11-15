@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F7F5F0">
-<script>try{var t=localStorage.getItem('coffee_illy_theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}</script>
+<script>var _t='dark';try{_t=localStorage.getItem('coffee_illy_theme')||'dark';}catch(e){}document.documentElement.setAttribute('data-theme',_t==='light'?'light':'dark');</script>
 <script>window.COFFEE_IS_BARISTA_TERMINAL = true;</script>
 <title>Coffee Illy — Терминал бариста (Barista Simple)</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -16,51 +16,48 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="css/terminal.css?v=67">
-<link rel="stylesheet" href="css/light.css?v=67">
-<script src="config.js?v=67"></script>
-<script src="js/defaults.js?v=67"></script>
-<script src="js/security.js?v=67"></script>
-<script src="js/storage.js?v=67"></script>
-<script src="js/analytics.js?v=67"></script>
-<script src="js/sales-reconciliation.js?v=67"></script>
-<script src="js/sync.js?v=67"></script>
-<script src="js/telegram.js?v=67"></script>
-<script src="version.js?v=67"></script>
+<link rel="stylesheet" href="css/terminal.css?v=71">
+<link rel="stylesheet" href="css/light.css?v=71">
+<script src="config.js?v=71"></script>
+<script src="js/defaults.js?v=71"></script>
+<script src="js/security.js?v=71"></script>
+<script src="js/storage.js?v=71"></script>
+<script src="js/analytics.js?v=71"></script>
+<script src="js/sales-reconciliation.js?v=71"></script>
+<script src="js/sync.js?v=71"></script>
+<script src="js/telegram.js?v=71"></script>
+<script src="version.js?v=71"></script>
 </head>
 <body>
 <header>
   <div class="wrap">
-    <div class="brand">
+    <div class="brand" style="align-items:center">
       <div class="brand-left">
-        <h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10h16v8a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M22 12h2a3 3 0 0 1 0 6h-2"/><path d="M11 4v2M15 3v3M19 4v2"/></svg>Кофейня</h1>
-        <div class="brand-meta"><span class="sub" id="loc">Кофейня №1</span><span class="sub-dot">·</span><span class="sub" id="today"></span><span id="netStatusBadge" class="net-pill online">🟢 Онлайн</span></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <h1 style="margin:0"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>Coffee Illy</h1>
+          <span id="netStatusBadge" class="net-pill online" style="font-size:11px;padding:2px 8px" title="Статус сети">Онлайн</span>
+          <span id="dataSyncStatusBadge" class="sync-pill synced" title="Статус сохранения данных на сервере">✓ Данные сохранены</span>
+        </div>
+        <div class="brand-meta"><span class="sub" id="loc">Кофейня №1</span><span class="sub-dot">·</span><span class="sub" id="today"></span></div>
       </div>
-      <div class="who">
+      <div class="who" style="display:flex;align-items:center;gap:6px">
         <b id="who" hidden></b>
-        <select id="baristaSelect" class="barista-sel" aria-label="Учётная запись сотрудника" title="Выберите свою учётную запись">
-          <option value="Соня">👤 Соня</option>
-          <option value="Алина">👤 Алина</option>
-          <option value="Настя">👤 Настя</option>
-          <option value="Максим">👤 Максим</option>
+        <select id="baristaSelect" class="barista-sel" aria-label="Учётная запись сотрудника" title="Сотрудник смены">
+          <option value="Соня">Соня</option>
+          <option value="Алина">Алина</option>
+          <option value="Настя">Настя</option>
+          <option value="Максим">Максим</option>
         </select>
-        <button class="theme-btn" id="staffLogoutBtn" type="button" title="Сменить сотрудника / Выйти из смены" aria-label="Сменить сотрудника">🚪</button>
-        <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">🌙</button>
+        <button class="theme-btn" id="baristaProfileBtn" type="button" title="Профиль, тема, PIN и сессия (Раздел 3.9)" aria-label="Меню профиля" style="width:auto !important;padding:0 10px !important;font-size:12.5px !important;gap:4px"><span id="baristaAvatarInitials" style="display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--brew);color:#fff;align-items:center;justify-content:center;font-size:11px;font-weight:700">С</span><span>Профиль</span></button>
+        <button class="theme-btn" id="staffLogoutBtn" type="button" title="Сменить сотрудника" aria-label="Сменить сотрудника" hidden>⇄</button>
+        <button class="theme-btn" id="theme" type="button" aria-label="Сменить тему">☀️</button>
       </div>
     </div>
-    <div class="seg" id="termModeSwitch">
-      <button type="button" data-tmode="checklists" class="ok">📋 Чек-листы</button>
-      <button type="button" data-tmode="tasks_info"><span id="termInfoModeLbl">📢 Инфо и ТТК</span></button>
+    <div class="seg" id="termModeSwitch" hidden>
+      <button type="button" data-tmode="checklists" class="ok">Чек-листы</button>
+      <button type="button" data-tmode="tasks_info"><span id="termInfoModeLbl">Инфо и ТТК</span></button>
     </div>
-    <div class="tabs" id="termTimelineTabs" role="tablist" aria-label="Таймлайн чек-листов">
-      <button role="tab" data-b="Открытие" data-l="Открытие" aria-selected="true">Открытие</button>
-      <button role="tab" data-b="Лайн Чек 1" data-l="Лайн Чек 1" aria-selected="false">Лайн Чек 1</button>
-      <button role="tab" data-b="Лайн Чек 2" data-l="Лайн Чек 2" aria-selected="false">Лайн Чек 2</button>
-      <button role="tab" data-b="Закрытие" data-l="Закрытие" aria-selected="false">Закрытие</button>
-      <button role="tab" data-b="КАССА" data-l="Касса" aria-selected="false">Касса</button>
-      <button role="tab" data-b="Карта добрых дел" data-l="Карта добрых дел" aria-selected="false">Карта добрых дел</button>
-    </div>
-    <div class="steps" id="steps" aria-hidden="true"></div>
+    <div class="steps" id="steps" aria-hidden="true" style="margin-top:6px"></div>
   </div>
 </header>
 <div class="cam" id="cam" hidden role="dialog" aria-label="Камера">
@@ -77,22 +74,62 @@
   <div class="bar"><button class="x" id="camCancel" type="button">Отмена</button><button class="shutter" id="camShot" type="button" aria-label="Снять" disabled></button><button class="x" id="camFlip" type="button" style="text-align:right" aria-label="Сменить камеру">🔄 Сменить</button></div>
 </div>
 <main>
-  <section id="myShiftSummaryCard" class="my-shift-card" aria-label="Моя смена">
-    <div class="my-shift-top">
+  <div id="offlineCompactBanner" class="notice" hidden style="border-style:solid;border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,var(--surface));margin-bottom:10px;padding:10px 12px">
+    <div>
+      <b style="display:block;font-size:13px;color:var(--warn)">Нет соединения</b>
+      <span id="offlineCompactText" style="font-size:12px;color:var(--ink)">Операции в очереди. Черновики сохранены на устройстве.</span>
+    </div>
+    <button type="button" id="offlineRetrySyncBtn" style="font-size:12px">Синхронизировать</button>
+  </div>
+  <section id="myShiftSummaryCard" class="my-shift-card" aria-label="Текущая смена">
+    <div class="my-shift-header-row">
+      <span class="my-shift-eyebrow">ТЕКУЩАЯ СМЕНА</span>
+      <span id="myShiftStatusBadge" class="kpi-pill ok">Активна</span>
+    </div>
+    <div class="my-shift-main-row">
       <div>
-        <span class="muted" style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">☕ Coffee Illy · Моя смена</span>
-        <div style="font-size:16px;font-weight:800;color:var(--ink)" id="myShiftStageTitle">Этап: Открытие смены</div>
+        <div class="my-shift-stage-name" id="myShiftStageTitle">Открытие смены</div>
+        <div class="my-shift-meta-line"><span id="myShiftBaristaLbl">Настя</span> · <span id="myShiftTimeLbl">08:00</span> · Чек-лист: <b id="myShiftBlockLbl" style="color:var(--ink)">Открытие</b></div>
       </div>
-      <span id="myShiftStatusBadge" class="kpi-pill ok">🟢 Смена активна</span>
+      <div class="my-shift-progress-col">
+        <span class="prog-lbl">Выполнение</span>
+        <span class="prog-val" id="myShiftPctLbl">0 / 8</span>
+      </div>
     </div>
-    <div class="my-shift-grid">
-      <div class="my-shift-cell"><span class="muted">Сотрудник</span><b id="myShiftBaristaLbl">Алина</b></div>
-      <div class="my-shift-cell"><span class="muted">Чек-лист</span><b id="myShiftBlockLbl">Открытие</b></div>
-      <div class="my-shift-cell"><span class="muted">Выполнение</span><b id="myShiftPctLbl">0% (0/0)</b></div>
+    <div class="my-shift-next-row">
+      <div class="my-shift-next-info">
+        <span class="my-shift-next-lbl">СЛЕДУЮЩАЯ ЗАДАЧА</span>
+        <span class="my-shift-next-title" id="myShiftNextTaskLbl">Проверить чистоту кофемашины</span>
+        <span class="my-shift-next-hint" id="myShiftNextHintLbl">Ориентировочное время: 2–3 мин</span>
+      </div>
+      <button type="button" class="btn" id="continueShiftBtn" style="width:auto;min-height:38px !important;padding:0 14px;font-size:13px !important">Начать проверку</button>
     </div>
-    <div class="my-shift-next">
-      <div style="font-size:12.5px;color:var(--muted);flex:1;min-width:180px">Следующая задача: <b style="color:var(--ink)" id="myShiftNextTaskLbl">Загрузка задач смены…</b></div>
-      <button type="button" class="btn" id="continueShiftBtn" style="width:auto;min-height:38px;padding:0 16px;font-size:13.5px;border-radius:10px">Продолжить ➔</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:6px 10px;border-radius:8px"><span class="muted">Задачи выполнены</span><b id="myShiftDoneStat">0 из 8</b></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);padding:6px 10px;border-radius:8px"><span class="muted">Незакрытые проблемы</span><b id="myShiftOpenIncsStat">0</b></div>
+    </div>
+  </section>
+
+  <section id="baristaAttentionBanner" class="barista-attention-banner" hidden aria-label="Требует внимания">
+    <div>
+      <span class="att-title" id="baristaAttentionTitle">⚠️ Требует внимания (1)</span>
+      <span class="att-desc" id="baristaAttentionDesc">Открытое обращение по оборудованию на смене</span>
+    </div>
+    <button type="button" class="btn-secondary" id="baristaAttentionGoBtn" style="padding:6px 12px;font-size:12.5px;min-height:36px;cursor:pointer">Посмотреть проблему</button>
+  </section>
+
+  <section id="shiftStagesCard" class="shift-stages-card" aria-label="Этапы смены">
+    <div class="shift-stages-header">
+      <span>Этапы смены</span>
+      <span id="shiftStagesSummaryTag" style="text-transform:none;font-weight:600">По расписанию</span>
+    </div>
+    <div class="tabs" id="termTimelineTabs" role="tablist" aria-label="Этапы смены">
+      <button role="tab" data-b="Открытие" data-l="Открытие" aria-selected="true"><span>Открытие</span><span class="st-pill">Текущий этап</span></button>
+      <button role="tab" data-b="Лайн Чек 1" data-l="Лайн Чек 1" aria-selected="false"><span>Лайн Чек 1</span><span class="st-pill">08:30</span></button>
+      <button role="tab" data-b="Лайн Чек 2" data-l="Лайн Чек 2" aria-selected="false"><span>Лайн Чек 2</span><span class="st-pill">14:00</span></button>
+      <button role="tab" data-b="Закрытие" data-l="Закрытие" aria-selected="false"><span>Закрытие</span><span class="st-pill">21:30</span></button>
+      <button role="tab" data-b="КАССА" data-l="Касса" aria-selected="false"><span>Касса</span><span class="st-pill">Доступна</span></button>
+      <button role="tab" data-b="Карта добрых дел" data-l="Карта добрых дел" aria-selected="false"><span>Карта добрых дел</span><span class="st-pill">В смену</span></button>
     </div>
   </section>
   <div id="queueNote" class="notice" hidden><span id="queueText"></span><button id="queueBtn">Отправить</button></div>
@@ -155,8 +192,13 @@
         </div>
       </div>
       <h2 id="taskTitle"></h2>
-      <div class="task-info-unified" style="background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--brew);border-radius:14px;padding:12px 14px;margin:0 0 16px">
-        <p class="instr" id="taskInstruction" style="background:transparent;border:0;padding:0;margin:0"></p>
+      <div class="task-info-unified" style="background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--brew);border-radius:14px;padding:12px 14px;margin:0 0 14px">
+        <span class="label" style="margin:0 0 4px;font-size:10.5px;color:var(--brew)">Что необходимо сделать</span>
+        <p class="instr" id="taskInstruction" style="background:transparent;border:0;padding:0;margin:0 0 10px"></p>
+        <div style="padding-top:8px;border-top:1px solid var(--line)">
+          <span class="label" style="margin:0 0 3px;font-size:10.5px;color:var(--good)">Критерий правильного выполнения</span>
+          <p id="taskCriteriaText" style="margin:0;font-size:13px;color:var(--ink)">Поверхности чистые, оборудование исправно, все элементы на штатных местах, видимых загрязнений нет.</p>
+        </div>
         <details id="inlineSampleDetails" class="inline-std" style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)">
           <summary id="btnSampleModal" style="cursor:pointer;font-weight:700;font-size:13.5px;color:var(--brew);list-style:none;display:flex;align-items:center;justify-content:space-between">
             <span>📷 Фотообразец и стандарт (с какого ракурса снимать)</span>
@@ -183,13 +225,23 @@
 
       <div class="field">
         <span class="label">Результат проверки</span>
-        <div class="seg">
-          <button type="button" id="btnOk">✅ Всё в норме</button>
-          <button type="button" id="btnInc">⚠️ Обнаружена проблема</button>
+        <div class="seg three-outcomes">
+          <button type="button" id="btnOk">Всё в норме</button>
+          <button type="button" id="btnInc">Обнаружена проблема</button>
+          <button type="button" id="btnCannotDo">Невозможно выполнить</button>
         </div>
         <p class="muted" id="choiceHint" style="margin:6px 0 0;font-size:12.5px"></p>
       </div>
 
+      <div id="cannotDoReasonBox" hidden style="margin-top:10px;padding:12px;border-radius:12px;border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--bg))">
+        <label class="label" for="cannotDoReasonSelect" style="color:var(--warn)">Причина невыполнения шага</label>
+        <select id="cannotDoReasonSelect" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600">
+          <option value="Нет необходимого продукта">Нет необходимого продукта</option>
+          <option value="Оборудование неисправно">Оборудование неисправно</option>
+          <option value="Отсутствует доступ">Отсутствует доступ</option>
+          <option value="Другая причина">Другая причина (укажите в комментарии ниже)</option>
+        </select>
+      </div>
       <div id="incidentBox" hidden>
         <div class="field">
           <label class="label" for="incidentType" style="color:var(--bad)">Тип инцидента (по классификатору)</label>
@@ -222,15 +274,26 @@
       <button class="btn" id="nextBtn" type="button" style="grid-column:2">Далее</button>
     </div>
     </div>
+    <div class="panel" id="shiftSummaryDigestCard" style="margin-top:10px;padding:12px 14px !important">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span class="label" style="margin:0">Сводка текущей смены</span>
+        <span class="muted" style="font-size:11.5px" id="shiftDigestSyncLbl">Синхронизация: подтверждено</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:12px;text-align:center">
+        <div style="background:var(--bg);padding:6px;border-radius:8px"><span class="muted" style="display:block;font-size:10.5px">Задачи</span><b id="sdTasksDone">0 / 0</b></div>
+        <div style="background:var(--bg);padding:6px;border-radius:8px"><span class="muted" style="display:block;font-size:10.5px">Проблемы</span><b id="sdProblemsCnt">0</b></div>
+        <div style="background:var(--bg);padding:6px;border-radius:8px"><span class="muted" style="display:block;font-size:10.5px">Касса</span><b id="sdCashState">Ожидает</b></div>
+        <div style="background:var(--bg);padding:6px;border-radius:8px"><span class="muted" style="display:block;font-size:10.5px">Фото</span><b id="sdPhotosState">Отправлены</b></div>
+      </div>
+    </div>
   </section>
 
   <!-- Вкладка 3.2: ИНФОРМИРОВАНИЕ И СПРАВОЧНЫЙ БОТ БАЗЫ ЗНАНИЙ -->
   <section id="infoView" class="stack" hidden>
-    <div class="cash-mode-tabs" id="knowledgeSubTabs" style="grid-template-columns:repeat(4,1fr)" role="tablist" aria-label="Разделы базы знаний">
-      <button type="button" data-kmode="all" class="on">📚 Все</button>
-      <button type="button" data-kmode="ttk">☕ Техкарты</button>
-      <button type="button" data-kmode="standards">📏 Стандарты</button>
-      <button type="button" data-kmode="info">📢 Объявления</button>
+    <div class="cash-mode-tabs" id="knowledgeSubTabs" style="grid-template-columns:repeat(3,1fr)" role="tablist" aria-label="Разделы информации и ТТК">
+      <button type="button" data-kmode="ttk" class="on">Техкарты</button>
+      <button type="button" data-kmode="info">Объявления</button>
+      <button type="button" data-kmode="standards">Инструкции</button>
     </div>
     <div class="panel" id="infoAnnouncementsCard">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -253,7 +316,14 @@
         <input type="search" id="ttkSearchIn" placeholder="🔍 Напиток или вопрос (Капучино, Раф…)" style="margin:0;flex:1">
         <button type="button" id="ttkShowAllBtn" style="border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:0 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Все ТТК</button>
       </div>
-      <div id="ttkQuickChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <div id="ttkCategoryFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <button type="button" data-ttkcat="all" class="b on" style="padding:4px 10px;border-radius:8px;border:1px solid var(--brew);background:var(--brew);color:#fff;font-size:12px;font-weight:600;cursor:pointer">Все категории</button>
+        <button type="button" data-ttkcat="Классика" class="b" style="padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;cursor:pointer">Классика</button>
+        <button type="button" data-ttkcat="Авторский" class="b" style="padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;cursor:pointer">Авторские</button>
+        <button type="button" data-ttkcat="Альтернатива" class="b" style="padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;cursor:pointer">Альтернативные</button>
+        <button type="button" data-ttkcat="Холодные" class="b" style="padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;cursor:pointer">Холодные</button>
+      </div>
+      <div id="ttkQuickChips"  style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
         <button type="button" data-ttkchip="Капучино" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">☕ Капучино</button>
         <button type="button" data-ttkchip="Американо" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">🖤 Американо</button>
         <button type="button" data-ttkchip="Латте" style="border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer">🥛 Латте</button>
@@ -285,12 +355,26 @@
       <p class="muted" id="rdLabel" style="margin:10px 0 0"></p>
     </div>
     <div class="cash-mode-tabs" id="cashModeTabs" role="tablist" aria-label="Режим работы с кассой">
-      <button type="button" data-cmode="simple" class="on">⚡ Сдать смену (Основной)</button>
-      <button type="button" data-cmode="advanced">📂 Расширенная касса (CSV и сверка)</button>
+      <button type="button" data-cmode="simple" class="on">⚡ Пошаговая сдача кассы (5 шагов)</button>
+      <button type="button" data-cmode="advanced">📂 Импорт отчётов (CSV/TXT)</button>
     </div>
-    <div class="panel" id="minimalBaristaCashCard" style="border:2px solid var(--good)">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-        <span class="label" style="margin:0;color:var(--good)">⚡ Сдача смены (Счётчик + 2 фото)</span>
+    <div class="panel" id="minimalBaristaCashCard" style="border:1.5px solid var(--brew)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <span class="label" style="margin:0;color:var(--brew)">Пошаговая форма сдачи кассы (Раздел 3.5)</span>
+        <span class="sync-pill synced" id="cashStepProgressPill">Шаг 1–5</span>
+      </div>
+      <div class="cash-5steps-bar" id="cashFiveStepsBar" aria-label="5 шагов сдачи кассы">
+        <div class="cash-5step-item done" id="cStep1Pill">1. Сведения</div>
+        <div class="cash-5step-item active" id="cStep2Pill">2. Показатели</div>
+        <div class="cash-5step-item" id="cStep3Pill">3. Фото</div>
+        <div class="cash-5step-item" id="cStep4Pill">4. Сводка</div>
+        <div class="cash-5step-item" id="cStep5Pill">5. Отправка</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);margin-bottom:10px;font-size:12px">
+        <span><b>Шаг 1. Основные сведения:</b></span>
+        <span>Сотрудник: <b id="cashStep1Who">Соня</b></span>
+        <span>Точка: <b>Кофейня №1</b></span>
+        <span>Смена: <b id="cashStep1Date">Сегодня</b></span>
       </div>
       <div class="grid2" style="gap:10px;margin-bottom:10px">
         <div>
@@ -313,7 +397,25 @@
         </div>
       </div>
       <div id="quickCashPhotosPreview" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px" hidden></div>
-      <button type="button" class="btn" id="quickSubmitPaperCashBtn" style="min-height:48px;font-size:15px">✅ Отправить счётчик и фото бумажного отчёта</button>
+      <div id="cashPreSubmitSummary" style="background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:12.5px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <b>Шаг 4. Итоговая сводка перед отправкой</b>
+          <span class="muted" id="preSubCompletenessTag">Заполните счётчик и 2 фото</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="padding:7px 9px;border-radius:8px;background:var(--surface);border:1px solid var(--line)">
+            <span class="muted" style="display:block;font-size:10.5px;text-transform:uppercase">Введено сотрудником</span>
+            <div>Счётчик: <b id="preSubCounter">—</b> · Нал: <b id="preSubCash">—</b></div>
+            <div>Подтверждения: <b id="preSubPhotos">0 из 2 фото</b></div>
+          </div>
+          <div style="padding:7px 9px;border-radius:8px;background:var(--surface);border:1px dashed var(--line)">
+            <span class="muted" style="display:block;font-size:10.5px;text-transform:uppercase">Рассчитано системой</span>
+            <div>Дельта помолов: <b id="preSubCalcShots">ожидание счётчика</b></div>
+            <div>Статус сверки: <b id="preSubCalcStatus">предварительный</b></div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn" id="quickSubmitPaperCashBtn" style="min-height:46px;font-size:14.5px">Проверить и отправить отчёт смены</button>
     </div>
 
     <details id="cashAdvancedTools" class="panel" style="padding:14px 16px">
@@ -337,6 +439,24 @@
       <span id="fTrans" hidden></span><span id="transState" hidden></span>
       <span id="fSales" hidden></span><span id="salesState" hidden></span>
 
+      <div id="csvImportPreviewTable" style="margin-top:12px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);font-size:12.5px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <b>Предпросмотр распознавания файлов</b>
+          <span class="muted" id="csvPreviewStatusTag">Ожидание файлов или демо-пакета</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <div>Файлов найдено: <b id="csvPrevFiles">0</b></div>
+          <div>Дат определено: <b id="csvPrevDates">0</b></div>
+          <div>Сотрудников: <b id="csvPrevStaff">0</b></div>
+          <div>Продаж: <b id="csvPrevSales">0 поз.</b></div>
+          <div>Неопределённые: <b id="csvPrevReview">0</b></div>
+          <div>Дубликаты: <b id="csvPrevDups">0</b></div>
+        </div>
+        <div id="csvFilesStatusList" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)">
+          <div class="csv-file-row"><span><i class="csv-dot" style="background:#398568"></i><b>Продажи.csv</b> · классификация напитков</span><span style="color:#398568;font-weight:700">Готов к приёму (#398568)</span></div>
+          <div class="csv-file-row"><span><i class="csv-dot" style="background:#D69A43"></i><b>Транзакции.csv</b> · сверка чеков и спорных позиций</span><span style="color:#D69A43;font-weight:700">Проверка позиций (#D69A43)</span></div>
+        </div>
+      </div>
       <div id="batchSummaryBox" hidden style="margin-top:14px"></div>
     </div>
 
@@ -464,9 +584,15 @@
       <button type="button" id="openQuickIncFromTabBtn" class="btn" style="background:var(--bad);color:#fff;min-height:50px;font-size:15px;margin-top:8px">🚨 Зафиксировать проблему / поломку (с фото или видео)</button>
     </div>
     <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
         <b style="font-size:15px">📋 Обращения и статусы синхронизации</b>
         <span class="muted" style="font-size:12px" id="baristaIncCountLbl">0 обращений</span>
+      </div>
+      <div id="baristaIncFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button type="button" data-bincflt="all" class="b on" style="padding:4px 10px;border-radius:8px;font-size:12px;background:var(--brew);color:#fff;border:1px solid var(--brew);cursor:pointer">Все</button>
+        <button type="button" data-bincflt="new" class="b" style="padding:4px 10px;border-radius:8px;font-size:12px;cursor:pointer">Новые</button>
+        <button type="button" data-bincflt="work" class="b" style="padding:4px 10px;border-radius:8px;font-size:12px;cursor:pointer">В работе</button>
+        <button type="button" data-bincflt="done" class="b" style="padding:4px 10px;border-radius:8px;font-size:12px;cursor:pointer">Решённые</button>
       </div>
       <div id="baristaIncidentsList" class="stack" style="gap:8px"></div>
     </div>
@@ -475,24 +601,20 @@
 <nav id="baristaBottomNav" class="barista-bottom-nav" aria-label="Нижняя навигация терминала бариста">
   <div class="barista-bottom-nav-inner">
     <button type="button" data-bnav="shift" class="on">
-      <span class="bnav-ico">📋</span>
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10l2.5 2.5L16 7"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
       <span>Смена</span>
-      <span class="bnav-sub">Задачи</span>
     </button>
     <button type="button" data-bnav="cash">
-      <span class="bnav-ico">💵</span>
+      <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
       <span>Касса</span>
-      <span class="bnav-sub">Сдача</span>
     </button>
     <button type="button" data-bnav="knowledge">
-      <span class="bnav-ico">☕</span>
-      <span>Знания</span>
-      <span class="bnav-sub" id="bnavKnowledgeSub">ТТК</span>
+      <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span id="bnavKnowledgeSub">Знания</span>
     </button>
     <button type="button" data-bnav="incidents">
-      <span class="bnav-ico">🔧</span>
+      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <span>Проблемы</span>
-      <span class="bnav-sub">Поломки</span>
     </button>
   </div>
 </nav>
@@ -580,9 +702,48 @@
     </div>
   </form>
 </dialog>
+
+<dialog id="baristaProfileDlg" style="border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);padding:20px;width:min(380px,92vw);box-shadow:0 24px 50px rgba(0,0,0,.45)">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="bpAvatarCircle" style="width:40px;height:40px;border-radius:50%;background:var(--brew);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px">С</div>
+      <div>
+        <b id="bpNameLbl" style="font-size:16px;display:block">Соня</b>
+        <span id="bpRoleLbl" class="muted" style="font-size:12px">Бариста смены · Кофейня №1</span>
+      </div>
+    </div>
+    <button type="button" id="bpCloseBtn" class="btn-secondary" style="padding:6px 10px;font-size:12px;cursor:pointer">✕</button>
+  </div>
+  <div style="display:grid;gap:8px;font-size:13px">
+    <div style="padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <span class="muted">Состояние сессии</span>
+      <b id="bpSessionStateLbl" style="color:var(--good)">Активна · PIN подтверждён</b>
+    </div>
+    <div style="padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <span class="muted">Тема оформления</span>
+      <div style="display:flex;gap:6px">
+        <button type="button" id="bpThemeDarkBtn" class="b" style="padding:4px 10px;font-size:12px;cursor:pointer">🌙 Тёмная</button>
+        <button type="button" id="bpThemeLightBtn" class="b" style="padding:4px 10px;font-size:12px;cursor:pointer">☀️ Светлая</button>
+      </div>
+    </div>
+    <div style="padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <span class="muted">Звук и уведомления смены</span>
+      <input type="checkbox" id="bpNotifToggleChk" checked style="width:18px;height:18px">
+    </div>
+    <div style="padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <span class="muted">Версия системы</span>
+      <b style="font-variant-numeric:tabular-nums">Coffee Illy v70</b>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+      <button type="button" id="bpSwitchStaffBtn" class="btn-secondary" style="min-height:42px;font-size:13px;cursor:pointer">⇄ Сменить сотрудника</button>
+      <button type="button" id="bpLogoutBtn" class="btn-danger" style="min-height:42px;font-size:13px;cursor:pointer">⎋ Выйти из смены</button>
+    </div>
+  </div>
+</dialog>
+
 <div class="toast" id="toast" hidden></div>
-<script src="js/camera.js?v=67"></script>
-<script src="js/page-terminal.js?v=67"></script>
-<script src="app.js?v=67" defer></script>
+<script src="js/camera.js?v=71"></script>
+<script src="js/page-terminal.js?v=71"></script>
+<script src="app.js?v=71" defer></script>
 </body>
 </html>

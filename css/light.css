@@ -4,45 +4,54 @@
    карточки и кнопки 100% идентичны — меняется только цветовая палитра токенов.
    ========================================================================= */
 
-/* 1. Палитра Светлой темы (по умолчанию) */
+/* 1. Палитра Светлой темы (альтернативная по Разделу 1.2 спецификации) */
 :root:not([data-theme=dark]) {
   color-scheme: light;
-  --bg: #F7F5F0;
+  --bg: #F5F2ED;
   --surface: #FFFFFF;
-  --chip: #EFECE4;
-  --ink: #262522;
-  --muted: #85817A;
-  --line: #E6E1D8;
-  --brew: #795548;
-  --crema: #A67C68;
-  --accent: #795548;
+  --surface-2: #ECE8E1;
+  --surface-active: #E2DDD4;
+  --chip: #ECE8E1;
+  --ink: #24211E;
+  --muted: #898A91;
+  --line: #DFDAD0;
+  --brew: #79563B;
+  --crema: #C88D55;
+  --accent: #79563B;
   --good: #398568;
   --bad: #C65C50;
   --warn: #D69A43;
-  --espresso: #262522;
+  --info: #668DB5;
+  --neutral: #898A91;
+  --espresso: #24211E;
   --cream: #FFFFFF;
-  --shadow: 0 2px 6px rgba(38, 37, 34, .04), 0 10px 24px -14px rgba(38, 37, 34, .09);
+  --shadow: 0 1px 3px rgba(36, 33, 30, .05), 0 6px 16px -10px rgba(36, 33, 30, .08);
   --font-d: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* 2. Палитра Тёмной темы (минималистичный графит с той же иерархией поверхностей) */
+/* 2. Палитра Тёмной темы (основная по Разделу 1.2 спецификации Modern Coffee Premium) */
 :root[data-theme=dark] {
   color-scheme: dark;
-  --bg: #121316;
-  --surface: #1a1c20;
-  --chip: #24272d;
-  --ink: #f1f3f5;
-  --muted: #949ba6;
-  --line: #2c3038;
-  --brew: #c98b4f;
-  --crema: #e0a76a;
-  --accent: #c98b4f;
-  --good: #34b377;
-  --bad: #ef5b4c;
-  --warn: #e5a93c;
-  --espresso: #1a1c20;
-  --cream: #f1f3f5;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .28), 0 10px 24px -16px rgba(0, 0, 0, .55);
+  --bg: #151619;
+  --surface: #202126;
+  --surface-2: #292B30;
+  --surface-active: #34363C;
+  --chip: #292B30;
+  --ink: #F2F0EC;
+  --muted: #898A91;
+  --line: #292B30;
+  --brew: #C88D55;
+  --crema: #E3B987;
+  --accent: #C88D55;
+  --good: #398568;
+  --bad: #C65C50;
+  --warn: #D69A43;
+  --info: #668DB5;
+  --neutral: #898A91;
+  --espresso: #202126;
+  --cream: #F2F0EC;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .28), 0 8px 20px -12px rgba(0, 0, 0, .45);
+  --font-d: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 body {
@@ -706,4 +715,499 @@ main {
   margin-right: 4px;
   text-transform: uppercase;
   letter-spacing: .04em;
+}
+
+
+/* === COFFEE ILLY v68 UX AUDIT REFINEMENTS === */
+/* 1. Убираем дублирующую навигацию (оставляя элементы в DOM для обратной совместимости) */
+#termModeSwitch,
+#ownerMainNav,
+#content > #tabs {
+  display: none !important;
+}
+
+/* 2. Компактная шапка терминала и панели владельца */
+header, .app-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
+  padding-bottom: 10px !important;
+  border-radius: 0 0 16px 16px !important;
+}
+header .brand h1, .app-header .brand h1 {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+header .brand-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+header .sub {
+  font-size: 12px !important;
+}
+header .barista-sel {
+  height: 34px !important;
+  padding: 0 10px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border-radius: 10px !important;
+}
+.theme-btn, .app-header .theme-btn {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+}
+
+/* 3. Компактная панель «Текущая смена» (#myShiftSummaryCard) без громоздких вложенных карточек */
+.my-shift-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 10px !important;
+  box-shadow: var(--shadow) !important;
+}
+.my-shift-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.my-shift-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.my-shift-main-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.my-shift-stage-name {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.my-shift-meta-line {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.my-shift-progress-col {
+  text-align: right;
+  min-width: 108px;
+}
+.my-shift-progress-col .prog-lbl {
+  font-size: 11.5px;
+  color: var(--muted);
+  display: block;
+}
+.my-shift-progress-col .prog-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.my-shift-next-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+}
+.my-shift-next-info {
+  flex: 1;
+  min-width: 0;
+}
+.my-shift-next-lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--brew);
+  display: block;
+}
+.my-shift-next-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.my-shift-next-hint {
+  font-size: 12px;
+  color: var(--muted);
+  display: block;
+}
+
+/* 4. Компактный список «Этапы смены» (#termTimelineTabs) вместо крупных плиток 3x2 */
+.shift-stages-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.shift-stages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+#termTimelineTabs {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+#termTimelineTabs button {
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+  border-radius: 10px !important;
+  background: var(--bg) !important;
+  border: 1px solid transparent !important;
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  text-align: left !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--ink) !important;
+}
+#termTimelineTabs button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--brew) 14%, var(--surface)) !important;
+  border-color: var(--brew) !important;
+  color: var(--ink) !important;
+}
+#termTimelineTabs button .st-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+#termTimelineTabs button[aria-selected="true"] .st-pill {
+  color: var(--brew);
+  font-weight: 700;
+}
+#termTimelineTabs button.done-stage .st-pill {
+  color: var(--good);
+}
+
+/* 5. Карточки и кнопки уменьшенной высоты и без визуального шума */
+.panel, .card {
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+}
+.btn {
+  min-height: 46px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  background: var(--brew) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+.btn.ghost {
+  background: var(--chip) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+}
+.seg.three-outcomes {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.seg button.cannot {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.barista-bottom-nav button svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+
+/* === COFFEE ILLY v70: MODERN COFFEE PREMIUM SPECIFICATION (SECTIONS 1-15) === */
+/* 4 типа кнопок (Раздел 1.5): PRIMARY, SECONDARY, SUCCESS, DANGER */
+.btn-primary, .btn, .p {
+  background: var(--brew) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--brew) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.btn-secondary, .btn.ghost, .b {
+  background: var(--surface-2, var(--chip)) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.btn-success, .b.ok {
+  background: color-mix(in srgb, var(--good) 16%, var(--surface)) !important;
+  color: var(--good) !important;
+  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line)) !important;
+}
+.btn-danger, .b.del {
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface)) !important;
+  color: var(--bad) !important;
+  border: 1px solid color-mix(in srgb, var(--bad) 42%, var(--line)) !important;
+}
+
+/* Раздельные индикаторы сети и синхронизации данных (Раздел 1.2 и 14.3) */
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--surface-2, var(--chip));
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sync-pill.synced {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, var(--line));
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+}
+.sync-pill.pending {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+}
+.sync-pill.error {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+}
+
+/* Блок внимания бариста над задачами (Раздел 3.2) */
+.barista-attention-banner {
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border: 1px solid var(--warn);
+  border-left: 4px solid var(--warn);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.barista-attention-banner .att-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--warn);
+  display: block;
+}
+.barista-attention-banner .att-desc {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-top: 2px;
+}
+
+/* Адаптивная сетка этапов смены: 1 кол на мобильном, 2 на планшете (Раздел 3.2) */
+@media (min-width: 640px) {
+  #termTimelineTabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+}
+
+/* Пошаговый индикатор сдачи кассы из 5 шагов (Раздел 3.5) */
+.cash-5steps-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.cash-5step-item {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.2;
+}
+.cash-5step-item.done {
+  border-color: var(--good);
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 10%, var(--surface));
+}
+.cash-5step-item.active {
+  border-color: var(--brew);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--brew) 15%, var(--surface));
+  font-weight: 700;
+}
+
+/* Список файлов CSV с цветовой индикацией (Раздел 3.6) */
+.csv-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.csv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+/* Боковая навигация и рабочее пространство Администратора (11 разделов) и Владельца (9 разделов) (Разделы 4 и 5) */
+.ws-role-switch {
+  display: inline-flex;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 4px;
+}
+.ws-role-switch button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ws-role-switch button.on {
+  background: var(--brew);
+  color: #ffffff;
+  font-weight: 700;
+}
+.ws-breadcrumbs {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ws-breadcrumbs b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Канбан-доска задач (5 колонок по Разделу 4.4) */
+.kanban-board-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(210px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-top: 12px;
+}
+.kanban-col {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 220px;
+}
+.kanban-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow);
+}
+.kanban-card b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+
+/* Боковая панель деталей справа (Раздел 4.2 и 4.3) */
+.ws-right-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.35);
+  z-index: 9000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Мастер-деталь Продаж и Меню (Раздел 5.4) */
+.sales-master-detail {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .sales-master-detail {
+    grid-template-columns: 1fr;
+  }
+}
+.drink-select-row {
+  cursor: pointer;
+  transition: background .12s;
+}
+.drink-select-row:hover, .drink-select-row.selected-drink {
+  background: color-mix(in srgb, var(--brew) 12%, var(--surface)) !important;
 }

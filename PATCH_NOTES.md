@@ -1,7 +1,7 @@
-# Единый журнал релизов и обновлений Coffee Illy ERP (Актуальная версия: v67)
+# Единый журнал релизов и обновлений Coffee Illy ERP (Актуальная версия: v71)
 
-- **Версия клиента**: `v67` (`version.js`, `index.html`, `owner.html`, `admin.html`, `dashboard.html`, `report.html`, `sw.js`)
-- **Версия серверного API (`Code.gs`)**: `v67` (`api: 2`)
+- **Версия клиента**: `v71` (`version.js`, `index.html`, `owner.html`, `admin.html`, `dashboard.html`, `report.html`, `sw.js`)
+- **Версия серверного API (`Code.gs`)**: `v71` (`api: 2`)
 - **Дата релиза**: 14.11.2026
 
 ## Что вошло в релиз v64 (Закрытие замечаний полного аудита P0 / P1 / P2)

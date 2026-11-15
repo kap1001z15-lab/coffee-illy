@@ -481,11 +481,13 @@ function _migrateAndMergeOwnerDB(existing) {
   return db;
 }
 
+let _memVaultFallback = null;
 function getUDB() {
   try {
     const found = _findExistingOwnerDB();
     if (found) {
       const db = _migrateAndMergeOwnerDB(found);
+      _memVaultFallback = db;
       /* Если мастер-хранилище ещё не было записано (миграция со старой версии), сразу закрепляем */
       if (!localStorage.getItem(MASTER_VAULT_KEY)) {
         saveUDB(db);
@@ -493,7 +495,11 @@ function getUDB() {
       return window.CoffeeIDB ? window.CoffeeIDB.hydratePhotosInDB(db) : db;
     }
   } catch (_) {}
+  if (_memVaultFallback) {
+    return window.CoffeeIDB ? window.CoffeeIDB.hydratePhotosInDB(_memVaultFallback) : _memVaultFallback;
+  }
   const fresh = _defaultUDB();
+  _memVaultFallback = fresh;
   saveUDB(fresh);
   return fresh;
 }
@@ -552,6 +558,7 @@ window.coffeeDeduplicateDB = function (db) {
 let _lastSavedVaultSig = '';
 let _lastSavedVaultAt = 0;
 function saveUDB(db) {
+  if (db && typeof db === "object") _memVaultFallback = db;
   try {
     if (window.coffeeDeduplicateDB) window.coffeeDeduplicateDB(db);
     db.schemaVersion = 13;
@@ -667,3 +674,181 @@ window.appendAudit = appendAudit;
 window.syncSettingsFields = syncSettingsFields;
 window.getUDB = getUDB;
 window.saveUDB = saveUDB;
+
+
+/* === COFFEE ILLY v71 MASTER DIRECTIVE: ЕДИНЫЙ СПРАВОЧНИК СОТРУДНИКОВ И АВТОМАТИЧЕСКОЕ РЕЗЕРВИРОВАНИЕ === */
+(function () {
+  const AUTO_BACKUP_KEY = 'coffee_auto_backups_v1';
+  let _memBackups = [];
+
+  function _readBackups() {
+    try {
+      const raw = localStorage.getItem(AUTO_BACKUP_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return _memBackups.slice();
+  }
+
+  function _writeBackups(list) {
+    _memBackups = Array.isArray(list) ? list.slice(0, 7) : [];
+    try {
+      localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(_memBackups));
+    } catch (_) {}
+  }
+
+  function _calcChecksum(db) {
+    if (!db || typeof db !== 'object') return '0';
+    const s = [
+      (db.staff || []).length,
+      (db.tasks || []).length,
+      (db.cash || []).length,
+      (db.incidents || []).length,
+      (db.ttk || []).length,
+      (db.inventory || []).length,
+      (db.expenses || []).length
+    ].join('-');
+    return 'chk_' + s;
+  }
+
+  // Главное правило Раздела 6: Один справочник сотрудников — один источник истины
+  window.coffeeSyncStaffDirectory = function (dbOpt) {
+    try {
+      const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : null);
+      if (!db || typeof db !== 'object') return [];
+      const staffList = Array.isArray(db.staff) ? db.staff : [];
+      const activeNames = [];
+      staffList.forEach((s) => {
+        if (s && s.name && s.active !== 'нет') {
+          const nm = String(s.name).trim();
+          if (nm && activeNames.indexOf(nm) < 0) activeNames.push(nm);
+        }
+      });
+      if (!activeNames.length) {
+        ['Соня', 'Алина', 'Настя', 'Максим'].forEach((n) => activeNames.push(n));
+      }
+
+      // Синхронизируем DOM-селекторы сотрудников в Терминале и модальном окне входа
+      if (typeof document !== 'undefined') {
+        ['baristaSelect', 'staffPinUserSelect'].forEach((selId) => {
+          const sel = document.getElementById(selId);
+          if (!sel) return;
+          const curVal = sel.value;
+          const isPinModal = selId === 'staffPinUserSelect';
+          sel.innerHTML = activeNames.map((nm) => (
+            '<option value="' + nm.replace(/"/g, '&quot;') + '">' + (isPinModal ? '👤 ' : '') + nm + '</option>'
+          )).join('');
+          if (curVal && activeNames.indexOf(curVal) >= 0) sel.value = curVal;
+        });
+      }
+      return activeNames;
+    } catch (_) {
+      return ['Соня', 'Алина', 'Настя', 'Максим'];
+    }
+  };
+
+  // Этап 12 (Раздел 16): Автоматическая система резервных копий и проверки восстановления
+  window.coffeeAutoBackupManager = {
+    list() {
+      return _readBackups();
+    },
+    createBackup(reasonOpt) {
+      try {
+        const db = typeof getUDB === 'function' ? getUDB() : null;
+        if (!db) return null;
+        const now = new Date();
+        const isoDate = now.toISOString().slice(0, 10);
+        const hm = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const snap = {
+          id: 'bkp_' + Date.now().toString(36),
+          date: isoDate,
+          time: hm,
+          version: (typeof window !== 'undefined' && window.COFFEE_VERSION) || 'v71',
+          reason: reasonOpt || 'Ежедневное авто-резервирование',
+          checksum: _calcChecksum(db),
+          stats: {
+            staff: (db.staff || []).length,
+            tasks: (db.tasks || []).length,
+            cash: (db.cash || []).length,
+            incidents: (db.incidents || []).length,
+            inventory: (db.inventory || []).length
+          },
+          payload: JSON.stringify(db)
+        };
+        const list = _readBackups();
+        list.unshift(snap);
+        _writeBackups(list.slice(0, 7));
+        return snap;
+      } catch (_) {
+        return null;
+      }
+    },
+    ensureDailyBackup() {
+      try {
+        const list = _readBackups();
+        const today = new Date().toISOString().slice(0, 10);
+        if (!list.some((b) => b && b.date === today)) {
+          return this.createBackup('Ежедневная автоматическая копия (' + today + ')');
+        }
+        return list[0];
+      } catch (_) {
+        return null;
+      }
+    },
+    verifyBackup(backupIdOpt) {
+      try {
+        const list = _readBackups();
+        if (!list.length) {
+          const created = this.createBackup('Контрольная точка перед проверкой');
+          if (created) list.push(created);
+        }
+        const target = backupIdOpt ? list.find((b) => b && b.id === backupIdOpt) : list[0];
+        if (!target || !target.payload) return { ok: false, error: 'Резервная копия не найдена' };
+        const parsed = JSON.parse(target.payload);
+        const valid = Array.isArray(parsed.tasks) && Array.isArray(parsed.staff) && Array.isArray(parsed.cash);
+        const expectedChk = _calcChecksum(parsed);
+        return {
+          ok: valid && expectedChk === target.checksum,
+          id: target.id,
+          date: target.date,
+          time: target.time,
+          checksum: target.checksum,
+          stats: target.stats
+        };
+      } catch (e) {
+        return { ok: false, error: String(e && e.message || e) };
+      }
+    },
+    restoreBackup(backupIdOpt) {
+      try {
+        const ver = this.verifyBackup(backupIdOpt);
+        if (!ver.ok) return ver;
+        const list = _readBackups();
+        const target = backupIdOpt ? list.find((b) => b && b.id === backupIdOpt) : list[0];
+        const parsed = JSON.parse(target.payload);
+        parsed.auditLog = Array.isArray(parsed.auditLog) ? parsed.auditLog : [];
+        parsed.auditLog.unshift({
+          date: new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          actor: 'Администратор',
+          action: 'Восстановление из авто-бэкапа',
+          details: 'Восстановлен снимок ' + target.id + ' от ' + target.date + ' ' + target.time
+        });
+        if (typeof saveUDB === 'function') saveUDB(parsed);
+        if (window.coffeeSyncStaffDirectory) window.coffeeSyncStaffDirectory(parsed);
+        return { ok: true, restoredId: target.id, date: target.date, time: target.time };
+      } catch (e) {
+        return { ok: false, error: String(e && e.message || e) };
+      }
+    }
+  };
+
+  setTimeout(() => {
+    try {
+      window.coffeeAutoBackupManager.ensureDailyBackup();
+      window.coffeeSyncStaffDirectory();
+    } catch (_) {}
+  }, 80);
+})();

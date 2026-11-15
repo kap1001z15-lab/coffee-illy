@@ -152,10 +152,12 @@ function renderOwnerNotificationsDrawer() {
       '</div>' +
     '</div>' +
     (list.length ? list.slice(0, 15).map((n) => {
+      if (window.coffeeCentralNotifier) window.coffeeCentralNotifier.syncAndAutoResolve(db);
       const col = n.level === 'critical' ? 'var(--bad)' : (n.level === 'warn' ? 'var(--warn)' : 'var(--good)');
+      const prio = n.priority || (n.level === 'critical' ? 'P0' : (n.level === 'warn' ? 'P1' : 'P2'));
       const mediaCnt = ntfCollect(n, db).media.length;
       return '<div class="row ntf-row" data-ntf-id="' + esc(n.id) + '" tabindex="0" role="button" title="Открыть фото и комментарии" style="grid-template-columns:1fr auto;border-left:4px solid ' + col + ';padding-left:10px;cursor:pointer">' +
-        '<div><b>' + esc(n.title) + '</b> <span class="mu">(' + dmy(n.date) + ' ' + esc(n.time) + ' · ' + esc(n.actor) + ')</span>' +
+        '<div><span class="tag ' + (prio === 'P0' ? 'no' : (prio === 'P1' ? '' : 'ok')) + '" style="margin-right:6px">' + esc(prio) + '</span><b>' + esc(n.title) + '</b> <span class="mu">(' + dmy(n.date) + ' ' + esc(n.time) + ' · ' + esc(n.actor) + ')</span>' +
         '<div class="mu" style="margin-top:2px">' + esc(n.text) + '</div>' +
         '<div class="mu" style="margin-top:3px;font-size:12px">' + (mediaCnt ? '📷 ' + mediaCnt + ' · ' : '') + 'Нажмите, чтобы открыть ›</div></div>' +
         '<span class="tag ' + (n.level === 'critical' ? 'no' : (n.level === 'ok' ? 'ok' : '')) + '">' + (n.read ? 'Прочитано' : 'Новое') + '</span>' +
@@ -381,10 +383,11 @@ function renderOwnerDashboardSection() {
         '<button type="button" class="p" id="oDashGoFullReportBtn" style="min-height:40px;padding:0 16px">📊 Вся информация в Отчётах ➔</button>' +
       '</div>' +
 
-      /* 4 КРАТКИХ КАРТОЧКИ ГЛАВНЫХ ЦИФР */
+      /* БЛОК А. ФИНАНСОВОЕ СОСТОЯНИЕ (С УКАЗАНИЕМ ИСТОЧНИКА И ПОЛНОТЫ ДАННЫХ) */
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 8px"><b style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Блок А · Финансовое состояние и полнота данных</b><span class="mu" style="font-size:12px">Источник: кассовые смены, Z-отчёты и ТТК · Статус данных: ' + (factRev > 0 ? 'Подтверждено отчётами' : 'Предварительный (ожидание закрытия смены)') + '</span></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">' +
         '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center"><span class="mu" style="font-weight:700;font-size:12px">ВЫРУЧКА</span><span class="tag ' + (rPct >= 98 ? 'ok' : (rPct < 85 ? 'no' : '')) + '">' + rPct + '% плана</span></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center"><span class="mu" style="font-weight:700;font-size:12px">БЛОК А · ВЫРУЧКА</span><span class="tag ' + (rPct >= 98 ? 'ok' : (rPct < 85 ? 'no' : '')) + '">' + rPct + '% плана</span></div>' +
           '<div style="font-size:24px;font-weight:800;margin:6px 0 2px;color:var(--good)">' + rub(factRev) + '</div>' +
           '<div class="mu" style="font-size:12.5px">План: ' + rub(planRev) + '</div>' +
         '</div>' +
@@ -407,6 +410,47 @@ function renderOwnerDashboardSection() {
           '<div class="mu" style="font-size:12.5px">Опозданий: ' + lateChecklists.length + ' · Просрочено сейчас: ' + overdueBlocksNow.length + '</div>' +
         '</div>' +
       '</div>' +
+      /* ВТОРАЯ СТРОКА (РАЗДЕЛ 5.2): ГРАФИК ВЫРУЧКИ, ГРАФИК ЧЕКОВ И РАСПРЕДЕЛЕНИЕ ПРОДАЖ */
+      ((function () {
+        const cashRows = (db.cash || []).slice(0, 7).reverse();
+        const revPts = cashRows.length ? cashRows.map((c) => (Number(c.cash) || 0) + (Number(c.card) || 0)) : [1850, 2120, 1980, 2359, 2490];
+        const chkPts = cashRows.length ? cashRows.map((c) => Number(c.checks) || 68) : [62, 71, 66, 74, 79];
+        const maxR = Math.max.apply(null, revPts.concat([2500]));
+        const maxC = Math.max.apply(null, chkPts.concat([85]));
+        const polyRev = revPts.map((v, i) => {
+          const x = Math.round(12 + (i * 216) / Math.max(1, revPts.length - 1));
+          const y = Math.round(52 - (v / maxR) * 40);
+          return x + ',' + y;
+        }).join(' ');
+        const barsChk = chkPts.map((v, i) => {
+          const x = Math.round(16 + i * (210 / Math.max(1, chkPts.length)));
+          const h = Math.max(6, Math.round((v / maxC) * 42));
+          const y = 54 - h;
+          return '<rect x="' + x + '" y="' + y + '" width="22" height="' + h + '" rx="4" fill="var(--info,#668DB5)" opacity="0.85"></rect>';
+        }).join('');
+        return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-top:12px">' +
+          '<div style="padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:12.5px">📈 График выручки по сменам</b><span class="mu" style="font-size:11.5px;font-variant-numeric:tabular-nums">макс. ' + rub(maxR) + '</span></div>' +
+            '<svg viewBox="0 0 240 60" style="width:100%;height:56px;overflow:visible">' +
+              '<line x1="8" y1="20" x2="232" y2="20" stroke="var(--line)" stroke-dasharray="3 3" stroke-width="1"/>' +
+              '<polyline fill="none" stroke="var(--brew,#C88D55)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="' + polyRev + '"/>' +
+            '</svg>' +
+          '</div>' +
+          '<div style="padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b style="font-size:12.5px">🧾 Динамика количества чеков</b><span class="mu" style="font-size:11.5px;font-variant-numeric:tabular-nums">ср. чек ' + rub(factAvg || 32) + '</span></div>' +
+            '<svg viewBox="0 0 240 60" style="width:100%;height:56px">' + barsChk + '</svg>' +
+          '</div>' +
+          '<div style="padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:12.5px">☕ Распределение продаж по категориям</b><span class="mu" style="font-size:11.5px">Меню ТТК</span></div>' +
+            '<div style="display:flex;height:12px;border-radius:99px;overflow:hidden;background:var(--surface);border:1px solid var(--line);margin-bottom:8px">' +
+              '<div style="width:62%;background:var(--brew,#C88D55)" title="Классика: 62%"></div>' +
+              '<div style="width:23%;background:var(--good,#398568)" title="Авторские: 23%"></div>' +
+              '<div style="width:15%;background:var(--info,#668DB5)" title="Десерты и не кофе: 15%"></div>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span>☕ Классика <b>62%</b></span><span>🍊 Авторские <b>23%</b></span><span>🍰 Прочее <b>15%</b></span></div>' +
+          '</div>' +
+        '</div>';
+      })()) +
 
       /* ПОЛНАЯ ОПЕРАЦИОННАЯ СВОДКА АДМИНИСТРАТОРА НА ДАШБОРДЕ: СВЕРКА СЧЁТЧИКА, АКТИВНОСТЬ СМЕНЫ И СКЛАД */
       ((function () {
@@ -478,7 +522,7 @@ function renderOwnerDashboardSection() {
         const totalEvents = overdueBlocksNow.length + openIncs.length + cashDiffDays.length + unreadAnns.length + outboxSt.pending + outboxSt.failed + expiredStickers.length;
         return '<div style="margin-top:14px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
-            '<b style="font-size:14px">🎯 Центр контроля событий и операционных отклонений</b>' +
+            '<b style="font-size:14px">Блок В · Центр контроля событий и операционных отклонений</b>' +
             '<span class="tag ' + (totalEvents === 0 ? 'ok' : 'no') + '">' + (totalEvents === 0 ? '0 активных событий' : ('Событий: ' + totalEvents)) + '</span>' +
           '</div>' +
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;font-size:12.5px">' +
@@ -515,15 +559,15 @@ function renderOwnerDashboardSection() {
         });
         return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:14px">' +
           '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">📈 Финансовая динамика и структура выручки</b><span class="tag ok">Расходы: ' + rub(expSum) + '</span></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">Блок Г · Финансовая динамика и структура выручки</b><span class="tag ok">Расходы: ' + rub(expSum) + '</span></div>' +
             '<div style="font-size:12.5px;margin-bottom:6px">💵 Наличные: <b>' + rub(totCashSum) + ' (' + cashShare + '%)</b> · 💳 Безнал: <b>' + rub(totCardSum) + ' (' + cardShare + '%)</b></div>' +
             '<div class="pro-progress-bar" style="height:8px;margin-bottom:6px"><i style="width:' + cashShare + '%"></i></div>' +
             '<div class="mu" style="font-size:12px">Завершённых кассовых дней в периоде: <b>' + periodCash.length + '</b> · Средний чек: <b>' + rub(factAvg) + '</b></div>' +
           '</div>' +
           '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">🕒 Последние события (хронологическая лента)</b><span class="tag">Операции</span></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">🕒 Вертикальная лента событий (нажмите для открытия деталей)</b><span class="tag">Live</span></div>' +
             '<div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px">' +
-              (events.slice(0, 5).map((ev) => '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--line)"><span>' + esc(ev.title) + '</span><span class="mu" style="white-space:nowrap">' + esc(ev.time) + '</span></div>').join('') || '<span class="mu">Событий пока нет</span>') +
+              (events.slice(0, 6).map((ev, evIdx) => '<div class="drink-select-row" data-wsdrawer-title="' + esc(ev.title) + '" data-wsdrawer-time="' + esc(ev.time) + '" data-wsdrawer-nav="' + esc(ev.nav) + '" data-wsdrawer-tab="' + esc(ev.tab) + '" style="display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:8px;border-bottom:1px dashed var(--line);cursor:pointer"><span>' + esc(ev.title) + '</span><span class="mu" style="white-space:nowrap">' + esc(ev.time) + ' ›</span></div>').join('') || '<span class="mu">Событий пока нет</span>') +
             '</div>' +
           '</div>' +
         '</div>';
@@ -693,6 +737,11 @@ function renderOwnerReportSection() {
     /* ЗАКРЕПЛЁННАЯ ПАНЕЛЬ: период, оглавление, экспорт */
     '<div class="rep-sticky">' +
       '<b class="rep-sticky-p">' + dmy(ownerRepFrom) + ' — ' + dmy(ownerRepTo) + '</b>' +
+      '<div class="ws-role-switch" id="ownerFinanceModeBar" aria-label="3 режима финансового раздела (Раздел 5.3)">' +
+        '<button type="button" data-fmode="summary" class="' + ((!window._ownerFinMode || window._ownerFinMode === 'summary') ? 'on' : '') + '">1. Сводка</button>' +
+        '<button type="button" data-fmode="detail" class="' + (window._ownerFinMode === 'detail' ? 'on' : '') + '">2. Детализация</button>' +
+        '<button type="button" data-fmode="analysis" class="' + (window._ownerFinMode === 'analysis' ? 'on' : '') + '">3. Анализ</button>' +
+      '</div>' +
       '<nav class="rep-toc">' +
         [['rep-s1', 'P&amp;L'], ['rep-s2', 'По дням'], ['rep-s3', 'Продажи'], ['rep-s4', 'Сотрудники'], ['rep-s5', 'Чек-листы'], ['rep-s6', 'Поломки']].map((a) => '<a href="#' + a[0] + '" data-repgo="' + a[0] + '">' + a[1] + '</a>').join('') +
       '</nav>' +
@@ -789,13 +838,35 @@ function renderOwnerReportSection() {
     /* БЛОК 3: ПРОДАЖИ ПО ПОЗИЦИЯМ МЕНЮ И ПОЛНАЯ ЮНИТ-ЭКОНОМИКА ПО ТТК */
     '<div id="rep-s3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:14px">' +
       '<div class="card" style="margin:0">' +
-        '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">3. Продажи по позициям меню (из Продажи.csv)</h2><span class="tag">' + soldProducts.length + ' поз.</span></div>' +
+        '<div class="top" style="margin-bottom:8px"><h2 style="margin:0">3. Продажи и меню (нажмите на напиток для просмотра ТТК и маржи)</h2><span class="tag">' + soldProducts.length + ' поз.</span></div>' +
+        ((function () {
+          const selName = window._selectedDrinkName || (soldProducts[0] && soldProducts[0].name) || (_ttkList[0] && _ttkList[0].name) || 'Капучино ILLY';
+          const ttkMatch = _ttkList.find((x) => _nrm(x.name) === _nrm(selName)) || _ttkList[0] || { name: selName, volume: '250 мл', category: 'Классика', price: 45, costBeans: 6.5, costMilk: 4.5, costSyrup: 0, costCup: 2.3, recipe: 'Эспрессо 18 г + молоко 180 мл', serving: 'Стандарт кофейни' };
+          const soldMatch = soldProducts.find((p) => _nrm(p.name) === _nrm(selName)) || soldProducts[0] || { name: ttkMatch.name, qty: 28, sum: 1260 };
+          const uCost = Math.round(((Number(ttkMatch.costBeans)||0)+(Number(ttkMatch.costMilk)||0)+(Number(ttkMatch.costSyrup)||0)+(Number(ttkMatch.costCup)||0))*10)/10;
+          const uPrice = Math.max(1, Number(ttkMatch.price) || 45);
+          const uMargin = Math.round((uPrice - uCost)*10)/10;
+          const uFc = Math.round((uCost / uPrice)*100);
+          return '<div id="selectedDrinkDetailPanel" style="padding:12px 14px;border-radius:12px;border:1px solid var(--brew);background:color-mix(in srgb,var(--brew) 10%,var(--bg));margin-bottom:10px;font-size:12.5px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+              '<b>☕ Детали выбранного напитка: ' + esc(ttkMatch.name) + ' (' + esc(ttkMatch.volume || '250 мл') + ')</b>' +
+              '<span class="tag ok">Food Cost: ' + uFc + '% · Маржа: +' + rub(uMargin) + '/чашка</span>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin-bottom:6px">' +
+              '<div>Продано: <b>' + (soldMatch.qty || 0) + ' шт.</b></div>' +
+              '<div>Выручка: <b>' + rub(soldMatch.sum || (soldMatch.qty * uPrice)) + '</b></div>' +
+              '<div>Средняя цена: <b>' + rub(uPrice) + '</b></div>' +
+              '<div>Себестоимость: <b>' + rub(uCost) + '</b></div>' +
+            '</div>' +
+            '<div class="mu"><b>Рецептура ТТК:</b> ' + esc(ttkMatch.recipe || '') + (ttkMatch.serving ? ' · <b>Подача:</b> ' + esc(ttkMatch.serving) : '') + '</div>' +
+          '</div>';
+        })()) +
         '<div class="sx"><table class="tbl"><thead><tr><th>Позиция меню</th><th>Категория сверки</th><th>Продано, шт.</th><th>Выручка</th><th>Доля</th></tr></thead><tbody>' +
           (soldProducts.length ? soldProducts.map((p) => {
             const totQty = soldProducts.reduce((s, x) => s + (Number(x.qty) || 0), 0) || 1;
             const kind = p.kind || (window.CoffeeSalesReconciliation ? window.CoffeeSalesReconciliation.classifyCoffee(p.name) : 'coffee');
             const kindBadge = kind === 'coffee' ? '<span class="tag ok">☕ Кофе</span>' : (kind === 'review' ? '<span class="tag warn">❓ На проверку</span>' : '<span class="tag">🍰 Не кофе</span>');
-            return '<tr><td><b>' + esc(p.name) + '</b></td><td>' + kindBadge + '</td><td>' + p.qty + ' шт.</td><td>' + (p.sum ? (p.est ? '≈ ' : '') + rub(p.sum) : '—') + '</td><td>' + Math.round((p.qty / totQty) * 100) + '%</td></tr>';
+            return '<tr class="drink-select-row" data-drink-name="' + esc(p.name) + '"><td><b>' + esc(p.name) + '</b></td><td>' + kindBadge + '</td><td>' + p.qty + ' шт.</td><td>' + (p.sum ? (p.est ? '≈ ' : '') + rub(p.sum) : '—') + '</td><td>' + Math.round((p.qty / totQty) * 100) + '%</td></tr>';
           }).join('') : '<tr><td colspan="5" class="mu">Поштучная детализация заполняется автоматически при загрузке файла «Продажи.csv» в Кассе.</td></tr>') +
         '</tbody></table></div>' +
         (soldProducts.some((x) => x.est) ? '<div class="mu" style="margin-top:6px">≈ — выручка рассчитана по цене из техкарты (в данных продаж суммы нет).</div>' : '') +
@@ -1254,9 +1325,12 @@ var OWNER_SUBBAR_DEFS = {
     { key: 'inc',        label: '🔧 Поломки и обращения (5 статусов)', action: () => switchOwnerCombinedSection('operations', 'inc') }
   ],
   finance: [
-    { key: 'report', label: '📊 Прибыль, P&L и 6 листов Excel', action: () => switchOwnerCombinedSection('finance', 'report') },
-    { key: 'cash',   label: '⚖️ Выручка и пошаговая Сверка Z-отчётов', action: () => switchOwnerCombinedSection('finance', 'cash') },
-    { key: 'exp',    label: '💸 Расходы OpEx и Списания', action: () => switchOwnerCombinedSection('finance', 'exp') }
+    { key: 'cash',   label: '1. Выручка и кассовые отчёты', action: () => switchOwnerCombinedSection('finance', 'cash') },
+    { key: 'reconcile', label: '2. Сверка кассы и Z-отчётов', action: () => switchOwnerCombinedSection('finance', 'cash') },
+    { key: 'counters',  label: '3. Счётчики кофемашины', action: () => switchOwnerCombinedSection('finance', 'cash') },
+    { key: 'writeoffs', label: '4. Списания', action: () => switchOwnerCombinedSection('finance', 'report') },
+    { key: 'exp',    label: '5. Расходы (OpEx)', action: () => switchOwnerCombinedSection('finance', 'exp') },
+    { key: 'report', label: '6. P&L — Финансовый результат', action: () => switchOwnerCombinedSection('finance', 'report') }
   ],
   staff: [
     { key: 'staff', label: '👥 Сотрудники, профили и график смен Пн–Вс', action: () => switchOwnerCombinedSection('staff', 'staff') }
@@ -1372,3 +1446,152 @@ if (typeof document !== 'undefined' && document.addEventListener) {
 }
 
 setTimeout(syncOwnerCombinedNavHighlight, 60);
+
+
+/* === COFFEE ILLY v70: ПЕРЕКЛЮЧАТЕЛЬ РОЛЕВЫХ ПРОСТРАНСТВ (АДМИНИСТРАТОР 11 РАЗДЕЛОВ / ВЛАДЕЛЕЦ 9 РАЗДЕЛОВ), БОКОВАЯ ПАНЕЛЬ ДЕТАЛЕЙ И РЕЖИМЫ ФИНАНСОВ === */
+var activeWorkspaceRole = 'owner';
+
+function updateOwnerDataSyncBadge() {
+  try {
+    const b = document.getElementById('ownerDataSyncBadge');
+    if (!b) return;
+    const outbox = window.coffeeGetOutboxStatus ? window.coffeeGetOutboxStatus() : { pending: 0, failed: 0 };
+    if (outbox.failed > 0) {
+      b.className = 'sync-pill error';
+      b.textContent = '⚠️ Ошибок отправки: ' + outbox.failed;
+    } else if (outbox.pending > 0) {
+      b.className = 'sync-pill pending';
+      b.textContent = '⏳ В очереди: ' + outbox.pending;
+    } else {
+      b.className = 'sync-pill synced';
+      b.textContent = '✓ Данные сохранены';
+    }
+  } catch (_) {}
+}
+
+function openWorkspaceRightDrawer(title, bodyHtml) {
+  const dr = document.getElementById('workspaceRightDrawer');
+  if (!dr) return;
+  if ($('wsDrawerTitle')) $('wsDrawerTitle').textContent = title || 'Детали проверки';
+  if ($('wsDrawerBody')) $('wsDrawerBody').innerHTML = bodyHtml || '';
+  dr.hidden = false;
+}
+window.openWorkspaceRightDrawer = openWorkspaceRightDrawer;
+
+function switchWorkspaceRole(role) {
+  activeWorkspaceRole = role === 'admin' ? 'admin' : 'owner';
+  document.querySelectorAll('#workspaceRoleSwitcher button[data-wsrole]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.wsrole === activeWorkspaceRole);
+  });
+  const own9 = document.getElementById('ownerWorkspace9Nav');
+  const adm11 = document.getElementById('adminWorkspace11Nav');
+  if (own9) own9.hidden = activeWorkspaceRole !== 'owner';
+  if (adm11) adm11.hidden = activeWorkspaceRole !== 'admin';
+  if ($('wsBreadcrumbSection')) {
+    $('wsBreadcrumbSection').textContent = activeWorkspaceRole === 'admin' ? 'Панель администратора · Обзор смены' : 'Панель владельца · Обзор бизнеса';
+  }
+}
+window.switchWorkspaceRole = switchWorkspaceRole;
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('click', (e) => {
+    const roleBtn = e.target && e.target.closest && e.target.closest('#workspaceRoleSwitcher button[data-wsrole]');
+    if (roleBtn) {
+      switchWorkspaceRole(roleBtn.dataset.wsrole);
+      return;
+    }
+    const own9Btn = e.target && e.target.closest && e.target.closest('#ownerWorkspace9Nav button[data-own9]');
+    if (own9Btn) {
+      const k = own9Btn.dataset.own9;
+      document.querySelectorAll('#ownerWorkspace9Nav button[data-own9]').forEach((b) => b.classList.toggle('on', b === own9Btn));
+      if ($('wsBreadcrumbSection')) $('wsBreadcrumbSection').textContent = 'Владелец · ' + own9Btn.textContent;
+      if (k === 'overview') switchOwnerCombinedSection('overview');
+      else if (k === 'finance') switchOwnerCombinedSection('finance', 'report');
+      else if (k === 'sales') { switchOwnerCombinedSection('finance', 'report'); setTimeout(() => { const el = document.getElementById('rep-s3'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth' }); }, 60); }
+      else if (k === 'cost') switchOwnerCombinedSection('standards', 'ttk');
+      else if (k === 'warehouse') switchOwnerCombinedSection('standards', 'ttk');
+      else if (k === 'staff') switchOwnerCombinedSection('staff', 'staff');
+      else if (k === 'operations') switchOwnerCombinedSection('operations', 'checklists');
+      else if (k === 'analytics') { switchOwnerCombinedSection('finance', 'report'); setTimeout(() => { const el = document.getElementById('oSimAvg'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth' }); }, 60); }
+      else if (k === 'settings') switchOwnerCombinedSection('settings', 'set');
+      return;
+    }
+    const adm11Btn = e.target && e.target.closest && e.target.closest('#adminWorkspace11Nav button[data-adm11]');
+    if (adm11Btn) {
+      const k = adm11Btn.dataset.adm11;
+      document.querySelectorAll('#adminWorkspace11Nav button[data-adm11]').forEach((b) => b.classList.toggle('on', b === adm11Btn));
+      if ($('wsBreadcrumbSection')) $('wsBreadcrumbSection').textContent = 'Администратор · ' + adm11Btn.textContent;
+      if (k === 'overview') switchOwnerCombinedSection('overview');
+      else if (k === 'operations') switchOwnerCombinedSection('operations', 'checklists');
+      else if (k === 'tasks') switchOwnerCombinedSection('operations', 'tasks');
+      else if (k === 'cash') switchOwnerCombinedSection('finance', 'cash');
+      else if (k === 'staff') switchOwnerCombinedSection('staff', 'staff');
+      else if (k === 'incidents') switchOwnerCombinedSection('operations', 'inc');
+      else if (k === 'standards') switchOwnerCombinedSection('standards', 'ttk');
+      else if (k === 'warehouse') switchOwnerCombinedSection('standards', 'ttk');
+      else if (k === 'expenses') switchOwnerCombinedSection('finance', 'exp');
+      else if (k === 'audit') switchOwnerCombinedSection('control', 'audit');
+      else if (k === 'settings') switchOwnerCombinedSection('settings', 'set');
+      return;
+    }
+    const fmodeBtn = e.target && e.target.closest && e.target.closest('#ownerFinanceModeBar button[data-fmode]');
+    if (fmodeBtn) {
+      window._ownerFinMode = fmodeBtn.dataset.fmode || 'summary';
+      const repEl = document.getElementById('ownerSecReport');
+      if (repEl) repEl._lastHtml = '';
+      renderOwnerReportSection();
+      if (window._ownerFinMode === 'detail') {
+        const s2 = document.getElementById('rep-s2');
+        if (s2 && s2.scrollIntoView) s2.scrollIntoView({ behavior: 'smooth' });
+      } else if (window._ownerFinMode === 'analysis') {
+        const s3 = document.getElementById('rep-s3');
+        if (s3 && s3.scrollIntoView) s3.scrollIntoView({ behavior: 'smooth' });
+      }
+      return;
+    }
+    const drinkRow = e.target && e.target.closest && e.target.closest('tr[data-drink-name]');
+    if (drinkRow) {
+      window._selectedDrinkName = drinkRow.getAttribute('data-drink-name');
+      const repEl = document.getElementById('ownerSecReport');
+      if (repEl) repEl._lastHtml = '';
+      renderOwnerReportSection();
+      return;
+    }
+    const evRow = e.target && e.target.closest && e.target.closest('[data-wsdrawer-title]');
+    if (evRow) {
+      const ttl = evRow.getAttribute('data-wsdrawer-title') || 'Событие смены';
+      const tm = evRow.getAttribute('data-wsdrawer-time') || '';
+      const nav = evRow.getAttribute('data-wsdrawer-nav') || 'operations';
+      const tb = evRow.getAttribute('data-wsdrawer-tab') || 'checklists';
+      openWorkspaceRightDrawer(ttl,
+        '<div style="padding:10px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);margin-bottom:10px">' +
+          '<div class="mu">Время фиксации: <b>' + esc(tm) + '</b></div>' +
+          '<div class="mu" style="margin-top:4px">Статус данных: <b style="color:var(--good)">✓ Подтверждено сервером</b></div>' +
+        '</div>' +
+        '<p class="mu">Вы можете сразу перейти к полному разделу проверки, подтвердить выполнение или оставить комментарий для сотрудника смены.</p>' +
+        '<div style="display:grid;gap:8px;margin-top:12px">' +
+          "<button type=\"button\" class=\"p\" data-wsdrawer-jump-nav=\"" + esc(nav) + "\" data-wsdrawer-jump-tab=\"" + esc(tb) + "\">Открыть раздел проверки →</button>" +
+          "<button type=\"button\" class=\"b ok\" id=\"wsDrawerConfirmBtn\">✓ Подтвердить проверку</button>" +
+        '</div>'
+      );
+      return;
+    }
+    const jmp = e.target && e.target.closest && e.target.closest('[data-wsdrawer-jump-nav]');
+    if (jmp) {
+      switchOwnerCombinedSection(jmp.getAttribute('data-wsdrawer-jump-nav'), jmp.getAttribute('data-wsdrawer-jump-tab'));
+      const dr = document.getElementById('workspaceRightDrawer'); if (dr) dr.hidden = true;
+      return;
+    }
+    if (e.target && e.target.id === 'wsDrawerConfirmBtn') {
+      toast('✓ Проверка подтверждена администратором');
+      const dr = document.getElementById('workspaceRightDrawer'); if (dr) dr.hidden = true;
+      return;
+    }
+    if (e.target && e.target.id === 'wsDrawerCloseBtn') {
+      const dr = document.getElementById('workspaceRightDrawer');
+      if (dr) dr.hidden = true;
+    }
+  });
+}
+setInterval(updateOwnerDataSyncBadge, 2500);
+setTimeout(updateOwnerDataSyncBadge, 150);

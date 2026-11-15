@@ -1774,6 +1774,7 @@ function buildAdminResponse() {
     planChecks: db.planChecks || 75,
     deadlineExtensions: db.deadlineExtensions || {},
     inventory: db.inventory || window.COFFEE_DEFAULT_INVENTORY || [],
+    inventoryHistory: db.inventoryHistory || [],
     customNomenclatureRules: db.customNomenclatureRules || {},
     expiryItems: db.expiryItems || [],
     shops: db.shops || window.COFFEE_DEFAULT_SHOPS || []
@@ -2006,7 +2007,7 @@ function isPinAuthorized(pinArg) {
   }
   return false;
 }
-const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|extend_deadline|save_block_windows|simulate_overdue|save_announcement|delete_announcement|save_staff|delete_staff|save_service_audit|delete_service_audit|save_ttk|delete_ttk|save_shift_roster|save_checklist_blocks|add_checklist_block|delete_checklist_block|save_daily_plans|save_staff_pins|save_good_deed|delete_good_deed|sync_all_to_sheet|save_inventory|restock_inventory|save_shop|setup_autonomous_triggers|send_daily_digest)$/;
+const OWNER_MUTATION_ACTIONS = /^(save_task|delete_task|reorder_task|admin_cash|delete_cash|add_expense|update_expense|delete_expense|resolve_incident|update_incident|delete_incident|save_setting|save_all_settings|extend_deadline|save_block_windows|simulate_overdue|save_announcement|delete_announcement|save_staff|delete_staff|save_service_audit|delete_service_audit|save_ttk|delete_ttk|save_shift_roster|save_checklist_blocks|add_checklist_block|delete_checklist_block|save_daily_plans|save_staff_pins|save_good_deed|delete_good_deed|sync_all_to_sheet|save_inventory|restock_inventory|writeoff_inventory|save_shop|setup_autonomous_triggers|send_daily_digest)$/;
 
 /* Мгновенные синхронные селекторы (0 мс ожидания сети) для мгновенной отрисовки интерфейса */
 window.coffeeCheckPin = isPinAuthorized;

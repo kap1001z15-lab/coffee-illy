@@ -747,7 +747,11 @@ window.coffeeGetBlockWindow = function (block, dbOpt, userNameOpt) {
 };
 
 /* Автоконтроль просрочки по всем активным чек-листам динамического таймлайна */
+let _enforcingOverdueBusy = false;
 window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
+  if (_enforcingOverdueBusy) return [];
+  _enforcingOverdueBusy = true;
+  try {
   if (typeof getUDB !== 'function') return [];
   const db = getUDB();
   window.coffeeEnsureV19Schema(db);
@@ -821,6 +825,7 @@ window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
     if (window.coffeeBus) window.coffeeBus.emit('mutation', { action: 'overdue_auto_incident', count: newlyCreated.length });
   }
   return newlyCreated;
+  } finally { _enforcingOverdueBusy = false; }
 };
 
 
@@ -1388,3 +1393,101 @@ window.coffeeGetActiveExpiryAlerts = function (dbOpt) {
     urgentCount: active.filter((x) => x.isExpired || x.isExpiringSoon).length
   };
 };
+
+
+/* === COFFEE ILLY v71 MASTER DIRECTIVE: ЦЕНТРАЛИЗОВАННЫЕ УВЕДОМЛЕНИЯ P0/P1/P2 БЕЗ ДУБЛЕЙ И АВТО-ПОГАШЕНИЕ (ЭТАП 11) === */
+(function () {
+  function _inferPriority(item) {
+    if (!item) return 'P2';
+    if (item.priority === 'P0' || item.priority === 'P1' || item.priority === 'P2') return item.priority;
+    if (item.level === 'critical' || item.type === 'overdue' || (item.type === 'incident' && /критич/i.test(String(item.text || item.title || '')))) {
+      return 'P0';
+    }
+    if (item.level === 'warn' || item.type === 'incident' || item.type === 'cash_diff' || item.type === 'low_stock') {
+      return 'P1';
+    }
+    return 'P2';
+  }
+
+  window.coffeeCentralNotifier = {
+    emit(opts) {
+      try {
+        if (!opts || typeof getUDB !== 'function' || typeof saveUDB !== 'function') return null;
+        const db = getUDB();
+        db.liveNotifications = Array.isArray(db.liveNotifications) ? db.liveNotifications : [];
+        const dedupKey = opts.dedupKey || ((opts.type || 'ntf') + ':' + (opts.incId || opts.block || opts.title || ''));
+        const prio = _inferPriority(opts);
+        // Дедупликация: если активное нерешённое уведомление с таким же dedupKey уже есть, обновляем его без создания дубля
+        const existing = db.liveNotifications.find((n) => n && !n.resolved && (n.dedupKey === dedupKey || (opts.incId && n.incId === opts.incId)));
+        if (existing) {
+          existing.priority = prio;
+          existing.text = opts.text || existing.text;
+          existing.time = opts.time || existing.time;
+          saveUDB(db);
+          return existing;
+        }
+        const entry = {
+          id: opts.id || ('ntf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6)),
+          dedupKey: dedupKey,
+          priority: prio,
+          level: prio === 'P0' ? 'critical' : (prio === 'P1' ? 'warn' : 'ok'),
+          type: opts.type || 'info',
+          title: opts.title || 'Событие системы',
+          text: opts.text || '',
+          date: opts.date || new Date().toISOString().slice(0, 10),
+          time: opts.time || new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          actor: opts.actor || 'Система',
+          incId: opts.incId || '',
+          block: opts.block || '',
+          read: false,
+          resolved: false
+        };
+        db.liveNotifications.unshift(entry);
+        saveUDB(db);
+        return entry;
+      } catch (_) {
+        return null;
+      }
+    },
+    resolveByKey(keyOrIncId) {
+      try {
+        if (!keyOrIncId || typeof getUDB !== 'function' || typeof saveUDB !== 'function') return 0;
+        const db = getUDB();
+        const list = Array.isArray(db.liveNotifications) ? db.liveNotifications : [];
+        let resolvedCount = 0;
+        list.forEach((n) => {
+          if (!n) return;
+          if (n.dedupKey === keyOrIncId || n.incId === keyOrIncId || n.block === keyOrIncId || String(n.text || '').indexOf(keyOrIncId) >= 0) {
+            if (!n.resolved || !n.read) {
+              n.resolved = true;
+              n.read = true;
+              resolvedCount++;
+            }
+          }
+        });
+        if (resolvedCount > 0) saveUDB(db);
+        return resolvedCount;
+      } catch (_) {
+        return 0;
+      }
+    },
+    syncAndAutoResolve(dbOpt) {
+      try {
+        const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : null);
+        if (!db || !Array.isArray(db.liveNotifications)) return;
+        const incs = Array.isArray(db.incidents) ? db.incidents : [];
+        db.liveNotifications.forEach((n) => {
+          if (!n) return;
+          if (!n.priority) n.priority = _inferPriority(n);
+          if (n.incId) {
+            const match = incs.find((x) => x && x.id === n.incId);
+            if (match && (!window.coffeeIsIncActive || !window.coffeeIsIncActive(match.status))) {
+              n.resolved = true;
+              n.read = true;
+            }
+          }
+        });
+      } catch (_) {}
+    }
+  };
+})();

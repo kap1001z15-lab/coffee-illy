@@ -13,30 +13,65 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/owner.css?v=67">
-<link rel="stylesheet" href="css/light.css?v=67">
-<script src="version.js?v=67"></script>
+<link rel="stylesheet" href="css/owner.css?v=71">
+<link rel="stylesheet" href="css/light.css?v=71">
+<script src="version.js?v=71"></script>
 </head>
 <body>
 <header class="app-header"><div class="wrap">
-  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4c0 2.5 2.5 2.5 2.5 5M16 3c0 3 2.5 3 2.5 6M22 4c0 2.5 2.5 2.5 2.5 5"/><path d="M5 13h18v7a9 9 0 0 1-18 0v-7Z" fill="rgba(224,167,106,.18)"/><path d="M23 15h2.5a3.5 3.5 0 0 1 0 7H23"/><path d="M3 29h22"/></svg>Кофейня</h1><span class="sub" id="sub">Панель владельца</span> <span id="netStatusBadge" class="net-pill online" style="margin-left:6px">🟢 Онлайн</span></div></div>
+  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4c0 2.5 2.5 2.5 2.5 5M16 3c0 3 2.5 3 2.5 6M22 4c0 2.5 2.5 2.5 2.5 5"/><path d="M5 13h18v7a9 9 0 0 1-18 0v-7Z" fill="rgba(224,167,106,.18)"/><path d="M23 15h2.5a3.5 3.5 0 0 1 0 7H23"/><path d="M3 29h22"/></svg>Кофейня</h1><span class="sub" id="sub">Панель владельца</span> <span id="netStatusBadge" class="net-pill online" style="margin-left:6px" title="Статус соединения">🟢 Онлайн</span> <span id="ownerDataSyncBadge" class="sync-pill synced" style="margin-left:4px" title="Статус сохранения данных">✓ Данные сохранены</span></div></div>
   <nav id="ownerMainNav" aria-label="Разделы владельца">
     <button type="button" data-osec="dashboard" class="on">🏎️ Дашборд</button>
     <button type="button" data-osec="report" class="">📊 Отчёты</button>
     <button type="button" data-osec="admin" class="">⚙️ Управление</button>
   </nav>
   <div style="display:flex;align-items:center;gap:8px"><button type="button" id="ownerNotifBtn" style="border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#f6ece2;border-radius:12px;height:40px;padding:0 12px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">🔔 <span id="ownerNotifCount">0</span></button><button class="theme-btn" id="theme" type="button" aria-label="Тема">🌙</button></div>
-  <div id="ownerCombinedNav" class="owner-combined-nav" role="navigation" aria-label="7 разделов панели владельца (Owner Combined)">
-    <button type="button" data-cnav="overview" class="on" title="Главный экран: показатели, состояние кофейни, динамика и события">🏠 Обзор</button>
-    <button type="button" data-cnav="operations" title="Таймлайн, задачи чек-листов, Карта добрых дел и поломки">⚡ Операции</button>
-    <button type="button" data-cnav="finance" title="Выручка, сверка Z-отчётов и счётчиков, расходы, списания и прибыль P&L">💰 Финансы</button>
-    <button type="button" data-cnav="staff" title="Сотрудники, профили работы, смены и показатели">👥 Персонал</button>
-    <button type="button" data-cnav="standards" title="Техкарты ТТК с историей версий, инструкции, информирование и склад">☕ Стандарты</button>
-    <button type="button" data-cnav="control" title="Аудит сервиса, журнал действий, история корректировок и синхронизация">🛡 Контроль</button>
-    <button type="button" data-cnav="settings" title="Кофейня, доступы и PIN-коды, планы Пн–Вс, интеграции и резервные копии">⚙️ Настройки</button>
+    <div id="ownerCombinedNav" class="owner-combined-nav" role="navigation" aria-label="7 разделов панели владельца (Owner Combined)">
+    <button type="button" data-cnav="overview" class="on">Обзор</button>
+    <button type="button" data-cnav="operations">Операции</button>
+    <button type="button" data-cnav="finance">Финансы</button>
+    <button type="button" data-cnav="staff">Персонал</button>
+    <button type="button" data-cnav="standards">Стандарты</button>
+    <button type="button" data-cnav="control">Контроль</button>
+    <button type="button" data-cnav="settings">Настройки</button>
   </div>
 </div></header>
 <main>
+  <div id="workspaceTopRoleBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:10px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line)">
+    <div class="ws-breadcrumbs" id="wsBreadcrumbs">
+      <span>Coffee Illy</span><span>›</span><span id="wsBreadcrumbShop">Кофейня №1</span><span>›</span><b id="wsBreadcrumbSection">Обзор бизнеса</b>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div class="ws-role-switch" id="workspaceRoleSwitcher" role="tablist" aria-label="Режим рабочего пространства (Разделы 4 и 5)">
+        <button type="button" data-wsrole="owner" class="on">💼 Панель владельца (9 разделов)</button>
+        <button type="button" data-wsrole="admin">🛠 Панель администратора (11 разделов)</button>
+      </div>
+    </div>
+  </div>
+  <div id="ownerWorkspace9Nav" class="owner-combined-nav" style="margin:0 0 10px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:14px" aria-label="9 разделов панели владельца (Раздел 5.1)">
+    <button type="button" data-own9="overview" class="on">Обзор</button>
+    <button type="button" data-own9="finance">Финансы</button>
+    <button type="button" data-own9="sales">Продажи</button>
+    <button type="button" data-own9="cost">Себестоимость</button>
+    <button type="button" data-own9="warehouse">Склад</button>
+    <button type="button" data-own9="staff">Персонал</button>
+    <button type="button" data-own9="operations">Операции</button>
+    <button type="button" data-own9="analytics">Аналитика</button>
+    <button type="button" data-own9="settings">Настройки</button>
+  </div>
+  <div id="adminWorkspace11Nav" class="owner-combined-nav" hidden style="margin:0 0 10px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:14px" aria-label="11 разделов панели администратора (Раздел 4.1)">
+    <button type="button" data-adm11="overview" class="on">Обзор</button>
+    <button type="button" data-adm11="operations">Операции</button>
+    <button type="button" data-adm11="tasks">Задачи (Канбан)</button>
+    <button type="button" data-adm11="cash">Касса</button>
+    <button type="button" data-adm11="staff">Персонал</button>
+    <button type="button" data-adm11="incidents">Инциденты</button>
+    <button type="button" data-adm11="standards">Стандарты</button>
+    <button type="button" data-adm11="warehouse">Склад</button>
+    <button type="button" data-adm11="expenses">Расходы</button>
+    <button type="button" data-adm11="audit">Аудит</button>
+    <button type="button" data-adm11="settings">Настройки</button>
+  </div>
   <div id="ownerSectionSubbar" class="owner-subbar" aria-label="Подразделы текущего раздела"></div>
   <div id="err" class="al" hidden></div>
   <div id="ownerNotifDrawer" class="card" hidden style="margin-bottom:14px;border:2px solid var(--accent,#9c5a25)"></div>
@@ -65,18 +100,25 @@
 </main>
 <dialog id="dlg"><form id="dform" method="dialog"><h2 id="dtitle" style="font-size:20px"></h2><div id="dfields"></div><div id="derr" style="color:var(--bad);font-size:14px;margin-top:8px"></div>
   <div class="acts" style="margin-top:12px"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" id="dsave" value="ok">Сохранить</button></div></form></dialog>
+<aside id="workspaceRightDrawer" class="ws-right-drawer" hidden aria-label="Боковая панель деталей проверки и событий">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)">
+    <b id="wsDrawerTitle" style="font-size:16px">Детали события</b>
+    <button type="button" id="wsDrawerCloseBtn" class="b" style="padding:4px 10px;font-size:12px">✕ Закрыть</button>
+  </div>
+  <div id="wsDrawerBody" style="font-size:13px;line-height:1.5"></div>
+</aside>
 <div class="toast" id="toast" hidden></div>
-<script src="config.js?v=67"></script>
-<script src="js/defaults.js?v=67"></script>
-<script src="js/security.js?v=67"></script>
-<script src="js/storage.js?v=67"></script>
-<script src="js/analytics.js?v=67"></script>
-<script src="js/sales-reconciliation.js?v=67"></script>
-<script src="js/sync.js?v=67"></script>
-<script src="js/telegram.js?v=67"></script>
+<script src="config.js?v=71"></script>
+<script src="js/defaults.js?v=71"></script>
+<script src="js/security.js?v=71"></script>
+<script src="js/storage.js?v=71"></script>
+<script src="js/analytics.js?v=71"></script>
+<script src="js/sales-reconciliation.js?v=71"></script>
+<script src="js/sync.js?v=71"></script>
+<script src="js/telegram.js?v=71"></script>
 <script src="tests/unit-tests.js"></script>
-<script src="js/page-admin.js?v=67"></script>
-<script src="js/page-owner.js?v=67"></script>
-<script src="app.js?v=67" defer></script>
+<script src="js/page-admin.js?v=71"></script>
+<script src="js/page-owner.js?v=71"></script>
+<script src="app.js?v=71" defer></script>
 </body>
 </html>

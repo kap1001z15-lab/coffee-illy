@@ -20,13 +20,57 @@
     if (!dlg) {
       dlg = document.createElement('dialog');
       dlg.id = 'coffeeConfirmDlg';
-      dlg.style.cssText = 'border:1px solid var(--line,#d3dde0);border-radius:22px;background:var(--surface,#fff);color:var(--ink,#172326);padding:20px;width:min(420px,92vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.6)';
-      dlg.innerHTML = '<h3 style="margin:0 0 8px;font-family:var(--font-d,sans-serif)">Подтверждение</h3><p id="ccMsg" style="margin:0 0 16px;color:var(--muted,#5b6d72);font-size:14px"></p><div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="ccNo" style="border:1px solid var(--line,#d3dde0);background:var(--bg,#e6ecee);border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer">Отмена</button><button type="button" id="ccYes" style="border:0;background:var(--bad,#c23b22);color:#fff;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer">Подтвердить</button></div>';
+      dlg.style.cssText = 'border:1px solid var(--line,#292B30);border-radius:18px;background:var(--surface,#202126);color:var(--ink,#F2F0EC);padding:20px;width:min(440px,92vw);box-shadow:0 30px 60px -20px rgba(0,0,0,.6)';
+      dlg.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+          '<span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:color-mix(in srgb,var(--bad,#C65C50) 18%,transparent);color:var(--bad,#C65C50);align-items:center;justify-content:center;font-weight:800">!</span>' +
+          '<h3 style="margin:0;font-size:18px;font-family:var(--font-d,sans-serif)">Подтверждение операции</h3>' +
+        '</div>' +
+        '<p id="ccMsg" style="margin:0 0 10px;color:var(--ink,#F2F0EC);font-size:14px;line-height:1.4"></p>' +
+        '<div style="padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--warn,#D69A43) 12%,var(--bg,#151619));border:1px solid color-mix(in srgb,var(--warn,#D69A43) 40%,var(--line));font-size:12px;color:var(--muted,#898A91);margin-bottom:10px">' +
+          'Операция будет зафиксирована в журнале аудита с указанием автора, времени и причины.' +
+        '</div>' +
+        '<div style="margin-bottom:14px">' +
+          '<label for="ccReasonInp" style="display:block;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#898A91);margin-bottom:4px">Причина отмены / удаления (обязательно)</label>' +
+          '<input id="ccReasonInp" type="text" value="Ошибочный ввод / актуализация данных" placeholder="Укажите причину операции…" style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid var(--line,#292B30);background:var(--bg,#151619);color:var(--ink,#F2F0EC);font-size:13px">' +
+          '<div id="ccReasonErr" style="color:var(--bad,#C65C50);font-size:12px;min-height:16px;margin-top:4px"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button type="button" id="ccNo" class="btn-secondary" style="border:1px solid var(--line,#292B30);background:var(--chip,#292B30);color:var(--ink,#F2F0EC);border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer">Оставить без изменений</button>' +
+          '<button type="button" id="ccYes" class="btn-danger" style="border:0;background:var(--bad,#C65C50);color:#fff;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer">Подтвердить</button>' +
+        '</div>';
       document.body.appendChild(dlg);
     }
     dlg.querySelector('#ccMsg').textContent = message;
-    dlg.querySelector('#ccNo').onclick = () => dlg.close();
-    dlg.querySelector('#ccYes').onclick = () => { dlg.close(); if (onConfirm) onConfirm(); };
+    const rInp = dlg.querySelector('#ccReasonInp');
+    const rErr = dlg.querySelector('#ccReasonErr');
+    if (rInp && !rInp.value) rInp.value = 'Ошибочный ввод / актуализация данных';
+    if (rErr) rErr.textContent = '';
+    dlg.querySelector('#ccNo').onclick = () => { try { dlg.close(); dlg.removeAttribute('open'); } catch (_) {} };
+    dlg.querySelector('#ccYes').onclick = () => {
+      const reason = rInp ? rInp.value.trim() : 'Подтверждено';
+      if (!reason) {
+        if (rErr) rErr.textContent = 'Укажите причину отмены / удаления для журнала аудита';
+        return;
+      }
+      window._lastConfirmReason = reason;
+      try {
+        if (typeof getUDB === 'function' && typeof saveUDB === 'function') {
+          const db = getUDB();
+          db.auditLog = Array.isArray(db.auditLog) ? db.auditLog : [];
+          db.auditLog.unshift({
+            date: new Date().toISOString().slice(0, 10),
+            time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            actor: 'Администратор',
+            action: 'Подтверждение опасного действия',
+            details: message + ' · Причина: ' + reason
+          });
+          saveUDB(db);
+        }
+      } catch (_) {}
+      try { dlg.close(); dlg.removeAttribute('open'); } catch (_) {}
+      if (onConfirm) onConfirm(reason);
+    };
     try { if (dlg.open) dlg.close(); if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', 'open'); } catch (_) { dlg.setAttribute('open', 'open'); }
   };
 
@@ -115,7 +159,7 @@
 
   function init() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js?v=67').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=71').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }

@@ -482,9 +482,6 @@ check('13. Проверка 6 модулей полного ERP v61: Склад 
   window.applyLocalMutation({ action: 'switch_shop_location', location: 'Кофейня №1' });
 });
 
-process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/13 успешно.\n');
-process.exit(0);
-
 check('14. Концепция Coffee Illy v66 (Barista Simple, Owner Combined 7 разделов, история версий ТТК и дизайн-система Premium)', () => {
   const fs = require('fs');
   const path = require('path');
@@ -497,7 +494,7 @@ check('14. Концепция Coffee Illy v66 (Barista Simple, Owner Combined 7 
   assert(indexHtml.includes('id="baristaBottomNav"'), 'В index.html должна быть нижняя навигация из 4 разделов (#baristaBottomNav)');
   assert(indexHtml.includes('id="cashModeTabs"'), 'В index.html должно быть визуальное разделение Сдать смену и Расширенная касса (#cashModeTabs)');
   assert(ownerHtml.includes('id="ownerCombinedNav"'), 'В owner.html должна быть 7-раздельная навигация (#ownerCombinedNav)');
-  assert(lightCss.includes('#F7F5F0') && lightCss.includes('#795548'), 'В css/light.css должна быть применена палитра Coffee Illy Premium (#F7F5F0, #795548)');
+  assert(lightCss.includes('#151619') && lightCss.includes('#C88D55'), 'В css/light.css должна быть применена палитра Coffee Illy Premium (#151619, #C88D55)');
 
   window.applyLocalMutation({
     action: 'save_ttk',
@@ -527,3 +524,47 @@ check('14. Концепция Coffee Illy v66 (Barista Simple, Owner Combined 7 
   assert(Array.isArray(adm.ttkHistory) && adm.ttkHistory.some((h) => h.id === 'ttk_v66_test' && h.prevPrice === 45 && h.newPrice === 50), 'История версий ТТК должна фиксировать предыдущую и новую цену/рецептуру');
   window.applyLocalMutation({ action: 'delete_ttk', id: 'ttk_v66_test' });
 });
+
+check('15. Master Implementation Directive v71: Единый справочник сотрудников, централизованные уведомления P0/P1/P2 без дублей и авто-бэкапы с откатом', () => {
+  // 1) Единый справочник сотрудников (coffeeSyncStaffDirectory)
+  window.applyLocalMutation({
+    action: 'save_staff',
+    id: 'st_v71_daria',
+    name: 'Дарья',
+    role: 'Бариста',
+    pin: '4321',
+    active: 'да'
+  });
+  const syncedNames = window.coffeeSyncStaffDirectory();
+  assert(syncedNames.indexOf('Дарья') >= 0, 'Новый сотрудник Дарья должен автоматически попадать в единый справочник сотрудников');
+
+  // 2) Централизованные уведомления P0/P1/P2 без дублей и авто-прекращение напоминаний после решения
+  const n1 = window.coffeeCentralNotifier.emit({
+    type: 'incident',
+    incId: 'INC-V71-TEST',
+    title: 'Критическая остановка кофемолки',
+    text: 'Критично: заклинило жернова',
+    actor: 'Дарья'
+  });
+  const n2 = window.coffeeCentralNotifier.emit({
+    type: 'incident',
+    incId: 'INC-V71-TEST',
+    title: 'Критическая остановка кофемолки',
+    text: 'Критично: повторный сигнал',
+    actor: 'Дарья'
+  });
+  assert(n1 && n2 && n1.id === n2.id && n1.priority === 'P0', 'Повторное уведомление по одному событию должно дедуплицироваться с приоритетом P0');
+  const resCnt = window.coffeeCentralNotifier.resolveByKey('INC-V71-TEST');
+  assert(resCnt >= 1, 'После решения инцидента связанные напоминания должны автоматически прекращаться');
+
+  // 3) Автоматическое резервирование, проверка целостности и восстановление
+  const bkp = window.coffeeAutoBackupManager.createBackup('Тестовая точка перед миграцией v71');
+  assert(bkp && bkp.id && bkp.checksum, 'Авто-бэкап должен создаваться с контрольной суммой');
+  const ver = window.coffeeAutoBackupManager.verifyBackup(bkp.id);
+  assert(ver && ver.ok === true, 'Проверка целостности резервной копии должна проходить успешно');
+  const rest = window.coffeeAutoBackupManager.restoreBackup(bkp.id);
+  assert(rest && rest.ok === true && rest.restoredId === bkp.id, 'Восстановление из резервной копии в 1 клик должно проходить без ошибок');
+});
+
+process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/15 успешно.\n');
+process.exit(0);
