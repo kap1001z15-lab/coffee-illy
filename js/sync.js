@@ -1631,12 +1631,13 @@ function applyLocalMutation(payload) {
       }
       appendAudit(db, payload.userName || 'Администратор', 'Обучение классификатора CSV', 'Позиция «' + rawName + '» → ' + (kindVal === 'coffee_2' ? 'Двойной кофе (2 шота)' : (kindVal === 'coffee' ? 'Кофе (1 шот)' : 'Не кофе')));
     }
-  } else if (a === 'restock_inventory' || a === 'save_inventory') {
+  } else if (a === 'restock_inventory' || a === 'save_inventory' || a === 'writeoff_inventory') {
     if (!Array.isArray(db.inventory) || !db.inventory.length) {
       db.inventory = (window.COFFEE_DEFAULT_INVENTORY || []).map((x) => Object.assign({}, x));
     }
+    db.inventoryHistory = Array.isArray(db.inventoryHistory) ? db.inventoryHistory : [];
     const invId = String(payload.id || '').trim();
-    let item = db.inventory.find((x) => x && x.id === invId);
+    let item = db.inventory.find((x) => x && (x.id === invId || (payload.name && x.name === payload.name)));
     if (!item && payload.name) {
       item = {
         id: invId || ('inv_' + Date.now().toString(36)),
@@ -1649,14 +1650,55 @@ function applyLocalMutation(payload) {
       db.inventory.push(item);
     }
     if (item) {
+      const prevStock = Number(item.stock) || 0;
+      const nowStr = new Date().toISOString().slice(0, 10).split('-').reverse().join('.') + ' ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       if (a === 'restock_inventory' && payload.delta != null) {
-        item.stock = Math.max(0, Math.round((Number(item.stock) || 0) + (Number(payload.delta) || 0)));
-        appendAudit(db, payload.userName || 'Администратор', 'Приход на склад: ' + item.name, '+' + payload.delta + ' ' + item.unit + ' (итого: ' + item.stock + ' ' + item.unit + ')');
+        const d = Math.abs(Number(payload.delta) || 0);
+        item.stock = Math.max(0, Math.round(prevStock + d));
+        db.inventoryHistory.unshift({
+          time: nowStr,
+          item: item.name,
+          type: 'Приход',
+          delta: '+' + d + ' ' + item.unit,
+          prevStock: prevStock + ' ' + item.unit,
+          newStock: item.stock + ' ' + item.unit,
+          supplier: payload.supplier || 'Основной поставщик',
+          reason: payload.reason || 'Приход по накладной',
+          actor: payload.userName || 'Администратор'
+        });
+        appendAudit(db, payload.userName || 'Администратор', 'Приход на склад: ' + item.name, '+' + d + ' ' + item.unit + ' (итого: ' + item.stock + ' ' + item.unit + ')');
+      } else if (a === 'writeoff_inventory') {
+        const d = Math.abs(Number(payload.delta) || 0);
+        item.stock = Math.max(0, Math.round(prevStock - d));
+        db.inventoryHistory.unshift({
+          time: nowStr,
+          item: item.name,
+          type: 'Списание',
+          delta: '-' + d + ' ' + item.unit,
+          prevStock: prevStock + ' ' + item.unit,
+          newStock: item.stock + ' ' + item.unit,
+          supplier: '—',
+          reason: payload.reason || 'Технологическое списание',
+          actor: payload.userName || 'Администратор'
+        });
+        appendAudit(db, payload.userName || 'Администратор', 'Списание со склада: ' + item.name, '-' + d + ' ' + item.unit + ' (остаток: ' + item.stock + ' ' + item.unit + ')');
       } else {
         if (payload.name) item.name = String(payload.name).trim();
         if (payload.unit) item.unit = String(payload.unit).trim();
         if (payload.stock != null) item.stock = Math.max(0, Math.round(Number(payload.stock) || 0));
         if (payload.minStock != null) item.minStock = Math.max(0, Math.round(Number(payload.minStock) || 0));
+        const diff = item.stock - prevStock;
+        db.inventoryHistory.unshift({
+          time: nowStr,
+          item: item.name,
+          type: 'Ревизия',
+          delta: (diff >= 0 ? '+' : '') + diff + ' ' + item.unit,
+          prevStock: prevStock + ' ' + item.unit,
+          newStock: item.stock + ' ' + item.unit,
+          supplier: payload.supplier || '—',
+          reason: payload.reason || 'Плановая ревизия',
+          actor: payload.userName || 'Администратор'
+        });
         appendAudit(db, payload.userName || 'Администратор', 'Ревизия склада: ' + item.name, 'Остаток: ' + item.stock + ' ' + item.unit + ' (мин. ' + item.minStock + ' ' + item.unit + ')');
       }
     }
@@ -2577,7 +2619,7 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
     set(_, prop, val) { els.forEach((node) => { node[prop] = val; }); return true; },
     get(_, prop) { return els[0][prop]; }
   });
-  const online = (typeof navigator === 'undefined' || navigator.onLine !== false) && window._coffeeLastSyncOk !== false;
+  const online = window.COFFEE_LIVE_PREVIEW_MODE ? !window.COFFEE_SIMULATE_OFFLINE : ((typeof navigator === 'undefined' || navigator.onLine !== false) && window._coffeeLastSyncOk !== false);
   const pending = window.coffeeGetTotalPendingCount();
   if (!online) {
     el.className = 'net-pill offline';

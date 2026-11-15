@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#151619">
-<title>Coffee Illy v75 — Минималистичный терминал бариста</title>
+<title>Coffee Illy v77 — Финальная сборка (Бариста · Администратор · Владелец)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1979,10 +1979,9 @@ header .wrap {
   margin: 0 auto !important;
   padding: 16px 14px calc(36px + env(safe-area-inset-bottom, 0px)) !important;
 }
-#unifiedTerminalRoot #termModeSwitch {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 6px !important;
+#unifiedTerminalRoot #termModeSwitch,
+#termModeSwitch {
+  display: none !important;
 }
 #unifiedOwnerRoot main {
   max-width: 1340px !important;
@@ -2415,92 +2414,458 @@ header .barista-sel {
   color: var(--ink) !important;
   border: 1px solid var(--line) !important;
 }
-
-
-#btnOk, #btnInc { min-height: 50px !important; font-size: 14.5px !important; font-weight: 700 !important; border-radius: 12px !important; }
-
-
-/* === COFFEE ILLY v75: МИНИМАЛИСТИЧНЫЙ И ПОЛНОСТЬЮ РАБОЧИЙ ТЕРМИНАЛ БАРИСТА === */
-#unifiedTerminalRoot header,
-body > header {
-  padding: 10px 14px !important;
-  border-radius: 0 0 14px 14px !important;
-  box-shadow: none !important;
+.seg.three-outcomes {
+  grid-template-columns: 1fr 1fr 1fr;
 }
-#unifiedTerminalRoot header h1,
-body > header h1 {
-  font-size: 16px !important;
+.seg button.cannot {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
 }
+.barista-bottom-nav button svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+
+/* === COFFEE ILLY v70: MODERN COFFEE PREMIUM SPECIFICATION (SECTIONS 1-15) === */
+/* 4 типа кнопок (Раздел 1.5): PRIMARY, SECONDARY, SUCCESS, DANGER */
+.btn-primary, .btn, .p {
+  background: var(--brew) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--brew) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.btn-secondary, .btn.ghost, .b {
+  background: var(--surface-2, var(--chip)) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.btn-success, .b.ok {
+  background: color-mix(in srgb, var(--good) 16%, var(--surface)) !important;
+  color: var(--good) !important;
+  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line)) !important;
+}
+.btn-danger, .b.del {
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface)) !important;
+  color: var(--bad) !important;
+  border: 1px solid color-mix(in srgb, var(--bad) 42%, var(--line)) !important;
+}
+
+/* Раздельные индикаторы сети и синхронизации данных (Раздел 1.2 и 14.3) */
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--surface-2, var(--chip));
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sync-pill.synced {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, var(--line));
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+}
+.sync-pill.pending {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+}
+.sync-pill.error {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+}
+
+/* Блок внимания бариста над задачами (Раздел 3.2) */
+.barista-attention-banner {
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border: 1px solid var(--warn);
+  border-left: 4px solid var(--warn);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.barista-attention-banner .att-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--warn);
+  display: block;
+}
+.barista-attention-banner .att-desc {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-top: 2px;
+}
+
+/* Адаптивная сетка этапов смены: 1 кол на мобильном, 2 на планшете (Раздел 3.2) */
+@media (min-width: 640px) {
+  #termTimelineTabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+}
+
+/* Пошаговый индикатор сдачи кассы из 5 шагов (Раздел 3.5) */
+.cash-5steps-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.cash-5step-item {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.2;
+}
+.cash-5step-item.done {
+  border-color: var(--good);
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 10%, var(--surface));
+}
+.cash-5step-item.active {
+  border-color: var(--brew);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--brew) 15%, var(--surface));
+  font-weight: 700;
+}
+
+/* Список файлов CSV с цветовой индикацией (Раздел 3.6) */
+.csv-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.csv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+/* Боковая навигация и рабочее пространство Администратора (11 разделов) и Владельца (9 разделов) (Разделы 4 и 5) */
+.ws-role-switch {
+  display: inline-flex;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 4px;
+}
+.ws-role-switch button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ws-role-switch button.on {
+  background: var(--brew);
+  color: #ffffff;
+  font-weight: 700;
+}
+.ws-breadcrumbs {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ws-breadcrumbs b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Канбан-доска задач (5 колонок по Разделу 4.4) */
+.kanban-board-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(210px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-top: 12px;
+}
+.kanban-col {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 220px;
+}
+.kanban-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow);
+}
+.kanban-card b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+
+/* Боковая панель деталей справа (Раздел 4.2 и 4.3) */
+.ws-right-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.35);
+  z-index: 9000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Мастер-деталь Продаж и Меню (Раздел 5.4) */
+.sales-master-detail {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .sales-master-detail {
+    grid-template-columns: 1fr;
+  }
+}
+.drink-select-row {
+  cursor: pointer;
+  transition: background .12s;
+}
+.drink-select-row:hover, .drink-select-row.selected-drink {
+  background: color-mix(in srgb, var(--brew) 12%, var(--surface)) !important;
+}
+
+/* === COFFEE ILLY v77: ФИНАЛЬНАЯ ПРОРАБОТКА ДИЗАЙНА И ФУНКЦИОНАЛА (БАРИСТА · АДМИНИСТРАТОР · ВЛАДЕЛЕЦ) === */
+html, body {
+  scroll-behavior: auto !important;
+  overflow-anchor: none !important;
+}
+
+/* 1. Гарантированные размеры иконок нижней навигации бариста */
+#baristaBottomNav svg,
+.barista-bottom-nav button svg {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  stroke: currentColor !important;
+  fill: none !important;
+  stroke-width: 2px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  display: block !important;
+}
+.barista-bottom-nav {
+  background: var(--surface) !important;
+  border-top: 1px solid var(--line) !important;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.22) !important;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.barista-bottom-nav button {
+  min-height: 48px !important;
+  border-radius: 12px !important;
+  font-size: 11.5px !important;
+  gap: 3px !important;
+}
+
+/* 2. Убираем все дублирующие карточки и старые переключатели на экране бариста */
+#myShiftSummaryCard,
+#shiftSummaryDigestCard,
+#termModeSwitch,
+header #steps,
+#taskStepStatusBadge,
+#deadlineTimerChip,
+#stepProgressLbl,
 #unifiedTerminalRoot header #termThemeBtn,
-body > header #theme {
-  display: none !important;
-}
+body > header #theme,
 #dataSyncStatusBadge.synced {
   display: none !important;
 }
-#unifiedTerminalRoot main,
-body > main {
-  padding: 12px 12px 84px !important;
-}
+
+/* 3. Чистая сетка выбора действия смены (Открытие, Лайн Чек 1, Лайн Чек 2, Закрытие, Касса, Карта добрых дел) */
 #shiftStagesCard {
-  padding: 10px !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+  padding: 10px 12px !important;
   margin-bottom: 10px !important;
   box-shadow: none !important;
 }
 .shift-stages-header {
-  margin-bottom: 6px !important;
-  font-size: 11px !important;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: var(--muted) !important;
+  margin-bottom: 8px !important;
+}
+#termTimelineTabs {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+@media (min-width: 400px) {
+  #termTimelineTabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
 }
 #termTimelineTabs button {
-  min-height: 42px !important;
-  padding: 6px 9px !important;
+  min-height: 46px !important;
+  padding: 7px 10px !important;
+  border-radius: 10px !important;
+  background: var(--bg) !important;
+  border: 1px solid var(--line) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+  line-height: 1.2 !important;
   box-shadow: none !important;
 }
+#termTimelineTabs button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--brew) 18%, var(--surface)) !important;
+  border: 1.5px solid var(--brew) !important;
+  color: var(--ink) !important;
+}
+#termTimelineTabs button .st-pill {
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  color: var(--muted) !important;
+}
+#termTimelineTabs button[aria-selected="true"] .st-pill {
+  color: var(--crema) !important;
+  font-weight: 600 !important;
+}
+#termTimelineTabs button.done-stage {
+  border-color: color-mix(in srgb, var(--good) 50%, var(--line)) !important;
+}
+#termTimelineTabs button.done-stage .st-pill {
+  color: var(--good) !important;
+}
+
+/* 4. Компактная строка статуса окна и прогресса + карточка шага */
 #deadlineBanner {
-  background: transparent !important;
-  border: 0 !important;
-  border-bottom: 1px solid var(--line) !important;
-  border-radius: 0 !important;
-  padding: 4px 2px 6px !important;
-  margin-bottom: 8px !important;
+  padding: 6px 10px !important;
+  margin-bottom: 6px !important;
+  border-radius: 10px !important;
   font-size: 12px !important;
 }
 #stepProgressWrap {
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 2px !important;
+  padding: 6px 10px !important;
   margin-bottom: 8px !important;
+  border-radius: 10px !important;
 }
 .panel.task {
-  box-shadow: none !important;
-  border: 1px solid var(--line) !important;
   padding: 16px !important;
-}
-.panel.task .task-info-unified {
-  background: var(--bg) !important;
+  border-radius: 16px !important;
   border: 1px solid var(--line) !important;
-  border-left: 3px solid var(--brew) !important;
 }
-.panel.task .drop {
-  min-height: 104px !important;
-  border-width: 1.5px !important;
+.panel.task h2#taskTitle {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  margin: 6px 0 10px !important;
+  line-height: 1.25 !important;
+}
+#btnOk, #btnInc {
+  min-height: 48px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
   border-radius: 12px !important;
 }
-#checklistView .navrow {
-  margin-top: 10px !important;
-  padding-top: 8px !important;
+#btnOk.ok {
+  background: color-mix(in srgb, var(--good) 22%, var(--surface)) !important;
+  border: 1.5px solid var(--good) !important;
+  color: var(--good) !important;
 }
-.barista-bottom-nav {
-  box-shadow: none !important;
-  border-top: 1px solid var(--line) !important;
-  padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)) !important;
-}
-.barista-bottom-nav button {
-  min-height: 46px !important;
+#btnInc.bad {
+  background: color-mix(in srgb, var(--bad) 22%, var(--surface)) !important;
+  border: 1.5px solid var(--bad) !important;
+  color: var(--bad) !important;
 }
 
+/* 5. Убираем дублирующую навигацию в шапке Владельца и Администратора (оставляя только 1 чистый ряд) */
+#ownerCombinedNav,
+#ownerSectionSubbar {
+  display: none !important;
+}
+.app-header .wrap {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+/* v77 Ultra-Clean */
+#deadlineBanner, #stepProgressWrap { display: none !important; }
+.panel.task .drop { min-height: 76px !important; padding: 10px !important; }
 /* === UNIFIED LIVE PREVIEW CONTAINER SCOPING === */
 #unifiedOwnerRoot main {
   max-width: 1220px !important;
@@ -2595,15 +2960,18 @@ body > main {
 
 
 
+
+
+
 </style>
 </head>
 <body>
 <div id="gate" hidden></div>
-<div id="livePreviewToolbar" role="region" aria-label="Панель переключения режимов тестирования Coffee Illy v75">
+<div id="livePreviewToolbar" role="region" aria-label="Панель переключения режимов тестирования Coffee Illy v77">
   <div class="lpt-inner">
     <div class="lpt-brand">
       <span>☕ <b>Coffee Illy</b></span>
-      <span class="lpt-badge">v75 Minimalist</span>
+      <span class="lpt-badge">v77 Final</span>
       <span style="font-size:12px;color:#CFCAC0">Выберите роль для проверки:</span>
     </div>
     <div class="lpt-actions">
@@ -3175,19 +3543,19 @@ body > main {
 <nav id="baristaBottomNav" class="barista-bottom-nav" aria-label="Нижняя навигация терминала бариста">
   <div class="barista-bottom-nav-inner">
     <button type="button" data-bnav="shift" class="on">
-      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10l2.5 2.5L16 7"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10l2.5 2.5L16 7"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
       <span>Смена</span>
     </button>
     <button type="button" data-bnav="cash">
-      <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
       <span>Касса</span>
     </button>
     <button type="button" data-bnav="knowledge">
-      <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       <span id="bnavKnowledgeSub">Знания</span>
     </button>
     <button type="button" data-bnav="incidents">
-      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <span>Проблемы</span>
     </button>
   </div>
@@ -3427,7 +3795,7 @@ window.COFFEE_LIVE_PREVIEW_MODE = true;
           if (window.applyLocalMutation) window.applyLocalMutation(parsed);
         } catch (_) {}
       }
-      const resObj = { ok: true, rev: String(Date.now()), serverVersion: "v75", api: 2, sessionToken: "preview_tok_v75" };
+      const resObj = { ok: true, rev: String(Date.now()), serverVersion: "v77", api: 2, sessionToken: "preview_tok_v77" };
       return {
         ok: true,
         status: 200,
@@ -3453,12 +3821,15 @@ document.documentElement.setAttribute('data-theme', _initTheme === 'light' ? 'li
 
 
 
+
+
+
 </script>
 <script>
 /* ЕДИНСТВЕННОЕ место с номером версии. Меняйте командой: node tools/bump-version.js 53
    Используется страницами (очистка старых кэшей) и sw.js (имя кэша через importScripts). */
 (function (g) {
-  g.COFFEE_VERSION = 'v75';
+  g.COFFEE_VERSION = 'v77';
   g.COFFEE_CACHE_NAME = 'kofeinya-enterprise-' + g.COFFEE_VERSION;
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
@@ -8838,12 +9209,13 @@ function applyLocalMutation(payload) {
       }
       appendAudit(db, payload.userName || 'Администратор', 'Обучение классификатора CSV', 'Позиция «' + rawName + '» → ' + (kindVal === 'coffee_2' ? 'Двойной кофе (2 шота)' : (kindVal === 'coffee' ? 'Кофе (1 шот)' : 'Не кофе')));
     }
-  } else if (a === 'restock_inventory' || a === 'save_inventory') {
+  } else if (a === 'restock_inventory' || a === 'save_inventory' || a === 'writeoff_inventory') {
     if (!Array.isArray(db.inventory) || !db.inventory.length) {
       db.inventory = (window.COFFEE_DEFAULT_INVENTORY || []).map((x) => Object.assign({}, x));
     }
+    db.inventoryHistory = Array.isArray(db.inventoryHistory) ? db.inventoryHistory : [];
     const invId = String(payload.id || '').trim();
-    let item = db.inventory.find((x) => x && x.id === invId);
+    let item = db.inventory.find((x) => x && (x.id === invId || (payload.name && x.name === payload.name)));
     if (!item && payload.name) {
       item = {
         id: invId || ('inv_' + Date.now().toString(36)),
@@ -8856,14 +9228,55 @@ function applyLocalMutation(payload) {
       db.inventory.push(item);
     }
     if (item) {
+      const prevStock = Number(item.stock) || 0;
+      const nowStr = new Date().toISOString().slice(0, 10).split('-').reverse().join('.') + ' ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       if (a === 'restock_inventory' && payload.delta != null) {
-        item.stock = Math.max(0, Math.round((Number(item.stock) || 0) + (Number(payload.delta) || 0)));
-        appendAudit(db, payload.userName || 'Администратор', 'Приход на склад: ' + item.name, '+' + payload.delta + ' ' + item.unit + ' (итого: ' + item.stock + ' ' + item.unit + ')');
+        const d = Math.abs(Number(payload.delta) || 0);
+        item.stock = Math.max(0, Math.round(prevStock + d));
+        db.inventoryHistory.unshift({
+          time: nowStr,
+          item: item.name,
+          type: 'Приход',
+          delta: '+' + d + ' ' + item.unit,
+          prevStock: prevStock + ' ' + item.unit,
+          newStock: item.stock + ' ' + item.unit,
+          supplier: payload.supplier || 'Основной поставщик',
+          reason: payload.reason || 'Приход по накладной',
+          actor: payload.userName || 'Администратор'
+        });
+        appendAudit(db, payload.userName || 'Администратор', 'Приход на склад: ' + item.name, '+' + d + ' ' + item.unit + ' (итого: ' + item.stock + ' ' + item.unit + ')');
+      } else if (a === 'writeoff_inventory') {
+        const d = Math.abs(Number(payload.delta) || 0);
+        item.stock = Math.max(0, Math.round(prevStock - d));
+        db.inventoryHistory.unshift({
+          time: nowStr,
+          item: item.name,
+          type: 'Списание',
+          delta: '-' + d + ' ' + item.unit,
+          prevStock: prevStock + ' ' + item.unit,
+          newStock: item.stock + ' ' + item.unit,
+          supplier: '—',
+          reason: payload.reason || 'Технологическое списание',
+          actor: payload.userName || 'Администратор'
+        });
+        appendAudit(db, payload.userName || 'Администратор', 'Списание со склада: ' + item.name, '-' + d + ' ' + item.unit + ' (остаток: ' + item.stock + ' ' + item.unit + ')');
       } else {
         if (payload.name) item.name = String(payload.name).trim();
         if (payload.unit) item.unit = String(payload.unit).trim();
         if (payload.stock != null) item.stock = Math.max(0, Math.round(Number(payload.stock) || 0));
         if (payload.minStock != null) item.minStock = Math.max(0, Math.round(Number(payload.minStock) || 0));
+        const diff = item.stock - prevStock;
+        db.inventoryHistory.unshift({
+          time: nowStr,
+          item: item.name,
+          type: 'Ревизия',
+          delta: (diff >= 0 ? '+' : '') + diff + ' ' + item.unit,
+          prevStock: prevStock + ' ' + item.unit,
+          newStock: item.stock + ' ' + item.unit,
+          supplier: payload.supplier || '—',
+          reason: payload.reason || 'Плановая ревизия',
+          actor: payload.userName || 'Администратор'
+        });
         appendAudit(db, payload.userName || 'Администратор', 'Ревизия склада: ' + item.name, 'Остаток: ' + item.stock + ' ' + item.unit + ' (мин. ' + item.minStock + ' ' + item.unit + ')');
       }
     }
@@ -9784,7 +10197,7 @@ window.coffeeRenderNetBadge = function (justSyncedCount) {
     set(_, prop, val) { els.forEach((node) => { node[prop] = val; }); return true; },
     get(_, prop) { return els[0][prop]; }
   });
-  const online = (typeof navigator === 'undefined' || navigator.onLine !== false) && window._coffeeLastSyncOk !== false;
+  const online = window.COFFEE_LIVE_PREVIEW_MODE ? !window.COFFEE_SIMULATE_OFFLINE : ((typeof navigator === 'undefined' || navigator.onLine !== false) && window._coffeeLastSyncOk !== false);
   const pending = window.coffeeGetTotalPendingCount();
   if (!online) {
     el.className = 'net-pill offline';
@@ -12047,7 +12460,7 @@ let baristaIncFilterMode = "all";
 function updateV70BaristaEnhancements() {
   try {
     const pendingCnt = window.coffeeGetTotalPendingCount ? window.coffeeGetTotalPendingCount() : getQ().length;
-    const isOff = (typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE;
+    const isOff = window.COFFEE_LIVE_PREVIEW_MODE ? !!window.COFFEE_SIMULATE_OFFLINE : ((typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE);
     const syncBadge = $("dataSyncStatusBadge");
     if (syncBadge) {
       if (pendingCnt > 0) {
@@ -14258,7 +14671,7 @@ function renderBatchSummaryUI() {
     renderCash();
   }
 
-  $("saveAllBatchBtn").onclick = async () => {
+  if ($("saveAllBatchBtn")) $("saveAllBatchBtn").onclick = async () => {
     const mergeMode = (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace";
     await post({ action: "batch_submit_cash", mergeMode, days: list });
     markDone("КАССА"); drawTabs();
@@ -15323,7 +15736,7 @@ function updateMyShiftSummaryCard() {
     }
     const offBanner = $("offlineCompactBanner");
     if (offBanner) {
-      const isOff = (typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE || pendingCnt > 0;
+      const isOff = window.COFFEE_LIVE_PREVIEW_MODE ? !!window.COFFEE_SIMULATE_OFFLINE : ((typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE);
       offBanner.hidden = !isOff;
       if (isOff && $("offlineCompactText")) {
         const hm = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -15711,9 +16124,10 @@ function rTasksAndInfo(){
       '<div class="acts"><button class="b del" type="button" data-a="gd-del" data-id="' + esc(g.id) + '">Удалить</button></div></div>'
     )).join('') + '</div>';
 
-  let h = gdHtml + '<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:18px">' +
+  const bottomExtrasHtml = '<div style="margin-top:20px">' + gdHtml + '<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:14px">' +
     rInfo() +
-  '</div>';
+  '</div></div>';
+  let h = '';
 
   D.tasks.forEach((t, idx) => { t._idx = idx; });
   const blkCounts = {};
@@ -15786,7 +16200,7 @@ function rTasksAndInfo(){
       return '<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">' + esc(t.id || ('#' + t.row)) + '</span><span class="t">' + esc(t.title) + '</span>' + pTag + (t.active === 'нет' ? '<span class="tag no">выключена</span>' : '') + (t.instruction ? '<div class="mu">' + esc(t.instruction) + '</div>' : '') + '<div class="mu">Ответственный при нарушении: <b>' + esc(t.responsible || 'Администратор') + '</b></div></div><div class="acts"><button class="b" data-a="task-up" data-i="' + idx + '" title="Выше">↑</button><button class="b" data-a="task-down" data-i="' + idx + '" title="Ниже">↓</button><button class="b" data-a="task-copy" data-i="' + idx + '" title="Копировать задачу">Копия</button><button class="b" data-a="task-edit" data-i="' + idx + '">Изменить</button><button class="b" data-a="task-archive" data-i="' + idx + '">' + (t.active === "нет" ? "Включить" : "В архив") + '</button><button class="b del" data-a="task-del" data-i="' + idx + '">Удалить</button></div></div>';
     }).join('') : '<p class="mu">В этом чек-листе пока нет задач — нажмите «+ Добавить задачу»</p>');
   });
-  return h;
+  return h + bottomExtrasHtml;
 }
 function getResponsibleOpts(curVal) {
   const base = ['Администратор', 'Шеф-бариста', 'Техник', 'Владелец'];
@@ -16270,6 +16684,67 @@ $('panel').addEventListener('click',(e)=>{
       return load();
     }).catch((err)=>toast('Ошибка: '+errText(err)));
     return;
+  }
+  if(a==='inv-new')return invForm(null,false);
+  if(a==='inv-edit'){const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);return invForm(inv[i],false);}
+  if(a==='inv-restock'){const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);return invForm(inv[i],true);}
+  if(a==='inv-writeoff'){
+    const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);
+    const item=inv[i];if(!item)return;
+    openForm('− Списание со склада: '+item.name,[
+      {k:'delta',label:'Количество к списанию ('+item.unit+')',type:'number'},
+      {k:'reason',label:'Причина списания',opts:['Проработка напитков / настройка помола','Истёк срок годности / порча','Пролив / бой','Прочее списание']}
+    ],{delta:100,reason:'Проработка напитков / настройка помола'},(o)=>call('writeoff_inventory',{id:item.id,name:item.name,delta:Number(o.delta)||0,reason:o.reason}));
+    return;
+  }
+  if(a==='task-copy'){
+    const t=D.tasks[i];if(!t)return;
+    const copyObj=Object.assign({},t,{id:'T-'+Date.now().toString(36).toUpperCase(),row:undefined,title:t.title+' (копия)'});
+    return act('save_task',copyObj,'Создана копия задачи');
+  }
+  if(a==='task-archive'){
+    const t=D.tasks[i];if(!t)return;
+    const nextAct=t.active==='нет'?'да':'нет';
+    return act('save_task',Object.assign({},t,{active:nextAct,expect:t.title}),nextAct==='нет'?'Задача перенесена в архив':'Задача возвращена в работу');
+  }
+  if(a==='staff-profile'){
+    const s=(D.staff||[])[i];if(!s)return;
+    const pay=window.coffeeCalcStaffPayrollCard?window.coffeeCalcStaffPayrollCard(typeof getUDB==='function'?getUDB():D,s.name):(null);
+    openForm('👤 Профиль сотрудника: '+s.name,[
+      {k:'name',label:'Имя и фамилия',ro:1},
+      {k:'role',label:'Роль в системе',ro:1},
+      {k:'shop',label:'Кофейня',ro:1},
+      {k:'summary',label:'Сводка смен и мотивации за месяц',ro:1}
+    ],{name:s.name,role:s.role||'Бариста',shop:s.shop||D.location||'Кофейня №1',summary:pay?('Смен: '+pay.shiftsCount+' · Выручка: '+rub(pay.revenueTotal)+' · Начислено: '+rub(pay.totalEarned)):'Активный профиль'},()=>Promise.resolve());
+    return;
+  }
+  if(a==='staff-reset-pin'){
+    const s=(D.staff||[])[i];if(!s)return;
+    openForm('🔑 Сбросить / сменить PIN для «'+s.name+'»',[
+      {k:'pin',label:'Новый персональный PIN-код (4 цифры)',ph:'Например: 2468'}
+    ],{pin:''},(o)=>{
+      if(!o.pin||String(o.pin).trim().length<4)throw new Error('Введите минимум 4 символа для нового PIN');
+      return call('save_staff_pins',{pins:[{name:s.name,pin:String(o.pin).trim()}]});
+    });
+    return;
+  }
+  if(a==='shop-new'){
+    openForm('🏪 Добавить новую кофейню в сеть',[
+      {k:'name',label:'Название точки',ph:'Например: Кофейня №2 (Центр)'},
+      {k:'plan',label:'Дневной план выручки, руб.',type:'number'},
+      {k:'initCounter',label:'Начальное показание счётчика кофемашины',type:'number'}
+    ],{name:'Кофейня №2',plan:2500,initCounter:100},(o)=>call('save_shop',{shop:{name:o.name,plan:Number(o.plan)||2500,initCounter:Number(o.initCounter)||0},location:o.name}));
+    return;
+  }
+  if(a==='shop-switch'){
+    const targetShop=b.dataset.shop||'Кофейня №1';
+    return act('switch_shop_location',{location:targetShop},'Активная точка переключена: '+targetShop);
+  }
+  if(a==='enable-autopilot'){
+    return act('setup_autonomous_triggers',{},'🤖 Автопилот 24/7 и триггеры контроля включены!');
+  }
+  if(a==='send-daily-digest'){
+    return act('send_daily_digest',{date:D.today},'📨 Сводка дня сформирована и поставлена на отправку в Telegram!');
   }
   if(a==='ttk-new')return ttkForm();
   if(a==='ttk-edit'){const list=Array.isArray(D.ttk)?D.ttk:(window.COFFEE_DEFAULT_TTK||[]);return ttkForm(list[i]);}
@@ -18263,7 +18738,7 @@ setTimeout(updateOwnerDataSyncBadge, 150);
 
   function init() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js?v=75').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=77').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }
@@ -18472,7 +18947,7 @@ setTimeout(updateOwnerDataSyncBadge, 150);
 
   if (btnPhoto) {
     btnPhoto.addEventListener('click', () => {
-      setPreviewMode('terminal');
+      setPreviewMode('terminal'); setTimeout(() => { const b = document.querySelector("#termTimelineTabs button[data-b=\"Закрытие\"]"); if (b) b.click(); if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0); }, 80);
       const demoSvgUrl = window.coffeeMakeSampleSvg
         ? window.coffeeMakeSampleSvg('Демо-фотофиксация Coffee Illy v67', 'Камера терминала · HD', ['Снимок выполнен в интерактивном режиме Canvas', 'Дата и время зафиксированы автоматически', 'Готово к проверке руководителем'], '#398568')
         : 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="400" height="240" fill="%23398568"/></svg>';
@@ -18518,7 +18993,7 @@ setTimeout(updateOwnerDataSyncBadge, 150);
 
   if (btnCsv) {
     btnCsv.addEventListener('click', () => {
-      setPreviewMode('terminal');
+      setPreviewMode('terminal'); setTimeout(() => { const b = document.querySelector("#termTimelineTabs button[data-b=\"Закрытие\"]"); if (b) b.click(); if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0); }, 80);
       if (window.switchBaristaBottomNav) window.switchBaristaBottomNav('cash');
       const advBtn = document.querySelector('#cashModeTabs button[data-cmode="advanced"]');
       if (advBtn) advBtn.click();
@@ -18572,8 +19047,11 @@ setTimeout(updateOwnerDataSyncBadge, 150);
     });
   }
 
-  setPreviewMode('terminal');
+  setPreviewMode('terminal'); setTimeout(() => { const b = document.querySelector("#termTimelineTabs button[data-b=\"Закрытие\"]"); if (b) b.click(); if (window.coffeeRenderNetBadge) window.coffeeRenderNetBadge(0); }, 80);
 })();
+
+
+
 
 
 

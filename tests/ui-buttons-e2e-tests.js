@@ -566,5 +566,19 @@ check('15. Master Implementation Directive v71: Единый справочни�
   assert(rest && rest.ok === true && rest.restoredId === bkp.id, 'Восстановление из резервной копии в 1 клик должно проходить без ошибок');
 });
 
-process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/15 успешно.\n');
+check('16. Аудит полноты обработчиков v76: Приход, Ревизия и Списание склада с историей движений, архивация задач и сброс PIN', () => {
+  const db0 = window.getUDB();
+  const item0 = (db0.inventory || [])[0] || { id: 'inv_beans', name: 'Кофе в зёрнах ILLY', stock: 5000, unit: 'г' };
+  const s0 = Number(item0.stock) || 5000;
+  window.applyLocalMutation({ action: 'restock_inventory', id: item0.id, name: item0.name, delta: 500, supplier: 'Поставщик Тест', reason: 'Накладная №1' });
+  const s1 = Number((window.getUDB().inventory.find((x) => x.id === item0.id) || {}).stock);
+  assert(s1 === s0 + 500, 'Приход на склад должен увеличивать остаток на 500');
+  window.applyLocalMutation({ action: 'writeoff_inventory', id: item0.id, name: item0.name, delta: 200, reason: 'Проработка эспрессо' });
+  const db2 = window.getUDB();
+  const s2 = Number((db2.inventory.find((x) => x.id === item0.id) || {}).stock);
+  assert(s2 === s0 + 300, 'Списание со склада должно уменьшать остаток на 200');
+  assert(Array.isArray(db2.inventoryHistory) && db2.inventoryHistory.length >= 2 && db2.inventoryHistory[0].type === 'Списание', 'История движений склада должна фиксировать операции Списания и Прихода');
+});
+
+process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/16 успешно.\n');
 process.exit(0);

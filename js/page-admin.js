@@ -139,9 +139,10 @@ function rTasksAndInfo(){
       '<div class="acts"><button class="b del" type="button" data-a="gd-del" data-id="' + esc(g.id) + '">Удалить</button></div></div>'
     )).join('') + '</div>';
 
-  let h = gdHtml + '<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:18px">' +
+  const bottomExtrasHtml = '<div style="margin-top:20px">' + gdHtml + '<div style="background:color-mix(in srgb,var(--crema) 10%,var(--bg));border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:14px">' +
     rInfo() +
-  '</div>';
+  '</div></div>';
+  let h = '';
 
   D.tasks.forEach((t, idx) => { t._idx = idx; });
   const blkCounts = {};
@@ -214,7 +215,7 @@ function rTasksAndInfo(){
       return '<div class="row"><div><span class="tag" style="margin:0 6px 0 0;font-family:monospace">' + esc(t.id || ('#' + t.row)) + '</span><span class="t">' + esc(t.title) + '</span>' + pTag + (t.active === 'нет' ? '<span class="tag no">выключена</span>' : '') + (t.instruction ? '<div class="mu">' + esc(t.instruction) + '</div>' : '') + '<div class="mu">Ответственный при нарушении: <b>' + esc(t.responsible || 'Администратор') + '</b></div></div><div class="acts"><button class="b" data-a="task-up" data-i="' + idx + '" title="Выше">↑</button><button class="b" data-a="task-down" data-i="' + idx + '" title="Ниже">↓</button><button class="b" data-a="task-copy" data-i="' + idx + '" title="Копировать задачу">Копия</button><button class="b" data-a="task-edit" data-i="' + idx + '">Изменить</button><button class="b" data-a="task-archive" data-i="' + idx + '">' + (t.active === "нет" ? "Включить" : "В архив") + '</button><button class="b del" data-a="task-del" data-i="' + idx + '">Удалить</button></div></div>';
     }).join('') : '<p class="mu">В этом чек-листе пока нет задач — нажмите «+ Добавить задачу»</p>');
   });
-  return h;
+  return h + bottomExtrasHtml;
 }
 function getResponsibleOpts(curVal) {
   const base = ['Администратор', 'Шеф-бариста', 'Техник', 'Владелец'];
@@ -698,6 +699,67 @@ $('panel').addEventListener('click',(e)=>{
       return load();
     }).catch((err)=>toast('Ошибка: '+errText(err)));
     return;
+  }
+  if(a==='inv-new')return invForm(null,false);
+  if(a==='inv-edit'){const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);return invForm(inv[i],false);}
+  if(a==='inv-restock'){const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);return invForm(inv[i],true);}
+  if(a==='inv-writeoff'){
+    const inv=Array.isArray(D.inventory)&&D.inventory.length?D.inventory:(window.COFFEE_DEFAULT_INVENTORY||[]);
+    const item=inv[i];if(!item)return;
+    openForm('− Списание со склада: '+item.name,[
+      {k:'delta',label:'Количество к списанию ('+item.unit+')',type:'number'},
+      {k:'reason',label:'Причина списания',opts:['Проработка напитков / настройка помола','Истёк срок годности / порча','Пролив / бой','Прочее списание']}
+    ],{delta:100,reason:'Проработка напитков / настройка помола'},(o)=>call('writeoff_inventory',{id:item.id,name:item.name,delta:Number(o.delta)||0,reason:o.reason}));
+    return;
+  }
+  if(a==='task-copy'){
+    const t=D.tasks[i];if(!t)return;
+    const copyObj=Object.assign({},t,{id:'T-'+Date.now().toString(36).toUpperCase(),row:undefined,title:t.title+' (копия)'});
+    return act('save_task',copyObj,'Создана копия задачи');
+  }
+  if(a==='task-archive'){
+    const t=D.tasks[i];if(!t)return;
+    const nextAct=t.active==='нет'?'да':'нет';
+    return act('save_task',Object.assign({},t,{active:nextAct,expect:t.title}),nextAct==='нет'?'Задача перенесена в архив':'Задача возвращена в работу');
+  }
+  if(a==='staff-profile'){
+    const s=(D.staff||[])[i];if(!s)return;
+    const pay=window.coffeeCalcStaffPayrollCard?window.coffeeCalcStaffPayrollCard(typeof getUDB==='function'?getUDB():D,s.name):(null);
+    openForm('👤 Профиль сотрудника: '+s.name,[
+      {k:'name',label:'Имя и фамилия',ro:1},
+      {k:'role',label:'Роль в системе',ro:1},
+      {k:'shop',label:'Кофейня',ro:1},
+      {k:'summary',label:'Сводка смен и мотивации за месяц',ro:1}
+    ],{name:s.name,role:s.role||'Бариста',shop:s.shop||D.location||'Кофейня №1',summary:pay?('Смен: '+pay.shiftsCount+' · Выручка: '+rub(pay.revenueTotal)+' · Начислено: '+rub(pay.totalEarned)):'Активный профиль'},()=>Promise.resolve());
+    return;
+  }
+  if(a==='staff-reset-pin'){
+    const s=(D.staff||[])[i];if(!s)return;
+    openForm('🔑 Сбросить / сменить PIN для «'+s.name+'»',[
+      {k:'pin',label:'Новый персональный PIN-код (4 цифры)',ph:'Например: 2468'}
+    ],{pin:''},(o)=>{
+      if(!o.pin||String(o.pin).trim().length<4)throw new Error('Введите минимум 4 символа для нового PIN');
+      return call('save_staff_pins',{pins:[{name:s.name,pin:String(o.pin).trim()}]});
+    });
+    return;
+  }
+  if(a==='shop-new'){
+    openForm('🏪 Добавить новую кофейню в сеть',[
+      {k:'name',label:'Название точки',ph:'Например: Кофейня №2 (Центр)'},
+      {k:'plan',label:'Дневной план выручки, руб.',type:'number'},
+      {k:'initCounter',label:'Начальное показание счётчика кофемашины',type:'number'}
+    ],{name:'Кофейня №2',plan:2500,initCounter:100},(o)=>call('save_shop',{shop:{name:o.name,plan:Number(o.plan)||2500,initCounter:Number(o.initCounter)||0},location:o.name}));
+    return;
+  }
+  if(a==='shop-switch'){
+    const targetShop=b.dataset.shop||'Кофейня №1';
+    return act('switch_shop_location',{location:targetShop},'Активная точка переключена: '+targetShop);
+  }
+  if(a==='enable-autopilot'){
+    return act('setup_autonomous_triggers',{},'🤖 Автопилот 24/7 и триггеры контроля включены!');
+  }
+  if(a==='send-daily-digest'){
+    return act('send_daily_digest',{date:D.today},'📨 Сводка дня сформирована и поставлена на отправку в Telegram!');
   }
   if(a==='ttk-new')return ttkForm();
   if(a==='ttk-edit'){const list=Array.isArray(D.ttk)?D.ttk:(window.COFFEE_DEFAULT_TTK||[]);return ttkForm(list[i]);}

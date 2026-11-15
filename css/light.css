@@ -497,10 +497,9 @@ header .wrap {
   margin: 0 auto !important;
   padding: 16px 14px calc(36px + env(safe-area-inset-bottom, 0px)) !important;
 }
-#unifiedTerminalRoot #termModeSwitch {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 6px !important;
+#unifiedTerminalRoot #termModeSwitch,
+#termModeSwitch {
+  display: none !important;
 }
 #unifiedOwnerRoot main {
   max-width: 1340px !important;
@@ -933,88 +932,461 @@ header .barista-sel {
   color: var(--ink) !important;
   border: 1px solid var(--line) !important;
 }
-
-
-#btnOk, #btnInc { min-height: 50px !important; font-size: 14.5px !important; font-weight: 700 !important; border-radius: 12px !important; }
-
-
-/* === COFFEE ILLY v75: МИНИМАЛИСТИЧНЫЙ И ПОЛНОСТЬЮ РАБОЧИЙ ТЕРМИНАЛ БАРИСТА === */
-#unifiedTerminalRoot header,
-body > header {
-  padding: 10px 14px !important;
-  border-radius: 0 0 14px 14px !important;
-  box-shadow: none !important;
+.seg.three-outcomes {
+  grid-template-columns: 1fr 1fr 1fr;
 }
-#unifiedTerminalRoot header h1,
-body > header h1 {
-  font-size: 16px !important;
+.seg button.cannot {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
 }
+.barista-bottom-nav button svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+
+/* === COFFEE ILLY v70: MODERN COFFEE PREMIUM SPECIFICATION (SECTIONS 1-15) === */
+/* 4 типа кнопок (Раздел 1.5): PRIMARY, SECONDARY, SUCCESS, DANGER */
+.btn-primary, .btn, .p {
+  background: var(--brew) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--brew) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.btn-secondary, .btn.ghost, .b {
+  background: var(--surface-2, var(--chip)) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.btn-success, .b.ok {
+  background: color-mix(in srgb, var(--good) 16%, var(--surface)) !important;
+  color: var(--good) !important;
+  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line)) !important;
+}
+.btn-danger, .b.del {
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface)) !important;
+  color: var(--bad) !important;
+  border: 1px solid color-mix(in srgb, var(--bad) 42%, var(--line)) !important;
+}
+
+/* Раздельные индикаторы сети и синхронизации данных (Раздел 1.2 и 14.3) */
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--surface-2, var(--chip));
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sync-pill.synced {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, var(--line));
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+}
+.sync-pill.pending {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+}
+.sync-pill.error {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+}
+
+/* Блок внимания бариста над задачами (Раздел 3.2) */
+.barista-attention-banner {
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border: 1px solid var(--warn);
+  border-left: 4px solid var(--warn);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.barista-attention-banner .att-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--warn);
+  display: block;
+}
+.barista-attention-banner .att-desc {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-top: 2px;
+}
+
+/* Адаптивная сетка этапов смены: 1 кол на мобильном, 2 на планшете (Раздел 3.2) */
+@media (min-width: 640px) {
+  #termTimelineTabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+}
+
+/* Пошаговый индикатор сдачи кассы из 5 шагов (Раздел 3.5) */
+.cash-5steps-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.cash-5step-item {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.2;
+}
+.cash-5step-item.done {
+  border-color: var(--good);
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 10%, var(--surface));
+}
+.cash-5step-item.active {
+  border-color: var(--brew);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--brew) 15%, var(--surface));
+  font-weight: 700;
+}
+
+/* Список файлов CSV с цветовой индикацией (Раздел 3.6) */
+.csv-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.csv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+/* Боковая навигация и рабочее пространство Администратора (11 разделов) и Владельца (9 разделов) (Разделы 4 и 5) */
+.ws-role-switch {
+  display: inline-flex;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 4px;
+}
+.ws-role-switch button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ws-role-switch button.on {
+  background: var(--brew);
+  color: #ffffff;
+  font-weight: 700;
+}
+.ws-breadcrumbs {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ws-breadcrumbs b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Канбан-доска задач (5 колонок по Разделу 4.4) */
+.kanban-board-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(210px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-top: 12px;
+}
+.kanban-col {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 220px;
+}
+.kanban-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow);
+}
+.kanban-card b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+
+/* Боковая панель деталей справа (Раздел 4.2 и 4.3) */
+.ws-right-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.35);
+  z-index: 9000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Мастер-деталь Продаж и Меню (Раздел 5.4) */
+.sales-master-detail {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .sales-master-detail {
+    grid-template-columns: 1fr;
+  }
+}
+.drink-select-row {
+  cursor: pointer;
+  transition: background .12s;
+}
+.drink-select-row:hover, .drink-select-row.selected-drink {
+  background: color-mix(in srgb, var(--brew) 12%, var(--surface)) !important;
+}
+
+/* === COFFEE ILLY v77: ФИНАЛЬНАЯ ПРОРАБОТКА ДИЗАЙНА И ФУНКЦИОНАЛА (БАРИСТА · АДМИНИСТРАТОР · ВЛАДЕЛЕЦ) === */
+html, body {
+  scroll-behavior: auto !important;
+  overflow-anchor: none !important;
+}
+
+/* 1. Гарантированные размеры иконок нижней навигации бариста */
+#baristaBottomNav svg,
+.barista-bottom-nav button svg {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  stroke: currentColor !important;
+  fill: none !important;
+  stroke-width: 2px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  display: block !important;
+}
+.barista-bottom-nav {
+  background: var(--surface) !important;
+  border-top: 1px solid var(--line) !important;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.22) !important;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+}
+.barista-bottom-nav button {
+  min-height: 48px !important;
+  border-radius: 12px !important;
+  font-size: 11.5px !important;
+  gap: 3px !important;
+}
+
+/* 2. Убираем все дублирующие карточки и старые переключатели на экране бариста */
+#myShiftSummaryCard,
+#shiftSummaryDigestCard,
+#termModeSwitch,
+header #steps,
+#taskStepStatusBadge,
+#deadlineTimerChip,
+#stepProgressLbl,
 #unifiedTerminalRoot header #termThemeBtn,
-body > header #theme {
-  display: none !important;
-}
+body > header #theme,
 #dataSyncStatusBadge.synced {
   display: none !important;
 }
-#unifiedTerminalRoot main,
-body > main {
-  padding: 12px 12px 84px !important;
-}
+
+/* 3. Чистая сетка выбора действия смены (Открытие, Лайн Чек 1, Лайн Чек 2, Закрытие, Касса, Карта добрых дел) */
 #shiftStagesCard {
-  padding: 10px !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+  padding: 10px 12px !important;
   margin-bottom: 10px !important;
   box-shadow: none !important;
 }
 .shift-stages-header {
-  margin-bottom: 6px !important;
-  font-size: 11px !important;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: var(--muted) !important;
+  margin-bottom: 8px !important;
+}
+#termTimelineTabs {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+@media (min-width: 400px) {
+  #termTimelineTabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
 }
 #termTimelineTabs button {
-  min-height: 42px !important;
-  padding: 6px 9px !important;
+  min-height: 46px !important;
+  padding: 7px 10px !important;
+  border-radius: 10px !important;
+  background: var(--bg) !important;
+  border: 1px solid var(--line) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+  line-height: 1.2 !important;
   box-shadow: none !important;
 }
+#termTimelineTabs button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--brew) 18%, var(--surface)) !important;
+  border: 1.5px solid var(--brew) !important;
+  color: var(--ink) !important;
+}
+#termTimelineTabs button .st-pill {
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  color: var(--muted) !important;
+}
+#termTimelineTabs button[aria-selected="true"] .st-pill {
+  color: var(--crema) !important;
+  font-weight: 600 !important;
+}
+#termTimelineTabs button.done-stage {
+  border-color: color-mix(in srgb, var(--good) 50%, var(--line)) !important;
+}
+#termTimelineTabs button.done-stage .st-pill {
+  color: var(--good) !important;
+}
+
+/* 4. Компактная строка статуса окна и прогресса + карточка шага */
 #deadlineBanner {
-  background: transparent !important;
-  border: 0 !important;
-  border-bottom: 1px solid var(--line) !important;
-  border-radius: 0 !important;
-  padding: 4px 2px 6px !important;
-  margin-bottom: 8px !important;
+  padding: 6px 10px !important;
+  margin-bottom: 6px !important;
+  border-radius: 10px !important;
   font-size: 12px !important;
 }
 #stepProgressWrap {
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 2px !important;
+  padding: 6px 10px !important;
   margin-bottom: 8px !important;
+  border-radius: 10px !important;
 }
 .panel.task {
-  box-shadow: none !important;
-  border: 1px solid var(--line) !important;
   padding: 16px !important;
-}
-.panel.task .task-info-unified {
-  background: var(--bg) !important;
+  border-radius: 16px !important;
   border: 1px solid var(--line) !important;
-  border-left: 3px solid var(--brew) !important;
 }
-.panel.task .drop {
-  min-height: 104px !important;
-  border-width: 1.5px !important;
+.panel.task h2#taskTitle {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  margin: 6px 0 10px !important;
+  line-height: 1.25 !important;
+}
+#btnOk, #btnInc {
+  min-height: 48px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
   border-radius: 12px !important;
 }
-#checklistView .navrow {
-  margin-top: 10px !important;
-  padding-top: 8px !important;
+#btnOk.ok {
+  background: color-mix(in srgb, var(--good) 22%, var(--surface)) !important;
+  border: 1.5px solid var(--good) !important;
+  color: var(--good) !important;
 }
-.barista-bottom-nav {
-  box-shadow: none !important;
-  border-top: 1px solid var(--line) !important;
-  padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)) !important;
+#btnInc.bad {
+  background: color-mix(in srgb, var(--bad) 22%, var(--surface)) !important;
+  border: 1.5px solid var(--bad) !important;
+  color: var(--bad) !important;
 }
-.barista-bottom-nav button {
-  min-height: 46px !important;
+
+/* 5. Убираем дублирующую навигацию в шапке Владельца и Администратора (оставляя только 1 чистый ряд) */
+#ownerCombinedNav,
+#ownerSectionSubbar {
+  display: none !important;
+}
+.app-header .wrap {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+/* v77 Ultra-Clean: скрываем дублирующую плашку дедлайна и дублирующий счётчик прогресса над задачей */
+#deadlineBanner,
+#stepProgressWrap {
+  display: none !important;
+}
+.panel.task .drop {
+  min-height: 76px !important;
+  padding: 10px !important;
 }

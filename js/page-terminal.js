@@ -42,7 +42,7 @@ let baristaIncFilterMode = "all";
 function updateV70BaristaEnhancements() {
   try {
     const pendingCnt = window.coffeeGetTotalPendingCount ? window.coffeeGetTotalPendingCount() : getQ().length;
-    const isOff = (typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE;
+    const isOff = window.COFFEE_LIVE_PREVIEW_MODE ? !!window.COFFEE_SIMULATE_OFFLINE : ((typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE);
     const syncBadge = $("dataSyncStatusBadge");
     if (syncBadge) {
       if (pendingCnt > 0) {
@@ -2253,7 +2253,7 @@ function renderBatchSummaryUI() {
     renderCash();
   }
 
-  $("saveAllBatchBtn").onclick = async () => {
+  if ($("saveAllBatchBtn")) $("saveAllBatchBtn").onclick = async () => {
     const mergeMode = (!$("sumModeChk") || $("sumModeChk").checked) ? "sum" : "replace";
     await post({ action: "batch_submit_cash", mergeMode, days: list });
     markDone("КАССА"); drawTabs();
@@ -3318,7 +3318,7 @@ function updateMyShiftSummaryCard() {
     }
     const offBanner = $("offlineCompactBanner");
     if (offBanner) {
-      const isOff = (typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE || pendingCnt > 0;
+      const isOff = window.COFFEE_LIVE_PREVIEW_MODE ? !!window.COFFEE_SIMULATE_OFFLINE : ((typeof navigator !== "undefined" && navigator.onLine === false) || !!window.COFFEE_SIMULATE_OFFLINE);
       offBanner.hidden = !isOff;
       if (isOff && $("offlineCompactText")) {
         const hm = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });

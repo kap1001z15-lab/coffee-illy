@@ -47,10 +47,10 @@ function RUN_ONE_CLICK_SETUP() {
   var trigRes = setupAutonomousTriggers_(ss);
   var rev = bumpDataRev_();
   try { onOpen(); } catch (_) {}
-  var msg = '✅ СИСТЕМА КОФЕЙНЯ v75 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v77 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
   try { Logger.log(msg); } catch (_) {}
   try { console.log(msg); } catch (_) {}
-  try { ss.toast(msg, '☕ Кофейня ERP v75', 8); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v77', 8); } catch (_) {}
   return { ok: true, message: msg, rev: rev, drive: folderStatus };
 }
 
@@ -147,7 +147,7 @@ function doGet(e) {
       }
       return jsonOut_(revOut);
     }
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v75', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54', 'save_checklist_draft'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v77', api: 2, actions: ['save_checklist_blocks', 'update_incident', 'delete_incident', 'delta_sync', 'sales_reconciliation_v54', 'save_checklist_draft'] });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
