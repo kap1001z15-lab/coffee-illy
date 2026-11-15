@@ -182,6 +182,8 @@ function updateV70BaristaEnhancements() {
   }
   setInterval(updateV70BaristaEnhancements, 2000);
   setTimeout(updateV70BaristaEnhancements, 160);
+
+
 })();
 
 })();
@@ -235,7 +237,7 @@ if (tg) {
   }, 700);
 }
 document.addEventListener("focusin", (e) => {     // клавиатура не перекрывает поле ввода
-  if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName)) setTimeout(() => { try { e.target.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (x) {} }, 320);
+  /* v72: отключена автопрокрутка при фокусе, чтобы экран не прыгал */
 });
 $("today").textContent = new Date().toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
 
@@ -709,6 +711,7 @@ function saveShiftDraft(skipCloudPush) {
       db.userActiveState = (db.userActiveState && typeof db.userActiveState === "object") ? db.userActiveState : {};
       db.userDrafts[dKey] = cloudDraftObj;
       db.userActiveState[userName] = { date: isoToday(), block, idx, updatedAt: nowTs };
+      window._localTerminalDraftSaveTs = Date.now();
       if (typeof saveUDB === "function") saveUDB(db);
     }
   } catch (_) {}
@@ -1049,7 +1052,8 @@ function renderStep() {
   drawSteps();
   validate();
   if (typeof updateMyShiftSummaryCard === "function") updateMyShiftSummaryCard();
-  window.scrollTo(0, 0);
+  /* v72: без принудительного сброса скролла наверх */
+  
 }
 
 function setPhotoUI() {
@@ -2998,9 +3002,7 @@ queueUI(); flush(); loadTasks();
 
 /* В Telegram Mini App (ILLY_BOT) обновляем данные при разворачивании окна и возврате на экран */
 if (tg) {
-  tgt(() => tg.onEvent("viewportChanged", () => {
-    reloadTerminalFromVault();
-  }));
+  /* v72: viewportChanged не перезагружает чек-лист при скролле */
 }
 let _lastTermVisPull = Date.now();
 document.addEventListener("visibilitychange", () => {
@@ -3085,8 +3087,13 @@ function reloadTerminalFromVault() {
             checklistStartedAt = remDraft.startedAt || checklistStartedAt;
             if ($("draftRestoreBanner")) $("draftRestoreBanner").hidden = true;
           }
+          renderStep();
+        } else if (!cur.length || !$("taskTitle") || !$("taskTitle").textContent) {
+          renderStep();
+        } else {
+          drawSteps();
+          if (typeof updateMyShiftSummaryCard === "function") updateMyShiftSummaryCard();
         }
-        renderStep();
       }
     }
   } catch (_) {}
@@ -3106,6 +3113,9 @@ function scheduleReloadTerminalFromVault() {
 }
 if (window.coffeeBus) {
   window.coffeeBus.on((msg) => {
+    if (msg && msg.type === 'mutation' && window._localTerminalDraftSaveTs && (Date.now() - window._localTerminalDraftSaveTs < 450)) {
+      return;
+    }
     if (msg && (msg.type === 'mutation' || msg.type === 'server_sync' || msg.type === 'outbox_synced')) {
       if (typeof window !== 'undefined' && window.navigator && /jsdom|node/i.test(window.navigator.userAgent || '')) {
         reloadTerminalFromVault();
@@ -3210,7 +3220,6 @@ window.ensureTerminalPinGate = function () {
 /* === COFFEE ILLY v68: BARISTA SIMPLE (ЕДИНОЕ СОСТОЯНИЕ СМЕНЫ + КОМПАКТНЫЕ ЭТАПЫ + НЕ МОГУ ВЫПОЛНИТЬ + СВОДКА) === */
 let activeBaristaNav = "shift";
 let activeCashMode = "simple";
-let cannotDoMode = false;
 
 const STAGE_TITLES_MAP = {
   "Открытие": "Открытие смены",
@@ -3288,10 +3297,7 @@ function updateMyShiftSummaryCard() {
     const stepBadge = $("taskStepStatusBadge");
     if (stepBadge) {
       const curAns = Array.isArray(answers) ? answers[idx] : null;
-      if (cannotDoMode) {
-        stepBadge.className = "kpi-pill warn";
-        stepBadge.textContent = "Не могу выполнить";
-      } else if (incident) {
+      if (incident) {
         stepBadge.className = "kpi-pill bad";
         stepBadge.textContent = "Есть проблема";
       } else if (curAns || photo) {
@@ -3431,49 +3437,13 @@ window.updateMyShiftSummaryCard = updateMyShiftSummaryCard;
       switchBaristaBottomNav(btn.dataset.bnav);
     });
   }
-  const cannotBtn = $("btnCannotDo");
-  const cannotBox = $("cannotDoReasonBox");
-  const cannotSel = $("cannotDoReasonSelect");
-  if (cannotBtn) {
-    cannotBtn.addEventListener("click", () => {
-      cannotDoMode = true;
-      setStatus(true);
-      cannotBtn.className = "cannot";
-      if (cannotBox) cannotBox.hidden = false;
-      if ($("btnInc")) $("btnInc").className = "";
-      if ($("btnOk")) $("btnOk").className = "";
-      if ($("incidentType")) $("incidentType").value = "Прочие операционные проблемы";
-      const reasonVal = (cannotSel && cannotSel.value) || "Нет необходимого продукта";
-      if ($("incidentComment") && (!$("incidentComment").value || /^Невозможно выполнить:/i.test($("incidentComment").value))) {
-        $("incidentComment").value = "Невозможно выполнить: " + reasonVal;
-      }
-      if ($("choiceHint")) {
-        $("choiceHint").textContent = "Выберите причину невыполнения — шаг не будет закрыт как обычный, администратор получит уведомление";
-        $("choiceHint").style.color = "var(--warn)";
-      }
-      validate();
-      updateMyShiftSummaryCard();
-    });
-  }
-  if (cannotSel) {
-    cannotSel.addEventListener("change", () => {
-      if ($("incidentComment")) {
-        $("incidentComment").value = "Невозможно выполнить: " + cannotSel.value;
-      }
-      validate();
-    });
-  }
   if ($("btnOk")) {
     $("btnOk").addEventListener("click", () => {
-      cannotDoMode = false;
-      if ($("btnCannotDo")) $("btnCannotDo").className = ""; if ($("cannotDoReasonBox")) $("cannotDoReasonBox").hidden = true;
       updateMyShiftSummaryCard();
     });
   }
   if ($("btnInc")) {
     $("btnInc").addEventListener("click", () => {
-      cannotDoMode = false;
-      if ($("btnCannotDo")) $("btnCannotDo").className = ""; if ($("cannotDoReasonBox")) $("cannotDoReasonBox").hidden = true;
       updateMyShiftSummaryCard();
     });
   }
@@ -3490,7 +3460,7 @@ window.updateMyShiftSummaryCard = updateMyShiftSummaryCard;
         switchBaristaBottomNav("shift");
         const taskPanel = document.querySelector(".panel.task");
         if (taskPanel && typeof taskPanel.scrollIntoView === "function") {
-          try { taskPanel.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
+          /* v72: без резкого скролла */
         }
       }
     });
@@ -3575,5 +3545,20 @@ window.updateMyShiftSummaryCard = updateMyShiftSummaryCard;
   setInterval(updateMyShiftSummaryCard, 2500);
   setTimeout(updateMyShiftSummaryCard, 120);
 })();
+
+
+
+window.addEventListener("coffee-demo-photo", (ev) => {
+  try {
+    const url = ev && ev.detail && ev.detail.url;
+    if (!url) return;
+    photos.push(url);
+    photo = photos[0];
+    photoUrl = "";
+    setPhotoUI();
+    saveAnswer();
+    validate();
+  } catch (_) {}
+});
 
 })();

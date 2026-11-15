@@ -16,17 +16,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="css/terminal.css?v=71">
-<link rel="stylesheet" href="css/light.css?v=71">
-<script src="config.js?v=71"></script>
-<script src="js/defaults.js?v=71"></script>
-<script src="js/security.js?v=71"></script>
-<script src="js/storage.js?v=71"></script>
-<script src="js/analytics.js?v=71"></script>
-<script src="js/sales-reconciliation.js?v=71"></script>
-<script src="js/sync.js?v=71"></script>
-<script src="js/telegram.js?v=71"></script>
-<script src="version.js?v=71"></script>
+<link rel="stylesheet" href="css/terminal.css?v=75">
+<link rel="stylesheet" href="css/light.css?v=75">
+<script src="config.js?v=75"></script>
+<script src="js/defaults.js?v=75"></script>
+<script src="js/security.js?v=75"></script>
+<script src="js/storage.js?v=75"></script>
+<script src="js/analytics.js?v=75"></script>
+<script src="js/sales-reconciliation.js?v=75"></script>
+<script src="js/sync.js?v=75"></script>
+<script src="js/telegram.js?v=75"></script>
+<script src="version.js?v=75"></script>
 </head>
 <body>
 <header>
@@ -120,7 +120,7 @@
 
   <section id="shiftStagesCard" class="shift-stages-card" aria-label="Этапы смены">
     <div class="shift-stages-header">
-      <span>Этапы смены</span>
+      <span>Выберите действие смены</span>
       <span id="shiftStagesSummaryTag" style="text-transform:none;font-weight:600">По расписанию</span>
     </div>
     <div class="tabs" id="termTimelineTabs" role="tablist" aria-label="Этапы смены">
@@ -192,19 +192,15 @@
         </div>
       </div>
       <h2 id="taskTitle"></h2>
-      <div class="task-info-unified" style="background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--brew);border-radius:14px;padding:12px 14px;margin:0 0 14px">
-        <span class="label" style="margin:0 0 4px;font-size:10.5px;color:var(--brew)">Что необходимо сделать</span>
-        <p class="instr" id="taskInstruction" style="background:transparent;border:0;padding:0;margin:0 0 10px"></p>
-        <div style="padding-top:8px;border-top:1px solid var(--line)">
-          <span class="label" style="margin:0 0 3px;font-size:10.5px;color:var(--good)">Критерий правильного выполнения</span>
-          <p id="taskCriteriaText" style="margin:0;font-size:13px;color:var(--ink)">Поверхности чистые, оборудование исправно, все элементы на штатных местах, видимых загрязнений нет.</p>
-        </div>
-        <details id="inlineSampleDetails" class="inline-std" style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)">
-          <summary id="btnSampleModal" style="cursor:pointer;font-weight:700;font-size:13.5px;color:var(--brew);list-style:none;display:flex;align-items:center;justify-content:space-between">
-            <span>📷 Фотообразец и стандарт (с какого ракурса снимать)</span>
-            <span class="muted" style="font-size:12px">Показать ▾</span>
+      <div class="task-info-unified" style="background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--brew);border-radius:12px;padding:10px 12px;margin:0 0 10px">
+        <p class="instr" id="taskInstruction" style="background:transparent;border:0;padding:0;margin:0;font-size:13.5px;line-height:1.35"></p>
+        <details id="inlineSampleDetails" class="inline-std" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">
+          <summary id="btnSampleModal" style="cursor:pointer;font-weight:600;font-size:12px;color:var(--brew);list-style:none;display:flex;align-items:center;justify-content:space-between">
+            <span>ℹ️ Критерий нормы и фотообразец</span>
+            <span class="muted" style="font-size:11.5px">Открыть ▾</span>
           </summary>
-          <div id="inlineSamplePhotos" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px"></div>
+          <p id="taskCriteriaText" style="margin:6px 0;font-size:12px;color:var(--muted)">Поверхности чистые, оборудование исправно, все элементы на штатных местах, видимых загрязнений нет.</p>
+          <div id="inlineSamplePhotos" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-top:6px"></div>
         </details>
       </div>
 
@@ -225,22 +221,11 @@
 
       <div class="field">
         <span class="label">Результат проверки</span>
-        <div class="seg three-outcomes">
+        <div class="seg">
           <button type="button" id="btnOk">Всё в норме</button>
           <button type="button" id="btnInc">Обнаружена проблема</button>
-          <button type="button" id="btnCannotDo">Невозможно выполнить</button>
         </div>
         <p class="muted" id="choiceHint" style="margin:6px 0 0;font-size:12.5px"></p>
-      </div>
-
-      <div id="cannotDoReasonBox" hidden style="margin-top:10px;padding:12px;border-radius:12px;border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--bg))">
-        <label class="label" for="cannotDoReasonSelect" style="color:var(--warn)">Причина невыполнения шага</label>
-        <select id="cannotDoReasonSelect" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:600">
-          <option value="Нет необходимого продукта">Нет необходимого продукта</option>
-          <option value="Оборудование неисправно">Оборудование неисправно</option>
-          <option value="Отсутствует доступ">Отсутствует доступ</option>
-          <option value="Другая причина">Другая причина (укажите в комментарии ниже)</option>
-        </select>
       </div>
       <div id="incidentBox" hidden>
         <div class="field">
@@ -742,8 +727,8 @@
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script src="js/camera.js?v=71"></script>
-<script src="js/page-terminal.js?v=71"></script>
-<script src="app.js?v=71" defer></script>
+<script src="js/camera.js?v=75"></script>
+<script src="js/page-terminal.js?v=75"></script>
+<script src="app.js?v=75" defer></script>
 </body>
 </html>
