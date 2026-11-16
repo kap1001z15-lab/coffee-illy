@@ -1,0 +1,12 @@
+# Матрица соответствия функций Coffee Illy v86 → v4.2
+
+| Модуль / Раздел | Функции v86 | Реализация в v4.2 | Статус |
+|---|---|---|---|
+| **Терминал бариста (`index.html`)** | 4 вкладки (Смена, Касса, Знания, Проблемы), 6 регламентных блоков, окна/дедлайны, черновики, «Карта добрых дел», передача смены | `index.html`, `js/page-terminal.js`, `Code.gs` (`handover_shift`, `staff_bootstrap`) | Реализовано, проверено, принято |
+| **Камера и медиа** | Фронтальная/основная камера, вспышка, фото/видео, водяные знаки, IndexedDB, Drive | `js/camera.js`, `js/camera-permission.js`, `js/storage.js`, `Code.gs` (`uploadPhotoToDrive_`) | Реализовано, проверено, принято |
+| **Касса и сверка продаж** | Быстрая/расширенная касса, `mergeMode: sum/replace`, цикл счётчика `0–999`, импорт CSV/TXT, `csvHash`, классификатор `coffee/non_coffee/review`, списания | `js/sales-reconciliation.js` (только админ), `js/sync.js`, `Code.gs` (`submit_cash`, `batch_submit_cash`, `submit_writeoff`) | Реализовано, проверено, принято |
+| **Знания и ТТК** | Каталог ТТК, поиск, рецептуры, объявления, подтверждение ознакомления, версии | `js/page-terminal.js`, `Code.gs` (`ack_announcement`, `getTtkList_`) | Реализовано, проверено, принято |
+| **Проблемы и инциденты** | Экстренное создание, категории, срочность, фото/видео, 5 статусов, Telegram | `Code.gs` (`report_standalone_incident`, `update_incident`, `INCIDENT_STATUSES_V41_`) | Реализовано, проверено, принято |
+| **Панель владельца / администратора (`owner.html`, `admin.html`, `dashboard.html`, `report.html`)** | Обзор KPI, Операции (таймлайн, Kanban, поломки), Финансы (P&L, COGS по ТТК, OpEx, сверка), Персонал (Пн–Вс), Стандарты (ТТК, склад), Контроль (аудит), Настройки (PIN, Telegram, JSON backup) | `dashboard.html`, `owner.html`, `admin.html`, `report.html`, `js/page-owner.js`, `js/page-admin.js`, `js/analytics.js`, `Code.gs` (`submit_adjustment`, `kpi.dataQuality`) | Реализовано, проверено, принято |
+| **Безопасность и изоляция** | PIN, сессии, `delta_sync`, `operationId`, `get_rev`, `get_checklists` | Изолированный `staff_bootstrap`, авторизация до `getIdempotentResult_`, фильтрация полей `delta_sync`, удаление `env` из `get_rev`, резерв сессий в `PropertiesService` | Реализовано, проверено, принято |
+| **Дизайн-система M3 + Темы** | Светлая/тёмная тема, `tokens.css`, `components.css`, `icons/ui.svg` | Палитра M3 Coffee Illy, умеренный glassmorphism для шапки и нижней панели, `js/theme.js` (Авто/День/Ночь), адаптивность `360–1920 px` | Реализовано, проверено, принято |

@@ -22,6 +22,7 @@ const STATIC_ASSETS = [
   './css/light.css',
   './config.js',
   './app.js',
+  './js/theme.js',
   './js/defaults.js',
   './js/security.js',
   './js/storage.js',

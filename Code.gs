@@ -47,10 +47,10 @@ function RUN_ONE_CLICK_SETUP() {
   var trigRes = setupAutonomousTriggers_(ss);
   var rev = bumpDataRev_();
   try { onOpen(); } catch (_) {}
-  var msg = '✅ СИСТЕМА КОФЕЙНЯ v86 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v87 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
   try { Logger.log(msg); } catch (_) {}
   try { console.log(msg); } catch (_) {}
-  try { ss.toast(msg, '☕ Кофейня ERP v86', 8); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v87', 8); } catch (_) {}
   return { ok: true, message: msg, rev: rev, drive: folderStatus };
 }
 
@@ -132,7 +132,7 @@ function onEdit(e) {
   } catch (_) {}
 }
 
-/* Явный реестр публичных точек входа API (T10); все остальные действия требуют сессии сотрудника или администратора */
+/* Явный реестр публичных точек входа API (v4.0); все остальные действия требуют сессии сотрудника или администратора */
 var PUBLIC_GET_ACTIONS_ = ['get_checklists', 'get_rev', 'version'];
 var PUBLIC_ACTIONS_ = ['auth_login', 'auth_logout', 'setup_initial_credentials'];
 
@@ -142,20 +142,19 @@ function doGet(e) {
     var action = p.action || 'get_checklists';
     if (action === 'get_rev') {
       var curRev = getDataRev_();
-      var revOut = { ok: true, rev: curRev, serverTs: Date.now() };
-      if (p.sinceRev !== undefined && String(p.sinceRev) !== String(curRev)) {
-        try {
-          var liveEnvRaw = CacheService.getScriptCache().get('LIVE_ENV_V63');
-          if (liveEnvRaw) revOut.env = JSON.parse(liveEnvRaw);
-        } catch (_) {}
-      }
-      return jsonOut_(revOut);
+      return jsonOut_({
+        ok: true,
+        rev: curRev,
+        serverTs: Date.now(),
+        serverVersion: 'v87', specVersion: '4.0',
+        api: 2
+      });
     }
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v86', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v87', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
     ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSheets_(ss);
 
-    // 1. Публичный запрос терминала бариста (возвращает только публичные чек-листы, окна и список имён без PIN/токенов)
+    // 1. Публичный pre-login запрос: только минимальные статические данные для экрана входа (без планов, черновиков, tgId и финансов)
     if (action === 'get_checklists') {
       var pubRes = sanitizePublicChecklists_(getChecklists_(ss), ss, p.sinceTs);
       pubRes.rev = getDataRev_();
@@ -187,45 +186,102 @@ function doGet(e) {
   }
 }
 
+var STAFF_OR_ADMIN_ACTIONS_ = {
+  staff_bootstrap: true,
+  delta_sync: true,
+  submit_checklist: true,
+  submit_cash: true,
+  batch_submit_cash: true,
+  upload_photo: true,
+  ack_announcement: true,
+  save_checklist_draft: true,
+  toggle_personal_task: true,
+  bind_telegram_user: true,
+  save_nomenclature_rule: true,
+  add_expiry_item: true,
+  dispose_expiry_item: true,
+  switch_shop_location: true,
+  save_task: true,
+  report_standalone_incident: true,
+  handover_shift: true,
+  submit_writeoff: true
+};
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   var hasLock = false;
   var pendingAlerts = [];
   var ss = null;
+  var body = {};
+  var action = '';
+  var actorSess = null;
   try {
-    // Защита от гонки данных при параллельной записи с нескольких устройств
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    action = String(body.action || '').trim();
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureSheets_(ss);
+
+    // 1. Публичные действия входа/выхода (выполняются без удержания глобальной блокировки)
+    if (action === 'auth_login') {
+      return jsonOut_(handleAuthLogin_(ss, body));
+    }
+    if (action === 'auth_logout') {
+      return jsonOut_(handleAuthLogout_(body));
+    }
+    if (action === 'change_staff_pin') {
+      return jsonOut_(changeStaffPin_(ss, body));
+    }
+    if (action === 'setup_initial_credentials') {
+      lock.waitLock(15000);
+      hasLock = true;
+      return jsonOut_(setupInitialCredentials_(ss, body));
+    }
+
+    // 2. Обязательная проверка сессии и роли ДО проверки идемпотентности (P0 v4.0)
+    if (STAFF_OR_ADMIN_ACTIONS_[action]) {
+      if (action === 'save_task' && String(body.id || '') !== '__SYS_CONFIG_V19__' && String(body.title || '') !== '__SYS_SYNC__') {
+        actorSess = requireAuth_(ss, body, 'admin');
+      } else if (action === 'switch_shop_location' && body && body.shop) {
+        actorSess = requireVerifiedStaffSession_(ss, body);
+        if (actorSess.role !== 'admin') actorSess = requireAuth_(ss, body, 'admin');
+      } else {
+        actorSess = requireVerifiedStaffSession_(ss, body);
+      }
+    } else {
+      actorSess = requireAuth_(ss, body, 'admin');
+    }
+
+    // 3. Проверка идемпотентности строго ПОСЛЕ авторизации и с привязкой к субъекту (actorId + role + action)
+    var replay = getIdempotentResult_(ss, body, actorSess);
+    if (replay) return jsonOut_(replay);
+
+    // 4. Загрузка медиа в Drive выполняется вне глобальной блокировки Sheets (P1 v4.0)
+    if (action === 'upload_photo') {
+      var upOut = uploadPhotoToDrive_(ss, body, lock);
+      return idempotentJsonOut_(ss, body, upOut, actorSess, actorSess);
+    }
+
+    // 5. Короткая критическая секция для операций с Google Sheets
     lock.waitLock(15000);
     hasLock = true;
 
-    var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    var action = body.action || '';
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    ensureSheets_(ss);
+    // Повторная проверка идемпотентности под блокировкой на случай конкурентного запроса
+    var replayLocked = getIdempotentResult_(ss, body, actorSess);
+    if (replayLocked) return jsonOut_(replayLocked);
 
-    // Идемпотентность: повтор сетевого запроса с тем же operationId не выполняет мутацию второй раз.
-    var replay = getIdempotentResult_(ss, body);
-    if (replay) return jsonOut_(replay);
-
-    // 1. Серверная аутентификация по PIN (с защитой от перебора 5 попыток и выдачей sessionToken)
-    if (action === 'auth_login') {
-      return idempotentJsonOut_(ss, body, handleAuthLogin_(ss, body));
-    }
-    if (action === 'auth_logout') {
-      return idempotentJsonOut_(ss, body, handleAuthLogout_(body));
-    }
-    if (action === 'setup_initial_credentials') {
-      return idempotentJsonOut_(ss, body, setupInitialCredentials_(ss, body));
+    if (action === 'staff_bootstrap') {
+      return jsonOut_(buildStaffBootstrapDto_(ss, actorSess, body.sinceTs));
     }
     if (action === 'change_staff_pin') {
-      return idempotentJsonOut_(ss, body, changeStaffPin_(ss, body));
+      return idempotentJsonOut_(ss, body, changeStaffPin_(ss, body), actorSess, actorSess);
     }
 
-    // 2. Поэлементная дельта-синхронизация (по id и updatedAt, без затирания чужих смен и чек-листов)
+    // Поэлементная дельта-синхронизация (по id и updatedAt, с фильтрацией полей и проверкой владельца)
     if (action === 'delta_sync') {
-      return idempotentJsonOut_(ss, body, handleDeltaSync_(ss, body));
+      return idempotentJsonOut_(ss, body, handleDeltaSync_(ss, body, actorSess), actorSess, actorSess);
     }
 
-    // 3. Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram)
+    // Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram после снятия lock)
     if (action === 'submit_checklist') {
       validateChecklistPayload_(ss, body);
       var resChk = submitChecklist_(ss, body);
@@ -242,30 +298,36 @@ function doPost(e) {
           text: '🚨 ПРОБЛЕМА ПО ЧЕК-ЛИСТУ\nБлок: ' + String(body.block || '').slice(0, 100) + '\nУчасток: ' + String(x.title || '').slice(0, 150) + '\nСотрудник: ' + String(body.userName || 'Бариста').slice(0, 100) + '\nОписание: ' + String(x.comment || '').slice(0, 700)
         });
       });
-      return idempotentJsonOut_(ss, body, resChk);
+      return idempotentJsonOut_(ss, body, resChk, actorSess);
     }
     if (action === 'submit_cash') {
       validateCashPayload_(ss, body);
-      return idempotentJsonOut_(ss, body, submitCash_(ss, body));
+      return idempotentJsonOut_(ss, body, submitCash_(ss, body), actorSess);
     }
-    if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body));
+    if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body), actorSess);
     // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
-    if (action === 'upload_photo') return idempotentJsonOut_(ss, body, uploadPhotoToDrive_(ss, body));
-    if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body));
-    if (action === 'save_checklist_draft') return idempotentJsonOut_(ss, body, saveChecklistDraft_(ss, body));
-    if (action === 'toggle_personal_task') return idempotentJsonOut_(ss, body, togglePersonalTask_(ss, body));
-    if (action === 'bind_telegram_user') return idempotentJsonOut_(ss, body, bindTelegramUser_(ss, body));
-    if (action === 'save_nomenclature_rule') return idempotentJsonOut_(ss, body, saveNomenclatureRule_(ss, body));
-    if (action === 'add_expiry_item') return idempotentJsonOut_(ss, body, addExpiryItem_(ss, body));
-    if (action === 'dispose_expiry_item') return idempotentJsonOut_(ss, body, disposeExpiryItem_(ss, body));
+    if (action === 'upload_photo') return idempotentJsonOut_(ss, body, uploadPhotoToDrive_(ss, body), actorSess);
+    if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body), actorSess);
+    if (action === 'save_checklist_draft') return idempotentJsonOut_(ss, body, saveChecklistDraft_(ss, body), actorSess);
+    if (action === 'toggle_personal_task') return idempotentJsonOut_(ss, body, togglePersonalTask_(ss, body), actorSess);
+    if (action === 'bind_telegram_user') return idempotentJsonOut_(ss, body, bindTelegramUser_(ss, body), actorSess);
+    if (action === 'save_nomenclature_rule') return idempotentJsonOut_(ss, body, saveNomenclatureRule_(ss, body), actorSess);
+    if (action === 'add_expiry_item') return idempotentJsonOut_(ss, body, addExpiryItem_(ss, body), actorSess);
+    if (action === 'dispose_expiry_item') return idempotentJsonOut_(ss, body, disposeExpiryItem_(ss, body), actorSess);
     if (action === 'switch_shop_location') {
       var shopSess = requireVerifiedStaffSession_(ss, body);
       if (body && body.shop && shopSess.role !== 'admin') requireAuth_(ss, body, 'admin');
-      return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body));
+      return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
     }
     if (action === 'save_task' && (String(body.id || '') === '__SYS_CONFIG_V19__' || String(body.title || '') === '__SYS_SYNC__')) {
       var sysSess = requireVerifiedStaffSession_(ss, body);
-      return idempotentJsonOut_(ss, body, saveTask_(ss, body, sysSess));
+      return idempotentJsonOut_(ss, body, saveTask_(ss, body, sysSess), actorSess);
+    }
+    if (action === 'handover_shift') {
+      return idempotentJsonOut_(ss, body, handoverShift_(ss, body, actorSess), actorSess);
+    }
+    if (action === 'submit_writeoff') {
+      return idempotentJsonOut_(ss, body, submitWriteoff_(ss, body, actorSess), actorSess);
     }
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
@@ -273,11 +335,9 @@ function doPost(e) {
         type: 'incident',
         text: '🚨 НОВАЯ ПОЛОМКА / ЭКШН-ПЛАН (24ч)\nУчасток: ' + (body.step || '') + '\nОписание: ' + (body.text || body.comment || '') + '\nИсполнитель: ' + (body.responsible || 'Техник') + '\nСообщил: ' + (body.userName || 'Бариста')
       });
-      return idempotentJsonOut_(ss, body, resInc);
+      return idempotentJsonOut_(ss, body, resInc, actorSess);
     }
-    // ВНИМАНИЕ: Уязвимость публичного save_setting для CLOUD_SYNC_V17 полностью закрыта!
-    // Все действия ниже требуют подтверждённой сессии администратора / владельца (sessionToken).
-    requireAuth_(ss, body, 'admin');
+    // Все действия ниже уже авторизованы как admin на входе в doPost.
 
     // Чтение разделов владельца (Дашборд, Отчёты, Управление) через POST без утечки sessionToken в URL (T9 / F10)
     if (action === 'dashboard') {
@@ -291,54 +351,55 @@ function doPost(e) {
     }
 
     // Произвольная отправка сообщений в Telegram доступна только владельцу/администратору.
-    if (action === 'send_telegram_alert') return idempotentJsonOut_(ss, body, sendTelegramServerAlert_(ss, body));
+    if (action === 'send_telegram_alert') return idempotentJsonOut_(ss, body, sendTelegramServerAlert_(ss, body), actorSess);
 
-    if (action === 'save_telegram_credentials') return idempotentJsonOut_(ss, body, saveTelegramCredentials_(ss, body));
-    if (action === 'save_task') return idempotentJsonOut_(ss, body, saveTask_(ss, body, { role: 'admin', staffName: 'Администратор' }));
-    if (action === 'delete_task') return idempotentJsonOut_(ss, body, deleteTask_(ss, body));
-    if (action === 'admin_cash') return idempotentJsonOut_(ss, body, submitCash_(ss, body));
-    if (action === 'delete_cash') return idempotentJsonOut_(ss, body, deleteCash_(ss, body));
-    if (action === 'add_expense') { validateExpensePayload_(ss, body); return idempotentJsonOut_(ss, body, addExpense_(ss, body)); }
-    if (action === 'update_expense') return idempotentJsonOut_(ss, body, updateExpense_(ss, body));
-    if (action === 'delete_expense') return idempotentJsonOut_(ss, body, deleteExpense_(ss, body));
-    if (action === 'resolve_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }));
-    if (action === 'update_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, body));
-    if (action === 'delete_incident') return idempotentJsonOut_(ss, body, deleteIncident_(ss, body));
-    if (action === 'save_setting') return idempotentJsonOut_(ss, body, saveSettingSecure_(ss, body));
+    if (action === 'save_telegram_credentials') return idempotentJsonOut_(ss, body, saveTelegramCredentials_(ss, body), actorSess);
+    if (action === 'save_task') return idempotentJsonOut_(ss, body, saveTask_(ss, body, { role: 'admin', staffName: 'Администратор' }), actorSess);
+    if (action === 'delete_task') return idempotentJsonOut_(ss, body, deleteTask_(ss, body), actorSess);
+    if (action === 'admin_cash') return idempotentJsonOut_(ss, body, submitCash_(ss, body), actorSess);
+    if (action === 'delete_cash') return idempotentJsonOut_(ss, body, deleteCash_(ss, body), actorSess);
+    if (action === 'add_expense') { validateExpensePayload_(ss, body); return idempotentJsonOut_(ss, body, addExpense_(ss, body), actorSess); }
+    if (action === 'update_expense') return idempotentJsonOut_(ss, body, updateExpense_(ss, body), actorSess);
+    if (action === 'delete_expense') return idempotentJsonOut_(ss, body, deleteExpense_(ss, body), actorSess);
+    if (action === 'resolve_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }), actorSess);
+    if (action === 'update_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, body), actorSess);
+    if (action === 'delete_incident') return idempotentJsonOut_(ss, body, deleteIncident_(ss, body), actorSess);
+    if (action === 'save_setting') return idempotentJsonOut_(ss, body, saveSettingSecure_(ss, body), actorSess);
     if (action === 'save_all_settings' && body.items) {
       body.items.forEach(function(it) { saveSettingSecure_(ss, it); });
-      return idempotentJsonOut_(ss, body, { ok: true });
+      return idempotentJsonOut_(ss, body, { ok: true }, actorSess);
     }
-    if (action === 'extend_deadline') return idempotentJsonOut_(ss, body, extendDeadline_(ss, body));
-    if (action === 'save_block_windows') return idempotentJsonOut_(ss, body, saveBlockWindows_(ss, body));
-    if (action === 'simulate_overdue') return idempotentJsonOut_(ss, body, simulateOverdue_(ss, body));
-    if (action === 'save_announcement') return idempotentJsonOut_(ss, body, saveAnnouncement_(ss, body));
-    if (action === 'delete_announcement') return idempotentJsonOut_(ss, body, deleteAnnouncement_(ss, body));
-    if (action === 'save_staff') return idempotentJsonOut_(ss, body, saveStaff_(ss, body));
-    if (action === 'delete_staff') return idempotentJsonOut_(ss, body, deleteStaff_(ss, body));
-    if (action === 'save_ttk') return idempotentJsonOut_(ss, body, saveTtk_(ss, body));
-    if (action === 'delete_ttk') return idempotentJsonOut_(ss, body, deleteTtk_(ss, body));
-    if (action === 'save_shift_roster') return idempotentJsonOut_(ss, body, saveShiftRoster_(ss, body));
-    if (action === 'reorder_task') return idempotentJsonOut_(ss, body, reorderTask_(ss, body));
-    if (action === 'save_checklist_blocks') return idempotentJsonOut_(ss, body, saveChecklistBlocks_(ss, body));
-    if (action === 'add_checklist_block') return idempotentJsonOut_(ss, body, addChecklistBlock_(ss, body));
-    if (action === 'delete_checklist_block') return idempotentJsonOut_(ss, body, deleteChecklistBlock_(ss, body));
-    if (action === 'save_daily_plans') return idempotentJsonOut_(ss, body, saveDailyPlans_(ss, body));
-    if (action === 'save_staff_pins') return idempotentJsonOut_(ss, body, saveStaffPins_(ss, body));
-    if (action === 'save_good_deed') return idempotentJsonOut_(ss, body, saveGoodDeed_(ss, body));
-    if (action === 'delete_good_deed') return idempotentJsonOut_(ss, body, deleteGoodDeed_(ss, body));
-    if (action === 'save_service_audit') return idempotentJsonOut_(ss, body, saveServiceAudit_(ss, body));
-    if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body));
-    if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body));
-    if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body));
-    if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() });
-    if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body));
-    if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss));
-    if (action === 'send_daily_digest') return idempotentJsonOut_(ss, body, sendDailyDigestNow_(ss, body));
+    if (action === 'extend_deadline') return idempotentJsonOut_(ss, body, extendDeadline_(ss, body), actorSess);
+    if (action === 'save_block_windows') return idempotentJsonOut_(ss, body, saveBlockWindows_(ss, body), actorSess);
+    if (action === 'simulate_overdue') return idempotentJsonOut_(ss, body, simulateOverdue_(ss, body), actorSess);
+    if (action === 'save_announcement') return idempotentJsonOut_(ss, body, saveAnnouncement_(ss, body), actorSess);
+    if (action === 'delete_announcement') return idempotentJsonOut_(ss, body, deleteAnnouncement_(ss, body), actorSess);
+    if (action === 'save_staff') return idempotentJsonOut_(ss, body, saveStaff_(ss, body), actorSess);
+    if (action === 'delete_staff') return idempotentJsonOut_(ss, body, deleteStaff_(ss, body), actorSess);
+    if (action === 'save_ttk') return idempotentJsonOut_(ss, body, saveTtk_(ss, body), actorSess);
+    if (action === 'delete_ttk') return idempotentJsonOut_(ss, body, deleteTtk_(ss, body), actorSess);
+    if (action === 'save_shift_roster') return idempotentJsonOut_(ss, body, saveShiftRoster_(ss, body), actorSess);
+    if (action === 'reorder_task') return idempotentJsonOut_(ss, body, reorderTask_(ss, body), actorSess);
+    if (action === 'save_checklist_blocks') return idempotentJsonOut_(ss, body, saveChecklistBlocks_(ss, body), actorSess);
+    if (action === 'add_checklist_block') return idempotentJsonOut_(ss, body, addChecklistBlock_(ss, body), actorSess);
+    if (action === 'delete_checklist_block') return idempotentJsonOut_(ss, body, deleteChecklistBlock_(ss, body), actorSess);
+    if (action === 'save_daily_plans') return idempotentJsonOut_(ss, body, saveDailyPlans_(ss, body), actorSess);
+    if (action === 'save_staff_pins') return idempotentJsonOut_(ss, body, saveStaffPins_(ss, body), actorSess);
+    if (action === 'save_good_deed') return idempotentJsonOut_(ss, body, saveGoodDeed_(ss, body), actorSess);
+    if (action === 'delete_good_deed') return idempotentJsonOut_(ss, body, deleteGoodDeed_(ss, body), actorSess);
+    if (action === 'save_service_audit') return idempotentJsonOut_(ss, body, saveServiceAudit_(ss, body), actorSess);
+    if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body), actorSess);
+    if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body), actorSess);
+    if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body), actorSess);
+    if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() }, actorSess);
+    if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
+    if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
+    if (action === 'send_daily_digest') return idempotentJsonOut_(ss, body, sendDailyDigestNow_(ss, body), actorSess);
+    if (action === 'submit_adjustment') return idempotentJsonOut_(ss, body, submitAdjustment_(ss, body, actorSess), actorSess);
 
-    return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action });
+    return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action }, actorSess);
   } catch (err) {
-    return idempotentJsonOut_(ss, body, { ok: false, error: String((err && err.message) || err) });
+    return idempotentJsonOut_(ss, body, { ok: false, error: String((err && err.message) || err) }, actorSess);
   } finally {
     if (hasLock) {
       try { lock.releaseLock(); } catch (_) {}
@@ -378,19 +439,14 @@ function validateFiniteNumber_(val, minVal, maxVal, fieldName) {
 function resolveVerifiedStaffSession_(ss, body) {
   var tok = String((body && body.sessionToken) || '').trim();
   if (tok && tok.indexOf('st_') === 0 && tok.indexOf('st_local_') !== 0) {
-    try {
-      var raw = CacheService.getScriptCache().get('sess_' + tok);
-      if (raw) {
-        var sess = JSON.parse(raw);
-        if (sess && sess.expiresAt > Date.now() && sess.staffName) {
-          if (sess.role === 'staff') {
-            body.userName = sess.staffName;
-            if (!body.barista) body.barista = sess.staffName;
-          }
-          return sess;
-        }
+    var sess = getServerSession_(tok);
+    if (sess && sess.staffName) {
+      if (sess.role === 'staff') {
+        body.userName = sess.staffName;
+        if (!body.barista) body.barista = sess.staffName;
       }
-    } catch (_) {}
+      return sess;
+    }
     if (!body.staffPinHash && !body.pinHash && !body.pin) {
       throw new Error('STAFF_AUTH_REQUIRED: Сессия сотрудника истекла или недействительна — войдите заново по персональному PIN-коду');
     }
@@ -492,7 +548,7 @@ function validateExpensePayload_(ss, b) {
   return true;
 }
 
-function uploadPhotoToDrive_(ss, body) {
+function uploadPhotoToDrive_(ss, body, lockOpt) {
   requireVerifiedStaffSession_(ss, body);
   var dataUri = String((body && (body.dataUri || body.photo || body.base64)) || '').trim();
   if (!dataUri) {
@@ -533,13 +589,23 @@ function uploadPhotoToDrive_(ss, body) {
     var directMediaUrl = /^video\//i.test(mimeType)
       ? ('https://drive.google.com/uc?export=download&id=' + file.getId())
       : ('https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200');
-    var shM = ss.getSheetByName('Медиафайлы');
-    if (!shM) {
-      shM = ss.insertSheet('Медиафайлы');
-      shM.appendRow(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']);
+    var lockedHere = false;
+    if (lockOpt) {
+      try { lockOpt.waitLock(15000); lockedHere = true; } catch (_) {}
     }
-    shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, directMediaUrl]);
-    return { ok: true, fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+    try {
+      var shM = ss.getSheetByName('Медиафайлы');
+      if (!shM) {
+        shM = ss.insertSheet('Медиафайлы');
+        shM.appendRow(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']);
+      }
+      shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, directMediaUrl]);
+    } finally {
+      if (lockedHere && lockOpt) {
+        try { lockOpt.releaseLock(); } catch (_) {}
+      }
+    }
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
@@ -553,7 +619,7 @@ function setupInitialCredentials_(ss, body) {
   }
   var rawAdminInput = String((body && body.newAdminPin) || '').trim();
   if (!existingAdminHash && !rawAdminInput) {
-    throw new Error('VALIDATION_FAILED: Необходимо задать PIN владельца (не менее 6 цифр)');
+    throw new Error('VALIDATION_FAILED: Необходимо задать PIN владельца (4–8 цифр)');
   }
   if (rawAdminInput) {
     var stripped = rawAdminInput.indexOf('sha256:') === 0 ? rawAdminInput.slice(7) : rawAdminInput;
@@ -762,7 +828,7 @@ function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
   checkRateLimit_(actorKey || 'admin');
   var expectedHash = getConfiguredOwnerPinHash_(ss);
   if (!expectedHash) {
-    throw new Error('SETUP_REQUIRED: Первичная настройка — задайте PIN владельца (не менее 6 цифр)');
+    throw new Error('SETUP_REQUIRED: Первичная настройка — задайте PIN владельца (4–8 цифр)');
   }
   var candidateHash = normalizePinHash_(candidatePinOrHash);
   var isMatch = !!candidatePinOrHash && (candidateHash === expectedHash);
@@ -810,7 +876,7 @@ function handleAuthLogin_(ss, body) {
     issuedAt: Date.now(),
     expiresAt: expiresAt
   };
-  CacheService.getScriptCache().put('sess_' + token, JSON.stringify(sessionObj), SESSION_TTL_SECONDS);
+  saveServerSession_(sessionObj);
   appendAudit_(ss, staffName, 'Вход в систему по защищённой сессии', 'Роль: ' + role);
   return {
     ok: true,
@@ -821,31 +887,91 @@ function handleAuthLogin_(ss, body) {
   };
 }
 
+function saveServerSession_(sessionObj) {
+  if (!sessionObj || !sessionObj.token) return;
+  try {
+    CacheService.getScriptCache().put('sess_' + sessionObj.token, JSON.stringify(sessionObj), SESSION_TTL_SECONDS);
+  } catch (_) {}
+  try {
+    var store = getJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', {});
+    var now = Date.now();
+    var cleaned = {};
+    var keys = Object.keys(store || {});
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (store[k] && store[k].expiresAt > now) cleaned[k] = store[k];
+    }
+    cleaned[sessionObj.token] = {
+      token: sessionObj.token,
+      role: sessionObj.role,
+      staffName: sessionObj.staffName,
+      issuedAt: sessionObj.issuedAt,
+      expiresAt: sessionObj.expiresAt
+    };
+    var cleanKeys = Object.keys(cleaned);
+    if (cleanKeys.length > 50) {
+      cleanKeys.sort(function(a, b) { return (cleaned[a].issuedAt || 0) - (cleaned[b].issuedAt || 0); });
+      for (var j = 0; j < cleanKeys.length - 50; j++) delete cleaned[cleanKeys[j]];
+    }
+    setJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', cleaned);
+  } catch (_) {}
+}
+
+function getServerSession_(token) {
+  var tok = String(token || '').trim();
+  if (!tok || tok.indexOf('st_') !== 0 || tok.indexOf('st_local_') === 0) return null;
+  try {
+    var raw = CacheService.getScriptCache().get('sess_' + tok);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.expiresAt > Date.now()) return parsed;
+    }
+  } catch (_) {}
+  try {
+    var store = getJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', {});
+    var rec = store && store[tok];
+    if (rec && rec.expiresAt > Date.now()) {
+      try {
+        var ttlLeft = Math.max(60, Math.floor((rec.expiresAt - Date.now()) / 1000));
+        CacheService.getScriptCache().put('sess_' + tok, JSON.stringify(rec), Math.min(SESSION_TTL_SECONDS, ttlLeft));
+      } catch (_) {}
+      return rec;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function removeServerSession_(token) {
+  var tok = String(token || '').trim();
+  if (!tok) return;
+  try { CacheService.getScriptCache().remove('sess_' + tok); } catch (_) {}
+  try {
+    var store = getJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', {});
+    if (store && store[tok]) {
+      delete store[tok];
+      setJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', store);
+    }
+  } catch (_) {}
+}
+
 function handleAuthLogout_(body) {
   var tok = String(body.sessionToken || '').trim();
-  if (tok) {
-    try { CacheService.getScriptCache().remove('sess_' + tok); } catch (_) {}
-  }
+  if (tok) removeServerSession_(tok);
   return { ok: true };
 }
 
 function requireAuth_(ss, paramsOrBody, requiredRole) {
   var p = paramsOrBody || {};
   var tok = String(p.sessionToken || '').trim();
-  if (tok && tok.indexOf('st_') === 0) {
-    var raw = CacheService.getScriptCache().get('sess_' + tok);
-    if (raw) {
-      var sess = JSON.parse(raw);
-      if (sess && sess.expiresAt > Date.now()) {
-        if (requiredRole === 'admin' && sess.role !== 'admin') {
-          throw new Error('FORBIDDEN: Требуются права владельца или администратора');
-        }
-        return sess;
-      }
+  var sess = getServerSession_(tok);
+  if (sess) {
+    if (requiredRole === 'admin' && sess.role !== 'admin') {
+      throw new Error('FORBIDDEN: Требуются права владельца или администратора');
     }
+    return sess;
   }
   if (!getConfiguredOwnerPinHash_(ss)) {
-    throw new Error('SETUP_REQUIRED: Первичная настройка — задайте PIN владельца (не менее 6 цифр)');
+    throw new Error('SETUP_REQUIRED: Первичная настройка — задайте PIN владельца (4–8 цифр)');
   }
   // Резервная проверка по pinHash или pin (с единым ключом Rate-Limiting 'admin')
   var pinCand = p.pinHash || p.pin || '';
@@ -963,25 +1089,117 @@ function saveSettingSecure_(ss, body) {
 }
 
 function sanitizePublicChecklists_(res, ss, sinceTs) {
-  // Удаляем любые чувствительные поля из публичного ответа get_checklists
-  delete res.settings;
-  delete res.adminPin;
-  delete res.tgToken;
-  if (Array.isArray(res.staff)) {
-    res.staff = res.staff.map(function(s) {
-      return {
-        id: s.id,
-        name: s.name,
-        role: s.role,
-        tgId: s.tgId || '',
-        location: s.location,
-        active: s.active
-      };
-    });
-  }
-  res.deltas = getDeltasSince_(ss, Number(sinceTs) || 0, 'staff');
-  res.serverTs = Date.now();
-  return res;
+  // Публичный pre-login ответ (v4.0): строго минимальный набор нефинансовых и неперсональных данных для экрана входа
+  var safeStaff = Array.isArray(res.staff) ? res.staff.map(function(s) {
+    return {
+      id: s.id,
+      name: s.name,
+      role: s.role,
+      location: s.location,
+      active: s.active
+    };
+  }) : [];
+  return {
+    ok: true,
+    v: res.v || 55,
+    serverVersion: 'v87', specVersion: '4.0',
+    location: res.location || 'Кофейня №1',
+    staff: safeStaff,
+    serverTime: res.serverTime,
+    serverDate: res.serverDate,
+    serverTs: Date.now(),
+    requiresAuthForDetails: true
+  };
+}
+
+function buildStaffBootstrapDto_(ss, sess, sinceTs) {
+  var full = getChecklists_(ss);
+  var isAdmin = (sess && sess.role === 'admin');
+  var staffName = String((sess && sess.staffName) || '').trim();
+  var safeStaff = Array.isArray(full.staff) ? full.staff.map(function(s) {
+    return {
+      id: s.id,
+      name: s.name,
+      role: s.role,
+      location: s.location,
+      active: s.active
+    };
+  }) : [];
+
+  var filteredDrafts = {};
+  var rawDrafts = full.userDrafts || {};
+  Object.keys(rawDrafts).forEach(function(k) {
+    var d = rawDrafts[k];
+    if (isAdmin || (d && String(d.userName || '').trim() === staffName) || k.indexOf(':' + staffName + ':') >= 0) {
+      filteredDrafts[k] = d;
+    }
+  });
+
+  var filteredActive = {};
+  var rawActive = full.userActiveState || {};
+  Object.keys(rawActive).forEach(function(k) {
+    if (isAdmin || k === staffName || k.indexOf(staffName + ':') === 0 || k.indexOf(':' + staffName) >= 0) {
+      filteredActive[k] = rawActive[k];
+    }
+  });
+
+  var filteredPersonal = {};
+  var rawPersonal = full.personalTasksDone || {};
+  Object.keys(rawPersonal).forEach(function(k) {
+    if (isAdmin || k === staffName || k.indexOf(staffName + ':') === 0) {
+      filteredPersonal[k] = rawPersonal[k];
+    }
+  });
+
+  var filteredChecklists = Array.isArray(full.checklists) ? full.checklists.filter(function(c) {
+    return isAdmin || (c && String(c.who || '').trim() === staffName);
+  }) : [];
+
+  var safeTtk = Array.isArray(full.ttk) ? full.ttk.map(function(t) {
+    return {
+      id: t.id,
+      category: t.category,
+      name: t.name,
+      volume: t.volume,
+      ingredients: t.ingredients,
+      recipe: t.recipe
+    };
+  }) : [];
+
+  var safeTasks = Array.isArray(full.tasks) ? full.tasks.filter(function(t) {
+    return t && String(t.id || '') !== '__SYS_CONFIG_V19__' && String(t.title || '') !== '__SYS_SYNC__';
+  }) : [];
+
+  return {
+    ok: true,
+    v: full.v || 55,
+    rev: getDataRev_(),
+    serverVersion: 'v87', specVersion: '4.0',
+    profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
+    location: full.location || 'Кофейня №1',
+    photoAll: full.photoAll || 'нет',
+    openStart: full.openStart,
+    deadline: full.deadline,
+    dayStart: full.dayStart,
+    dayDeadline: full.dayDeadline,
+    closeStart: full.closeStart,
+    closeDeadline: full.closeDeadline,
+    checklistBlocks: full.checklistBlocks || [],
+    deadlineExtensions: full.deadlineExtensions || {},
+    announcements: full.announcements || [],
+    staff: safeStaff,
+    ttk: safeTtk,
+    goodDeeds: full.goodDeeds || [],
+    tasks: safeTasks,
+    checklists: filteredChecklists,
+    userDrafts: filteredDrafts,
+    userActiveState: filteredActive,
+    personalTasksDone: filteredPersonal,
+    deltas: getDeltasSince_(ss, Number(sinceTs) || 0, sess ? sess.role : 'staff', null, sess),
+    serverTime: full.serverTime,
+    serverDate: full.serverDate,
+    serverTs: Date.now()
+  };
 }
 
 function maskSensitiveSettingsInResponse_(res, ss) {
@@ -1018,8 +1236,78 @@ var STAFF_DELTA_WHITELIST_ = {
 var DELTA_TOMBSTONE_TTL_MS_ = 30 * 24 * 60 * 60 * 1000; // 30 дней
 var DELTA_MAX_ROWS_ = 20000;
 
-function handleDeltaSync_(ss, body) {
-  var sess = requireVerifiedStaffSession_(ss, body);
+function filterDeltaRecordForRole_(col, rec, actor, sess) {
+  if (!rec || typeof rec !== 'object') return {};
+  if (sess && sess.role === 'admin') return rec;
+  var staffName = String((sess && sess.staffName) || '').trim();
+  if (col === 'incidents') {
+    return {
+      id: rec.id,
+      date: rec.date,
+      time: rec.time,
+      step: rec.step,
+      block: rec.block,
+      text: rec.text,
+      comment: rec.comment,
+      responsible: rec.responsible,
+      status: rec.status,
+      urgency: rec.urgency,
+      photoUrl: rec.photoUrl,
+      mediaId: rec.mediaId,
+      userName: rec.userName || actor,
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  if (col === 'announcements') {
+    return {
+      id: rec.id,
+      title: rec.title,
+      text: rec.text,
+      date: rec.date,
+      active: rec.active,
+      readBy: Array.isArray(rec.readBy) ? rec.readBy : [],
+      acks: Array.isArray(rec.acks) ? rec.acks : [],
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  if (col === 'checklists') {
+    var owner = String(rec.who || rec.userName || actor || '').trim();
+    if (staffName && owner && owner !== staffName) return null;
+    return {
+      id: rec.id,
+      date: rec.date,
+      time: rec.time,
+      block: rec.block,
+      who: owner,
+      status: rec.status,
+      isLate: !!rec.isLate,
+      items: Array.isArray(rec.items) ? rec.items : [],
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  if (col === 'userDrafts') {
+    var dOwner = String(rec.userName || actor || '').trim();
+    if (staffName && dOwner && dOwner !== staffName) return null;
+    return {
+      id: rec.id,
+      date: rec.date,
+      userName: dOwner,
+      block: rec.block,
+      idx: rec.idx,
+      startedAt: rec.startedAt,
+      answers: Array.isArray(rec.answers) ? rec.answers : [],
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  return null;
+}
+
+function handleDeltaSync_(ss, body, sessOpt) {
+  var sess = sessOpt || requireVerifiedStaffSession_(ss, body);
   var sh = ss.getSheetByName('ДельтаСинхр');
   if (!sh) {
     sh = ss.insertSheet('ДельтаСинхр');
@@ -1060,6 +1348,14 @@ function handleDeltaSync_(ss, body) {
       if (!sess || sess.role !== 'admin') {
         requireAuth_(ss, body, 'admin');
       }
+    }
+    if (sess && sess.role !== 'admin') {
+      var filteredIn = filterDeltaRecordForRole_(colName, d.record || {}, sess.staffName, sess);
+      if (filteredIn === null) {
+        throw new Error('FORBIDDEN: Доступ к чужой записи в delta_sync запрещён');
+      }
+      d.record = filteredIn;
+      d.actor = sess.staffName;
     }
     var k = colName + '::' + String(d.id);
     var incTs = Number(d.updatedAt) || nowMs;
@@ -1122,11 +1418,11 @@ function handleDeltaSync_(ss, body) {
     ok: true,
     applied: applied,
     serverTs: Date.now(),
-    deltas: getDeltasSince_(ss, sinceTs, sess ? sess.role : 'staff', finalSheetRows)
+    deltas: getDeltasSince_(ss, sinceTs, sess ? sess.role : 'staff', finalSheetRows, sess)
   };
 }
 
-function getDeltasSince_(ss, sinceTs, roleOpt, preloadedRowsOpt) {
+function getDeltasSince_(ss, sinceTs, roleOpt, preloadedRowsOpt, sessOpt) {
   var isAdmin = (roleOpt === 'admin');
   var rows = preloadedRowsOpt;
   if (!rows) {
@@ -1142,12 +1438,17 @@ function getDeltasSince_(ss, sinceTs, roleOpt, preloadedRowsOpt) {
     if (ts >= sinceTs) {
       var rec = null;
       try { rec = JSON.parse(String(rows[i][5] || '{}')); } catch (_) {}
+      var actor = String(rows[i][4] || '');
+      if (!isAdmin) {
+        rec = filterDeltaRecordForRole_(col, rec || {}, actor, sessOpt || { role: 'staff', staffName: '' });
+        if (rec === null) continue;
+      }
       out.push({
         collection: col,
         id: String(rows[i][1] || ''),
         updatedAt: ts,
         deleted: String(rows[i][3] || '') === '1',
-        actor: String(rows[i][4] || ''),
+        actor: actor,
         record: rec
       });
     }
@@ -1157,61 +1458,84 @@ function getDeltasSince_(ss, sinceTs, roleOpt, preloadedRowsOpt) {
 
 
 /** Возвращает сохранённый результат операции, если клиент повторил запрос после таймаута. */
-function getIdempotentResult_(ss, body) {
+function getIdempotentResult_(ss, body, actorSess) {
   var id = String(body && body.operationId || '').trim();
   if (!/^[a-zA-Z0-9_-]{12,80}$/.test(id)) return null;
-  var cache = CacheService.getScriptCache();
-  try {
-    var cached = cache.get('op_' + id);
-    if (cached) return JSON.parse(cached);
-  } catch (_) {}
   var act = String(body && body.action || '');
   if (act === 'save_checklist_draft' || act === 'toggle_personal_task' || (act === 'save_task' && String(body && body.id || '') === '__SYS_CONFIG_V19__')) {
     return null;
   }
-  // Постоянный журнал нужен, чтобы повтор после истечения CacheService не выполнил операцию второй раз.
+  var actorId = String((actorSess && actorSess.staffName) || '');
+  var actorRole = String((actorSess && actorSess.role) || '');
+  var cacheKey = 'op_' + actorRole + '_' + actorId + '_' + id;
+  var cache = CacheService.getScriptCache();
+  try {
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      var env = JSON.parse(cached);
+      if (env && env.actorId === actorId && env.role === actorRole && env.action === act && env.result) {
+        return env.result;
+      }
+    }
+  } catch (_) {}
   try {
     var sh = ss.getSheetByName('API_OPERATIONS');
     if (!sh) {
       sh = ss.insertSheet('API_OPERATIONS');
-      sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON']);
+      sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']);
     }
     var last = sh.getLastRow();
     if (last >= 2) {
-      /* Повтор после таймаута приходит вскоре — ищем только в последних 1500 операциях, а не во всех 5000. */
       var firstRow = Math.max(2, last - 1499);
       var found = sh.getRange(firstRow, 1, last - firstRow + 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
       if (found) {
-        var raw = String(sh.getRange(found.getRow(), 3).getValue() || '');
+        var rIdx = found.getRow();
+        var rowVals = sh.getRange(rIdx, 1, 1, Math.max(6, sh.getLastColumn())).getValues()[0];
+        var raw = String(rowVals[2] || '');
+        var recActor = String(rowVals[3] || '');
+        var recRole = String(rowVals[4] || '');
+        var recAct = String(rowVals[5] || '');
+        if (recActor && recActor !== actorId) {
+          throw new Error('FORBIDDEN: Чужой operationId не может быть повторён другим пользователем');
+        }
+        if (recRole && recRole !== actorRole) {
+          throw new Error('FORBIDDEN: operationId другой роли не может быть повторён');
+        }
+        if (recAct && recAct !== act) {
+          throw new Error('CONFLICT: operationId уже использован для другого действия');
+        }
         if (raw) {
           var result = JSON.parse(raw);
-          try { cache.put('op_' + id, raw, 21600); } catch (_) {}
+          try { cache.put(cacheKey, JSON.stringify({ actorId: actorId, role: actorRole, action: act, result: result }), 21600); } catch (_) {}
           return result;
         }
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    if (err && /FORBIDDEN|CONFLICT/.test(String(err.message || err))) throw err;
+  }
   return null;
 }
 
-function idempotentJsonOut_(ss, body, result) {
+function idempotentJsonOut_(ss, body, result, actorSess) {
   if (result && result.ok === true) {
     var actName = String(body && body.action || '');
     if (actName !== 'auth_login' && actName !== 'auth_logout') result.rev = bumpDataRev_();
     var id = String(body && body.operationId || '').trim();
-    // Результаты со session-токеном не журналируем: токены не должны храниться в таблице/кэше.
     var isFastSyncAct = (actName === 'save_checklist_draft' || actName === 'toggle_personal_task' || (actName === 'save_task' && String(body && body.id || '') === '__SYS_CONFIG_V19__'));
     if (!result.sessionToken && /^[a-zA-Z0-9_-]{12,80}$/.test(id)) {
+      var actorId = String((actorSess && actorSess.staffName) || '');
+      var actorRole = String((actorSess && actorSess.role) || '');
       var raw = JSON.stringify(result);
-      try { CacheService.getScriptCache().put('op_' + id, raw, 21600); } catch (_) {}
+      var cacheKey = 'op_' + actorRole + '_' + actorId + '_' + id;
+      try { CacheService.getScriptCache().put(cacheKey, JSON.stringify({ actorId: actorId, role: actorRole, action: actName, result: result }), 21600); } catch (_) {}
       if (!isFastSyncAct) try {
         var sh = ss.getSheetByName('API_OPERATIONS');
         if (!sh) {
           sh = ss.insertSheet('API_OPERATIONS');
-          sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON']);
+          sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']);
         }
-        sh.appendRow([id, Date.now(), raw]);
-        // Ограничиваем рост журнала, сохраняя последние 5000 подтверждённых операций.
+        sh.appendRow([id, Date.now(), raw, actorId, actorRole, actName]);
         var last = sh.getLastRow();
         if (last > 5001) sh.deleteRows(2, last - 5001);
       } catch (_) {}
@@ -2042,6 +2366,13 @@ function getDashboard_(ss, dateStr) {
     productsByDate: adm.productsByDate || {},
     barista: c ? c.barista : '',
     openedAt: openedAt,
+    kpi: {
+      revenue: { value: c ? rev : null, currency: 'RUB_PMR', dataQuality: c ? 'verified' : 'missing', source: 'Касса' },
+      checks: { value: c ? chks : null, dataQuality: c ? 'verified' : 'missing', source: 'Касса' },
+      averageTicket: { value: (c && chks > 0) ? Math.round(rev / chks) : null, currency: 'RUB_PMR', dataQuality: (c && chks > 0) ? 'verified' : 'missing', source: 'Касса' },
+      cogs: { value: null, currency: 'RUB_PMR', dataQuality: 'missing', reason: 'Отсутствуют утверждённые рецептуры ТТК с закупочными ценами' },
+      netProfit: { value: null, currency: 'RUB_PMR', dataQuality: 'missing', reason: 'Себестоимость (COGS) не рассчитана' }
+    },
     days: days14,
     incidents: adm.incidents,
     announcements: adm.announcements,
@@ -3493,7 +3824,7 @@ function buildTelegramInteractiveButtonsV80_(entityId, webappUrl) {
 }
 
 // === V82 SECURITY & AUDIT FIXES (Document 1: P0 Telegram HMAC Auth, P0 Factory PIN Lock, P1 Private Drive Photos, P1 Verified Telegram Delivery) ===
-var COFFEE_SERVER_VERSION_V82 = 'v86';
+var COFFEE_SERVER_VERSION_V82 = 'v87';
 
 function applySecureDriveFileSharingV82_(file) {
   if (!file) return 'PRIVATE';
@@ -3704,3 +4035,94 @@ function sendTelegramVerifiedV82_(chatId, text, opts) {
   return { ok: false, error: 'URLFETCH_UNAVAILABLE' };
 }
 
+
+
+/* =========================================================================
+   COFFEE ILLY v4.1 — ПЕРЕДАЧА СМЕНЫ, СПИСАНИЯ И APPEND-ONLY КОРРЕКТИРОВКИ
+   ========================================================================= */
+var INCIDENT_STATUSES_V41_ = {
+  'Новое': true,
+  'Принято в работу': true,
+  'Ожидает решения': true,
+  'Решено': true,
+  'Закрыто': true,
+  'Новая': true,
+  'В работе': true,
+  'Решена': true
+};
+
+function handoverShift_(ss, body, sess) {
+  var fromStaff = String((sess && sess.staffName) || '').trim();
+  var toStaff = String((body && body.toStaff) || '').trim();
+  if (!fromStaff) throw new Error('STAFF_AUTH_REQUIRED: Не определён передающий сотрудник');
+  if (!toStaff) throw new Error('VALIDATION_FAILED: Не указан принимающий сотрудник');
+  if (toStaff === fromStaff) throw new Error('VALIDATION_FAILED: Нельзя передать смену самому себе');
+  var sh = ss.getSheetByName('ПередачаСмен');
+  if (!sh) {
+    sh = ss.insertSheet('ПередачаСмен');
+    sh.appendRow(['HandoverID', 'Timestamp', 'BusinessDate', 'FromStaff', 'ToStaff', 'EquipmentState', 'OpenTasksJSON', 'CashStateJSON', 'Notes', 'ConfirmedByBoth']);
+  }
+  var hid = newId_('HND');
+  var ts = new Date().toISOString();
+  var bDate = String((body && body.businessDate) || isoDate_()).trim();
+  var equip = String((body && body.equipmentState) || 'Исправно').slice(0, 500);
+  var openTasks = JSON.stringify(Array.isArray(body && body.openTasks) ? body.openTasks : []);
+  var cashState = JSON.stringify((body && body.cashState && typeof body.cashState === 'object') ? body.cashState : {});
+  var notes = String((body && body.notes) || '').slice(0, 1000);
+  var confirmed = !!(body && body.confirmedByReceiver);
+  sh.appendRow([hid, ts, bDate, fromStaff, toStaff, equip, openTasks, cashState, notes, confirmed ? 'да' : 'ожидает']);
+  appendAudit_(ss, fromStaff, 'Передача смены', 'ID: ' + hid + ' -> ' + toStaff);
+  return { ok: true, handoverId: hid, timestamp: ts, fromStaff: fromStaff, toStaff: toStaff, immutable: true };
+}
+
+function submitWriteoff_(ss, body, sess) {
+  var staff = String((sess && sess.staffName) || '').trim();
+  var itemName = String((body && body.itemName) || '').trim();
+  var qty = Number(body && body.qty);
+  var reason = String((body && body.reason) || '').trim();
+  if (!itemName) throw new Error('VALIDATION_FAILED: Не указан товар для списания');
+  validateFiniteNumber_(qty, 0.01, 10000, 'Количество списания');
+  if (!reason) throw new Error('VALIDATION_FAILED: Не указана причина списания');
+  var sh = ss.getSheetByName('Списания');
+  if (!sh) {
+    sh = ss.insertSheet('Списания');
+    sh.appendRow(['WriteoffID', 'Date', 'Timestamp', 'Staff', 'ItemName', 'Qty', 'Reason', 'Comment', 'PhotoURL', 'MediaID', 'Status']);
+  }
+  var wid = newId_('WO');
+  var dt = String((body && body.date) || isoDate_()).trim();
+  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректная дата списания');
+  var ts = new Date().toISOString();
+  sh.appendRow([
+    wid, dt, ts, staff, itemName.slice(0, 150), qty, reason.slice(0, 200),
+    String((body && body.comment) || '').slice(0, 500),
+    String((body && body.photoUrl) || '').slice(0, 500),
+    String((body && body.mediaId) || '').slice(0, 120),
+    'Ожидает проверки'
+  ]);
+  appendAudit_(ss, staff, 'Регистрация списания', itemName + ' (' + qty + '), причина: ' + reason);
+  return { ok: true, writeoffId: wid, status: 'Ожидает проверки' };
+}
+
+function submitAdjustment_(ss, body, sess) {
+  var actor = String((sess && sess.staffName) || 'Администратор').trim();
+  var entityType = String((body && body.entityType) || '').trim();
+  var targetId = String((body && body.targetId) || '').trim();
+  var reason = String((body && body.reason) || '').trim();
+  if (!entityType || !targetId || !reason) {
+    throw new Error('VALIDATION_FAILED: Для корректировки обязательны entityType, targetId и reason');
+  }
+  var sh = ss.getSheetByName('Корректировки');
+  if (!sh) {
+    sh = ss.insertSheet('Корректировки');
+    sh.appendRow(['AdjustmentID', 'Timestamp', 'EntityType', 'TargetID', 'Actor', 'Reason', 'BeforeSummary', 'AfterSummary']);
+  }
+  var aid = newId_('ADJ');
+  var ts = new Date().toISOString();
+  sh.appendRow([
+    aid, ts, entityType, targetId, actor, reason.slice(0, 500),
+    JSON.stringify((body && body.beforeSummary) || {}),
+    JSON.stringify((body && body.afterSummary) || {})
+  ]);
+  appendAudit_(ss, actor, 'Корректировка подтверждённой записи', entityType + ':' + targetId + ' — ' + reason);
+  return { ok: true, adjustmentId: aid, appendOnly: true };
+}

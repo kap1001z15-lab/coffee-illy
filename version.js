@@ -1,10 +1,11 @@
-/* ЕДИНЫЙ ИСТОЧНИК ВЕРСИИ ПРИЛОЖЕНИЯ COFFEE ILLY (v86)
+/* ЕДИНЫЙ ИСТОЧНИК ВЕРСИИ ПРИЛОЖЕНИЯ COFFEE ILLY (v4.0 / build 87)
    Используется всеми HTML-страницами, модулями JS и Service Worker (sw.js). */
 (function (g) {
-  g.COFFEE_VERSION = 'v86';
-  g.COFFEE_APP_VERSION = 'v86';
-  g.COFFEE_BUILD_NUMBER = 86;
-  g.COFFEE_DESIGN_SYSTEM = 'Material Design 3 (Coffee Illy Premium v86)';
+  g.COFFEE_VERSION = 'v87';
+  g.COFFEE_APP_VERSION = 'v87';
+  g.COFFEE_BUILD_NUMBER = 87;
+  g.COFFEE_SPEC_VERSION = '4.0';
+  g.COFFEE_DESIGN_SYSTEM = 'Material Design 3 (Coffee Illy v4.0)';
   g.COFFEE_CACHE_NAME = 'kofeinya-enterprise-' + g.COFFEE_VERSION;
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;

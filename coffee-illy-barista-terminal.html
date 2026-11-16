@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee Illy — Терминал бариста (v86 + v4.2)</title>
+<script>/* =========================================================================
+   COFFEE ILLY v4.0 — УПРАВЛЕНИЕ ТЕМОЙ (Auto / Light / Dark)
+   Подключается в <head> до основного CSS для предотвращения вспышки темы.
+   ========================================================================= */
+(function (g) {
+  var STORAGE_KEY = 'coffee_illy_theme_v4';
+  var LEGACY_KEY = 'coffee_illy_theme';
+  var VALID_MODES = { auto: true, light: true, dark: true };
+
+  function getSavedMode() {
+    try {
+      var v = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'auto';
+      return VALID_MODES[v] ? v : 'auto';
+    } catch (_) {
+      return 'auto';
+    }
+  }
+
+  function getSystemDark() {
+    try {
+      return !!(g.matchMedia && g.matchMedia('(prefers-color-scheme: dark)').matches);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function resolveEffectiveTheme(mode) {
+    var m = VALID_MODES[mode] ? mode : getSavedMode();
+    if (m === 'auto') return getSystemDark() ? 'dark' : 'light';
+    return m;
+  }
+
+  function applyTheme(modeOpt) {
+    var mode = VALID_MODES[modeOpt] ? modeOpt : getSavedMode();
+    var effective = resolveEffectiveTheme(mode);
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.setAttribute('data-theme', effective);
+      document.documentElement.setAttribute('data-theme-mode', mode);
+    }
+    try {
+      var meta = typeof document !== 'undefined' ? document.querySelector('meta[name="theme-color"]') : null;
+      if (meta) meta.setAttribute('content', effective === 'dark' ? '#141413' : '#F7F5F0');
+    } catch (_) {}
+    return effective;
+  }
+
+  function setMode(mode) {
+    var m = VALID_MODES[mode] ? mode : 'auto';
+    try {
+      localStorage.setItem(STORAGE_KEY, m);
+      localStorage.setItem(LEGACY_KEY, resolveEffectiveTheme(m));
+    } catch (_) {}
+    return applyTheme(m);
+  }
+
+  function cycleMode() {
+    var cur = getSavedMode();
+    var next = cur === 'auto' ? 'light' : (cur === 'light' ? 'dark' : 'auto');
+    setMode(next);
+    return next;
+  }
+
+  applyTheme(getSavedMode());
+
+  try {
+    if (g.matchMedia) {
+      var mq = g.matchMedia('(prefers-color-scheme: dark)');
+      var onChange = function () {
+        if (getSavedMode() === 'auto') applyTheme('auto');
+      };
+      if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onChange);
+      else if (typeof mq.addListener === 'function') mq.addListener(onChange);
+    }
+  } catch (_) {}
+
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target && ev.target.closest && ev.target.closest('.theme-btn, #themeToggleBtn');
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      var next = cycleMode();
+      var titles = { auto: 'Тема: Авто', light: 'Тема: Светлая', dark: 'Тема: Тёмная' };
+      btn.setAttribute('title', titles[next] || 'Тема');
+      btn.setAttribute('aria-label', titles[next] || 'Тема');
+    }, true);
+  }
+
+  g.CoffeeTheme = {
+    getMode: getSavedMode,
+    setMode: setMode,
+    cycleMode: cycleMode,
+    getEffectiveTheme: function () { return resolveEffectiveTheme(getSavedMode()); },
+    applyTheme: applyTheme
+  };
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<style>
+
+/* =========================================================================
+   COFFEE ILLY — ЕДИНЫЙ ИСТОЧНИК ДИЗАЙН-ТОКЕНОВ (css/tokens.css — v86)
+   Направление «Спокойный премиум» (§2–§3 ТЗ):
+   - Светлая тема по умолчанию (#F7F5F0 бумага, #262522 эспрессо-текст, #795548 акцент)
+   - Шкала типографики строго из 7 значений (--fs-display .. --fs-overline)
+   - Сетка отступов 4 px (--sp-1 .. --sp-7), 3 радиуса (--r-sm, --r-md, --r-full), 2 тени
+   - Обратная совместимость через алиасы (--brew, --muted, --md-sys-*)
+   ========================================================================= */
+
+:root,
+[data-theme="light"] {
+  /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
+  --bg: #F5F2ED;
+  --surface: #FFFBF8;
+  --surface-2: #F1E8E1;
+  --line: #E6E1D8;
+  --ink: #241B16;
+  --ink-2: #65574F; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
+  --accent: #8B5022;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #EFE6E1;
+
+  --good: #286B4D;
+  --good-soft: #E4F1EB;
+  --warn: #805600;
+  --warn-soft: #FBF0DA;
+  --bad: #BA1A1A;
+  --bad-soft: #F8E6E3;
+  --info: #4B7AA6;
+  --info-soft: #E5EEF6;
+
+  /* §3.2 Шкала типографики (строго 7 размеров в rem) */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-d: var(--font);
+  --font-m: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --fs-display: 2rem;      /* 32px / 1.15, 700, KPI-числа */
+  --lh-display: 1.15;
+  --fs-h1: 1.5rem;         /* 24px / 1.25, 700, заголовок экрана */
+  --lh-h1: 1.25;
+  --fs-h2: 1.125rem;       /* 18px / 1.3, 600, заголовок карточки/секции */
+  --lh-h2: 1.3;
+  --fs-body-lg: 1rem;      /* 16px / 1.5, 400, основной текст бариста */
+  --lh-body-lg: 1.5;
+  --fs-body: 0.875rem;     /* 14px / 1.5, 400, основной текст владельца, таблицы */
+  --lh-body: 1.5;
+  --fs-caption: 0.75rem;   /* 12px / 1.4, 500, подписи, метки */
+  --lh-caption: 1.4;
+  --fs-overline: 0.6875rem;/* 11px / 1.2, 600, uppercase, letter-spacing .06em */
+  --lh-overline: 1.2;
+
+  /* §3.3 Отступы (шаг 4 px) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* §3.3 Радиусы (всего три + верх шторки) */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-full: 999px;
+  --r-sheet: 24px;
+
+  /* §3.3 Тени (всего две) */
+  --shadow-1: 0 1px 2px rgb(38 37 34 / .05), 0 8px 24px -12px rgb(38 37 34 / .10);
+  --shadow-2: 0 16px 40px -12px rgb(38 37 34 / .22), 0 4px 12px rgb(38 37 34 / .08);
+
+  /* Размеры зон касания и контейнеров (§3.3) */
+  --touch-min: 48px;
+  --touch-barista-lg: 56px;
+  --touch-owner-sm: 36px;
+  --header-barista-h: 56px;
+  --header-owner-h: 64px;
+  --bottom-nav-h: 64px;
+  --owner-rail-w: 240px;
+
+  /* Алиасы обратной совместимости для существующих JS-скриптов и тестов */
+  --muted: var(--ink-2);
+  --brew: var(--accent);
+  --crema: var(--accent-soft);
+  --cream: var(--surface-2);
+  --espresso: var(--ink);
+  --chip: var(--surface-2);
+  --card: var(--surface);
+  --card2: var(--surface-2);
+  --shadow: var(--shadow-1);
+  --r: var(--r-md);
+
+  --md-sys-color-primary: var(--accent);
+  --md-sys-color-on-primary: var(--accent-ink);
+  --md-sys-color-primary-container: var(--accent-soft);
+  --md-sys-color-on-primary-container: var(--ink);
+  --md-sys-color-secondary: var(--ink-2);
+  --md-sys-color-secondary-container: var(--surface-2);
+  --md-sys-color-on-secondary-container: var(--ink);
+  --md-sys-color-background: var(--bg);
+  --md-sys-color-on-background: var(--ink);
+  --md-sys-color-surface: var(--surface);
+  --md-sys-color-on-surface: var(--ink);
+  --md-sys-color-surface-variant: var(--surface-2);
+  --md-sys-color-on-surface-variant: var(--ink-2);
+  --md-sys-color-surface-container-lowest: var(--surface);
+  --md-sys-color-surface-container-low: var(--surface);
+  --md-sys-color-surface-container: var(--surface-2);
+  --md-sys-color-surface-container-high: var(--surface-2);
+  --md-sys-color-surface-container-highest: var(--line);
+  --md-sys-color-outline: var(--line);
+  --md-sys-color-outline-variant: var(--line);
+  --md-sys-color-error: var(--bad);
+  --md-sys-color-error-container: var(--bad-soft);
+  --md-sys-color-success: var(--good);
+  --md-sys-color-success-container: var(--good-soft);
+  --md-sys-color-warning: var(--warn);
+  --md-sys-color-warning-container: var(--warn-soft);
+  --md-sys-elevation-1: var(--shadow-1);
+  --md-sys-elevation-2: var(--shadow-1);
+  --md-sys-elevation-3: var(--shadow-2);
+  --md-sys-shape-corner-sm: var(--r-sm);
+  --md-sys-shape-corner-md: var(--r-md);
+  --md-sys-shape-corner-lg: var(--r-md);
+  --md-sys-shape-corner-xl: 28px;
+  --md-sys-shape-corner-full: var(--r-full);
+}
+
+[data-theme="dark"] {
+  /* §3.1 Палитра тёмной темы */
+  --bg: #151619;
+  --surface: #202126;
+  --surface-2: #292B30;
+  --line: #363840;
+  --ink: #F3F1ED;
+  --ink-2: #C7BDB7; /* Контраст >= 6.8:1 на #1E1D1B (WCAG AA) */
+  --accent: #FFB689;
+  --accent-ink: #2E1500;
+  --accent-soft: rgb(196 154 133 / .16);
+
+  --good: #81D5A8;
+  --good-soft: rgb(82 183 136 / .16);
+  --warn: #F4C66A;
+  --warn-soft: rgb(224 164 88 / .16);
+  --bad: #FFB4AB;
+  --bad-soft: rgb(224 122 111 / .16);
+  --info: #7BA7CC;
+  --info-soft: rgb(123 167 204 / .16);
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / .28), 0 8px 24px -12px rgb(0 0 0 / .45);
+  --shadow-2: 0 18px 44px -12px rgb(0 0 0 / .65), 0 4px 14px rgb(0 0 0 / .35);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; max-width: 100%; overflow-x: clip; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-body); line-height: 1.45; }
+.topbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: var(--fs-h2); }
+.brand-badge { background: var(--accent); color: var(--accent-ink); padding: 4px 10px; border-radius: 8px; font-size: var(--fs-caption); font-weight: 700; }
+.row-gap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 7px 13px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.good { background: var(--good-soft); color: var(--good); border-color: var(--good); }
+.btn.warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+.btn.bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; box-shadow: var(--shadow-1); }
+.muted { color: var(--ink-2); font-size: var(--fs-caption); }
+.field { width: 100%; min-height: 40px; padding: 8px 11px; margin-top: 4px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit; }
+textarea.field { min-height: 84px; }
+.num { font-variant-numeric: tabular-nums; }
+.toast { position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 12px; font-size: var(--fs-caption); font-weight: 600; z-index: 99; display: none; }
+.toast.show { display: block; }
+dialog.dlg { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); padding: 16px; width: min(480px, 95vw); box-shadow: var(--shadow-2); }
+dialog.dlg::backdrop { background: rgba(0,0,0,.55); }
+
+.main-wrap { flex: 1; width: 100%; max-width: 540px; margin: 0 auto; padding: 12px 14px 86px; display: flex; flex-direction: column; gap: 12px; }
+.focus-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 18px; box-shadow: var(--shadow-1); display: flex; flex-direction: column; gap: 12px; }
+.instr-box { border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 12px; padding: 12px 14px; white-space: pre-line; font-size: var(--fs-body); }
+.seg-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--surface-2); padding: 6px; border-radius: 16px; border: 1px solid var(--line); }
+.seg-btn { min-height: 46px; border-radius: 12px; border: 2px solid transparent; background: transparent; color: var(--ink); font-family: inherit; font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.seg-btn.ok-active { background: var(--good-soft); color: var(--good); border-color: var(--good); }
+.seg-btn.bad-active { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+.next-btn { width: 100%; min-height: 50px; border-radius: 999px; border: none; background: var(--accent); color: var(--accent-ink); font-family: inherit; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.next-btn:disabled { opacity: .45; cursor: not-allowed; }
+.bnav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 25; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-top: 1px solid var(--line); height: 64px; backdrop-filter: blur(10px); }
+.bnav button { border: none; background: transparent; color: var(--ink-2); font-family: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
+.bnav button.active { color: var(--accent); background: var(--accent-soft); }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.pin-key { min-height: 50px; font-size: 1.15rem; font-weight: 700; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; }
+.thumb-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.thumb-row img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-badge">illy</span>
+    <div>
+      <div>Coffee Illy</div>
+      <div class="muted" id="subHdr">Кофейня №1 · ✓ Данные сохранены</div>
+    </div>
+  </div>
+  <div class="row-gap">
+    <span id="netPill" class="pill good" onclick="toggleNet()" style="cursor:pointer">Онлайн</span>
+    <button class="btn" onclick="window.CoffeeTheme.cycleMode()">Тема</button>
+    <button class="btn" id="logoutBtn" style="display:none" onclick="logout()">Выйти</button>
+  </div>
+</header>
+
+<main id="main" class="main-wrap"></main>
+
+<nav id="bnav" class="bnav" style="display:none">
+  <button class="active" onclick="goTab('shift', this)">Смена</button>
+  <button onclick="goTab('cash', this)">Касса</button>
+  <button id="bnavKnow" onclick="goTab('knowledge', this)">Знания</button>
+  <button onclick="goTab('issues', this)">Проблемы</button>
+</nav>
+
+<dialog id="camDlg" class="dlg">
+  <h3 style="margin:0 0 8px">Камера (реальное время)</h3>
+  <div id="camStatus" class="muted" style="margin-bottom:8px">Запуск...</div>
+  <video id="camVideo" autoplay playsinline style="width:100%;border-radius:12px;background:#000;max-height:280px;object-fit:cover"></video>
+  <canvas id="camCanvas" style="display:none"></canvas>
+  <div class="row-gap" style="margin-top:10px;justify-content:space-between">
+    <button class="btn primary" onclick="capturePhoto()">Снять фото</button>
+    <button class="btn" onclick="switchFacing()">Сменить камеру</button>
+    <label class="btn warn" style="cursor:pointer">Камера ОС<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFallbackFile(event)"></label>
+    <button class="btn" onclick="closeCamera()">Закрыть</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast"></div>
+
+<script>
+
+const STORE_KEY = 'coffee_illy_v86_v42_pin1234_store';
+const INITIAL_TASKS = [{"id": "o01", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "📸 Фото-селфи", "instruction": "Фото перед началом смены.\n• Волосы аккуратно убраны в хвост или пучок.\n• Опрятный внешний вид, чистая рабочая форма и фартук.\n• Минимальный аккуратный макияж, отсутствие лишних украшений на руках.\n• Сделать селфи при хорошем освещении за баром.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "o02", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "🪑 Зал и посадочные места", "instruction": "Подготовка гостевого зала к открытию:\n• Столы насухо протёрты от пыли и крошек дезинфицирующим средством.\n• Диваны и кресла устойчивы, обивка без пятен и мусора.\n• Декор на столах и полках выровнен по центру, свечи установлены.\n• Сделать обзорное фото чистого зала.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "o03", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "☕ Кофемашина", "instruction": "Подготовка кофемашины к смене:\n• Кофемашина включена, бойлер вышел на рабочее давление и температуру.\n• Холдеры (портафильтры) чистые и прогретые, старый жмых полностью отсутствует.\n• Группы пролиты горячей водой и прогреты.\n• Хромированные детали и корпус натёрты микрофиброй до блеска, подтёки и накипь отсутствуют.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "o04", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "⚙️ Гриндеры и Проверка помола", "instruction": "Настройка кофемолок (гриндеров) и эспрессо:\n• Гриндеры включены, бункеры заполнены свежим зерном.\n• Проверен и настроен помол: контрольный пролив эспрессо по весам и таймеру (проверка граммовки, времени экстракции и вкуса).\n• Зона вокруг дозатора и стол под гриндером очищены, остатки молотого кофе отсутствуют.\n• Зафиксировать утренние показания счётчика кофемашины.", "photoReq": true, "responsible": "Шеф-бариста", "active": true, "resultBy": {}, "photos": []}, {"id": "o05", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "🔥 Термопот", "instruction": "Проверка водонагревателя (термопота):\n• Включён в сеть, заполнен очищенной питьевой водой до отметки максимума.\n• Температура воды вышла на рабочий режим (92–95 °C).\n• Корпус и каплесборник чистые, без подтёков и накипи.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "o06", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "💡 Оборудование и подсветка", "instruction": "Включение света, звука и медиа:\n• Проектор, аудиоколонки (фоновая музыка на комфортной громкости) и декоративная подсветка включены.\n• Световая инсталляция и освещение у зеркала работают без мерцаний.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "o07", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "🌿 Летняя терраса Фото", "instruction": "Подготовка уличной зоны / летней террасы:\n• Уличные столы и стулья аккуратно расставлены по местам и насухо протёрты.\n• Пледы чистые, без пятен, аккуратно сложены.\n• Прилегающая территория и входная группа чистые, без мусора и листьев.\n• Сделать контрольное фото летней террасы.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "o08", "block": "Открытие", "groupName": "Открытие · Стандарт (o01–o08)", "title": "🧼 Санузел для гостей 📸 2", "instruction": "Важно !!! Полная утренняя проверка гостевого санузла (сделать 2 фото):\n• 🪞 Зеркало: протёрто средством для стёкол без разводов и следов пальцев, поверхность блестящая.\n• 🧻 Расходники: жидкое мыло в дозаторе в наличии, туалетная бумага и бумажные полотенца пополнены.\n• 🚽 Унитаз и бачок: чистые, обработаны, кнопка слива работает исправно, протечек нет, посторонний запах отсутствует.\n• 🗑 Мусорное ведро 📸: пустое, чистое, заправлен новый мусорный пакет.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "d01", "block": "Лайн Чек 1", "groupName": "День · Обход смены (d01–d06)", "title": "🌬️ Помещение проветрено и свежесть воздуха", "instruction": "Контроль микроклимата в зале:\n• Помещение проветрено, работает вентиляция или кондиционер по сезону.\n• Нет затхлого запаха, запаха гари или кухни, воздух в зале свежий и комфортный для гостей.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "d02", "block": "Лайн Чек 1", "groupName": "День · Обход смены (d01–d06)", "title": "☕ Оборудование проверено", "instruction": "Контроль работы барного оборудования в течение смены:\n• Кофемашина, кофемолка, чайник/термопот, холодильник и десертная витрина включены.\n• Все приборы держат рабочую температуру и работают штатно без аварийных сигналов и посторонних шумов.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "d03", "block": "Лайн Чек 1", "groupName": "День · Обход смены (d01–d06)", "title": "🥛 Заготовки для напитков и молочные продукты", "instruction": "Контроль запасов и ротации (FIFO) в разгар дня:\n• Молоко обычное ≥ 5 л в запасе.\n• Альтернативное молоко ≥ 2 л.\n• Сливки ≥ 2 упаковок.\n• Сиропы, пюре и топпинги чистые, с дозаторами, стоят на своих местах.\n• Лёд в льдогенераторе готов в достаточном объёме.\n• 📸 Сделать фото холодильника в «подсобке» и фото холодильника за стойкой.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "d04", "block": "Лайн Чек 1", "groupName": "День · Обход смены (d01–d06)", "title": "🍰 Десерты и закуски", "instruction": "Контроль витрины с десертами:\n• Закуски и десерты пополнены и представлены в ДОСТАТОЧНОМ количестве.\n• Срок годности и маркировки актуальны, заветренных позиций нет.\n• Витрина чистая внутри и снаружи, фронтальное стекло без разводов и отпечатков.\n• Десерты и ценники выложены ровно и аккуратно 📸 (сделать фото витрины).", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "d05", "block": "Лайн Чек 1", "groupName": "День · Обход смены (d01–d06)", "title": "🧼 Зона гостя и стойка на виду", "instruction": "Поддержание чистоты зоны выдачи и гостевой стойки:\n• Стойка и прилавок со стороны гостя идеально чистые: нет крошек, капель кофе, пятен и липких следов.\n• Грязная посуда со столов и стойки своевременно убрана в мойку.\n• Диспенсер с салфетками, крышками, трубочками и сахаром пополнен.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "d06", "block": "Лайн Чек 1", "groupName": "День · Обход смены (d01–d06)", "title": "🚽 Санузел проверен (2-3 сек видео) 📹", "instruction": "Дневная проверка санузла для гостей:\n• Санузел чистый, пол сухой, раковина и зеркало без брызг воды.\n• Туалетная бумага, мыло и бумажные полотенца в наличии.\n• Мусорное ведро не переполнено, запах свежий.\n• 📹 Сделать короткий обзорный видео-отчёт (2–3 секунды).", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c01", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🧴 Диспенсер с расходниками заполнен", "instruction": "Подготовка органайзера и расходников на утро:\n• Диспенсер полностью заполнен салфетками, порционным сахаром, трубочками и размешивателями (палочками).\n• Все открытые складские упаковки с расходниками плотно закрыты от пыли и влаги.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "c02", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🪑 Зал и посадочные места", "instruction": "Уборка гостевого зала перед закрытием:\n• Все столы тщательно протёрты от крошек и пятен.\n• Диваны и стулья устойчивы, очищены щёткой/пылесосом от крошек.\n• Декор выровнен, пыль на полках и подоконниках отсутствует.\n• Все свечи в зале обязательно погашены.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c03", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "☕ Кофемашина", "instruction": "Замывка и выключение кофемашины:\n• Проведена промывка групп со слепым фильтром и профессиональным средством (Cafiza), затем промывка чистой водой.\n• Холдеры и сита вымыты, кофейный жмых и масла полностью удалены, съёмные детали и решётка поддона промыты и установлены на место.\n• Стимеры (паровые трубки) очищены от молока и продуты.\n• Подтёков воды и накипи нет, хромированные детали натёрты насухо. Кофемашина выключена.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "c04", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "⚙️ Гриндеры", "instruction": "Очистка кофемолок и фиксация счётчиков:\n• Гриндеры протёрты снаружи и в зоне выдачи, остатки молотого кофе сметены кистью, устройства выключены.\n• Показания счётчиков порций кофемашины/гриндеров сняты и внесены в кассовый отчёт смены.", "photoReq": true, "responsible": "Шеф-бариста", "active": true, "resultBy": {}, "photos": []}, {"id": "c05", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🧽 Рабочая зона", "instruction": "Замывка барной станции:\n• Рабочая столешница и фартук вымыты с моющим средством и протёрты насухо.\n• Липких пятен от сиропов, молока и кофе нет.\n• Весь мелкий инвентарь (питчеры, темпер, коврик, весы) чистый и расставлен по местам.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c06", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🔥 Термопот", "instruction": "Отключение термопота:\n• Заполнен очищенной водой для утренней смены.\n• Питание выключено, корпус и каплесборник протёрты насухо, без подтёков.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "c07", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "💰 Касса и терминалы Фото", "instruction": "Закрытие кассовой смены:\n• Наличные в кассе пересчитаны и сверены с отчётом.\n• Разменная сумма на утро оставлена в кассе в полном объёме (250 руб мелкими купюрами).\n• Фотоотчёт кассы сделан после подсчёта.\n• Банковский терминал и чековый принтер выключены, рабочий телефон поставлен на зарядку.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c08", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🍰 Холодильник и витрина", "instruction": "Уход за витриной и хранением десертов:\n• Подсветка витрины выключена (холодильный контур работает по регламенту), стёкла и полки протёрты.\n• Отпечатков пальцев и разводов на стекле нет.\n• Все десерты проверены по срокам, закрыты крышками/плёнкой от заветривания.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "c09", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🪞 Зеркала и остекление", "instruction": "Натирка зеркал и входного остекления:\n• Зеркала в зале и стеклянные поверхности входной группы протёрты со средством для стёкол.\n• Разводов, брызг и следов пальцев нет, поверхности сухие.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c10", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "💡 Оборудование и подсветка", "instruction": "Отключение иллюминации и медиа:\n• Проектор, неоновая/декоративная подсветка, аудиоколонки и дополнительное освещение выключены.\n• Световая инсталляция у зеркал и подсветка стола — выключены.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "c11", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🌿 Летняя терраса", "instruction": "Уборка летней террасы на ночь:\n• Уличные столы и стулья протёрты и занесены внутрь помещения (или зафиксированы по регламенту).\n• Пледы проверены (чистые, без пятен и прожогов) и аккуратно сложены на хранение.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c12", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🧼 Санузел для гостей", "instruction": "Полная вечерняя уборка санузла по чек-листу:\n• 🚻 Входная дверь — проверена исправность замка и доводчика; полотно двери и ручка протёрты, без следов рук.\n• 🧴 Раковина и смеситель — вымыты и вытерты насухо; смеситель натёрт без налёта и подтёков, вода не капает.\n• 🪞 Зеркало — протёрто без разводов и следов пальцев, поверхность блестящая.\n• 🧻 Расходники — проверен и пополнен запас жидкого мыла, туалетной бумаги и бумажных полотенец на утро.\n• 🚽 Унитаз и бачок — обработаны дезсредством, крышка опущена, бачок не протекает, запах отсутствует.\n• 🧹 Пол и стены — пол вымыт с дезсредством и высушен, плитка без пятен и налёта.\n• 🗑 Мусорное ведро — освобождено, вымыто, установлен новый пакет.\n• 💡 Освещение и вентиляция — свет и вытяжка выключены, проверена исправность выключателя.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c13", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🚪 Закрытие помещения", "instruction": "Финальная проверка перед выходом:\n• Все декоративные подсветки, сплит-система и барное оборудование (кроме холодильников) выключены.\n• Жалюзи / роллеты опущены, окна закрыты.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "c14", "block": "Закрытие", "groupName": "Закрытие · Стандарт (c01–c14)", "title": "🗑 Мусор выброшен, баки на улице пустые 📸💬", "instruction": "Вынос всего мусора из кофейни и уличных урн:\n• Все мусорные пакеты из-под бара, подсобки и санузла завязаны и вынесены в контейнер.\n• Уличные баки у входа очищены, внутрь вставлены чистые пакеты.\n• 📸 Сделать фото пустых баков и закрытой входной двери.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa01", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "📸 Фото-селфи 📸", "instruction": "Фото перед началом смены.\nВолосы убраны в хвост, аккуратный внешний вид, чистая форма, минимальный макияж.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa02", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🌿 Летняя терраса Фото📸", "instruction": "Столы и стулья расставлены, протёрты. Пледы чистые, сложены аккуратно, территория без мусора. Сделать фото.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa03", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🪑 Зал и посадочные места", "instruction": "Столы чистые, без крошек и пятен, диваны устойчивые, декор выровнен, пыль отсутствует, посадка полностью готова к приёму гостей.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa04", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "☕ Кофемашина + ☝️холдеры", "instruction": "Кофемашина включена и прогрета.\nСъёмные детали и чистые холдеры на месте.\nПодтёков воды и накипи нет, хромированные детали натёрты до блеска.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pa05", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "⚙️ Гриндеры", "instruction": "Гриндеры протёрты, старые остатки кофе отсутствуют, помол проверен.\nУтренние показания счётчиков сверены и внесены в отчёт.", "photoReq": false, "responsible": "Шеф-бариста", "active": true, "resultBy": {}, "photos": []}, {"id": "pa06", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🧽 Рабочая зона и Мойка за стойкой", "instruction": "Рабочая поверхность вымыта и протёрта насухо, пятен от сиропов и кофе нет, порядок соблюдён.\nМойка за стойкой чистая, грязная посуда отсутствует.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa07", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🔥 Термопот", "instruction": "Заполнен очищенной водой, включён на прогрев, корпус сухой, без подтёков.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pa08", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "💰 Касса и терминалы", "instruction": "Разменная сумма в наличии (250 руб мелкими купюрами).\nТерминал и чековый принтер включены, рабочий телефон и планшет заряжены.\nВсё работает штатно, не зависает и блестит.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa09", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🧾 Кассовая лента Запас - 2шт.", "instruction": "Чековая лента установлена в принтер и терминал, в кассовой зоне в наличии минимум 2 запасных рулона.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pa10", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🍰 Холодильник и витрина", "instruction": "Холодильники и витрина чистые, продукты свежие, просрочки нет, открытое молоко закрыто крышками, товарное соседство и порядок соблюдены.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pa11", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "📦 Расходники барной зоны", "instruction": "Одноразовые стаканы всех объёмов, крышки, сахар, салфетки, трубочки и размешиватели заполнены до полной нормы.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pa12", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🍃 Заготовки", "instruction": "Ягодные/фруктовые заготовки, лимонады и основы свежие, промаркированы, без заветривания, полностью готовы к использованию.", "photoReq": false, "responsible": "Шеф-бариста", "active": true, "resultBy": {}, "photos": []}, {"id": "pa13", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🥛 Молоко", "instruction": "Молоко (обычное, безлактозное, альтернативное) с актуальным сроком годности, охлаждённое, закрытое, достаточный объём для смены.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pa14", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🍽 Посуда и инвентарь", "instruction": "Керамические чашки, стаканы, ложки, питчеры и барный инвентарь чистые, сухие, без сколов, в достаточном количестве.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa15", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🪞 Зеркала и остекление", "instruction": "Зеркала и витринные окна протёрты, разводов и следов пальцев нет, поверхности сухие и чистые.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa16", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "💡 Оборудование и подсветка", "instruction": "Освещение зала, проектор, колонки и неоновая подсветка исправны, включаются и работают корректно.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pa17", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🧼 Санузел", "instruction": "Гостевой санузел чистый, дезинфекция проведена, мыло, бумага и полотенца в наличии, полностью готов к использованию.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pa18", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🛠 Декор и мебель", "instruction": "Столы, диваны, стулья и элементы декора целые, устойчивые, видимые повреждения отсутствуют.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pa19", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "⚙️ Оборудование и инвентарь", "instruction": "Всё барное и холодильное оборудование, блендер и льдогенератор исправны, в ремонте не нуждаются.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pa20", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "📦 Заявка", "instruction": "Складской запас и заявка поставщикам проверены, дефицита по ключевым позициям (зерно, молоко, стаканы, вода) нет.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pa21", "block": "Открытие", "groupName": "Открытие · Приёмка смены (pa01–pa21)", "title": "🎯 Готовность точки", "instruction": "Кофейня полностью готова к открытию и приёму первых гостей без дополнительных действий.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe01", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🪑 Зал и посадочные места", "instruction": "Столы чистые, без крошек и пятен, диваны устойчивые, декор выровнен, пыль отсутствует, свечи погашены, посадка готова к приёму гостей.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe02", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "☕ Кофемашина", "instruction": "Холдеры вымыты, жмых удалён, съёмные элементы на месте, подтёков и накипи нет, оборудование выключено, зона вокруг чистая.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pe03", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "⚙️ Гриндеры", "instruction": "Гриндеры чистые снаружи и в зоне дозатора, остатки кофе и пыль отсутствуют, выключены, показания счётчиков внесены.", "photoReq": false, "responsible": "Шеф-бариста", "active": true, "resultBy": {}, "photos": []}, {"id": "pe04", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧽 Рабочая зона", "instruction": "Поверхности вымыты и вытерты насухо, пятна кофе, сиропов и молока отсутствуют, полки чистые, лишние предметы отсутствуют.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe05", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🔥 Термопот", "instruction": "Заполнен очищенной водой, выключен, корпус сухой, без подтёков.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pe06", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "💰 Касса и терминалы", "instruction": "Касса пересчитана, размен (250 руб мелкими купюрами) в наличии, фото сделано, терминал и принтер выключены, телефон на зарядке.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe07", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧾 Кассовая лента", "instruction": "Запасная чековая лента (не менее 2 шт.) в наличии возле кассы.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pe08", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🍰 Холодильник и витрина", "instruction": "Чистые внутри и снаружи, остатки еды отсутствуют, продукты разложены аккуратно, открытое молоко закрыто, просрочки нет, заветренные продукты списаны.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pe09", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🌡 Температурный режим", "instruction": "Температура холодильника и витрины проверена по дисплею и соответствует норме (+2…+6 °C).", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pe10", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧴 Сиропы и ингредиенты", "instruction": "Бутылки с сиропами, топпинги и помпы протёрты от липкости, закрыты, стоят по местам в достаточном количестве.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pe11", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🪞 Зеркала и остекление", "instruction": "Все зеркала и витринные стёкла чистые, без разводов и следов пальцев.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe12", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "💡 Оборудование и подсветка", "instruction": "Всё освещение зала, проектор, декоративная подсветка и колонки выключены.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pe13", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🌿 Летняя терраса", "instruction": "Уличная мебель чистая и занесена внутрь, пледы аккуратно сложены.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe14", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🚪 Помещение", "instruction": "Жалюзи опущены, окна закрыты, климатическое и неиспользуемое ночью оборудование выключено.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe15", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧼 Санузел", "instruction": "Санузел чистый, полотенца заменены, расходники пополнены, посторонний запах отсутствует.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe16", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "📦 Расходники барной зоны", "instruction": "Стаканы, крышки, сахар, салфетки, трубочки и мешалки пополнены до полной утренней нормы.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pe17", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🍃 Заготовки", "instruction": "Заготовки свежие, без заветривания и порчи, испорченные позиции списаны и внесены в отчёт, всё подготовлено к следующей смене.", "photoReq": false, "responsible": "Шеф-бариста", "active": true, "resultBy": {}, "photos": []}, {"id": "pe18", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🥛 Молоко 📸", "instruction": "Все открытые пачки молока плотно закрыты крышками, хранятся в холодильнике корректно, просрочки нет. Сделать фото запаса молока.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pe19", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧴 Полотенца", "instruction": "Чистые рабочие полотенца и микрофибры подготовлены на утро, использованные убраны в стирку.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe20", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🍽 Посуда и инвентарь", "instruction": "Вся посуда чистая, питчеры и кувшины вымыты насухо, достаточный запас чашек, блюдец и ложек подготовлен к утренней смене.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe21", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧹 Чистота инвентаря и хранения", "instruction": "Грязная посуда в мойке отсутствует, полки и складские зоны хранения чистые и приведены в порядок.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe22", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "📦 Заявка", "instruction": "Заявка на пополнение продуктов и хозтоваров сформирована по остаткам и отправлена закупщику/руководителю.", "photoReq": false, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "pe23", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🛠 Декор и мебель", "instruction": "Декор и мебель в зале целые, расставлены ровно, повреждения отсутствуют.", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pe24", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "⚙️ Оборудование и инвентарь", "instruction": "Всё оборудование и барный инвентарь исправны, в ремонте не нуждаются (обо всех поломках сообщено через кнопку «Поломка»).", "photoReq": false, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "pe25", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🗑 Мусор выброшен, баки на улице пустые 📸💬", "instruction": "Весь мусор из кофейни и уличных урн вынесен в контейнеры, баки чистые, заправлены новые мешки. Сделать фото.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "pe26", "block": "Закрытие", "groupName": "Закрытие · Полная сдача (pe01–pe26)", "title": "🎯 Готовность точки", "instruction": "Бар и зал полностью готовы к утреннему открытию и работе без дополнительных действий.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u01", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🗑️ Уличная мусорка очищена, мусор вынесен", "instruction": "Очистка уличной урны у входа:\n• Весь мусор из уличной мусорки полностью вынесен в общий контейнер.\n• Внутренняя ёмкость чистая, новый плотный мусорный пакет аккуратно вставлен и закреплён.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u02", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🚪🧼 Крыльцо очищено и вымыто 📸", "instruction": "Уборка входной группы и крыльца:\n• Ступени и площадка крыльца подметены от песка, пыли и листьев.\n• Выполнена влажная мойка крыльца и придверного коврика, следов грязи и пятен нет.\n• 📸 Сделать фото чистого крыльца.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u03", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🚪 Входная дверь натёрта, без следов и пятен", "instruction": "Чистка входной двери:\n• Стекло входной двери с обеих сторон натёрто средством для стёкол без разводов и отпечатков рук.\n• Дверная ручка, профиль и порог протёрты влажной, затем сухой салфеткой.", "photoReq": false, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u04", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🪟 Зеркала и Стёкла натёрты, без разводов и загрязнений 📸", "instruction": "Мойка зеркал и витринных стёкол:\n• Все зеркала в зале, у фотозоны и в санузле натёрты микрофиброй со средством для стёкол.\n• Подтёков, разводов и следов пальцев нет.\n• 📸 Сделать контрольное фото.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u05", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🛋️ Диваны отодвинуты, выполнена влажная уборка полов под диванами 📸", "instruction": "Важно!!! ☝️ ☝️ ☝️\n• Аккуратно отодвинуть диваны от стен, подмести крошки и пыль, тщательно вымыть пол и плинтусы под диванами, затем ровно вернуть диваны на место.\n• Регулярно менять грязную воду в ведре на чистую.\n• Выливать грязную воду ТОЛЬКО на улице в отведённое место (категорически запрещено выливать в мойку в подсобке — слив забивается песком!).\n• 📸 Сделать фото чистого пола под диванами.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u06", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🧹 Влажная уборка полов в зале", "instruction": "Финальная мойка полов:\n• Пол во всём гостевом зале, за барной стойкой и в проходах подметён и тщательно вымыт с моющим средством.\n• Углы и плинтусы чистые, без разводов и липких следов.\n• Грязная вода после уборки вылита на улице, моп/тряпка промыты и поставлены на просушку.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "u07", "block": "Закрытие", "groupName": "Закрытие · Уборка помещения (u01–u07)", "title": "🚽 Туалет вымыт и продезинфицирован 📸 (видео 5-7 сек)", "instruction": "Финальная дезинфекция санузла:\n• Унитаз, раковина, смеситель, дверные ручки и пол вымыты и обработаны дезинфицирующим средством.\n• Мусор выброшен, вставлен чистый пакет, расходники пополнены на утро.\n• 📹 Снять обзорное видео чистого санузла (5–7 секунд).", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "q01", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "☕ Кофемашина (фото до и после)", "instruction": "• Корпус протёрт, без пятен, подтёков и кофейных следов.\n• Группы промыты, остатки кофе отсутствуют.\n• Портафильтры вымыты, без кофейных масел и налёта.\n• Паровые трубки очищены и продуты.\n• Поддон и решётка вымыты, без остатков воды и кофе.\n• Поверхности вокруг чистые, без кофейной гущи.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "q02", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "🌪 Блендер (фото до и после)", "instruction": "• Чаша блендера вымыта, без остатков продуктов, налёта и запахов.\n• Ножи чистые, промыты со всех сторон.\n• Крышка и уплотнитель вымыты, без загрязнений в пазах.\n• Корпус и панель кнопок протёрты насухо, без капель и липкости.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "q03", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "❄️ Холодильник под стойкой (фото до и после)", "instruction": "• Полки и стенки чистые, без крошек, пятен молока и подтёков.\n• Продукты и молоко размещены аккуратно по срокам годности.\n• Посторонние запахи отсутствуют.\n• Резиновые уплотнители дверцы вымыты в складках.\n• Дверца закрывается плотно.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "q04", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "📦 Холодильник склад (фото до и после)", "instruction": "• Полки чистые, без загрязнений и подтёков.\n• Продукты разложены строго по категориям и промаркированы.\n• Посторонние запахи отсутствуют.\n• Уплотнители чистые, дверца закрывается плотно.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "q05", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "🧊 Морозилка верхняя (фото до и после)", "instruction": "• Внутренняя камера очищена, без снежной наледи, крошек и загрязнений.\n• Замороженные заготовки и продукты упакованы, подписаны и размещены аккуратно.\n• Уплотнитель чистый, дверца закрывается плотно.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "q06", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "🧊 Морозилка нижняя (фото до и после)", "instruction": "• Внутри чисто, ящики/полки вымыты без крошек и остатков продуктов.\n• Продукты расфасованы и размещены аккуратно.\n• Посторонние запахи отсутствуют.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Закупщик", "active": true, "resultBy": {}, "photos": []}, {"id": "q07", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "🧊 Льдогенератор (фото до и после)", "instruction": "• Внутренняя камера чистая, без слизи, плесени и известкового налёта.\n• Лёд прозрачный, без постороннего запаха, совок для льда чистый.\n• Лоток и дренаж чистые, без застоя воды.\n• Корпус снаружи и вентиляционная решётка протёрты.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Техник", "active": true, "resultBy": {}, "photos": []}, {"id": "q08", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "🚰 Мойка склад (фото до и после)", "instruction": "• Раковина на складе вымыта с дезсредством, без жира, налёта и остатков пищи.\n• Сливная сеточка и сифон чистые, без засоров и запаха (песок с полов в мойку не сливать!).\n• Смеситель натёрт без водного камня.\n• Поверхности и фартук вокруг мойки чистые и сухие.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}, {"id": "q09", "block": "Лайн Чек 2", "groupName": "День · Чистка До/После (q01–q09)", "title": "🚰 Мойка стойка (фото до и после)", "instruction": "• Барная раковина и ринзер чистые, без остатков молока и кофейной гущи.\n• Слив чистый, вода уходит быстро, запах отсутствует.\n• Смеситель натёрт до блеска без налёта.\n• Рабочая зона вокруг мойки сухая и чистая.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photoReq": true, "responsible": "Администратор", "active": true, "resultBy": {}, "photos": []}];
+const PRELOADED_IMPORTS = [{"type": "sales", "fileName": "Вторник_Алина_Соня_3_11_2026_Продажи_Алина.csv", "date": "2026-11-03", "barista": "Алина", "coffeeQty": 48, "nonCoffeeQty": 26, "reviewQty": 1, "totalSum": 1126, "items": [{"name": "Американо шт", "price": 12.0, "qty": 22, "sum": 264.0, "kind": "coffee"}, {"name": "Молоко .... 50 мл шт", "price": 5.0, "qty": 6, "sum": 30.0, "kind": "non_coffee"}, {"name": "Капучино шт", "price": 19.0, "qty": 14, "sum": 266.0, "kind": "coffee"}, {"name": "Шоколад 15 руб шт", "price": 15.0, "qty": 1, "sum": 15.0, "kind": "non_coffee"}, {"name": "Сироп 15 мл. шт", "price": 5.0, "qty": 6, "sum": 30.0, "kind": "non_coffee"}, {"name": "Дубайский Шоколад 30 руб шт", "price": 30.0, "qty": 3, "sum": 90.0, "kind": "non_coffee"}, {"name": "Эспрессо шт", "price": 12.0, "qty": 3, "sum": 36.0, "kind": "coffee"}, {"name": "Латте (мал) шт", "price": 20.0, "qty": 4, "sum": 80.0, "kind": "coffee"}, {"name": "Вода / минеральная бут", "price": 15.0, "qty": 1, "sum": 15.0, "kind": "non_coffee"}, {"name": "Латте (бол) шт", "price": 25.0, "qty": 3, "sum": 75.0, "kind": "coffee"}, {"name": "Эклер шт", "price": 30.0, "qty": 3, "sum": 90.0, "kind": "non_coffee"}, {"name": "Альтернативное молоко. 50 мл шт", "price": 10.0, "qty": 1, "sum": 10.0, "kind": "non_coffee"}, {"name": "Напиток от Бариста шт", "price": 1.0, "qty": 1, "sum": 1.0, "kind": "review"}, {"name": "Чай в ассоортименте 15 шт", "price": 15.0, "qty": 2, "sum": 30.0, "kind": "non_coffee"}, {"name": "Фрукты шт", "price": 5.0, "qty": 1, "sum": 5.0, "kind": "non_coffee"}, {"name": "Длинный черный", "price": 17.0, "qty": 2, "sum": 34.0, "kind": "coffee"}, {"name": "Чизкейк шт", "price": 40.0, "qty": 1, "sum": 40.0, "kind": "non_coffee"}, {"name": "Какао шт", "price": 15.0, "qty": 1, "sum": 15.0, "kind": "non_coffee"}]}, {"type": "sales", "fileName": "Вторник_Алина_Соня_3_11_2026_Продажи_Соня.csv", "date": "2026-11-03", "barista": "Соня", "coffeeQty": 28, "nonCoffeeQty": 26, "reviewQty": 0, "totalSum": 845, "items": [{"name": "Американо шт", "price": 12.0, "qty": 13, "sum": 156.0, "kind": "coffee"}, {"name": "Молоко .... 50 мл шт", "price": 5.0, "qty": 9, "sum": 45.0, "kind": "non_coffee"}, {"name": "Латте (мал) шт", "price": 20.0, "qty": 4, "sum": 80.0, "kind": "coffee"}, {"name": "Сироп 15 мл. шт", "price": 5.0, "qty": 2, "sum": 10.0, "kind": "non_coffee"}, {"name": "Латте (бол) шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "coffee"}, {"name": "Эспрессо шт", "price": 12.0, "qty": 3, "sum": 36.0, "kind": "coffee"}, {"name": "Малиново - имбирный чай 400 мл. шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "non_coffee"}, {"name": "Напитки (кола, спрайт, фанта) бут", "price": 20.0, "qty": 2, "sum": 40.0, "kind": "non_coffee"}, {"name": "Капучино шт", "price": 19.0, "qty": 6, "sum": 114.0, "kind": "coffee"}, {"name": "Облепиховый чай 400 мл. шт", "price": 25.0, "qty": 3, "sum": 75.0, "kind": "non_coffee"}, {"name": "Фрукты шт", "price": 5.0, "qty": 2, "sum": 10.0, "kind": "non_coffee"}, {"name": "Малиново - имбирный чай 800 мл. шт", "price": 45.0, "qty": 2, "sum": 90.0, "kind": "non_coffee"}, {"name": "Какао (бол) шт", "price": 25.0, "qty": 2, "sum": 50.0, "kind": "non_coffee"}, {"name": "Без Лактозное молоко шт", "price": 5.0, "qty": 1, "sum": 5.0, "kind": "non_coffee"}, {"name": "Раф классический (бол) шт", "price": 39.0, "qty": 1, "sum": 39.0, "kind": "coffee"}, {"name": "Какао «Баунти» шт", "price": 30.0, "qty": 1, "sum": 30.0, "kind": "non_coffee"}, {"name": "Чай в ассоортименте 15 шт", "price": 15.0, "qty": 1, "sum": 15.0, "kind": "non_coffee"}]}, {"type": "tx", "fileName": "Вторник_Алина_Соня_3_11_2026_Транзакции_Алина.csv", "date": "2026-11-03", "barista": "Алина", "cashSum": 1019, "mobileSum": 107, "totalSum": 1126, "checks": 40}, {"type": "tx", "fileName": "Вторник_Алина_Соня_3_11_2026_Транзакции_Соня.csv", "date": "2026-11-03", "barista": "Соня", "cashSum": 644, "mobileSum": 201, "totalSum": 845, "checks": 31}, {"type": "sales", "fileName": "Среда_Алина_Соня_4_11_2026_Продажи_Алина.csv", "date": "2026-11-04", "barista": "Алина", "coffeeQty": 52, "nonCoffeeQty": 41, "reviewQty": 5, "totalSum": 1687, "items": [{"name": "Американо шт", "price": 12.0, "qty": 21, "sum": 252.0, "kind": "coffee"}, {"name": "Молоко .... 50 мл шт", "price": 5.0, "qty": 7, "sum": 35.0, "kind": "non_coffee"}, {"name": "Капучино шт", "price": 19.0, "qty": 14, "sum": 266.0, "kind": "coffee"}, {"name": "Сироп 15 мл. шт", "price": 5.0, "qty": 4, "sum": 20.0, "kind": "non_coffee"}, {"name": "Латте (мал) шт", "price": 20.0, "qty": 3, "sum": 60.0, "kind": "coffee"}, {"name": "Эспрессо шт", "price": 12.0, "qty": 4, "sum": 48.0, "kind": "coffee"}, {"name": "Чизкейк шт", "price": 40.0, "qty": 7, "sum": 280.0, "kind": "non_coffee"}, {"name": "Чай \"Ягодный микс\" 800 мл. шт", "price": 45.0, "qty": 1, "sum": 45.0, "kind": "non_coffee"}, {"name": "Латте (бол) шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "coffee"}, {"name": "Альтернативное молоко. 50 мл шт", "price": 10.0, "qty": 1, "sum": 10.0, "kind": "non_coffee"}, {"name": "Flat white шт", "price": 25.0, "qty": 2, "sum": 50.0, "kind": "coffee"}, {"name": "Напиток от Бариста шт", "price": 1.0, "qty": 5, "sum": 5.0, "kind": "review"}, {"name": "Какао (ср) шт", "price": 20.0, "qty": 5, "sum": 100.0, "kind": "non_coffee"}, {"name": "Напитки (кола, спрайт, фанта) бут", "price": 20.0, "qty": 2, "sum": 40.0, "kind": "non_coffee"}, {"name": "Ванильно апельсиновый Лате шт", "price": 30.0, "qty": 2, "sum": 60.0, "kind": "coffee"}, {"name": "Ореховый мокко шт", "price": 35.0, "qty": 1, "sum": 35.0, "kind": "coffee"}, {"name": "Какао «Баунти» шт", "price": 30.0, "qty": 1, "sum": 30.0, "kind": "non_coffee"}, {"name": "Облепиховый чай 400 мл. шт", "price": 25.0, "qty": 3, "sum": 75.0, "kind": "non_coffee"}, {"name": "Шоколад 15 руб шт", "price": 15.0, "qty": 3, "sum": 45.0, "kind": "non_coffee"}, {"name": "Американо ILLY шт", "price": 19.0, "qty": 1, "sum": 19.0, "kind": "coffee"}, {"name": "Маршмеллоу шт", "price": 8.0, "qty": 2, "sum": 16.0, "kind": "non_coffee"}, {"name": "Двойной капучино шт", "price": 29.0, "qty": 1, "sum": 29.0, "kind": "coffee"}, {"name": "Какао (бол) шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "non_coffee"}, {"name": "Шоколад 20 руб шт", "price": 20.0, "qty": 1, "sum": 20.0, "kind": "non_coffee"}, {"name": "Дубайский Шоколад 30 руб шт", "price": 30.0, "qty": 1, "sum": 30.0, "kind": "non_coffee"}, {"name": "Длинный черный", "price": 17.0, "qty": 2, "sum": 34.0, "kind": "coffee"}, {"name": "Фрукты шт", "price": 5.0, "qty": 1, "sum": 5.0, "kind": "non_coffee"}, {"name": "Лимонад шт", "price": 28.0, "qty": 1, "sum": 28.0, "kind": "non_coffee"}]}, {"type": "sales", "fileName": "Среда_Алина_Соня_4_11_2026_Продажи_Соня.csv", "date": "2026-11-04", "barista": "Соня", "coffeeQty": 38, "nonCoffeeQty": 62, "reviewQty": 0, "totalSum": 1189, "items": [{"name": "Бруснично - апельсиновый какао шт", "price": 33.0, "qty": 2, "sum": 66.0, "kind": "non_coffee"}, {"name": "Ванильно апельсиновый Лате шт", "price": 30.0, "qty": 1, "sum": 30.0, "kind": "coffee"}, {"name": "Альтернативное молоко. 50 мл шт", "price": 10.0, "qty": 3, "sum": 30.0, "kind": "non_coffee"}, {"name": "Какао (ср) шт", "price": 20.0, "qty": 2, "sum": 40.0, "kind": "non_coffee"}, {"name": "Капучино шт", "price": 19.0, "qty": 7, "sum": 133.0, "kind": "coffee"}, {"name": "Эспрессо Макиато шт", "price": 17.0, "qty": 2, "sum": 34.0, "kind": "coffee"}, {"name": "Эспрессо шт", "price": 12.0, "qty": 3, "sum": 36.0, "kind": "coffee"}, {"name": "Американо шт", "price": 12.0, "qty": 14, "sum": 168.0, "kind": "coffee"}, {"name": "Какао (бол) шт", "price": 25.0, "qty": 2, "sum": 50.0, "kind": "non_coffee"}, {"name": "Чизкейк шт", "price": 40.0, "qty": 1, "sum": 40.0, "kind": "non_coffee"}, {"name": "Чай в ассоортименте 15 шт", "price": 15.0, "qty": 3, "sum": 45.0, "kind": "non_coffee"}, {"name": "Стимер (бол) шт", "price": 22.0, "qty": 1, "sum": 22.0, "kind": "non_coffee"}, {"name": "Десерт от бариста шт", "price": 1.0, "qty": 25, "sum": 25.0, "kind": "non_coffee"}, {"name": "Малиново - имбирный чай 400 мл. шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "non_coffee"}, {"name": "Чай \"Пряное яблоко\" 400 мл. шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "non_coffee"}, {"name": "Какао шт", "price": 15.0, "qty": 1, "sum": 15.0, "kind": "non_coffee"}, {"name": "Длинный черный", "price": 17.0, "qty": 1, "sum": 17.0, "kind": "coffee"}, {"name": "Шоколад 25 руб шт", "price": 25.0, "qty": 1, "sum": 25.0, "kind": "non_coffee"}, {"name": "Шоколад 15 руб шт", "price": 15.0, "qty": 1, "sum": 15.0, "kind": "non_coffee"}, {"name": "Латте (бол) шт", "price": 25.0, "qty": 6, "sum": 150.0, "kind": "coffee"}, {"name": "Сироп 15 мл. шт", "price": 5.0, "qty": 12, "sum": 60.0, "kind": "non_coffee"}, {"name": "Имбирный чай 400 мл. шт", "price": 18.0, "qty": 1, "sum": 18.0, "kind": "non_coffee"}, {"name": "Латте (мал) шт", "price": 20.0, "qty": 4, "sum": 80.0, "kind": "coffee"}, {"name": "Шоколад 20 руб шт", "price": 20.0, "qty": 1, "sum": 20.0, "kind": "non_coffee"}, {"name": "Молоко .... 50 мл шт", "price": 5.0, "qty": 3, "sum": 15.0, "kind": "non_coffee"}, {"name": "Сливки 10 мл. шт", "price": 5.0, "qty": 1, "sum": 5.0, "kind": "non_coffee"}]}, {"type": "tx", "fileName": "Среда_Алина_Соня_4_11_2026_Транзакции_Алина.csv", "date": "2026-11-04", "barista": "Алина", "cashSum": 1450, "mobileSum": 237, "totalSum": 1687, "checks": 47}];
+const INCIDENT_CATS = [
+  '🔧 Поломка оборудования', '🥛 Отсутствие необходимых продуктов', '🚚 Проблемы с поставками',
+  '💰 Проблемы с кассой', '💬 Жалобы клиентов', '🧼 Нарушение санитарных требований',
+  '👥 Проблемы с персоналом', '⚠️ Прочие операционные проблемы'
+];
+function getStore() {
+  try { const r = localStorage.getItem(STORE_KEY); if (r) return JSON.parse(r); } catch (_) {}
+  const init = {
+    location: 'Кофейня №1',
+    adminPin: '1234',
+    planRevenue: 2200,
+    planChecks: 75,
+    minAvgCheck: 35,
+    initCounter: 600,
+    staff: [
+      { id: 's1', name: 'Соня', pin: '1234', active: true },
+      { id: 's2', name: 'Алина', pin: '1234', active: true },
+      { id: 's3', name: 'Настя', pin: '1234', active: true },
+      { id: 's4', name: 'Максим', pin: '1234', active: true }
+    ],
+    windows: [
+      { block: 'Открытие', start: '07:30', deadline: '08:30', unlocked: false },
+      { block: 'Лайн Чек 1', start: '08:30', deadline: '09:30', unlocked: false },
+      { block: 'Лайн Чек 2', start: '14:00', deadline: '16:00', unlocked: false },
+      { block: 'Закрытие', start: '19:00', deadline: '22:30', unlocked: false }
+    ],
+    tasks: INITIAL_TASKS,
+    imports: PRELOADED_IMPORTS,
+    cashReports: [
+      { id: 'CASH-20261104-A', date: '2026-11-04', staff: 'Алина', cash: 1450, card: 237, checks: 47, counterStart: 998, counterEnd: 2, counterDelta: 4, status: 'Подтверждено' }
+    ],
+    handovers: [
+      { id: 'HND-1', from: 'Алина', to: 'Соня', notes: 'Кофемашина промыта, размен 250 руб. ПМР в кассе, молоко 5 л.', ts: '04.11 22:10' }
+    ],
+    announcements: [
+      { id: 'ann1', title: 'Стандарт фотоотчёта санузла и стойки', text: 'Фото санузла на открытии (2 фото) и видеообзор днём (2–3 сек) обязательны.', version: 2, ackedBy: [] }
+    ],
+    ttk: [
+      { id: 'ttk1', name: 'Американо', ingredients: 'Эспрессо 18 г, вода 150 мл (92°C)', version: 2 },
+      { id: 'ttk2', name: 'Капучино', ingredients: 'Эспрессо 18 г, молоко 180 мл (60–65°C)', version: 3 },
+      { id: 'ttk3', name: 'Латте (мал / бол)', ingredients: 'Эспрессо 18 г, молоко 220 / 280 мл', version: 2 }
+    ],
+    incidents: [
+      { id: 'INC-101', category: '🔧 Поломка оборудования', text: 'Шум помпы при старте пролива', urgency: 'Высокая', author: 'Алина', status: 'Принято в работу', date: '2026-11-04' }
+    ],
+    tgLog: [],
+    audit: [{ ts: '19:15', actor: 'Система', action: 'Система готова (91 задача, 7 CSV, PIN 1234)' }]
+  };
+  saveStore(init);
+  return init;
+}
+function saveStore(st) { try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (_) {} }
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+let session = null, curTab = 'shift', curStage = 'Открытие', taskIdx = 0, cashStep = 1, cashDraft = { cash: 1450, card: 237, checks: 47, start: 600, end: 652, photoCounter: false, photoZ: false }, problemDraftOpen = false, offline = false, pinBuf = '', camStream = null, camFacing = 'environment', camTarget = null;
+
+
+document.addEventListener('keydown', (e) => {
+  if (session) return;
+  if (/^[0-9]$/.test(e.key)) pressPin(e.key);
+  else if (e.key === 'Backspace') pressPin('B');
+  else if (e.key === 'Escape') pressPin('C');
+});
+
+function toggleNet() { offline = !offline; const p = document.getElementById('netPill'); p.textContent = offline ? 'Офлайн' : 'Онлайн'; p.className = 'pill ' + (offline ? 'warn' : 'good'); }
+function pressPin(d) {
+  if (d === 'C') pinBuf = ''; else if (d === 'B') pinBuf = pinBuf.slice(0, -1); else if (pinBuf.length < 4) pinBuf += d;
+  const disp = document.getElementById('pinDisp'); if (disp) disp.textContent = '•'.repeat(pinBuf.length).padEnd(4, '○');
+  if (pinBuf.length === 4) {
+    const st = getStore(), sel = document.getElementById('staffSelect').value, u = st.staff.find(x => x.name === sel);
+    if (!u || u.pin !== pinBuf) { pinBuf = ''; if (disp) disp.textContent = '○○○○'; showToast('Неверный PIN (1234)'); return; }
+    session = { name: u.name }; pinBuf = ''; render();
+  }
+}
+function logout() { session = null; pinBuf = ''; render(); }
+function goTab(t, btn) { curTab = t; document.querySelectorAll('#bnav button').forEach(b => b.classList.remove('active')); if (btn) btn.classList.add('active'); render(); }
+
+async function openCameraFor(target) {
+  camTarget = target; document.getElementById('camDlg').showModal();
+  const statusEl = document.getElementById('camStatus');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { statusEl.textContent = 'Используйте «Камера ОС»'; return; }
+  try { camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing } }); document.getElementById('camVideo').srcObject = camStream; statusEl.textContent = 'Камера готова'; }
+  catch (e) { statusEl.textContent = 'Нет доступа — используйте «Камера ОС»'; }
+}
+async function switchFacing() { camFacing = camFacing === 'environment' ? 'user' : 'environment'; if (camStream) camStream.getTracks().forEach(t=>t.stop()); await openCameraFor(camTarget); }
+function capturePhoto() {
+  const v = document.getElementById('camVideo'); if (!camStream || !v.videoWidth) return;
+  const c = document.getElementById('camCanvas'); c.width = Math.min(800, v.videoWidth); c.height = Math.round(v.videoHeight * (c.width / v.videoWidth));
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  saveCamResult(c.toDataURL('image/jpeg', 0.72)); closeCamera();
+}
+function handleFallbackFile(ev) {
+  const f = ev.target.files && ev.target.files[0]; if (!f) return;
+  const r = new FileReader(); r.onload = () => { saveCamResult(r.result); closeCamera(); }; r.readAsDataURL(f);
+}
+function saveCamResult(dataUrl) {
+  if (camTarget === 'cash_counter') { cashDraft.photoCounter = true; showToast('Фото счётчика сохранено'); render(); return; }
+  if (camTarget === 'cash_z') { cashDraft.photoZ = true; showToast('Фото Z-отчёта сохранено'); render(); return; }
+  const st = getStore(), t = st.tasks.find(x => x.id === camTarget);
+  if (t) { t.photos = t.photos || []; t.photos.push(dataUrl); saveStore(st); showToast('Фото сохранено'); render(); }
+}
+function closeCamera() { if (camStream) { camStream.getTracks().forEach(t=>t.stop()); camStream = null; } const d = document.getElementById('camDlg'); if (d.open) d.close(); }
+
+function markOk(id) {
+  const st = getStore(), t = st.tasks.find(x => x.id === id);
+  if (t.photoReq && (!t.photos || !t.photos.length)) { showToast('Сделайте обязательное фото'); openCameraFor(id); return; }
+  t.resultBy = t.resultBy || {}; t.resultBy[session.name] = 'ok'; problemDraftOpen = false; saveStore(st); render();
+}
+function sendTaskProb(id, title) {
+  const txt = document.getElementById('probText').value.trim(), cat = document.getElementById('probCat').value, urg = document.getElementById('probUrg').value;
+  if (!txt) { showToast('Опишите проблему'); return; }
+  const st = getStore(), t = st.tasks.find(x => x.id === id);
+  if (t) { t.resultBy = t.resultBy || {}; t.resultBy[session.name] = 'problem'; }
+  const incId = 'INC-' + (102 + st.incidents.length);
+  st.incidents.unshift({ id: incId, category: cat, text: title + ': ' + txt, urgency: urg, author: session.name, status: 'Новое', date: new Date().toISOString().slice(0,10) });
+  st.tgLog.unshift({ ts: new Date().toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}), msg: '🚨 TG → Админ: [' + incId + '] ' + cat + ' (' + urg + ') — ' + txt });
+  problemDraftOpen = false; saveStore(st); showToast('Отправлено администратору в Telegram'); render();
+}
+function finishCashWizard() {
+  const st = getStore();
+  const delta = cashDraft.end >= cashDraft.start ? (cashDraft.end - cashDraft.start) : ((1000 - cashDraft.start) + cashDraft.end);
+  st.cashReports.unshift({ id: 'CASH-' + (st.cashReports.length + 1), date: new Date().toISOString().slice(0,10), staff: session.name, cash: cashDraft.cash, card: cashDraft.card, checks: cashDraft.checks, counterStart: cashDraft.start, counterEnd: cashDraft.end, counterDelta: delta, status: 'Ожидает проверки' });
+  saveStore(st); cashStep = 1; showToast('Кассовый отчёт отправлен!'); render();
+}
+
+function render() {
+  const st = getStore(), main = document.getElementById('main'), bnav = document.getElementById('bnav'), lbtn = document.getElementById('logoutBtn');
+  if (!session) {
+    bnav.style.display = 'none'; lbtn.style.display = 'none';
+    main.innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Вход бариста</h3><div class="muted">Выберите сотрудника (PIN: <strong>1234</strong>)</div><select id="staffSelect" class="field">${st.staff.map(x=>`<option>${x.name}</option>`).join('')}</select><div id="pinDisp" style="text-align:center;font-size:1.6rem;letter-spacing:8px;margin-top:12px;font-weight:700">○○○○</div><div class="pin-pad">${['1','2','3','4','5','6','7','8','9','C','0','B'].map(k=>`<button class="pin-key" onclick="pressPin('${k}')">${k==='B'?'⌫':k}</button>`).join('')}</div></div>`;
+    return;
+  }
+  bnav.style.display = 'grid'; lbtn.style.display = 'inline-flex';
+  document.getElementById('subHdr').textContent = st.location + ' · ' + session.name + ' · ✓ Данные сохранены';
+
+  if (curTab === 'shift') {
+    const stages = ['Открытие', 'Лайн Чек 1', 'Лайн Чек 2', 'Закрытие'];
+    const stageTasks = st.tasks.filter(t => t.active !== false && t.block === curStage);
+    if (taskIdx >= stageTasks.length) taskIdx = Math.max(0, stageTasks.length - 1);
+    const t = stageTasks[taskIdx], res = t && t.resultBy ? t.resultBy[session.name] : null, ph = (t && t.photos) || [];
+    const win = st.windows.find(w => w.block === curStage) || { start: '07:30', deadline: '22:30' };
+    const lastHnd = st.handovers[0];
+
+    main.innerHTML = `
+      ${lastHnd ? `<div class="card" style="padding:12px;background:var(--surface-2)"><div class="muted">Передача смены от <strong>${lastHnd.from}</strong> (${lastHnd.ts}):</div><div>${lastHnd.notes}</div></div>` : ''}
+      <div class="row-gap" style="justify-content:space-between">
+        <select class="field" style="width:auto;margin:0" onchange="curStage=this.value;taskIdx=0;render()">${stages.map(s=>`<option ${curStage===s?'selected':''}>${s}</option>`).join('')}</select>
+        <span class="pill good">Окно ${win.start}–${win.deadline}</span>
+      </div>
+      ${t ? `
+        <div class="focus-card">
+          <div class="row-gap" style="justify-content:space-between">
+            <span class="muted">Задача ${taskIdx + 1} из ${stageTasks.length}</span>
+            <span class="pill ${t.photoReq ? 'warn' : 'good'}">${t.photoReq ? 'Нужно фото' : '✓ Без фото'}</span>
+          </div>
+          <h2 style="margin:0;font-size:1.2rem">${t.title}</h2>
+          <div class="instr-box">${t.instruction}</div>
+          ${t.photoReq ? `<button class="btn warn" style="width:100%" onclick="openCameraFor('${t.id}')">Открыть камеру (${ph.length} фото)</button>${ph.length?`<div class="thumb-row">${ph.map(s=>`<img src="${s}">`).join('')}</div>`:''}` : ''}
+          <div class="seg-choice">
+            <button class="seg-btn ${res==='ok'?'ok-active':''}" onclick="markOk('${t.id}')">Всё в норме</button>
+            <button class="seg-btn ${res==='problem'||problemDraftOpen?'bad-active':''}" onclick="problemDraftOpen=true;render()">Обнаружена проблема</button>
+          </div>
+          ${res==='ok'?'<div style="color:var(--good);font-weight:600">✓ Подтверждено</div>':''}
+          ${problemDraftOpen ? `<div class="card" style="background:var(--surface-2);padding:12px"><select id="probCat" class="field">${INCIDENT_CATS.map(c=>`<option>${c}</option>`).join('')}</select><select id="probUrg" class="field"><option>Обычная</option><option>Высокая</option><option>Критическая (СТОП)</option></select><textarea id="probText" class="field" placeholder="Опишите проблему..."></textarea><button class="btn bad" style="margin-top:8px;width:100%" onclick="sendTaskProb('${t.id}','${t.title.replace(/'/g,'')}')">Отправить в Telegram</button></div>` : ''}
+        </div>
+        <button class="next-btn" ${!res?'disabled':''} onclick="if(taskIdx<${stageTasks.length-1}){taskIdx++;problemDraftOpen=false;render();}else showToast('Этап завершён!')">${taskIdx<stageTasks.length-1?'Следующая задача →':'Завершить этап ✓'}</button>
+      ` : ''}
+    `;
+  } else if (curTab === 'cash') {
+    const delta = cashDraft.end >= cashDraft.start ? (cashDraft.end - cashDraft.start) : ((1000 - cashDraft.start) + cashDraft.end);
+    main.innerHTML = `
+      <div class="card">
+        <div class="row-gap" style="justify-content:space-between;margin-bottom:8px"><strong>Сдача кассы — Шаг ${cashStep} из 5</strong><span class="pill">руб. ПМР</span></div>
+        ${cashStep===1?`<div class="muted">Шаг 1. Сведения</div><p>Сотрудник: <strong>${session.name}</strong> · Точка: <strong>${st.location}</strong></p><button class="btn primary" style="width:100%" onclick="cashStep=2;render()">Далее →</button>`:''}
+        ${cashStep===2?`<div class="muted">Шаг 2. Показатели</div><input class="field num" type="number" value="${cashDraft.cash}" onchange="cashDraft.cash=Number(this.value)" placeholder="Наличные"><input class="field num" type="number" value="${cashDraft.card}" onchange="cashDraft.card=Number(this.value)" placeholder="Безнал"><input class="field num" type="number" value="${cashDraft.checks}" onchange="cashDraft.checks=Number(this.value)" placeholder="Чеки"><div class="row-gap"><input class="field num" style="flex:1" type="number" value="${cashDraft.start}" onchange="cashDraft.start=Number(this.value)"><input class="field num" style="flex:1" type="number" value="${cashDraft.end}" onchange="cashDraft.end=Number(this.value)"></div><button class="btn primary" style="width:100%;margin-top:10px" onclick="cashStep=3;render()">Далее к фото →</button>`:''}
+        ${cashStep===3?`<div class="muted">Шаг 3. Фотофиксация (только камера)</div><div class="row-gap" style="margin-top:8px"><button class="btn ${cashDraft.photoCounter?'good':'warn'}" style="flex:1" onclick="openCameraFor('cash_counter')">${cashDraft.photoCounter?'✓ Фото счётчика':'📷 Фото счётчика'}</button><button class="btn ${cashDraft.photoZ?'good':'warn'}" style="flex:1" onclick="openCameraFor('cash_z')">${cashDraft.photoZ?'✓ Фото Z-отчёта':'📷 Фото Z-отчёта'}</button></div><button class="btn primary" style="width:100%;margin-top:10px" onclick="cashStep=4;render()">К сводке →</button>`:''}
+        ${cashStep===4?`<div class="muted">Шаг 4. Итоговая сводка</div><p>Выручка: <strong>${cashDraft.cash+cashDraft.card} руб. ПМР</strong> · Чеков: <strong>${cashDraft.checks}</strong> · Дельта помолов: <strong>${delta}</strong></p><button class="btn primary" style="width:100%" onclick="cashStep=5;render()">Подтвердить →</button>`:''}
+        ${cashStep===5?`<div class="muted">Шаг 5. Отправка отчёта</div><button class="btn good" style="width:100%" onclick="finishCashWizard()">Отправить отчёт смены</button>`:''}
+      </div>
+    `;
+  } else if (curTab === 'knowledge') {
+    main.innerHTML = `<div class="card"><h3 style="margin:0 0 8px">Информирование и ТТК</h3>${st.announcements.map(a=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><strong>${a.title}</strong><div class="muted">${a.text}</div></div>`).join('')}${st.ttk.map(t=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><strong>${t.name} (v${t.version})</strong><div class="muted">${t.ingredients}</div></div>`).join('')}</div>`;
+  } else {
+    main.innerHTML = `<div class="card"><h3 style="margin:0 0 8px">Эскалация проблемы (8 категорий)</h3><select id="iCat" class="field">${INCIDENT_CATS.map(c=>`<option>${c}</option>`).join('')}</select><textarea id="iText" class="field" placeholder="Описание..."></textarea><button class="btn bad" style="margin-top:8px;width:100%" onclick="const t=document.getElementById('iText').value.trim();if(!t)return;const s=getStore();s.incidents.unshift({id:'INC-'+(102+s.incidents.length),category:document.getElementById('iCat').value,text:t,author:session.name,status:'Новое',date:new Date().toISOString().slice(0,10)});saveStore(s);showToast('Отправлено в Telegram');render()">Отправить</button></div>`;
+  }
+}
+render();
+</script>
+</body>
+</html>

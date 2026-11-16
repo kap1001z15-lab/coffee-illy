@@ -10,21 +10,21 @@
 :root,
 [data-theme="light"] {
   /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
-  --bg: #F7F5F0;
-  --surface: #FFFFFF;
-  --surface-2: #F1EEE7;
+  --bg: #F5F2ED;
+  --surface: #FFFBF8;
+  --surface-2: #F1E8E1;
   --line: #E6E1D8;
-  --ink: #262522;
-  --ink-2: #5E5A53; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
-  --accent: #795548;
+  --ink: #241B16;
+  --ink-2: #65574F; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
+  --accent: #8B5022;
   --accent-ink: #FFFFFF;
   --accent-soft: #EFE6E1;
 
-  --good: #2F7A5E;
+  --good: #286B4D;
   --good-soft: #E4F1EB;
-  --warn: #9A6A14;
+  --warn: #805600;
   --warn-soft: #FBF0DA;
-  --bad: #B4483C;
+  --bad: #BA1A1A;
   --bad-soft: #F8E6E3;
   --info: #4B7AA6;
   --info-soft: #E5EEF6;
@@ -127,21 +127,21 @@
 
 [data-theme="dark"] {
   /* §3.1 Палитра тёмной темы */
-  --bg: #141413;
-  --surface: #1E1D1B;
-  --surface-2: #262522;
-  --line: #34322E;
-  --ink: #F5F3EE;
-  --ink-2: #B2AEA5; /* Контраст >= 6.8:1 на #1E1D1B (WCAG AA) */
-  --accent: #C49A85;
-  --accent-ink: #1B1410;
+  --bg: #151619;
+  --surface: #202126;
+  --surface-2: #292B30;
+  --line: #363840;
+  --ink: #F3F1ED;
+  --ink-2: #C7BDB7; /* Контраст >= 6.8:1 на #1E1D1B (WCAG AA) */
+  --accent: #FFB689;
+  --accent-ink: #2E1500;
   --accent-soft: rgb(196 154 133 / .16);
 
-  --good: #52B788;
+  --good: #81D5A8;
   --good-soft: rgb(82 183 136 / .16);
-  --warn: #E0A458;
+  --warn: #F4C66A;
   --warn-soft: rgb(224 164 88 / .16);
-  --bad: #E07A6F;
+  --bad: #FFB4AB;
   --bad-soft: rgb(224 122 111 / .16);
   --info: #7BA7CC;
   --info-soft: rgb(123 167 204 / .16);

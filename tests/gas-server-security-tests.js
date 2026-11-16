@@ -244,10 +244,13 @@ check('2. Серверная сессия бариста (Staff Session) и за
 });
 
 check('3. Серверная валидация входных данных кассы и расходов (отклонение отрицательных сумм и неверных дат)', () => {
-  const badDate = callPost({ action: 'submit_cash', date: '11-11-2026', cash: 1000, card: 500, checks: 40 });
+  const unauthCash = callPost({ action: 'submit_cash', date: '11-11-2026', cash: 1000, card: 500, checks: 40 });
+  assert(unauthCash.ok === false && /STAFF_AUTH_REQUIRED/.test(unauthCash.error), 'Анонимная отправка кассы должна отклоняться до валидации');
+
+  const badDate = callPost({ action: 'submit_cash', date: '11-11-2026', cash: 1000, card: 500, checks: 40, userName: 'Соня', staffPin: '5719' });
   assert(badDate.ok === false && /VALIDATION_FAILED/.test(badDate.error), 'Неверный формат даты должен отклоняться VALIDATION_FAILED');
 
-  const negCash = callPost({ action: 'submit_cash', date: '2026-11-11', cash: -500, card: 500, checks: 40 });
+  const negCash = callPost({ action: 'submit_cash', date: '2026-11-11', cash: -500, card: 500, checks: 40, userName: 'Соня', staffPin: '5719' });
   assert(negCash.ok === false && /VALIDATION_FAILED/.test(negCash.error), 'Отрицательная сумма наличных должна отклоняться VALIDATION_FAILED');
 });
 
@@ -295,9 +298,12 @@ check('6. Двустороннее управление всеми настро�
 
   // Прямое редактирование ячейки в Google Таблице (лист «Настройки» и лист «Планы»)
   sheetsStore['Планы']._rows[1][1] = 2900; // Меняем план Пн прямо в ячейке таблицы на 2900 руб.
-  const admOut = JSON.parse(gasContext.doGet({ parameter: { action: 'get_checklists' } }).getContent());
-  assert(admOut.ok === true && admOut.dailyPlans['Пн'].revenue === 2900, 'Прямое изменение ячейки в листе Планы Google Таблицы должно сразу возвращаться сервером');
-  assert(admOut.checklistBlocks.length === 2 && admOut.checklistBlocks[0].openTime === '07:15', 'Лист Таймлайн Google Таблицы управляет окнами чек-листов в терминале');
+  const pubOut = JSON.parse(gasContext.doGet({ parameter: { action: 'get_checklists' } }).getContent());
+  assert(pubOut.ok === true && !pubOut.dailyPlans && !pubOut.plan, 'Публичный get_checklists не должен раскрывать финансовые планы');
+  const admOut = callPost({ action: 'admin', sessionToken: tok });
+  assert(admOut.ok === true && admOut.dailyPlans['Пн'].revenue === 2900, 'Прямое изменение ячейки в листе Планы Google Таблицы должно возвращаться в admin DTO');
+  const staffBoot = callPost({ action: 'staff_bootstrap', userName: 'Соня', staffPin: '5719' });
+  assert(staffBoot.ok === true && staffBoot.checklistBlocks.length === 2 && staffBoot.checklistBlocks[0].openTime === '07:15', 'Лист Таймлайн Google Таблицы управляет окнами чек-листов в staff_bootstrap');
 });
 
 check('7. Живая синхронизация: get_rev меняется после каждой успешной записи и после ручной правки таблицы', () => {
@@ -400,8 +406,8 @@ check('9. Синхронизация одного аккаунта между у
   });
   assert(subChkRes.ok === true, 'submit_checklist должен сохранять чек-лист за сотрудником Алина');
 
-  // Устройство 2 (ПК, аккаунт Алина): запрашивает get_checklists и получает и черновик шага 2/5, и сданный чек-лист «Открытие»
-  const dev2Out = JSON.parse(gasContext.doGet({ parameter: { action: 'get_checklists' } }).getContent());
+  // Устройство 2 (ПК, аккаунт Алина): запрашивает staff_bootstrap после входа и получает только свои черновики и чек-листы
+  const dev2Out = callPost({ action: 'staff_bootstrap', userName: 'Алина', staffPin: '6820' });
   const dKey = today + ':Алина:Карта добрых дел';
   assert(dev2Out.ok === true && dev2Out.userDrafts && dev2Out.userDrafts[dKey] && dev2Out.userDrafts[dKey].idx === 1, 'Устройство 2 должно получить точный шаг прохождения (idx: 1) для аккаунта Алина');
   assert(Array.isArray(dev2Out.checklists) && dev2Out.checklists.some((c) => c.date === today && c.block === 'Открытие' && c.who === 'Алина'), 'Устройство 2 должно получить сданный чек-лист «Открытие» с привязкой к сотруднику Алина');

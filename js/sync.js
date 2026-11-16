@@ -467,6 +467,28 @@ function enforceSettingsOnResponse(act, data) {
   data.dailyPlans = db.dailyPlans;
 
   if (act === 'get_checklists') {
+    var _authTok = '';
+    try {
+      _authTok = (typeof window.coffeeGetSessionToken === 'function' ? window.coffeeGetSessionToken() : '') || '';
+      if (!_authTok && typeof localStorage !== 'undefined') {
+        var _sRaw = localStorage.getItem('coffee_auth_session_v1');
+        if (_sRaw) { var _sObj = JSON.parse(_sRaw); if (_sObj && _sObj.sessionToken) _authTok = _sObj.sessionToken; }
+      }
+    } catch (_) {}
+    if (_authTok && _authTok.indexOf('st_') === 0 && _authTok.indexOf('st_local_') !== 0 && (!opts || !opts.method || String(opts.method).toUpperCase() === 'GET')) {
+      var _bootBase = String(url).split('?')[0];
+      var _sinceTs = 0;
+      try {
+        var _mSince = String(url).match(/[?&]sinceTs=([^&]+)/);
+        if (_mSince) _sinceTs = Number(decodeURIComponent(_mSince[1])) || 0;
+      } catch (_) {}
+      opts = Object.assign({}, opts || {}, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'staff_bootstrap', sessionToken: _authTok, sinceTs: _sinceTs })
+      });
+      url = _bootBase;
+    }
     const dpToday = window.coffeeGetDayPlan(_isoToday(), db);
     data.plan = dpToday.revenue;
     data.dayCode = dpToday.dayCode;
