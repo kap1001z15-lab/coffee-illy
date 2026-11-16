@@ -7,6 +7,7 @@ const CoffeeCameraPermission = (() => {
   const STORAGE_KEY = 'coffee_camera_permission_v1';
   let requestInProgress = false;
   let activeStream = null;
+  let activeFacing = "environment";
   let activeFallbackCallback = null;
 
   const ERROR_MESSAGES = {
@@ -97,6 +98,23 @@ const CoffeeCameraPermission = (() => {
     }
   }
 
+  function suspendActiveStream(streamOpt) {
+    const s = streamOpt || activeStream;
+    if (!s) return;
+    try {
+      if (typeof s.getVideoTracks === 'function') {
+        s.getVideoTracks().forEach((track) => {
+          try {
+            if (typeof track.applyConstraints === 'function') {
+              track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+            }
+          } catch (_) {}
+          try { track.enabled = false; } catch (_) {}
+        });
+      }
+    } catch (_) {}
+  }
+
   function stopActiveStream() {
     if (activeStream) {
       stopStreamTracks(activeStream);
@@ -169,8 +187,10 @@ const CoffeeCameraPermission = (() => {
       }
 
       saveState('granted');
-      // ТЗ Раздел 5: Остановить все полученные треки сразу после проверки
-      stopStreamTracks(stream);
+      // Сохраняем живой видеопоток в пуле сессии (треки включены только во время съёмки, чтобы не просить разрешение повторно)
+      activeStream = stream;
+      activeFacing = 'environment';
+      stream.getVideoTracks().forEach((t) => { try { t.enabled = false; } catch (_) {} });
       syncDeniedBannerUI('granted');
 
       return { ok: true, state: 'granted', message: 'Камера готова к работе' };
@@ -199,7 +219,13 @@ const CoffeeCameraPermission = (() => {
 
     const facing = facingOpt === 'user' ? 'user' : 'environment';
 
-    // ТЗ Раздел 8: Если камера уже открыта в одном сценарии, переиспользовать или переключить без второго параллельного потока
+    // ТЗ Раздел 8: Если живой поток того же ракурса уже открыт в сессии, мгновенно переиспользуем его без повторного запроса разрешения!
+    if (isStreamActive() && activeFacing === facing) {
+      activeStream.getVideoTracks().forEach((t) => { try { t.enabled = true; } catch (_) {} });
+      saveState('granted');
+      syncDeniedBannerUI('granted');
+      return activeStream;
+    }
     if (isStreamActive()) {
       stopActiveStream();
     }
@@ -242,6 +268,7 @@ const CoffeeCameraPermission = (() => {
     }
 
     activeStream = stream;
+    activeFacing = facing;
     saveState('granted');
     syncDeniedBannerUI('granted');
     return stream;
@@ -495,6 +522,13 @@ const CoffeeCameraPermission = (() => {
     // ТЗ Раздел 4 и 7: При первом открытии терминала показать собственное окно Coffee Illy (не вызывая getUserMedia автоматически)
     if (state === 'not_requested' && isSupported() && !window.COFFEE_LIVE_PREVIEW_MODE) {
       openOnboardingModal();
+    } else if (state === 'granted' && isSupported() && !window.COFFEE_LIVE_PREVIEW_MODE) {
+      const warmOnce = () => {
+        if (!isStreamActive()) {
+          acquireStream('environment').then((s) => suspendActiveStream(s)).catch(() => {});
+        }
+      };
+      document.addEventListener('pointerdown', warmOnce, { once: true, passive: true });
     }
     return state;
   }
@@ -511,6 +545,7 @@ const CoffeeCameraPermission = (() => {
     request,
     acquireStream,
     stopStreamTracks,
+    suspendActiveStream,
     stopActiveStream,
     isStreamActive,
     checkPermission,

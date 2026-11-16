@@ -1,12 +1,15 @@
 /* =========================================================================
-   COFFEE ILLY v4.2 — DESIGN REFERENCE v4.0 FINAL OVERRIDE LAYER
+   COFFEE ILLY v4.5 (Build v87.8) — PREMIUM DESIGN REFERENCE & COMPACT UX
    Подключается последним после light.css / terminal.css / owner.css.
-   Реализует кремово-кофейную палитру (#F5EDE3, #FFFBF8, #8B5022, #241B16)
-   и устраняет все визуальные/UX-наложения на телефоне, планшете и ПК.
+   1. Светлая, Тёмная и Авто темы с 100% идентичной геометрией и отступами.
+   2. Ультра-компактный верх и низ в терминале бариста (максимум места в центре).
+   3. Полноэкранная камера без перекрытий, в 1 компактный ряд над кнопкой затвора.
+   4. Отдельная понятная кнопка темы и аккуратная пилюля «Профиль» без обрезания.
    ========================================================================= */
 
 :root:not([data-theme="dark"]),
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg: #F5EDE3;
   --surface: #FFFBF8;
   --surface-2: #F1E8E1;
@@ -15,7 +18,7 @@
   --ink: #241B16;
   --ink-2: #65574F;
   --muted: #65574F;
-  --line: #E6E1D8;
+  --line: #E4DCD3;
   --brew: #8B5022;
   --crema: #C88D55;
   --accent: #8B5022;
@@ -35,301 +38,14 @@
   --md-sys-color-on-primary: #FFFFFF;
   --md-sys-color-primary-container: #EFE6E1;
   --md-sys-color-on-primary-container: #241B16;
+  --md-sys-color-secondary-container: #EFE6E1;
+  --md-sys-color-on-secondary-container: #8B5022;
   --md-sys-color-surface: #FFFBF8;
   --md-sys-color-surface-container: #FFFBF8;
   --md-sys-color-background: #F5EDE3;
-  --md-sys-color-outline: #E6E1D8;
+  --md-sys-color-outline: #E4DCD3;
 }
 
-html body {
-  background: var(--bg);
-  color: var(--ink);
-}
-
-/* 1. Запрет галереи: скрытие резервных кнопок выбора файла в чек-листах и камере */
-#btnFallbackChecklistPhoto,
-#camFallbackBtn {
-  display: none;
-}
-
-/* 2. Терминал бариста: чистая светлая шапка и кнопки без наложений */
-html body header.md3-top-app-bar {
-  background: var(--surface);
-  color: var(--ink);
-  border-bottom: 1px solid var(--line);
-  box-shadow: 0 2px 8px rgba(36, 27, 22, .04);
-}
-html body header.md3-top-app-bar .brand h1,
-html body header.md3-top-app-bar .brand-meta,
-html body header.md3-top-app-bar .sub {
-  color: var(--ink);
-}
-html body header.md3-top-app-bar .ci-u-9 {
-  max-width: 720px;
-  margin: 8px auto 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-html body header.md3-top-app-bar .ci-u-10 {
-  flex: 1 1 180px;
-  min-height: 38px;
-  border-radius: 12px;
-}
-html body header.md3-top-app-bar .ci-u-11 {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-html body header.md3-top-app-bar .theme-btn.ci-u-12 {
-  width: auto;
-  min-width: max-content;
-  height: 36px;
-  padding: 0 12px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  font-size: 12.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-html body header.md3-top-app-bar .theme-btn.ci-u-12:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-html body header.md3-top-app-bar .theme-btn#baristaProfileBtn,
-html body header.md3-top-app-bar .theme-btn#theme {
-  width: auto;
-  min-width: 38px;
-  height: 38px;
-  padding: 0 10px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  color: var(--ink);
-  border: 1px solid var(--line);
-}
-
-/* 3. Этапы смены: без разрывов слов («Открыт ие») */
-html body #termTimelineTabs {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-html body #termTimelineTabs button {
-  word-break: normal;
-  overflow-wrap: break-word;
-  hyphens: none;
-  text-align: left;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--ink);
-  min-height: 54px;
-}
-html body #termTimelineTabs button.on,
-html body #termTimelineTabs button.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-@media (min-width: 900px) {
-  html body .shift-stages-card #termTimelineTabs {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-}
-
-/* 4. Нижняя навигация и бейджи */
-html body .md3-navigation-bar,
-html body nav.bnav {
-  background: var(--surface);
-  border-top: 1px solid var(--line);
-  box-shadow: 0 -4px 16px rgba(36, 27, 22, .05);
-}
-html body .md3-navigation-bar .nav-badge,
-html body nav.bnav .nav-badge {
-  position: absolute;
-  top: 4px;
-  right: 12px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-size: 11px;
-  line-height: 18px;
-  border-radius: 9999px;
-}
-
-/* 5. Панель владельца и администратора: эспрессо-сайдбар + кремовые карточки */
-html body header.app-header {
-  background: var(--surface);
-  color: var(--ink);
-  border-bottom: 1px solid var(--line);
-  box-shadow: 0 2px 8px rgba(36, 27, 22, .04);
-}
-html body header.app-header .brand h1,
-html body header.app-header .sub {
-  color: var(--ink);
-}
-html body .card,
-html body .panel,
-html body .kpi-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-}
-html body .btn.primary,
-html body .md3-btn-filled,
-html body button.ok,
-html body #btnOk,
-html body [data-odp].on,
-html body [data-orp].on {
-  background: var(--accent);
-  color: #FFFFFF;
-  border-color: var(--accent);
-}
-html body #ownerAttentionCard {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-@media (min-width: 1024px) {
-  html body:not([data-barista-page="1"]) > main {
-    grid-template-columns: 248px minmax(0, 1fr);
-    gap: 20px;
-  }
-  html body #ownerWorkspace9Nav:not([hidden]),
-  html body #adminWorkspace11Nav:not([hidden]) {
-    background: var(--sidebar-bg);
-    color: var(--sidebar-ink);
-    border: 0;
-    border-radius: 20px;
-    padding: 14px 12px;
-    box-shadow: 0 12px 28px rgba(36, 27, 22, .16);
-  }
-  html body #ownerWorkspace9Nav button,
-  html body #adminWorkspace11Nav button {
-    background: transparent;
-    border: 0;
-    color: rgba(255, 251, 248, .82);
-    border-radius: 12px;
-    padding: 10px 14px;
-    min-height: 42px;
-    font-weight: 600;
-  }
-  html body #ownerWorkspace9Nav button:hover,
-  html body #adminWorkspace11Nav button:hover {
-    background: rgba(255, 251, 248, .10);
-    color: #FFFFFF;
-  }
-  html body #ownerWorkspace9Nav button.on,
-  html body #adminWorkspace11Nav button.on {
-    background: var(--sidebar-active);
-    color: #FFFFFF;
-    border-color: transparent;
-    box-shadow: 0 4px 12px rgba(110, 63, 28, .35);
-  }
-}
-
-/* === v87.6: FIX CAMERA OVERLAP, PROFILE PILL, BOTTOM NAV & DESKTOP CASH VIEW === */
-html body .cam {
-  position: fixed;
-  inset: 0;
-  z-index: 9500;
-  background: #000000;
-}
-html body .cam .bar {
-  padding: 16px 24px calc(24px + env(safe-area-inset-bottom, 0px));
-}
-
-html body header.md3-top-app-bar .theme-btn#baristaProfileBtn {
-  width: auto;
-  min-width: max-content;
-  max-width: none;
-  height: 38px;
-  padding: 0 12px 0 6px;
-  border-radius: 9999px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  overflow: visible;
-  white-space: nowrap;
-}
-html body #baristaAvatarInitials {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #FFFFFF;
-  font-size: 12px;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-html body #baristaBottomNav .bnav-btn,
-html body .md3-navigation-bar .md3-nav-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 6px 4px;
-}
-html body #baristaBottomNav .bnav-btn .nav-badge,
-html body .md3-navigation-bar .nav-badge {
-  position: absolute;
-  top: 2px;
-  right: 12px;
-  min-width: 18px;
-  height: 18px;
-  line-height: 18px;
-  padding: 0 5px;
-  font-size: 11px;
-  border-radius: 9999px;
-}
-html body #baristaBottomNav .bnav-btn .bnav-ico {
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-}
-
-html body[data-barista-page="1"] > main {
-  display: block;
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 14px 16px calc(88px + env(safe-area-inset-bottom, 0px));
-}
-html body[data-barista-page="1"] #cashView,
-html body[data-barista-page="1"] #infoView,
-html body[data-barista-page="1"] #incView {
-  width: 100%;
-  max-width: 780px;
-  margin: 0 auto;
-}
-@media (min-width: 640px) and (max-width: 1023px) {
-  html body:not([data-barista-page="1"]) .k,
-  html body:not([data-barista-page="1"]) .k4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-
-/* === v87.7: ЕДИНАЯ ТЁМНАЯ ТЕМА (ИДЕНТИЧНАЯ ГЕОМЕТРИЯ И РАСПОЛОЖЕНИЕ КНОПОК) === */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #141210;
@@ -360,41 +76,488 @@ html body[data-barista-page="1"] #incView {
   --md-sys-color-on-primary: #141210;
   --md-sys-color-primary-container: #33261D;
   --md-sys-color-on-primary-container: #F5EDE3;
+  --md-sys-color-secondary-container: #33261D;
+  --md-sys-color-on-secondary-container: #E0A76A;
   --md-sys-color-surface: #1E1A17;
   --md-sys-color-surface-container: #1E1A17;
   --md-sys-color-background: #141210;
   --md-sys-color-outline: #362E28;
 }
 
+html body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* 1. Запрет галереи: скрытие резервных кнопок выбора файла в чек-листах и камере */
+#btnFallbackChecklistPhoto,
+#camFallbackBtn {
+  display: none;
+}
+
+/* 2. КОМПАКТНАЯ ПРЕМИАЛЬНАЯ ШАПКА ТЕРМИНАЛА БАРИСТА (экономит ~75px высоты экрана) */
+html body header.md3-top-app-bar {
+  min-height: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 12px 8px;
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .05);
+}
+html body header.md3-top-app-bar .wrap {
+  max-width: 760px;
+  margin: 0 auto;
+}
+html body header.md3-top-app-bar .brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+html body header.md3-top-app-bar .brand-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+html body header.md3-top-app-bar .brand h1 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0;
+  white-space: nowrap;
+}
+html body header.md3-top-app-bar .brand-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html body header.md3-top-app-bar .who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Отдельная кнопка переключения темы и кнопка Профиль (без обрезания букв) */
+html body header .theme-btn#theme,
+html body #themeToggleBtn,
+html body header.md3-top-app-bar .theme-btn#baristaProfileBtn {
+  width: auto;
+  min-width: max-content;
+  max-width: none;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: none;
+}
+html body header .theme-btn#theme:hover,
+html body header.md3-top-app-bar .theme-btn#baristaProfileBtn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+html body header.md3-top-app-bar .theme-btn#baristaProfileBtn {
+  padding-left: 5px;
+}
+html body #baristaAvatarInitials {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Второй ряд шапки: Проблема + История + Помощь строго в 1 компактную строку 32px */
+html body header.md3-top-app-bar .ci-u-9 {
+  max-width: 760px;
+  margin: 6px auto 0;
+  display: grid;
+  grid-template-columns: 1.15fr auto;
+  gap: 6px;
+  align-items: center;
+}
+html body header.md3-top-app-bar .ci-u-10#pinnedQuickIncBtn {
+  width: 100%;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+html body header.md3-top-app-bar .ci-u-11 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+html body header.md3-top-app-bar .theme-btn.ci-u-12 {
+  width: auto;
+  min-width: max-content;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+html body header.md3-top-app-bar #steps {
+  display: none;
+}
+
+/* 3. КОМПАКТНАЯ НИЖНЯЯ НАВИГАЦИЯ (54px вместо 76px, без уродливого тёмного овала) */
+html body #baristaBottomNav.barista-bottom-nav {
+  min-height: 54px;
+  padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, .06);
+  z-index: 40;
+}
+html body.cam-open #baristaBottomNav {
+  display: none;
+}
+html body #baristaBottomNav .barista-bottom-nav-inner {
+  max-width: 600px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+html body #baristaBottomNav button[data-bnav] {
+  position: relative;
+  min-height: 44px;
+  height: 44px;
+  padding: 4px 6px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+html body #baristaBottomNav button[data-bnav] svg {
+  width: 19px;
+  height: 19px;
+  min-width: 19px;
+  max-width: 19px;
+  min-height: 19px;
+  max-height: 19px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  color: currentColor;
+}
+html body #baristaBottomNav button[data-bnav].on,
+html body #baristaBottomNav button[data-bnav].active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  font-weight: 700;
+}
+html body #baristaBottomNav button[data-bnav].on svg,
+html body #baristaBottomNav button[data-bnav].active svg {
+  background: transparent;
+  color: var(--accent);
+}
+html body #baristaBottomNav .md3-nav-badge {
+  position: absolute;
+  top: 3px;
+  right: 10px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+html body #baristaBottomNav .md3-nav-badge:empty {
+  display: none;
+}
+
+/* 4. ЦЕНТРАЛЬНАЯ ОБЛАСТЬ И СВОРАЧИВАЕМАЯ КАРТОЧКА ЭТАПОВ СМЕНЫ */
+html body[data-barista-page="1"] > main {
+  display: block;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8px 12px calc(68px + env(safe-area-inset-bottom, 0px));
+}
+html body .shift-stages-card {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+html body .shift-stages-header {
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 2px 0;
+}
+html body #termTimelineTabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+html body #termTimelineTabs button {
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  min-height: 46px;
+  font-size: 12.5px;
+}
+html body #termTimelineTabs button.on,
+html body #termTimelineTabs button.active,
+html body #termTimelineTabs button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+html body .dl-banner {
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+html body .pro-progress-wrap {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+}
+html body[data-barista-page="1"] #cashView,
+html body[data-barista-page="1"] #infoView,
+html body[data-barista-page="1"] #incidentsBaristaSection {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* 5. ПОЛНОЭКРАННАЯ КАМЕРА (#cam) — АККУРАТНЫЙ ВИДОИСКАТЕЛЬ БЕЗ ПЕРЕКРЫТИЯ НАВИГАЦИЕЙ */
+html body #cam.cam:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #000000;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+html body #cam.cam video#camVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+html body #cam.cam #camLensBar {
+  position: relative;
+  z-index: 3;
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  padding: 12px 10px 4px;
+  background: linear-gradient(to top, rgba(0, 0, 0, .72), transparent);
+}
+html body #cam.cam #camMode {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 8px;
+  background: rgba(0, 0, 0, .72);
+}
+html body #cam.cam .cm {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .16);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, .24);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  white-space: nowrap;
+}
+html body #cam.cam .cm.on {
+  background: #FFFFFF;
+  color: #141210;
+  border-color: #FFFFFF;
+  font-weight: 700;
+}
+html body #cam.cam .bar {
+  position: relative;
+  z-index: 3;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 8px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, .84);
+}
+html body #cam.cam .bar .x#camCancel {
+  justify-self: start;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .14);
+  color: #FFFFFF;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+}
+html body #cam.cam .bar .shutter#camShot {
+  justify-self: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 4px solid #FFFFFF;
+  background: rgba(255, 255, 255, .28);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .45);
+}
+html body #cam.cam .bar .x#camFlip {
+  justify-self: end;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .14);
+  color: #FFFFFF;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* 6. ПАНЕЛЬ ВЛАДЕЛЬЦА И АДМИНИСТРАТОРА: ЭСПРЕССО-САЙДБАР И КАРТОЧКИ */
+html body header.app-header {
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
+}
+html body header.app-header .brand h1,
+html body header.app-header .sub {
+  color: var(--ink);
+}
+html body .card,
+html body .panel,
+html body .kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
 html body .btn.primary,
 html body .md3-btn-filled,
 html body button.ok,
 html body #btnOk,
 html body [data-odp].on,
 html body [data-orp].on {
+  background: var(--accent);
   color: var(--accent-ink);
+  border-color: var(--accent);
+}
+html body #ownerAttentionCard {
+  max-height: 280px;
+  overflow-y: auto;
 }
 
-html body .theme-btn#theme,
-html body #themeToggleBtn {
-  width: auto;
-  min-width: max-content;
-  height: 38px;
-  padding: 0 12px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 700;
-  white-space: nowrap;
+@media (min-width: 1024px) {
+  html body:not([data-barista-page="1"]) > main {
+    grid-template-columns: 248px minmax(0, 1fr);
+    gap: 20px;
+  }
+  html body #ownerWorkspace9Nav:not([hidden]),
+  html body #adminWorkspace11Nav:not([hidden]) {
+    background: var(--sidebar-bg);
+    color: var(--sidebar-ink);
+    border: 0;
+    border-radius: 20px;
+    padding: 14px 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .18);
+  }
+  html body #ownerWorkspace9Nav button,
+  html body #adminWorkspace11Nav button {
+    background: transparent;
+    border: 0;
+    color: rgba(255, 251, 248, .82);
+    border-radius: 12px;
+    padding: 10px 14px;
+    min-height: 42px;
+    font-weight: 600;
+  }
+  html body #ownerWorkspace9Nav button:hover,
+  html body #adminWorkspace11Nav button:hover {
+    background: rgba(255, 251, 248, .10);
+    color: #FFFFFF;
+  }
+  html body #ownerWorkspace9Nav button.on,
+  html body #adminWorkspace11Nav button.on {
+    background: var(--sidebar-active);
+    color: #FFFFFF;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .28);
+  }
 }
-html body .theme-btn#theme:hover,
-html body #themeToggleBtn:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+@media (min-width: 640px) and (max-width: 1023px) {
+  html body:not([data-barista-page="1"]) .k,
+  html body:not([data-barista-page="1"]) .k4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

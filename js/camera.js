@@ -11,6 +11,10 @@
   let busy = false;
 
   function _stopStreamCompletely(s) {
+    if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.suspendActiveStream === 'function') {
+      window.CoffeeCameraPermission.suspendActiveStream(s);
+      return;
+    }
     if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.stopStreamTracks === 'function') {
       window.CoffeeCameraPermission.stopStreamTracks(s);
       return;

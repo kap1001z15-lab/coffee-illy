@@ -123,17 +123,29 @@ function updateV70BaristaEnhancements() {
   if ($("bpCloseBtn") && profDlg) {
     $("bpCloseBtn").addEventListener("click", () => safeCloseModal(profDlg));
   }
+  if ($("bpThemeAutoBtn")) {
+    $("bpThemeAutoBtn").addEventListener("click", () => {
+      if (window.CoffeeTheme) window.CoffeeTheme.setMode("auto");
+      if (typeof paintTheme === "function") paintTheme();
+    });
+  }
   if ($("bpThemeDarkBtn")) {
     $("bpThemeDarkBtn").addEventListener("click", () => {
-      document.documentElement.setAttribute("data-theme", "dark");
-      try { localStorage.setItem("coffee_illy_theme", "dark"); } catch (_) {}
+      if (window.CoffeeTheme) window.CoffeeTheme.setMode("dark");
+      else {
+        document.documentElement.setAttribute("data-theme", "dark");
+        try { localStorage.setItem("coffee_illy_theme", "dark"); } catch (_) {}
+      }
       if (typeof paintTheme === "function") paintTheme();
     });
   }
   if ($("bpThemeLightBtn")) {
     $("bpThemeLightBtn").addEventListener("click", () => {
-      document.documentElement.setAttribute("data-theme", "light");
-      try { localStorage.setItem("coffee_illy_theme", "light"); } catch (_) {}
+      if (window.CoffeeTheme) window.CoffeeTheme.setMode("light");
+      else {
+        document.documentElement.setAttribute("data-theme", "light");
+        try { localStorage.setItem("coffee_illy_theme", "light"); } catch (_) {}
+      }
       if (typeof paintTheme === "function") paintTheme();
     });
   }
@@ -199,26 +211,27 @@ const tgt = (f) => { try { return f(); } catch (e) {} };
 $("loc").textContent = LOCATION; $("who").textContent = userName;
 const curTheme = () => document.documentElement.getAttribute("data-theme") ||'light';
 function paintTheme() {
+  if (window.CoffeeTheme && typeof window.CoffeeTheme.applyTheme === "function") {
+    window.CoffeeTheme.applyTheme(window.CoffeeTheme.getMode());
+    const m = window.CoffeeTheme.getMode();
+    ["bpThemeAutoBtn", "bpThemeLightBtn", "bpThemeDarkBtn"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      const isOn = (id === "bpThemeAutoBtn" && m === "auto") || (id === "bpThemeLightBtn" && m === "light") || (id === "bpThemeDarkBtn" && m === "dark");
+      el.classList.toggle("on", isOn);
+      el.classList.toggle("ok", isOn);
+    });
+    return;
+  }
   const d = curTheme() === "dark";
   ["theme", "termThemeBtn"].forEach((id) => {
     const b = $(id);
     if (b) {
-      b.textContent = d ? "☀️" : "🌙";
+      b.textContent = d ? "☀️ Светлая" : "🌙 Тёмная";
       b.setAttribute("aria-label", d ? "Светлая тема" : "Тёмная тема");
     }
   });
 }
-["theme", "termThemeBtn"].forEach((id) => {
-  const b = $(id);
-  if (b) {
-    b.onclick = () => {
-      const n = curTheme() === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", n);
-      try { localStorage.setItem("coffee_illy_theme", n); } catch (e) {}
-      paintTheme();
-    };
-  }
-});
 paintTheme();
 /* ---------- Telegram Mini App ---------- */
 if (tg) {
@@ -627,6 +640,11 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
       _hasExplicitBaristaChoice = true; localStorage.setItem("coffee_active_barista", userName);
       sessionStorage.setItem("coffee_term_pin_unlocked_v1", userName);
       localStorage.setItem("coffee_term_pin_unlocked_v1", userName);
+      if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.acquireStream === "function") {
+        window.CoffeeCameraPermission.acquireStream("environment").then((s) => {
+          if (window.CoffeeCameraPermission.suspendActiveStream) window.CoffeeCameraPermission.suspendActiveStream(s);
+        }).catch(() => {});
+      }
       if (window.coffeeTgMiniApp && typeof window.coffeeTgMiniApp.bindStaffToCurrentTgUser === "function") {
         window.coffeeTgMiniApp.bindStaffToCurrentTgUser(userName);
       }
@@ -953,6 +971,15 @@ setInterval(() => {
 function selectBlock(b) {
   if (b === "День") b = "Лайн Чек 1";
   block = b;
+  if (typeof activeBaristaNav !== "undefined") {
+    const nextNav = (b === "КАССА" || b === "Касса") ? "cash" : (b === "ИНФО" ? "knowledge" : "shift");
+    activeBaristaNav = nextNav;
+    document.querySelectorAll("#baristaBottomNav button[data-bnav]").forEach((btn) => {
+      const isOn = btn.dataset.bnav === nextNav;
+      btn.classList.toggle("on", isOn);
+      btn.classList.toggle("active", isOn);
+    });
+  }
   syncStaffSelector();
   drawTabs();
   if (b === "ИНФО") { $("steps").hidden = true; show("infoView"); renderInfoView(); return; }
@@ -999,7 +1026,11 @@ function selectBlock(b) {
     return;
   }
   tryRestoreShiftDraft(b);
-  $("steps").hidden = false;
+  if ($("termTimelineTabs") && $("shiftStagesToggleHeader") && cur.length > 0) {
+    $("termTimelineTabs").hidden = true;
+    $("shiftStagesToggleHeader").setAttribute("aria-expanded", "false");
+  }
+  $("steps").hidden = true;
   renderStep();
 }
 
@@ -1233,7 +1264,9 @@ function stopStream() {
     v.srcObject = null;
     v.style.boxShadow = "none";
   }
-  if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.stopStreamTracks === "function") {
+  if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.suspendActiveStream === "function") {
+    window.CoffeeCameraPermission.suspendActiveStream(stream);
+  } else if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.stopStreamTracks === "function") {
     window.CoffeeCameraPermission.stopStreamTracks(stream);
   } else if (stream && typeof stream.getTracks === "function") {
     stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
@@ -1280,6 +1313,8 @@ async function openCamera() {
     return;
   }
   camFacing = (cur[idx] && /селфи|selfie/i.test(cur[idx].title || "")) ? "user" : "environment";
+  if ($("baristaBottomNav")) $("baristaBottomNav").hidden = true;
+  document.body.classList.add("cam-open");
   $("cam").hidden = false; setMode("photo"); paintCamControls(); photoMsg("");
   try { await startStream(); }
   catch (e) {
@@ -1293,6 +1328,8 @@ function closeCamera() {
   cancelAuto(); clearInterval(recT);
   if (rec && rec.state === "recording") { rec.onstop = null; try { rec.stop(); } catch (e) {} }
   rec = null; $("camRec").hidden = true; $("camShot").classList.remove("rec"); stopStream(); $("cam").hidden = true;
+  document.body.classList.remove("cam-open");
+  if ($("baristaBottomNav")) $("baristaBottomNav").hidden = false;
 }
 function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 10; }
 async function shot(n) {
@@ -3526,7 +3563,9 @@ function applyCashModeUI(mode) {
 function switchBaristaBottomNav(targetNav) {
   activeBaristaNav = targetNav || "shift";
   document.querySelectorAll("#baristaBottomNav button[data-bnav]").forEach((b) => {
-    b.classList.toggle("on", b.dataset.bnav === activeBaristaNav);
+    const isOn = b.dataset.bnav === activeBaristaNav;
+    b.classList.toggle("on", isOn);
+    b.classList.toggle("active", isOn);
   });
   const myShiftCard = $("myShiftSummaryCard");
   const stagesCard = $("shiftStagesCard");

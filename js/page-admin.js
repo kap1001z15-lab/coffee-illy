@@ -962,8 +962,7 @@ $('panel').addEventListener('click',(e)=>{
 
 /* ----- тема ----- */
 const cur=()=>document.documentElement.getAttribute('data-theme')||'light';
-const paint=()=>{$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
-$('theme').onclick=()=>{const n=cur()==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('coffee_illy_theme',n)}catch(e){}paint()};
+const paint=()=>{if(window.CoffeeTheme)window.CoffeeTheme.applyTheme(window.CoffeeTheme.getMode());else if($('theme'))$('theme').textContent=cur()==='dark'?'☀️':'🌙'};
 paint();load();
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('#runUnitTestsBtn');
