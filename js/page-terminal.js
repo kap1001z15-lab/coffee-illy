@@ -35,6 +35,7 @@ if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 const tgu = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
 let _hasExplicitBaristaChoice = (function () {
   try { return !!localStorage.getItem("coffee_active_barista"); } catch (_) { return false; }
+})();
 
 /* === COFFEE ILLY v84: ПРОФИЛЬ (3.9), БЛОК ВНИМАНИЯ (3.2), 5 ШАГОВ КАССЫ (3.5) И ФИЛЬТР ПРОБЛЕМ (3.8) === */
 let baristaIncFilterMode = "all";
@@ -195,8 +196,6 @@ function updateV70BaristaEnhancements() {
   setInterval(updateV70BaristaEnhancements, 2000);
   setTimeout(updateV70BaristaEnhancements, 160);
 
-
-})();
 
 })();
 let userName = (function () {
@@ -411,13 +410,17 @@ function drawTabs() {
       const clsList = [];
       if (locked) clsList.push("locked");
       if (done) clsList.push("done-stage");
+      if (!done && winSt.canPass) clsList.push("now-open");
       return '<button role="tab" type="button" data-b="' + esc(bVal) + '" data-l="' + esc(bObj.name) + '" aria-selected="' + (isSel ? 'true' : 'false') + '" class="' + clsList.join(" ") + '">' +
         '<span>' + esc(bObj.name) + '</span>' +
         '<span class="st-pill">' + stageStatusText + '</span>' +
       '</button>';
     }).join("");
     if ($("shiftStagesSummaryTag")) {
-      $("shiftStagesSummaryTag").textContent = "Завершено этапов: " + doneStagesCnt + " из " + dynBlocks.length;
+      const curBlkLabel = block === "КАССА" ? "Касса" : block;
+      const curWin = window.coffeeGetBlockWindow ? window.coffeeGetBlockWindow(curBlkLabel, undefined, userName) : { state: "open", openTime: "", deadline: "" };
+      const stTxt = curWin.state === "open" ? ("🟢 Сейчас: " + curBlkLabel + " (" + (curWin.openTime || "") + "–" + (curWin.deadline || "") + ")") : ("Этап: " + curBlkLabel + " · " + doneStagesCnt + "/" + dynBlocks.length);
+      $("shiftStagesSummaryTag").textContent = stTxt;
     }
     if (tlBar._lastHtml !== newTabsHtml) {
       tlBar._lastHtml = newTabsHtml;
@@ -963,9 +966,30 @@ function updateDeadlineUI() {
   }
   return true;
 }
+let _lastNotifiedOpenBlock = "";
 setInterval(() => {
   updateDeadlineUI();
   drawTabs();
+  try {
+    if (window.coffeeGetChecklistBlocks && window.coffeeGetBlockWindow && typeof activeBaristaNav !== "undefined" && activeBaristaNav === "shift") {
+      const curCheckName = block === "КАССА" ? "Касса" : block;
+      const curW = window.coffeeGetBlockWindow(curCheckName, undefined, userName);
+      if (curW && !curW.canPass && !photoBusy && (!$("cam") || $("cam").hidden)) {
+        const nextOpen = window.coffeeGetChecklistBlocks().find((bObj) => {
+          if (bObj.isCash || bObj.name === "Касса") return false;
+          const w = window.coffeeGetBlockWindow(bObj.name, undefined, userName);
+          return w && w.canPass;
+        });
+        if (nextOpen && nextOpen.name !== block) {
+          selectBlock(nextOpen.name);
+          if (_lastNotifiedOpenBlock !== nextOpen.name) {
+            _lastNotifiedOpenBlock = nextOpen.name;
+            toast("⏰ Открыт этап «" + nextOpen.name + "» (" + (nextOpen.openTime || "") + "–" + (nextOpen.deadline || "") + ")", true);
+          }
+        }
+      }
+    }
+  } catch (_) {}
 }, 10000);
 
 function selectBlock(b) {
@@ -1067,13 +1091,16 @@ function renderStep() {
   if ($("inlineSampleDetails")) $("inlineSampleDetails").open = false;
   if ($("inlineSamplePhotos")) {
     const samples = window.coffeeGetSamplePhotos ? window.coffeeGetSamplePhotos(t) : [];
-    $("inlineSamplePhotos").innerHTML = samples.map((s) => (
+    const sampleHtml = samples.map((s) => (
       '<div style="border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--surface)">' +
         '<div style="font-weight:700;font-size:12.5px;margin-bottom:4px">' + esc(s.label) + '</div>' +
         '<img src="' + esc(s.url) + '" alt="' + esc(s.label) + '" style="width:100%;border-radius:8px;display:block">' +
         '<div class="muted" style="font-size:11.5px;margin-top:4px">' + esc(s.caption || '') + '</div>' +
       '</div>'
     )).join("");
+    $("inlineSamplePhotos").innerHTML = sampleHtml;
+    if ($("photoSampleDropdown")) $("photoSampleDropdown").open = false;
+    if ($("photoSampleDropdownPhotos")) $("photoSampleDropdownPhotos").innerHTML = sampleHtml;
   }
 
   photos = Array.isArray(a.photos) ? a.photos.slice() : (a.preview ? [a.preview] : []);
@@ -1234,9 +1261,7 @@ function paintCamControls() {
   }
   const v = $("camVideo");
   if (v) {
-    v.style.boxShadow = (camFlash && (camFacing === "user" || !camHwTorch))
-      ? "inset 0 0 0 14px rgba(255,253,244,0.88)"
-      : "none";
+    v.style.boxShadow = (camFlash && camFacing === "user") ? "inset 0 0 0 10px rgba(255,253,244,0.75)" : "none";
   }
 }
 
@@ -1295,7 +1320,7 @@ async function startStream() {
   try { await v.play(); } catch (e) {}
   await new Promise((r) => { if (v.videoWidth) return r(); v.onloadedmetadata = () => r(); setTimeout(r, 1200); });
   $("camShot").disabled = !v.videoWidth;
-  await applyCamFlashState();
+  setTimeout(() => { applyCamFlashState(); }, 150);
 }
 function camError(e) {
   const msg = (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.getErrorMessage === "function")
@@ -1334,7 +1359,7 @@ function closeCamera() {
 function isBlack(c) { const t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d"); x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; return sum / (d.length / 4) < 10; }
 async function shot(n) {
   const v = $("camVideo"); if (!v.videoWidth) return;
-  if (camFlash && (camFacing === "user" || !camHwTorch) && window.coffeeCameraPool && typeof window.coffeeCameraPool.triggerScreenFlash === "function") {
+  if (camFlash && camFacing === "user" && window.coffeeCameraPool && typeof window.coffeeCameraPool.triggerScreenFlash === "function") {
     await window.coffeeCameraPool.triggerScreenFlash($("camScreenFlash"), 260);
   }
   const k = Math.min(1, 1280 / v.videoWidth), c = document.createElement("canvas");
@@ -1573,7 +1598,7 @@ $("nextBtn").onclick = async () => {
 };
 
 /* ---------- Вкладка 3.2: Информирование и кнопка «Ознакомлен» ---------- */
-let ttkShowAllMode = false;
+let ttkShowAllMode = true;
 function renderTtkCatalog() {
   const box = $("ttkListContainer");
   if (!box) return;
@@ -3869,6 +3894,15 @@ window.addEventListener("coffee-demo-photo", (ev) => {
 
   if ($("globalHelpBtn")) {
     $("globalHelpBtn").addEventListener("click", () => safeShowModal($("globalHelpDlg")));
+  }
+  if ($("incTabHelpBtn")) {
+    $("incTabHelpBtn").addEventListener("click", () => safeShowModal($("globalHelpDlg")));
+  }
+  if ($("incTabHistoryBtn")) {
+    $("incTabHistoryBtn").addEventListener("click", () => {
+      renderShiftHistoryDialogV80();
+      safeShowModal($("shiftHistoryAndCorrectionDlg"));
+    });
   }
   if ($("btnCloseGlobalHelp")) {
     $("btnCloseGlobalHelp").addEventListener("click", () => { try { $("globalHelpDlg").close(); } catch (_) { $("globalHelpDlg").hidden = true; } });

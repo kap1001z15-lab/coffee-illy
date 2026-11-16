@@ -35,18 +35,32 @@
     const tracks = s.getVideoTracks();
     if (!tracks.length) return false;
     const t = tracks[0];
-    if (!t || typeof t.applyConstraints !== 'function') return false;
+    if (!t) return false;
+    const want = !!on;
+    // 1. Попытка через ImageCapture API (Android Chrome / WebView)
     try {
-      const caps = typeof t.getCapabilities === 'function' ? (t.getCapabilities() || {}) : {};
-      if (caps.torch || ('torch' in caps)) {
-        await t.applyConstraints({ advanced: [{ torch: !!on }] });
-        return true;
+      if (typeof window !== 'undefined' && typeof window.ImageCapture === 'function') {
+        const ic = new window.ImageCapture(t);
+        if (ic && typeof ic.getPhotoCapabilities === 'function') {
+          await ic.getPhotoCapabilities().catch(() => {});
+        }
       }
-      await t.applyConstraints({ advanced: [{ torch: !!on }] });
-      return true;
-    } catch (_) {
-      return false;
+    } catch (_) {}
+    // 2. Попытка через standard advanced torch constraint + direct torch constraint
+    if (typeof t.applyConstraints === 'function') {
+      try {
+        await t.applyConstraints({ advanced: [{ torch: want }] });
+        const settings = typeof t.getSettings === 'function' ? (t.getSettings() || {}) : {};
+        if (settings.torch === want) return true;
+        const caps = typeof t.getCapabilities === 'function' ? (t.getCapabilities() || {}) : {};
+        if (caps.torch || ('torch' in caps)) return true;
+      } catch (_) {}
+      try {
+        await t.applyConstraints({ torch: want });
+        return true;
+      } catch (_) {}
     }
+    return false;
   }
 
   function hasHardwareTorch(s) {
@@ -232,9 +246,7 @@
           : 'border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;background:#0009;color:#fff';
         bFlash.textContent = flashOn ? '⚡ Вспышка: Вкл' : '⚡ Вспышка: Выкл';
         shutter.style.background = mode === 'video' ? '#d32f2f' : '#fff3';
-        video.style.boxShadow = (flashOn && (facing === 'user' || !hwTorchActive))
-          ? 'inset 0 0 0 14px rgba(255,253,244,0.88)'
-          : 'none';
+        video.style.boxShadow = (flashOn && facing === 'user') ? 'inset 0 0 0 10px rgba(255,253,244,0.75)' : 'none';
       }
 
       function say(t, bad) { info.textContent = t || ''; info.style.color = bad ? '#ff8a80' : '#fff'; }

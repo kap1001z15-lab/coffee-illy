@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F7F5F0">
-<script src="js/theme.js?v=4.5"></script>
+<script src="js/theme.js?v=4.6"></script>
 <script>window.COFFEE_IS_BARISTA_TERMINAL = true;</script>
 <title>Coffee Illy — Терминал бариста (Barista Simple)</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,19 +14,19 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Кофейня">
 <script src="https://telegram.org/js/telegram-web-app.js" async defer></script>
-<link rel="stylesheet" href="css/tokens.css?v=4.5">
-<link rel="stylesheet" href="css/components.css?v=4.5">
-<link rel="stylesheet" href="css/terminal.css?v=4.5">
-<link rel="stylesheet" href="css/light.css?v=4.5">
-  <link rel="stylesheet" href="css/v4-design-ref.css?v=4.5">
-<script src="config.js?v=4.5"></script>
-<script src="js/defaults.js?v=4.5"></script>
-<script src="js/security.js?v=4.5"></script>
-<script src="js/storage.js?v=4.5"></script>
-<script src="js/material-design.js?v=4.5"></script>
-<script src="js/sync.js?v=4.5"></script>
-<script src="js/telegram.js?v=4.5"></script>
-<script src="version.js?v=4.5"></script>
+<link rel="stylesheet" href="css/tokens.css?v=4.6">
+<link rel="stylesheet" href="css/components.css?v=4.6">
+<link rel="stylesheet" href="css/terminal.css?v=4.6">
+<link rel="stylesheet" href="css/light.css?v=4.6">
+  <link rel="stylesheet" href="css/v4-design-ref.css?v=4.6">
+<script src="config.js?v=4.6"></script>
+<script src="js/defaults.js?v=4.6"></script>
+<script src="js/security.js?v=4.6"></script>
+<script src="js/storage.js?v=4.6"></script>
+<script src="js/material-design.js?v=4.6"></script>
+<script src="js/sync.js?v=4.6"></script>
+<script src="js/telegram.js?v=4.6"></script>
+<script src="version.js?v=4.6"></script>
 </head>
 <body data-barista-page="1">
 <header class="md3-top-app-bar">
@@ -223,6 +223,13 @@
 
       <div class="field" id="photoBlock">
         <span class="label" id="photoBlockLabel">Фото / видеофиксация</span>
+        <details id="photoSampleDropdown" class="inline-std ci-u-58">
+          <summary class="ci-u-59">
+            <span>📸 Пример правильного фото (образец)</span>
+            <span class="muted ci-u-60">Показать ▾</span>
+          </summary>
+          <div class="ci-u-62" id="photoSampleDropdownPhotos"></div>
+        </details>
         <div class="drop" id="drop" role="button" tabindex="0" aria-label="Открыть камеру">
           <svg viewBox="0 0 24 24" id="camIco"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
           <span id="photoPrompt">Открыть камеру</span>
@@ -595,6 +602,10 @@
         </div>
       </div>
       <button type="button" id="openQuickIncFromTabBtn" class="btn ci-u-141">🚨 Зафиксировать проблему / поломку (с фото или видео)</button>
+      <div class="inc-tab-subactions">
+        <button type="button" id="incTabHistoryBtn" class="btn ghost">📜 История смены и передача</button>
+        <button type="button" id="incTabHelpBtn" class="btn ghost">❓ Помощь и инструкция</button>
+      </div>
     </div>
     <div class="panel md3-card md3-surface-container">
       <div class="ci-u-142">
@@ -915,9 +926,9 @@
   </div>
 </dialog>
 
-<script src="js/camera-permission.js?v=4.5"></script>
-<script src="js/camera.js?v=4.5"></script>
-<script src="js/page-terminal.js?v=4.5"></script>
-<script src="app.js?v=4.5" defer></script>
+<script src="js/camera-permission.js?v=4.6"></script>
+<script src="js/camera.js?v=4.6"></script>
+<script src="js/page-terminal.js?v=4.6"></script>
+<script src="app.js?v=4.6" defer></script>
 </body>
 </html>
