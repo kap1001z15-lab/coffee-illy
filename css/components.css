@@ -1044,3 +1044,93 @@ html, body {
     gap: 6px;
   }
 }
+
+/* === COFFEE ILLY v4.2 — DESIGN REFERENCE v4.0 VISUAL PARITY === */
+#btnFallbackChecklistPhoto { display: none; }
+
+header.md3-top-app-bar .ci-u-11 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+header.md3-top-app-bar .theme-btn.ci-u-12 {
+  width: auto;
+  min-width: max-content;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--surface-2, #F1E8E1);
+  color: var(--ink, #241B16);
+  border: 1px solid var(--line, #E6E1D8);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+header.md3-top-app-bar .theme-btn.ci-u-12:hover {
+  background: var(--accent-soft, #EFE6E1);
+  border-color: var(--accent, #8B5022);
+}
+
+#termTimelineTabs button {
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface, #FFFBF8);
+  border: 1px solid var(--line, #E6E1D8);
+  color: var(--ink, #241B16);
+}
+#termTimelineTabs button.on,
+#termTimelineTabs button.active {
+  border-color: var(--accent, #8B5022);
+  background: var(--accent-soft, #EFE6E1);
+}
+
+@media (min-width: 900px) {
+  .shift-stages-card #termTimelineTabs {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .owner-combined-nav.md3-navigation-drawer {
+    background: var(--sidebar-bg, #241B16);
+    color: var(--sidebar-ink, #FFFBF8);
+    border-radius: 20px;
+    padding: 14px;
+    box-shadow: 0 12px 28px rgba(36, 27, 22, .14);
+  }
+  .owner-combined-nav.md3-navigation-drawer button {
+    justify-content: flex-start;
+    text-align: left;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-weight: 600;
+    color: var(--sidebar-ink, #FFFBF8);
+    background: transparent;
+    border: 0;
+  }
+  .owner-combined-nav.md3-navigation-drawer button.on,
+  .owner-combined-nav.md3-navigation-drawer button.active {
+    background: var(--sidebar-active, #6E3F1C);
+    color: #FFFFFF;
+  }
+}
+
+.card, .panel {
+  background: var(--surface, #FFFBF8);
+  border: 1px solid var(--line, #E6E1D8);
+  border-radius: 18px;
+  box-shadow: var(--shadow, 0 2px 10px rgba(36, 27, 22, .05));
+}
+
+.btn.primary, .md3-btn-filled, button.ok, #btnOk {
+  background: var(--accent, #8B5022);
+  color: #FFFFFF;
+  border-color: var(--accent, #8B5022);
+  border-radius: 14px;
+}

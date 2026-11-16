@@ -9,10 +9,10 @@
 
   function getSavedMode() {
     try {
-      var v = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'auto';
+      var v = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'light';
       return VALID_MODES[v] ? v : 'auto';
     } catch (_) {
-      return 'auto';
+      return 'light';
     }
   }
 
