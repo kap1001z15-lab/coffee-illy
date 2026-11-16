@@ -689,12 +689,15 @@ function absorbServerData(url, data, options) {
     }
   }
 
-  /* 4. Двусторонняя синхронизация листа «Задачи» */
+  /* 4. Двусторонняя синхронизация листа «Задачи» (v84: поэлементное слияние без потери блоков Открытие/Лайн Чек/Закрытие) */
   if (Array.isArray(data.tasks) && data.tasks.length) {
     const cleanSrvTasks = data.tasks.filter((t) => t && t.id !== '__SYS_CONFIG_V19__' && t.title !== '__SYS_SYNC__');
     if (cleanSrvTasks.length && _didSheetPartChange(db, 'sheet:tasks', cleanSrvTasks, forceFromSheet)) {
       if (forceFromSheet) db.deletedTaskIds = {};
-      db.tasks = window.coffeeNormalizeTasksTimeline(cleanSrvTasks.filter((t) => !db.deletedTaskIds[t.id]));
+      db.tasks = window.coffeeMergeTasksPreservingDefaults
+        ? window.coffeeMergeTasksPreservingDefaults(db.tasks || [], cleanSrvTasks, db.deletedTaskIds)
+        : window.coffeeNormalizeTasksTimeline(cleanSrvTasks.filter((t) => !db.deletedTaskIds[t.id]));
+      if (window.coffeeSyncGoodDeedsToChecklistTasks) window.coffeeSyncGoodDeedsToChecklistTasks(db);
       changed = true;
     }
   }
@@ -950,6 +953,11 @@ function absorbServerData(url, data, options) {
   return data;
 }
 
+function _newClientRecordId(prefix) {
+  return String(prefix || 'ID') + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+window.coffeeNewRecordId = _newClientRecordId;
+
 function applyLocalMutation(payload) {
   if (!payload || !payload.action) return;
   const db = getUDB();
@@ -1059,7 +1067,7 @@ function applyLocalMutation(payload) {
     db.cash = db.cash.filter((c) => c.date !== payload.date);
   } else if (a === 'add_expense') {
     db.expenses.unshift({
-      id: payload.id || ('EXP-' + Math.floor(100 + Math.random() * 900)),
+      id: payload.id || _newClientRecordId('EXP'),
       date: payload.date || _isoToday(),
       category: payload.category || db.categories[0],
       amount: Math.max(0, Math.round(Number(payload.amount) || 0)),
@@ -1108,7 +1116,7 @@ function applyLocalMutation(payload) {
   } else if (a === 'save_announcement') {
     db.announcements = db.announcements || [];
     const item = {
-      id: payload.id || ('INFO-' + Math.floor(100 + Math.random() * 900)),
+      id: payload.id || _newClientRecordId('INFO'),
       title: String(payload.title || '').trim(),
       category: payload.category || 'Внутренние объявления',
       text: String(payload.text || '').trim(),
@@ -1199,7 +1207,7 @@ function applyLocalMutation(payload) {
   } else if (a === 'save_staff') {
     db.staff = db.staff || [];
     db.ownerStaffModifiedAt = Date.now();
-    const rawPin = String(payload.pin || '1111').trim();
+    const rawPin = String(payload.pin || '').trim();
     const stItem = {
       id: payload.id || ('st_' + Date.now().toString(36)),
       name: String(payload.name || '').trim(),
@@ -1228,7 +1236,7 @@ function applyLocalMutation(payload) {
     const fw = Math.min(100, Math.max(0, Number(payload.farewell != null ? payload.farewell : 100)));
     const sc = Math.round((g + cl + up + fw) / 4);
     const item = {
-      id: payload.id || ('AUD-' + Math.floor(100 + Math.random() * 900)),
+      id: payload.id || _newClientRecordId('AUD'),
       date: payload.date || _isoToday(),
       barista: String(payload.barista || 'Соня').trim(),
       auditor: String(payload.auditor || 'Шеф-бариста').trim(),
@@ -1413,7 +1421,7 @@ function applyLocalMutation(payload) {
     const tStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const photosArr = Array.isArray(payload.photos) && payload.photos.length ? payload.photos : (payload.photo ? [payload.photo] : []);
     const newInc = {
-      id: 'INC-' + Math.floor(100 + Math.random() * 900),
+      id: payload.id || _newClientRecordId('INC'),
       date: _isoToday(),
       time: tStr,
       location: db.location || 'Кофейня №1',
@@ -1528,7 +1536,7 @@ function applyLocalMutation(payload) {
     probs.forEach((p) => {
       const pPhotos = Array.isArray(p.photos) && p.photos.length ? p.photos : ((p.photo_url || p.preview || p.photo_base64) ? [p.photo_url || p.preview || p.photo_base64] : []);
       const newInc = {
-        id: 'INC-' + Math.floor(100 + Math.random() * 900),
+        id: _newClientRecordId('INC'),
         date: _isoToday(),
         time: tStr,
         location: db.location || 'Кофейня №1',
@@ -2271,7 +2279,7 @@ async function _bridgeLegacyServerAction(url, bodyObj) {
   db.lastLocalMutationAt = Date.now();
   saveUDB(db);
   const act = String(bodyObj.action || '');
-  const pin = (bodyObj.pin && !/^sha256:/i.test(String(bodyObj.pin))) ? String(bodyObj.pin) : '1234';
+  const pin = (bodyObj.pin && !/^sha256:/i.test(String(bodyObj.pin))) ? String(bodyObj.pin) : '';
   const calls = [];
 
   if ((act === 'update_incident' && (bodyObj.status === 'Решена' || bodyObj.status === 'Закрыта')) || act === 'delete_incident') {
@@ -2354,9 +2362,11 @@ function _pushCloudEnvelopeInBackground(apiUrl, delayMs) {
   if (_bgEnvPushTimer) clearTimeout(_bgEnvPushTimer);
   _bgEnvPushTimer = setTimeout(() => {
     try {
+      const sess = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
+      if (!sess) return;
       const db = getUDB();
       const envStr = _serializeCloudSyncEnvelopeSafe(db);
-      _rawPostJson(apiUrl, {
+      const envPayload = {
         action: 'save_task',
         id: '__SYS_CONFIG_V19__',
         block: 'Открытие',
@@ -2364,9 +2374,15 @@ function _pushCloudEnvelopeInBackground(apiUrl, delayMs) {
         instruction: envStr,
         photo: 'нет',
         responsible: 'Система',
-        active: 'да',
-        pin: '1234'
-      }, 12000).catch(() => {});
+        active: 'да'
+      };
+      if (sess.token && !/^st_local_/.test(sess.token)) envPayload.sessionToken = sess.token;
+      if (sess.role === 'admin' && sess.pinHash) envPayload.pinHash = 'sha256:' + String(sess.pinHash).replace(/^sha256:/i, '');
+      else if (sess.staffName && sess.pinHash) {
+        envPayload.userName = sess.staffName;
+        envPayload.staffPinHash = 'sha256:' + String(sess.pinHash).replace(/^sha256:/i, '');
+      }
+      _rawPostJson(apiUrl, envPayload, 12000).catch(() => {});
     } catch (_) {}
   }, Math.max(20, Number(delayMs) || 25));
 }
@@ -2426,24 +2442,25 @@ function _sendCorsSafePost(url, bodyObj, timeoutMs) {
    Защита от блокировки: после неудачного входа повторные попытки не чаще раза в 10 минут (сервер банит после 5 ошибок). */
 const SERVER_TOK_AT_KEY = 'coffee_server_tok_at';
 let _reauthP = null, _reauthFailAt = 0;
-const AUTH_ERR_RE = /PIN_REQUIRED|FORBIDDEN/i;
-function _hasServerToken() {
-  const t = window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken() : '';
+const AUTH_ERR_RE = /PIN_REQUIRED|FORBIDDEN|STAFF_AUTH_REQUIRED/i;
+function _hasServerToken(preferRole) {
+  const t = window.coffeeAuth && window.coffeeAuth.getSessionToken ? window.coffeeAuth.getSessionToken(preferRole) : '';
   return /^st_/.test(t) && !/^st_local_/.test(t);
 }
-function _serverTokenStale() {
-  if (!_hasServerToken()) return true;
+function _serverTokenStale(preferRole) {
+  if (!_hasServerToken(preferRole)) return true;
   try { const at = Number(localStorage.getItem(SERVER_TOK_AT_KEY) || 0); return !!at && Date.now() - at > 5 * 3600 * 1000; } catch (_) { return false; }
 }
-function _reauthServerSession() {
+function _reauthServerSession(preferRole) {
   if (_reauthP) return _reauthP;
   if (Date.now() - _reauthFailAt < 10 * 60 * 1000) return Promise.resolve(false);
   _reauthP = (async () => {
     try {
-      const sess = window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession() : null;
+      const sess = (window.coffeeAuth && window.coffeeAuth.getSession ? window.coffeeAuth.getSession(preferRole) : null) ||
+                   (window.coffeeAuth && window.coffeeAuth.getStaffSession ? window.coffeeAuth.getStaffSession() : null);
       const base = window.COFFEE && window.COFFEE.API_URL;
       if (!sess || !sess.pinHash || !base) return false;
-      const r = await _sendCorsSafePost(base, { action: 'auth_login', role: sess.role, staffName: sess.staffName, pinHash: sess.pinHash }, 12000);
+      const r = await _sendCorsSafePost(base, { action: 'auth_login', role: sess.role || 'staff', staffName: sess.staffName, pinHash: sess.pinHash }, 12000);
       if (r && r.ok && r.sessionToken) {
         window.coffeeAuth.createLocalSession(sess.role, sess.staffName, sess.pinHash, r.sessionToken);
         try { localStorage.setItem(SERVER_TOK_AT_KEY, String(Date.now())); } catch (_) {}
@@ -3100,19 +3117,20 @@ function _triggerBackgroundSync(qPin, forceNow, focusDate, live) {
   if (now - _lastBgSyncAt < minGap) return;
   _bgSyncInFlight = true;
   _lastBgSyncAt = now;
-  const rawSavedPin = (function(){ try { return localStorage.getItem('coffee_illy_pin') || '1234'; } catch(e){ return '1234'; } })() || '1234';
-  const defHash = 'sha256:' + (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
-  const pinToUse = (rawSavedPin === defHash) ? '1234' : rawSavedPin;
-  const dateParam = focusDate ? ('&date=' + encodeURIComponent(focusDate)) : '';
-  const dashUrl = window.COFFEE.API_URL + '?action=dashboard&nocache=1' + dateParam + '&pin=' + encodeURIComponent(pinToUse);
-  const admUrl = window.COFFEE.API_URL + '?action=admin&nocache=1&pin=' + encodeURIComponent(pinToUse);
+  const rawSavedPin = (function(){ try { return localStorage.getItem('coffee_illy_pin') || ''; } catch(e){ return ''; } })() || '';
+  const sessTok = (window.coffeeAuth && window.coffeeAuth.getSessionToken) ? window.coffeeAuth.getSessionToken('admin') : '';
+  const authBodyBase = {};
+  if (sessTok && !/^st_local_/.test(sessTok)) authBodyBase.sessionToken = sessTok;
+  if (rawSavedPin) authBodyBase.pinHash = rawSavedPin;
+  const dashUrl = window.COFFEE.API_URL + '?action=dashboard';
+  const admUrl = window.COFFEE.API_URL + '?action=admin';
 
   const tsNow = Date.now();
   const chkUrl = window.COFFEE.API_URL + '?action=get_checklists&nocache=1&_t=' + tsNow;
   Promise.allSettled([
     fetch(chkUrl, { cache: 'no-store' }).then((r) => r.json()),
-    fetch(dashUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json()),
-    fetch(admUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json())
+    _rawPostJson(window.COFFEE.API_URL, Object.assign({ action: 'dashboard', date: focusDate || '' }, authBodyBase), 10000),
+    _rawPostJson(window.COFFEE.API_URL, Object.assign({ action: 'admin' }, authBodyBase), 10000)
   ]).then((results) => {
     const rawSysTasks = (results[0] && results[0].status === 'fulfilled' && results[0].value && Array.isArray(results[0].value.tasks))
       ? results[0].value.tasks.slice()
@@ -3156,12 +3174,15 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
   opt = opt || {};
   const isPost = String(opt.method || 'GET').toUpperCase() === 'POST';
 
-  if (isPost) {
+  let postReadPayload = null;
+  if (isPost && !postReadPayload) {
     let payload = {};
     try { payload = JSON.parse(opt.body || '{}'); } catch (_) {
       return { ok: false, error: 'INVALID_REQUEST_JSON' };
     }
-    if (OWNER_MUTATION_ACTIONS.test(payload.action || '')) {
+    if (/^(dashboard|report|admin)$/.test(String(payload.action || ''))) {
+      postReadPayload = payload;
+    } else if (OWNER_MUTATION_ACTIONS.test(payload.action || '')) {
       const activePin = payload.pin || (function(){ try { return localStorage.getItem('coffee_illy_pin') || ''; } catch(e){ return ''; } })();
       if (!isPinAuthorized(activePin)) {
         return { ok: false, error: 'PIN_REQUIRED: Доступ к изменению данных разрешён только владельцу по коду' };
@@ -3173,14 +3194,13 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
     const _sessNow = window.coffeeAuth && window.coffeeAuth.getSession
       ? window.coffeeAuth.getSession(isOwnerMutation ? 'admin' : undefined) : null;
     const sessionToken = _sessNow && _sessNow.token ? _sessNow.token : '';
-    const defPinHash = 'sha256:' + (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
-    const compatPin = (payload.pin === defPinHash || !payload.pin) ? '1234' : payload.pin;
+    const compatPin = payload.pin || '';
     const operation = Object.assign({}, payload, {
       pin: compatPin,
       operationId: payload.operationId || _newCoffeeOperationId()
     });
     if (isOwnerMutation || payload.pinHash) {
-      operation.pinHash = payload.pinHash || (_sessNow && _sessNow.pinHash) || defPinHash;
+      operation.pinHash = payload.pinHash || (_sessNow && _sessNow.pinHash) || '';
     } else if (!operation.staffPinHash && window.coffeeAuth && typeof window.coffeeAuth.getStaffPinHash === 'function') {
       const targetWho = operation.userName || operation.barista || (_sessNow && _sessNow.staffName) || (window.coffeeGetActiveBarista && window.coffeeGetActiveBarista()) || 'Соня';
       if (!operation.userName) operation.userName = targetWho;
@@ -3216,8 +3236,8 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
 
     let result = await _sendCorsSafePost(url, operation, Math.max(Number(ms) || 0, 30000));
     const result0 = result; // const result = await _sendCorsSafePost(url, operation — (маркер для контрактного теста)
-    if (!result0.ok && !result0.networkError && AUTH_ERR_RE.test(String(result0.error || '')) && await _reauthServerSession()) {
-      operation.sessionToken = window.coffeeAuth.getSessionToken();
+    if (!result0.ok && !result0.networkError && AUTH_ERR_RE.test(String(result0.error || '')) && await _reauthServerSession(isOwnerMutation ? 'admin' : 'staff')) {
+      operation.sessionToken = window.coffeeAuth.getSessionToken(isOwnerMutation ? 'admin' : 'staff');
       result = await _sendCorsSafePost(url, operation, Math.max(Number(ms) || 0, 30000));
     }
     if (result.ok === true) {
@@ -3284,15 +3304,23 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
   }
 
   let act = '', qDate = '', qFrom = '', qTo = '', qPin = '';
-  try {
-    const baseHref = (typeof location !== 'undefined' && location && location.href && /^https?:/i.test(location.href)) ? location.href : 'https://localhost/';
-    const u = new URL(url, baseHref);
-    act = u.searchParams.get('action') || '';
-    qDate = u.searchParams.get('date') || '';
-    qFrom = u.searchParams.get('from') || '';
-    qTo = u.searchParams.get('to') || '';
-    qPin = u.searchParams.get('pin') || '';
-  } catch (_) {}
+  if (postReadPayload) {
+    act = String(postReadPayload.action || '');
+    qDate = String(postReadPayload.date || '');
+    qFrom = String(postReadPayload.from || '');
+    qTo = String(postReadPayload.to || '');
+    qPin = String(postReadPayload.pin || postReadPayload.pinHash || '');
+  } else {
+    try {
+      const baseHref = (typeof location !== 'undefined' && location && location.href && /^https?:/i.test(location.href)) ? location.href : 'https://localhost/';
+      const u = new URL(url, baseHref);
+      act = u.searchParams.get('action') || '';
+      qDate = u.searchParams.get('date') || '';
+      qFrom = u.searchParams.get('from') || '';
+      qTo = u.searchParams.get('to') || '';
+      qPin = u.searchParams.get('pin') || '';
+    } catch (_) {}
+  }
 
   if (act === 'get_checklists') {
     const db = getUDB();
@@ -3378,14 +3406,13 @@ window.buildReportResponse = buildReportResponse;
 
 
 window.coffeePullFromGoogleSheet = async function () {
-  const rawSavedPin = (function(){ try { return localStorage.getItem('coffee_illy_pin') || '1234'; } catch(e){ return '1234'; } })() || '1234';
-  const defHash = 'sha256:' + (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
-  const pinToUse = (rawSavedPin === defHash) ? '1234' : rawSavedPin;
-  const admUrl = window.COFFEE.API_URL + '?action=admin&nocache=1&pin=' + encodeURIComponent(pinToUse);
+  const rawSavedPin = (function(){ try { return localStorage.getItem('coffee_illy_pin') || ''; } catch(e){ return ''; } })() || '';
+  const sessTok = (window.coffeeAuth && window.coffeeAuth.getSessionToken) ? window.coffeeAuth.getSessionToken('admin') : '';
+  const admUrl = window.COFFEE.API_URL + '?action=admin';
   const chkUrl = window.COFFEE.API_URL + '?action=get_checklists&nocache=1';
   const tsNow = Date.now();
   const [admRes, chkRes] = await Promise.allSettled([
-    fetch(admUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json()),
+    _rawPostJson(window.COFFEE.API_URL, { action: 'admin', sessionToken: sessTok, pinHash: rawSavedPin }, 10000),
     fetch(chkUrl + '&_t=' + tsNow, { cache: 'no-store' }).then((r) => r.json())
   ]);
   let absorbed = false;
@@ -3492,3 +3519,251 @@ if (typeof window !== 'undefined' && window.addEventListener && typeof document 
   window.addEventListener('online', () => window.coffeeCheckServer());
   if (window.coffeeBus) window.coffeeBus.on((m) => { if (m && m.type === 'outbox_error' && /UNKNOWN[ _]ACTION/i.test(String(m.error || ''))) window.coffeeCheckServer(); });
 }
+
+
+/* === FAST_SYNC_ACCELERATION_V78 === */
+(function(){
+  if (typeof window === "undefined") return;
+  window.COFFEE_SYNC_DEBOUNCE_MS = 35;
+  var _fastTimer = null;
+  window.triggerFastSyncV78 = function() {
+    if (_fastTimer) clearTimeout(_fastTimer);
+    _fastTimer = setTimeout(function() {
+      try {
+        if (typeof window.coffeeFlushOutbox === "function") {
+          window.coffeeFlushOutbox();
+        }
+      } catch (e) {}
+    }, 35);
+  };
+  if (typeof window.addEventListener === "function") window.addEventListener("online", function() {
+    window.triggerFastSyncV78();
+  });
+})();
+
+/* === V80 FULL PRODUCT SPEC UPGRADES (Sections 1-11: https://chatgpt.com/s/t_6af9c6ca2cd4819197b636e86b133e44) === */
+(function () {
+  if (typeof window === 'undefined') return;
+
+  // Раздел 11 п. 7: Тестовый режим (песочница без влияния на боевые кассовые данные)
+  const TEST_MODE_KEY = 'coffee_sandbox_test_mode_v1';
+  window.coffeeIsTestMode = function () {
+    try { return localStorage.getItem(TEST_MODE_KEY) === '1' || !!window.COFFEE_SANDBOX_TEST_MODE; } catch (_) { return !!window.COFFEE_SANDBOX_TEST_MODE; }
+  };
+  window.coffeeSetTestMode = function (enabled) {
+    window.COFFEE_SANDBOX_TEST_MODE = !!enabled;
+    try {
+      if (enabled) localStorage.setItem(TEST_MODE_KEY, '1');
+      else localStorage.removeItem(TEST_MODE_KEY);
+    } catch (_) {}
+    if (typeof window.getUDB === 'function' && typeof window.saveUDB === 'function') {
+      const db = window.getUDB();
+      if (!Array.isArray(db.auditLog)) db.auditLog = [];
+      db.auditLog.unshift({
+        id: 'aud_' + Date.now(),
+        time: new Date().toLocaleString('ru-RU'),
+        actor: 'Администратор',
+        action: enabled ? 'Включён тестовый режим (песочница)' : 'Выключен тестовый режим (боевой режим)'
+      });
+      window.saveUDB(db);
+    }
+    return window.coffeeIsTestMode();
+  };
+
+  // Раздел 6: Расширение центра уведомлений (тихий режим, отключение некритичных, интерактивные действия со сменой статуса в БД)
+  if (window.coffeeCentralNotifier) {
+    const cn = window.coffeeCentralNotifier;
+    cn.quietConfig = { enabled: false, startHour: 23, endHour: 7, muteNonCriticalUntil: 0 };
+    cn.setQuietMode = function (opts) {
+      opts = opts || {};
+      if (typeof opts.enabled === 'boolean') cn.quietConfig.enabled = opts.enabled;
+      if (typeof opts.muteHours === 'number') {
+        cn.quietConfig.muteNonCriticalUntil = Date.now() + opts.muteHours * 3600 * 1000;
+      }
+      return cn.quietConfig;
+    };
+    cn.isNonCriticalMuted = function () {
+      if (cn.quietConfig.muteNonCriticalUntil > Date.now()) return true;
+      if (cn.quietConfig.enabled) {
+        const hr = new Date().getHours();
+        if (hr >= cn.quietConfig.startHour || hr < cn.quietConfig.endHour) return true;
+      }
+      return false;
+    };
+    // Раздел 3: Нажатие кнопки в уведомлении реально меняет статус задачи/инцидента в БД и на сервере
+    cn.executeAction = function (notifId, actionType, payloadOpt) {
+      payloadOpt = payloadOpt || {};
+      if (typeof window.applyLocalMutation === 'function') {
+        return window.applyLocalMutation({
+          action: 'notification_action',
+          notifId: notifId,
+          actionType: actionType,
+          assignee: payloadOpt.assignee || '',
+          comment: payloadOpt.comment || '',
+          targetId: payloadOpt.targetId || ''
+        });
+      }
+      return null;
+    };
+  }
+
+  // Раздел 11 п. 2: Проверка готовности к закрытию смены (отчёты, незакрытые задачи, расхождения)
+  window.coffeeVerifyShiftCloseReadiness = function (dateIsoOpt) {
+    const db = typeof window.getUDB === 'function' ? window.getUDB() : {};
+    const today = dateIsoOpt || new Date().toISOString().slice(0, 10);
+    const cashList = Array.isArray(db.cash) ? db.cash : [];
+    const hasCashReport = cashList.some((r) => r && String(r.date || '').slice(0, 10) === today);
+    const tasks = Array.isArray(db.tasks) ? db.tasks : [];
+    const openTasks = tasks.filter((t) => t && !t.deleted && !t.archived && !t.done && t.status !== 'done');
+    const incs = Array.isArray(db.incidents) ? db.incidents : [];
+    const criticalIncs = incs.filter((i) => i && i.status !== 'Решено' && i.status !== 'Закрыто' && /Срочно|Не работает|Критич/i.test(String(i.priority || '')));
+    const warnings = [];
+    if (!hasCashReport) warnings.push('Кассовый отчёт за текущую смену ещё не отправлен');
+    if (openTasks.length > 0) warnings.push('Незавершённых задач смены: ' + openTasks.length);
+    if (criticalIncs.length > 0) warnings.push('Открытых критических инцидентов: ' + criticalIncs.length);
+    return {
+      ready: warnings.length === 0,
+      hasCashReport,
+      openTasksCount: openTasks.length,
+      criticalIncidentsCount: criticalIncs.length,
+      warnings
+    };
+  };
+
+  // Перехват и расширение applyLocalMutation для новых операций v80
+  const _origApplyLocalMutation = window.applyLocalMutation;
+  if (typeof _origApplyLocalMutation === 'function' && !window._v80MutationWrapped) {
+    window._v80MutationWrapped = true;
+    window.applyLocalMutation = function (payload) {
+      if (payload && typeof payload === 'object' && typeof window.getUDB === 'function' && typeof window.saveUDB === 'function') {
+        const act = String(payload.action || '');
+        const db = window.getUDB();
+        if (!Array.isArray(db.auditLog)) db.auditLog = [];
+
+        // 1) Интерактивные кнопки уведомлений (Раздел 3)
+        if (act === 'notification_action') {
+          const aType = String(payload.actionType || 'accept');
+          const tId = String(payload.targetId || payload.notifId || '');
+          const tasks = Array.isArray(db.tasks) ? db.tasks : [];
+          const incs = Array.isArray(db.incidents) ? db.incidents : [];
+          const tMatch = tasks.find((t) => t && (String(t.id) === tId || String(t.title) === tId));
+          const iMatch = incs.find((i) => i && (String(i.id) === tId || String(i.step) === tId));
+
+          if (aType === 'accept') {
+            if (tMatch) { tMatch.status = 'in_progress'; tMatch.acceptedAt = new Date().toISOString(); }
+            if (iMatch) { iMatch.status = 'В работе'; }
+          } else if (aType === 'assign' && payload.assignee) {
+            if (tMatch) { tMatch.who = payload.assignee; tMatch.responsible = payload.assignee; tMatch.status = 'accepted'; }
+            if (iMatch) { iMatch.assignedTo = payload.assignee; iMatch.status = 'В работе'; }
+          } else if (aType === 'clarify') {
+            if (tMatch) { tMatch.status = 'return_revision'; tMatch.adminComment = payload.comment || 'Уточните детали и прикрепите фото'; tMatch.needExtraPhoto = true; }
+            if (iMatch) { iMatch.adminComment = payload.comment || 'Требуется уточнение'; }
+          } else if (aType === 'close') {
+            if (tMatch) { tMatch.status = 'done'; tMatch.done = true; }
+            if (iMatch) { iMatch.status = 'Решено'; }
+            if (window.coffeeCentralNotifier && typeof window.coffeeCentralNotifier.resolveByKey === 'function') {
+              window.coffeeCentralNotifier.resolveByKey(tId);
+            }
+          }
+          db.auditLog.unshift({
+            id: 'aud_' + Date.now(),
+            time: new Date().toLocaleString('ru-RU'),
+            actor: payload.actor || 'Владелец / Администратор',
+            action: 'Действие по уведомлению [' + aType + '] для ' + (tId || 'события')
+          });
+          window.saveUDB(db);
+          return { ok: true, actionType: aType, targetId: tId };
+        }
+
+        // 2) Возврат задачи на доработку / запрос доп. фото (Раздел 4 и 7)
+        if (act === 'return_task_revision') {
+          const tasks = Array.isArray(db.tasks) ? db.tasks : [];
+          const tMatch = tasks.find((t) => t && String(t.id) === String(payload.id));
+          if (tMatch) {
+            tMatch.done = false;
+            tMatch.status = 'in_progress';
+            tMatch.revisionRequested = true;
+            tMatch.needExtraPhoto = !!payload.needExtraPhoto;
+            tMatch.adminComment = String(payload.comment || 'Возвращено на доработку');
+            if (!Array.isArray(tMatch.comments)) tMatch.comments = [];
+            tMatch.comments.push({
+              author: payload.actor || 'Администратор',
+              time: new Date().toLocaleString('ru-RU'),
+              text: tMatch.adminComment
+            });
+          }
+          db.auditLog.unshift({
+            id: 'aud_' + Date.now(),
+            time: new Date().toLocaleString('ru-RU'),
+            actor: payload.actor || 'Администратор',
+            action: 'Задача возвращена на доработку: ' + (tMatch ? tMatch.title : payload.id)
+          });
+          window.saveUDB(db);
+          return { ok: true };
+        }
+
+        // 3) Контролируемое исправление ошибки с сохранением истории (Раздел 11 п. 1)
+        if (act === 'submit_correction_request') {
+          if (!Array.isArray(db.corrections)) db.corrections = [];
+          const entry = {
+            id: 'corr_' + Date.now(),
+            time: new Date().toLocaleString('ru-RU'),
+            actor: payload.actor || 'Бариста',
+            targetType: payload.targetType || 'Касса / Отчёт',
+            targetId: payload.targetId || '',
+            oldValue: payload.oldValue || '',
+            newValue: payload.newValue || '',
+            reason: payload.reason || 'Исправление опечатки',
+            status: 'Ожидает подтверждения'
+          };
+          db.corrections.unshift(entry);
+          db.auditLog.unshift({
+            id: 'aud_' + Date.now(),
+            time: entry.time,
+            actor: entry.actor,
+            action: 'Запрос на исправление (' + entry.targetType + '): ' + entry.oldValue + ' → ' + entry.newValue + ' · Причина: ' + entry.reason
+          });
+          window.saveUDB(db);
+          return { ok: true, correction: entry };
+        }
+
+        // 4) Передача смены следующему сотруднику (Раздел 11 п. 3)
+        
+        // 5) Восстановление всех стандартных пунктов чек-листов с сохранением пользовательских правок (v84)
+        if (act === 'restore_default_tasks') {
+          db.deletedTaskIds = {};
+          if (window.coffeeMergeTasksPreservingDefaults) {
+            db.tasks = window.coffeeMergeTasksPreservingDefaults(db.tasks || [], [], {});
+          }
+          if (window.coffeeSyncGoodDeedsToChecklistTasks) {
+            window.coffeeSyncGoodDeedsToChecklistTasks(db);
+          }
+          db.auditLog.unshift({
+            id: 'aud_' + Date.now(),
+            time: new Date().toLocaleString('ru-RU'),
+            actor: payload.actor || 'Администратор',
+            action: 'Восстановлены стандартные пункты всех чек-листов (' + (db.tasks ? db.tasks.length : 0) + ' шагов)'
+          });
+          window.saveUDB(db);
+          return { ok: true, count: db.tasks ? db.tasks.length : 0 };
+        }
+
+        if (act === 'save_shift_handover') {
+          if (!Array.isArray(db.handovers)) db.handovers = [];
+          const hItem = {
+            id: 'ho_' + Date.now(),
+            date: new Date().toISOString().slice(0, 10),
+            time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            fromBarista: payload.fromBarista || 'Бариста',
+            note: String(payload.note || ''),
+            unresolvedTasks: Number(payload.unresolvedTasks || 0)
+          };
+          db.handovers.unshift(hItem);
+          window.saveUDB(db);
+          return { ok: true, handover: hItem };
+        }
+      }
+      return _origApplyLocalMutation.apply(this, arguments);
+    };
+  }
+})();

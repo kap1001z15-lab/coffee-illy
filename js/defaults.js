@@ -17,15 +17,7 @@ window.SAMPLE_FILES_DB = {
   }
 };
 
-window.COFFEE_STAFF_PIN_HASHES = {
-  'Соня': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
-  'Алина': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
-  'Настя': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
-  'Максим': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
-  'Даша': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532',
-  'Администратор': '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532'
-};
-window.COFFEE_DEFAULT_OWNER_PIN_HASH = '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532';
+// Персональные PIN-коды задаются при первичной настройке (setup_initial_credentials); заводские PIN удалены (T3).
 
 const DEFAULT_SETTINGS_SCHEMA = [
   { id: 'LOCATION', label: 'Название точки', hint: 'Отображается в шапке всех разделов и на штампе фото в терминале', value: 'Кофейня №1', secret: false },
@@ -41,7 +33,7 @@ const DEFAULT_SETTINGS_SCHEMA = [
   { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день (ТЗ п. 8)', hint: 'Целевое количество гостей/чеков за смену', value: '75', secret: false },
   { id: 'PHOTO_ALL', label: 'Фото на каждом шаге (да/нет)', hint: 'Если «да», для всех шагов Открытия и Закрытия в Терминале фото обязательно', value: 'нет', secret: false },
   { id: 'INIT_COUNTER', label: 'Текущий счётчик кофемашины', hint: 'Автоматически подставляется как начальный счётчик при расчёте смен в Кассе', value: '600', secret: false },
-  { id: 'TG_TOKEN', label: 'Токен Telegram-бота (от @BotFather)', hint: 'Например: 7123456789:AAH... Используется для мгновенной отправки фото и видео поломок администратору', value: '', secret: false },
+  { id: 'TG_TOKEN', label: 'Токен Telegram-бота (от @BotFather)', hint: 'Токен хранится в ScriptProperties на сервере. Используется для мгновенной отправки фото и видео поломок администратору', value: '', secret: false },
   { id: 'TG_CHAT', label: 'ID чата администратора в Telegram', hint: 'Ваш Chat ID или ID группы (можно несколько через запятую). Нажмите «🔍 Найти Chat ID», написав боту /start', value: '', secret: false },
   { id: 'CATEGORIES', label: 'Статьи расходов (через запятую)', hint: 'Список статей для добавления расходов в Отчётах и Управлении', value: 'Закупка продуктов, Аренда, Зарплата, Коммунальные, Реклама, Ремонт и оборудование, Прочее', secret: false },
   { id: 'ADMIN_PIN', label: 'Код доступа к дашборду и отчётам', hint: 'Код владельца для входа в Дашборд, Отчёты и Управление', value: '', secret: true, set: true }

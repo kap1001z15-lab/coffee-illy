@@ -36,7 +36,7 @@ const tgu = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
 let _hasExplicitBaristaChoice = (function () {
   try { return !!localStorage.getItem("coffee_active_barista"); } catch (_) { return false; }
 
-/* === COFFEE ILLY v70: ПРОФИЛЬ (3.9), БЛОК ВНИМАНИЯ (3.2), 5 ШАГОВ КАССЫ (3.5) И ФИЛЬТР ПРОБЛЕМ (3.8) === */
+/* === COFFEE ILLY v84: ПРОФИЛЬ (3.9), БЛОК ВНИМАНИЯ (3.2), 5 ШАГОВ КАССЫ (3.5) И ФИЛЬТР ПРОБЛЕМ (3.8) === */
 let baristaIncFilterMode = "all";
 
 function updateV70BaristaEnhancements() {
@@ -383,17 +383,17 @@ function drawTabs() {
       const locked = !done && !winSt.canPass;
       let stageStatusText = "";
       if (done) {
-        stageStatusText = "Завершено ✓";
+        stageStatusText = "Выполнен ✓";
       } else if (isSel) {
-        stageStatusText = "Текущий этап";
+        stageStatusText = "В процессе";
       } else if (bVal === "КАССА") {
-        stageStatusText = winSt.canPass ? "Доступна" : (bObj.openTime || "22:00");
+        stageStatusText = winSt.canPass ? "Доступна" : esc(bObj.openTime || "22:00");
       } else if (winSt.state === "overdue_closed") {
-        stageStatusText = "Просрочено (" + esc(bObj.deadline || "") + ")";
+        stageStatusText = "Просрочен (до " + esc(bObj.deadline || "") + ")";
       } else if (winSt.state === "before_window") {
-        stageStatusText = esc(bObj.openTime || "");
+        stageStatusText = "Ожидает (с " + esc(bObj.openTime || "") + ")";
       } else {
-        stageStatusText = "Доступно (" + esc(bObj.openTime || "") + "–" + esc(bObj.deadline || "") + ")";
+        stageStatusText = "Доступен (" + esc(bObj.openTime || "") + "–" + esc(bObj.deadline || "") + ")";
       }
       const clsList = [];
       if (locked) clsList.push("locked");
@@ -461,7 +461,10 @@ async function loadTasks() {
   try {
     const d = await coffeeFetch(API_URL + "?action=get_checklists&nocache=1&_t=" + Date.now());
     if (!d || d.ok === false || !d.tasks) throw new Error("bad response");
-    tasks = (Array.isArray(d.tasks) && d.tasks.length > 0) ? (window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(d.tasks) : d.tasks) : defTasks;
+    const delMapNow = (typeof getUDB === "function" && getUDB().deletedTaskIds) || {};
+    tasks = window.coffeeMergeTasksPreservingDefaults
+      ? window.coffeeMergeTasksPreservingDefaults(saved, Array.isArray(d.tasks) ? d.tasks : [], delMapNow).filter((t) => t.active !== "нет")
+      : ((Array.isArray(d.tasks) && d.tasks.length > 0) ? (window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline(d.tasks) : d.tasks) : defTasks);
     META = d;
     if (d.plan > 0) PLAN = d.plan;
     if (d.location) { LOCATION = d.location; $("loc").textContent = LOCATION; }
@@ -477,7 +480,7 @@ async function loadTasks() {
     }
   } catch (e) {
     if (!tasks.length) tasks = defTasks;
-    if (!tasks.length && block !== "КАССА") { show("errorView"); return; }
+    if (!tasks.length && block !== "КАССА") { if ($("errorViewTitle")) $("errorViewTitle").textContent = "Не удалось загрузить чек-листы"; if ($("errorViewDesc")) $("errorViewDesc").textContent = "Проверьте интернет и попробуйте ещё раз."; show("errorView"); return; }
     if (!saved.length) selectBlock(block);
   }
 }
@@ -524,7 +527,7 @@ function syncStaffSelector() {
     ? META.staff.filter((s) => s.active !== "нет")
     : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
   const staffList = rawList.filter((s) => s && !/^(администратор|владелец)$/i.test(String(s.name || "").trim()));
-  sel.innerHTML = staffList.map((s) => '<option value="' + s.name.replace(/"/g, '&quot;') + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + s.name + '</option>').join("");
+  sel.innerHTML = staffList.map((s) => '<option value="' + esc(s.name) + '"' + (s.name === userName ? ' selected' : '') + '>👤 ' + esc(s.name) + '</option>').join("");
   if (!staffList.some((s) => s.name === userName) && staffList.length) {
     userName = staffList[0].name;
     sel.value = userName;
@@ -534,6 +537,7 @@ function syncStaffSelector() {
 }
 function promptStaffPinAndSwitch(targetName, isStartupLogin) {
   const dlg = $("staffPinDlg");
+  if (!targetName) { try { targetName = localStorage.getItem("coffee_last_staff_name") || localStorage.getItem("coffee_active_barista") || "Соня"; } catch (_) { targetName = "Соня"; } }
   const rawList = (META && Array.isArray(META.staff) && META.staff.length)
     ? META.staff.filter((s) => s.active !== "нет")
     : ((window.COFFEE_MVP && window.COFFEE_MVP.DEFAULT_STAFF) || []);
@@ -545,7 +549,7 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
   }
   if (!dlg) {
     userName = targetName;
-    try { _hasExplicitBaristaChoice = true; localStorage.setItem("coffee_active_barista", userName); } catch (_) {}
+    try { _hasExplicitBaristaChoice = true; localStorage.setItem("coffee_active_barista", userName); localStorage.setItem("coffee_last_staff_name", userName); } catch (_) {}
     if ($("baristaSelect")) $("baristaSelect").value = userName;
     $("who").textContent = userName;
     drawTabs();
@@ -554,7 +558,15 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
   $("staffPinTitle").textContent = isStartupLogin ? "Вход сотрудника" : ("Сотрудник: " + targetName);
   $("staffPinSub").textContent = "Выберите имя и введите личный PIN-код";
   $("staffPinInput").value = "";
+  syncStaffPinDotsUI();
+  if ($("staffPinInput") && !$("staffPinInput")._dotsBound) { $("staffPinInput")._dotsBound = true; $("staffPinInput").addEventListener("input", syncStaffPinDotsUI); }
+  if ($("staffPinNewInput")) $("staffPinNewInput").value = "";
+  if ($("staffPinNewWrap")) $("staffPinNewWrap").hidden = true;
   $("staffPinErr").textContent = "";
+  if ($("staffPinAttemptsBadge") && window.coffeeRateLimiter) {
+    const rlInit = window.coffeeRateLimiter.check("staff_" + targetName);
+    $("staffPinAttemptsBadge").textContent = "Осталось попыток: " + (rlInit.remainingAttempts ?? 5) + " из 5";
+  }
   if ($("staffPinCancelBtn")) {
     $("staffPinCancelBtn").hidden = !!isStartupLogin;
   }
@@ -579,12 +591,35 @@ function promptStaffPinAndSwitch(targetName, isStartupLogin) {
         return;
       }
     }
-    const ok = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(chosenName, entered) : (entered === "1234");
-    if (!ok) {
+    const ok = window.coffeeVerifyStaffPin ? window.coffeeVerifyStaffPin(chosenName, entered) : false;
+    const dbStaff = (typeof getUDB === "function" && getUDB().staff) || [];
+    const stEntry = dbStaff.find((s) => s && s.name === chosenName);
+    if (stEntry && stEntry.pinChangeRequired) {
+      const newWrap = $("staffPinNewWrap");
+      const newInp = $("staffPinNewInput");
+      if (newWrap && newWrap.hidden) {
+        newWrap.hidden = false;
+        $("staffPinErr").textContent = "Требуется сменить временный PIN-код (PIN_CHANGE_REQUIRED): введите новый PIN ниже";
+        if (newInp) newInp.focus();
+        return;
+      }
+      const newPinVal = newInp ? newInp.value.trim() : "";
+      if (newPinVal.length < 4 || /^(\d)\1{3,}$/.test(newPinVal)) {
+        $("staffPinErr").textContent = "Новый PIN должен содержать не менее 4 цифр и не состоять из одинаковых цифр";
+        return;
+      }
+      stEntry.pinChangeRequired = false;
+      stEntry.pinHash = window.coffeeHashPin ? window.coffeeHashPin(newPinVal) : newPinVal;
+      if (typeof saveUDB === "function") saveUDB(getUDB());
+      post({ action: "change_staff_pin", staffName: chosenName, oldPin: entered, newPin: newPinVal }).catch(() => {});
+    } else if (!ok) {
       const rlAfter = window.coffeeRateLimiter ? window.coffeeRateLimiter.check(actorKey) : { remainingAttempts: 4 };
+      if ($("staffPinAttemptsBadge")) {
+        $("staffPinAttemptsBadge").textContent = "Осталось попыток: " + (rlAfter.remainingAttempts ?? 0) + " из 5";
+      }
       $("staffPinErr").textContent = rlAfter.locked
         ? rlAfter.message
-        : ("Неверный PIN-код для «" + chosenName + "» (по умолчанию: 1234). Осталось попыток: " + (rlAfter.remainingAttempts ?? 4));
+        : ("Неверный персональный PIN-код для «" + chosenName + "». Осталось попыток: " + (rlAfter.remainingAttempts ?? 4));
       return;
     }
     userName = chosenName;
@@ -841,11 +876,11 @@ function updateDeadlineUI() {
   if (win.state === "completed") {
     $("deadlineBadge").innerHTML = '<span style="color:var(--good)">✓ Сдано вовремя</span>';
   } else if (win.state === "overdue_closed") {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--bad)">🔒 Доступ закрыт (просрочено после ' + win.deadline + ')</span>';
+    $("deadlineBadge").innerHTML = '<span style="color:var(--bad)">🔒 Доступ закрыт (просрочено после ' + esc(win.deadline) + ')</span>';
   } else if (win.state === "before_window") {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--warn)">⏳ Доступ с ' + win.openTime + '</span>';
+    $("deadlineBadge").innerHTML = '<span style="color:var(--warn)">⏳ Доступ с ' + esc(win.openTime) + '</span>';
   } else {
-    $("deadlineBadge").innerHTML = '<span style="color:var(--good)">🟢 Доступ открыт (до ' + win.deadline + ')</span>';
+    $("deadlineBadge").innerHTML = '<span style="color:var(--good)">🟢 Доступ открыт (до ' + esc(win.deadline) + ')</span>';
   }
 
   const lockCard = $("windowLockCard");
@@ -990,7 +1025,7 @@ function renderStep() {
   if (!updateDeadlineUI()) { $("steps").hidden = true; return; }
   const t = cur[idx], a = answers[idx] || {};
   const pMode = getTaskPhotoMode(t);
-  $("stepCounter").textContent = "Пункт " + (idx + 1) + " из " + cur.length;
+  $("stepCounter").textContent = "Задача " + (idx + 1) + " из " + cur.length;
   if ($("photoModeTag")) {
     $("photoModeTag").textContent = pMode === "да" ? "📷 Фото обязательно" : (pMode === "при проблеме" ? "📷 Фото при проблеме" : "✓ Без фото");
     $("photoModeTag").style.color = pMode === "да" ? "var(--warn)" : "var(--muted)";
@@ -1004,7 +1039,7 @@ function renderStep() {
     $("inlineSamplePhotos").innerHTML = samples.map((s) => (
       '<div style="border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--surface)">' +
         '<div style="font-weight:700;font-size:12.5px;margin-bottom:4px">' + esc(s.label) + '</div>' +
-        '<img src="' + s.url + '" alt="' + esc(s.label) + '" style="width:100%;border-radius:8px;display:block">' +
+        '<img src="' + esc(s.url) + '" alt="' + esc(s.label) + '" style="width:100%;border-radius:8px;display:block">' +
         '<div class="muted" style="font-size:11.5px;margin-top:4px">' + esc(s.caption || '') + '</div>' +
       '</div>'
     )).join("");
@@ -1074,7 +1109,7 @@ function setPhotoUI() {
     gal.innerHTML = photos.map((src, i) => {
       const v = /^data:video/.test(src);
       return '<div class="mp-item">' +
-        (v ? '<video src="' + src + '" muted playsinline></video>' : '<img src="' + src + '" alt="Кадр ' + (i + 1) + '">') +
+        (v ? '<video src="' + esc(src) + '" muted playsinline></video>' : '<img src="' + esc(src) + '" alt="Кадр ' + (i + 1) + '">') +
         '<button type="button" class="mp-del" data-delphoto="' + i + '" title="Удалить кадр">×</button>' +
         '<span class="mp-lbl">Кадр ' + (i + 1) + '</span>' +
       '</div>';
@@ -1198,10 +1233,10 @@ function stopStream() {
     v.srcObject = null;
     v.style.boxShadow = "none";
   }
-  if (window.coffeeCameraPool && typeof window.coffeeCameraPool.suspend === "function") {
-    window.coffeeCameraPool.suspend(stream);
-  } else if (stream) {
-    stream.getTracks().forEach((t) => { try { t.enabled = false; } catch (_) {} });
+  if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.stopStreamTracks === "function") {
+    window.CoffeeCameraPermission.stopStreamTracks(stream);
+  } else if (stream && typeof stream.getTracks === "function") {
+    stream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
   }
   stream = null;
   camHwTorch = false;
@@ -1230,10 +1265,13 @@ async function startStream() {
   await applyCamFlashState();
 }
 function camError(e) {
-  const n = (e && e.name) || "";
-  photoMsg(/NotAllowed|Permission|Security/i.test(n)
-    ? "Нет доступа к камере. Разрешите камеру в настройках браузера или Telegram и нажмите «Открыть камеру» ещё раз."
-    : "Камера недоступна на этом устройстве. Загрузка фото из галереи запрещена — снимок можно сделать только камерой.", "bad");
+  const msg = (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.getErrorMessage === "function")
+    ? window.CoffeeCameraPermission.getErrorMessage(e)
+    : "Доступ к камере запрещён. Разрешите камеру в настройках браузера или Telegram";
+  photoMsg(msg + ". Вы можете использовать кнопку «📁 Загрузить или снять фото (резерв)».", "bad");
+  if (window.CoffeeCameraPermission && e && /NotAllowed|Permission/i.test(String(e.name || ""))) {
+    window.CoffeeCameraPermission.openRecoveryModal("denied");
+  }
 }
 async function openCamera() {
   if (photoBusy || !$("cam").hidden) return;
@@ -1513,16 +1551,16 @@ function renderTtkCatalog() {
     box.innerHTML = '<div class="muted" style="font-size:13px;padding:10px 12px;border-radius:12px;background:var(--bg)">По запросу «' + esc(q) + '» техкарта не найдена. Попробуйте другое название или нажмите «Все ТТК».</div>';
     return;
   }
-  box.innerHTML = list.map((t) => (
-    '<div style="border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--bg)">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<b>' + esc(t.name) + ' <span class="tag">' + esc(t.volume) + '</span></b>' +
-        '<span class="tag ok">' + esc(t.category) + ' · ' + esc(t.price) + ' руб.</span>' +
+  box.innerHTML = list.map((t, tIdx) => {
+    const shortDesc = String(t.recipe || "").length > 68 ? (String(t.recipe).slice(0, 68) + "…") : String(t.recipe || "");
+    return '<div style="border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--bg);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:180px">' +
+        '<div><b>' + esc(t.name) + '</b> <span class="tag">' + esc(t.volume || "250 мл") + '</span> <span class="tag ok">' + esc(t.category || "Классика") + '</span></div>' +
+        '<div class="muted" style="font-size:12.5px;margin-top:4px">' + esc(shortDesc) + '</div>' +
       '</div>' +
-      '<div style="font-size:13.5px;margin-top:6px;line-height:1.45"><b>📐 Рецептура:</b> ' + esc(t.recipe) + '</div>' +
-      (t.serving ? '<div class="muted" style="font-size:12.5px;margin-top:4px"><b>🍽 Подача:</b> ' + esc(t.serving) + '</div>' : '') +
-    '</div>'
-  )).join('');
+      '<button type="button" class="b" data-openttk="' + esc(t.name) + '" style="padding:7px 12px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap">Открыть техкарту</button>' +
+    '</div>';
+  }).join('');
 }
 if ($("ttkSearchIn")) {
   $("ttkSearchIn").addEventListener("input", () => {
@@ -1633,7 +1671,7 @@ function renderInfoView() {
     const targetList = Array.isArray(a.targetStaff) && a.targetStaff.length ? a.targetStaff : ["Соня", "Алина", "Настя"];
     const calDateStr = a.calendarDate ? String(a.calendarDate).split("-").reverse().join(".") : "";
     return '<div class="info-card ' + (myAck ? "acked" : "unread") + '">' +
-      (calDateStr ? '<div class="cal-pill">📅 Событие календаря: ' + calDateStr + (a.calendarEventTitle ? ' — ' + esc(a.calendarEventTitle) : '') + '</div>' : '') +
+      (calDateStr ? '<div class="cal-pill">📅 Событие календаря: ' + esc(calDateStr) + (a.calendarEventTitle ? ' — ' + esc(a.calendarEventTitle) : '') + '</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<span style="font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--brew)">' + esc(a.category || "Объявление") + '</span>' +
         '<span class="muted" style="font-size:12px">Опубликовано: ' + String(a.publishedAt || isoToday()).split("-").reverse().join(".") + (a.validTo ? ' · Актуально до ' + String(a.validTo).split("-").reverse().join(".") : '') + '</span>' +
@@ -1691,14 +1729,22 @@ function renderQiMediaPreview() {
   box.innerHTML = qiMediaList.map((src, i) => {
     const isVid = /^data:video/.test(src);
     return '<div class="qi-media-item">' +
-      (isVid ? '<video src="' + src + '" muted playsinline></video>' : '<img src="' + src + '" alt="Фото поломки">') +
+      (isVid ? '<video src="' + esc(src) + '" muted playsinline></video>' : '<img src="' + esc(src) + '" alt="Фото поломки">') +
       '<button type="button" class="qi-media-del" data-qidel="' + i + '" title="Удалить">×</button>' +
     '</div>';
   }).join("");
 }
 /* Только живая камера (фото / видео / фронталка) — без выбора из галереи */
 async function captureQi(mode) {
-  if (!window.coffeeCamera) { toast("Камера недоступна"); return; }
+  if (!window.coffeeCamera) {
+    if (window.CoffeeCameraPermission && mode === "photo") {
+      const fb = await window.CoffeeCameraPermission.pickFallbackImage({ stamp: LOCATION + " · " + userName });
+      if (fb) { qiMediaList.push(fb); renderQiMediaPreview(); }
+      return;
+    }
+    toast("Камера недоступна");
+    return;
+  }
   const src = await window.coffeeCamera.open({ mode, facing: "environment", stamp: LOCATION + " · " + userName });
   if (src) { qiMediaList.push(src); renderQiMediaPreview(); }
 }
@@ -2798,7 +2844,15 @@ function setQuickCashPhoto(data, isCounter) {
   }
 }
 async function captureQuickCash(isCounter) {
-  if (!window.coffeeCamera) { toast("Камера недоступна"); return; }
+  if (!window.coffeeCamera) {
+    if (window.CoffeeCameraPermission) {
+      const fb = await window.CoffeeCameraPermission.pickFallbackImage({ stamp: LOCATION + " · " + userName });
+      if (fb) setQuickCashPhoto(fb, isCounter);
+      return;
+    }
+    toast("Камера недоступна");
+    return;
+  }
   const src = await window.coffeeCamera.open({ mode: "photo", facing: "environment", stamp: LOCATION + " · " + userName });
   if (src) setQuickCashPhoto(src, isCounter);
 }
@@ -3180,7 +3234,7 @@ if ($("doneHomeBtn")) {
 })();
 
 
-/* Запрос PIN-кода участника при старте терминала (единый стартовый PIN: 1234) */
+/* Запрос персонального PIN-кода сотрудника при старте терминала */
 window.reloadTerminalFromVault = reloadTerminalFromVault;
 window.promptStaffPinAndSwitch = promptStaffPinAndSwitch;
 window.ensureTerminalPinGate = function () {
@@ -3241,6 +3295,85 @@ function updateCashPreSubmitSummary() {
     if ($("preSubCounter")) $("preSubCounter").textContent = cntVal || "—";
     if ($("preSubCash")) $("preSubCash").textContent = cashVal ? (cashVal + " руб.") : "—";
     if ($("preSubPhotos")) $("preSubPhotos").textContent = pCnt + " из 2";
+  } catch (_) {}
+}
+
+
+/* === T14 UI UPGRADES: PIN-ПАД >= 48x48, СМЕНА PIN (PIN_CHANGE_REQUIRED), СВОРАЧИВАЕМАЯ ЛЕНТА ЭТАПОВ И БЕЙДЖИ НАВИГАЦИИ === */
+(function initT14TerminalUpgrades() {
+  if ($("pinnedQuickIncBtn")) {
+    $("pinnedQuickIncBtn").addEventListener("click", () => {
+      if (typeof openQuickInc === "function") openQuickInc();
+    });
+  }
+  if ($("shiftStagesToggleHeader") && $("termTimelineTabs")) {
+    $("shiftStagesToggleHeader").addEventListener("click", () => {
+      const tabsEl = $("termTimelineTabs");
+      const isHidden = tabsEl.hidden;
+      tabsEl.hidden = !isHidden;
+      $("shiftStagesToggleHeader").setAttribute("aria-expanded", isHidden ? "true" : "false");
+    });
+  }
+  if ($("staffPinPadGrid")) {
+    $("staffPinPadGrid").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-pinkey]");
+      if (!btn) return;
+      const key = btn.dataset.pinkey;
+      const newWrap = $("staffPinNewWrap");
+      const targetInp = (newWrap && !newWrap.hidden && document.activeElement === $("staffPinNewInput"))
+        ? $("staffPinNewInput")
+        : $("staffPinInput");
+      if (!targetInp) return;
+      if (key === "clear") {
+        targetInp.value = "";
+      } else if (key === "back") {
+        targetInp.value = targetInp.value.slice(0, -1);
+      } else if (/^\d$/.test(key) && targetInp.value.length < 12) {
+        targetInp.value += key;
+      }
+      syncStaffPinDotsUI();
+    });
+  }
+})();
+
+
+function syncStaffPinDotsUI() {
+  try {
+    const inp = $("staffPinInput");
+    const dotsWrap = $("staffPinDots");
+    if (!inp || !dotsWrap) return;
+    const len = (inp.value || "").trim().length;
+    const dots = dotsWrap.querySelectorAll(".ci-pin-dot");
+    dots.forEach((d, i) => d.classList.toggle("filled", i < len));
+    const newWrap = $("staffPinNewWrap");
+    if (len === 4 && (!newWrap || newWrap.hidden) && $("staffPinForm")) {
+      const chosen = ($("staffPinUserSelect") && $("staffPinUserSelect").value) || userName || "Соня";
+      if (window.coffeeVerifyStaffPin && window.coffeeVerifyStaffPin(chosen, inp.value.trim())) {
+        $("staffPinForm").requestSubmit ? $("staffPinForm").requestSubmit() : $("staffPinForm").dispatchEvent(new Event("submit", { cancelable: true }));
+      }
+    }
+  } catch (_) {}
+}
+
+function updateBottomNavBadgesT14(remTasksCnt, openIncsCnt) {
+  try {
+    if ($("bnavShiftBadge")) {
+      $("bnavShiftBadge").textContent = remTasksCnt > 0 ? String(remTasksCnt) : "";
+      $("bnavShiftBadge").hidden = !(remTasksCnt > 0);
+    }
+    if ($("bnavIncidentsBadge")) {
+      $("bnavIncidentsBadge").textContent = openIncsCnt > 0 ? String(openIncsCnt) : "0";
+      $("bnavIncidentsBadge").hidden = !(openIncsCnt > 0);
+    }
+    if ($("bnavKnowledgeBadge")) {
+      const list = typeof getAnnouncementsSource === "function" ? getAnnouncementsSource() : [];
+      const unreadCnt = list.filter((a) => {
+        const acks = Array.isArray(a && a.acks) ? a.acks : [];
+        return !acks.some((k) => String(k.name || "").toLowerCase() === String(userName || "").toLowerCase());
+      }).length;
+      $("bnavKnowledgeBadge").textContent = unreadCnt > 0 ? String(unreadCnt) : "0";
+      $("bnavKnowledgeBadge").hidden = !(unreadCnt > 0);
+    }
   } catch (_) {}
 }
 
@@ -3322,7 +3455,7 @@ function updateMyShiftSummaryCard() {
       offBanner.hidden = !isOff;
       if (isOff && $("offlineCompactText")) {
         const hm = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-        $("offlineCompactText").textContent = (pendingCnt || 1) + " опер. ожидают отправки. Черновики сохранены на устройстве. Синхронизация: " + hm;
+        if ($("offlineCompactTitle")) $("offlineCompactTitle").textContent = "Офлайн — работа без интернета"; $("offlineCompactText").textContent = "Несинхронизированных изменений: " + (pendingCnt || 0) + ". Черновики сохранены (" + hm + ").";
       }
     }
     if ($("sdTasksDone")) $("sdTasksDone").textContent = (doneFlag ? total : answeredCnt) + " / " + total;
@@ -3560,5 +3693,260 @@ window.addEventListener("coffee-demo-photo", (ev) => {
     validate();
   } catch (_) {}
 });
+
+
+// Обработчик кнопки «Открыть техкарту» (Часть 3.3) и «Предыдущие отчёты» в кассе (Часть 3.2)
+(function initV78TermExtras() {
+  
+  // Интеграция единого модуля CoffeeCameraPermission (v79, ТЗ Разделы 4–14)
+  if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.initUI === "function") {
+    window.CoffeeCameraPermission.initUI();
+  }
+  const fbChkBtn = $("btnFallbackChecklistPhoto");
+  if (fbChkBtn && window.CoffeeCameraPermission) {
+    fbChkBtn.addEventListener("click", async () => {
+      const stampStr = LOCATION + " · " + userName + " · " + (cur[idx] ? cur[idx].title : "Чек-лист");
+      const dataUrl = await window.CoffeeCameraPermission.pickFallbackImage({ stamp: stampStr });
+      if (dataUrl) {
+        photos.push(dataUrl);
+        photo = photos[0];
+        photoUrl = "";
+        setPhotoUI();
+        uploadNow(dataUrl);
+        saveAnswer();
+      }
+    });
+  }
+
+  
+  // === V80: Помощь (Раздел 8), История смены, Честный статус синхронизации (Раздел 5), Исправление ошибок и Передача смены (Раздел 11) ===
+  const CASH_DRAFT_KEY = "coffee_cash_draft_v80";
+  function saveCashDraftV80() {
+    try {
+      const draft = {
+        counter: $("quickCounterIn") ? $("quickCounterIn").value : "",
+        cash: $("quickPaperCashIn") ? $("quickPaperCashIn").value : "",
+        comment: $("cashCommentIn") ? $("cashCommentIn").value : "",
+        savedAt: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+      };
+      localStorage.setItem(CASH_DRAFT_KEY, JSON.stringify(draft));
+    } catch (_) {}
+  }
+  function restoreCashDraftV80() {
+    try {
+      const raw = localStorage.getItem(CASH_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d && typeof d === "object") {
+        if ($("quickCounterIn") && !$("quickCounterIn").value && d.counter) $("quickCounterIn").value = d.counter;
+        if ($("quickPaperCashIn") && !$("quickPaperCashIn").value && d.cash) $("quickPaperCashIn").value = d.cash;
+        if ($("cashCommentIn") && !$("cashCommentIn").value && d.comment) $("cashCommentIn").value = d.comment;
+      }
+    } catch (_) {}
+  }
+  ["quickCounterIn", "quickPaperCashIn", "cashCommentIn"].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener("input", saveCashDraftV80);
+  });
+  restoreCashDraftV80();
+
+  function renderShiftHandoverBannerV80() {
+    const banner = $("shiftHandoverBanner");
+    const txtEl = $("shiftHandoverBannerText");
+    if (!banner || !txtEl) return;
+    const db = typeof getUDB === "function" ? getUDB() : {};
+    const handovers = Array.isArray(db.handovers) ? db.handovers : [];
+    const revTasks = (Array.isArray(db.tasks) ? db.tasks : []).filter((t) => t && t.revisionRequested && !t.done);
+    if (revTasks.length > 0) {
+      banner.hidden = false;
+      banner.style.display = "flex";
+      txtEl.textContent = "Возвращено на доработку задач: " + revTasks.length + " (" + (revTasks[0].title || "") + " — " + (revTasks[0].adminComment || "проверьте комментарий") + ")";
+    } else if (handovers.length > 0 && handovers[0].note) {
+      banner.hidden = false;
+      banner.style.display = "flex";
+      txtEl.textContent = handovers[0].fromBarista + " (" + handovers[0].time + "): " + handovers[0].note;
+    } else {
+      banner.hidden = true;
+      banner.style.display = "none";
+    }
+  }
+  renderShiftHandoverBannerV80();
+
+  function renderShiftHistoryDialogV80() {
+    const db = typeof getUDB === "function" ? getUDB() : {};
+    const outbox = (typeof window.coffeeGetOutbox === "function") ? window.coffeeGetOutbox() : [];
+    const pendingCount = Array.isArray(outbox) ? outbox.length : 0;
+
+    const readinessBox = $("shiftCloseReadinessBox");
+    if (readinessBox && typeof window.coffeeVerifyShiftCloseReadiness === "function") {
+      const st = window.coffeeVerifyShiftCloseReadiness();
+      if (st.ready && pendingCount === 0) {
+        readinessBox.innerHTML = "<b style='color:#398568;'>✅ Смена готова к закрытию:</b> кассовый отчёт сдан, все задачи выполнены, все операции подтверждены сервером.";
+      } else {
+        const warns = st.warnings.slice();
+        if (pendingCount > 0) warns.push("Неподтверждённых сервером операций в очереди: " + pendingCount);
+        readinessBox.innerHTML = "<b style='color:#D69A43;'>⚠️ Контроль закрытия смены:</b><br>• " + warns.join("<br>• ");
+      }
+    }
+
+    const listEl = $("shiftActionsHistoryList");
+    if (listEl) {
+      const items = [];
+      if (Array.isArray(outbox)) {
+        outbox.forEach((op) => {
+          items.push({
+            title: "Операция: " + ((op && op.payload && op.payload.action) || "отправка данных"),
+            time: "Локальная очередь",
+            confirmed: false
+          });
+        });
+      }
+      (Array.isArray(db.cash) ? db.cash : []).slice(0, 3).forEach((c) => {
+        items.push({
+          title: "Кассовый отчёт за " + (c.date || "смену") + " (" + (c.cash || 0) + " руб.)",
+          time: c.barista || userName || "Бариста",
+          confirmed: pendingCount === 0
+        });
+      });
+      (Array.isArray(db.corrections) ? db.corrections : []).slice(0, 3).forEach((cr) => {
+        items.push({
+          title: "Запрос на исправление: " + cr.targetType + " (" + cr.oldValue + " → " + cr.newValue + ")",
+          time: cr.time || "",
+          confirmed: true
+        });
+      });
+      listEl.innerHTML = items.length
+        ? items.map((it) => (
+            "<div style='padding:8px 10px;border-radius:10px;border:1px solid var(--border-subtle,#DED9D1);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;'>" +
+              "<div><b>" + esc(it.title) + "</b><div class='muted' style='font-size:11.5px;'>" + esc(it.time) + "</div></div>" +
+              (it.confirmed
+                ? "<span style='font-size:11.5px;font-weight:700;color:#398568;'>✅ Подтверждено сервером</span>"
+                : "<span style='font-size:11.5px;font-weight:700;color:#D69A43;'>⏳ В очереди на устройстве</span>") +
+            "</div>"
+          )).join("")
+        : "<div class='muted'>За текущую смену отправленных операций пока нет.</div>";
+    }
+  }
+
+  if ($("globalHelpBtn")) {
+    $("globalHelpBtn").addEventListener("click", () => safeShowModal($("globalHelpDlg")));
+  }
+  if ($("btnCloseGlobalHelp")) {
+    $("btnCloseGlobalHelp").addEventListener("click", () => { try { $("globalHelpDlg").close(); } catch (_) { $("globalHelpDlg").hidden = true; } });
+  }
+  if ($("btnReportTechProblemFromHelp")) {
+    $("btnReportTechProblemFromHelp").addEventListener("click", () => {
+      try { $("globalHelpDlg").close(); } catch (_) {}
+      if (typeof openQuickInc === "function") openQuickInc();
+    });
+  }
+  if ($("btnOpenCamRecoveryFromHelp")) {
+    $("btnOpenCamRecoveryFromHelp").addEventListener("click", () => {
+      try { $("globalHelpDlg").close(); } catch (_) {}
+      if (window.CoffeeCameraPermission) window.CoffeeCameraPermission.openRecoveryModal("denied");
+    });
+  }
+  if ($("openShiftHistoryBtn")) {
+    $("openShiftHistoryBtn").addEventListener("click", () => {
+      renderShiftHistoryDialogV80();
+      safeShowModal($("shiftHistoryAndCorrectionDlg"));
+    });
+  }
+  if ($("btnOpenHandoverDetails")) {
+    $("btnOpenHandoverDetails").addEventListener("click", () => {
+      renderShiftHistoryDialogV80();
+      safeShowModal($("shiftHistoryAndCorrectionDlg"));
+    });
+  }
+  if ($("btnCloseShiftHistoryDlg")) {
+    $("btnCloseShiftHistoryDlg").addEventListener("click", () => {
+      try { $("shiftHistoryAndCorrectionDlg").close(); } catch (_) { $("shiftHistoryAndCorrectionDlg").hidden = true; }
+    });
+  }
+  if ($("btnSubmitCorrectionReq")) {
+    $("btnSubmitCorrectionReq").addEventListener("click", () => {
+      const targetType = ($("corrTargetInput") && $("corrTargetInput").value.trim()) || "Касса / Отчёт";
+      const oldValue = ($("corrOldValInput") && $("corrOldValInput").value.trim()) || "—";
+      const newValue = ($("corrNewValInput") && $("corrNewValInput").value.trim()) || "";
+      const reason = ($("corrReasonInput") && $("corrReasonInput").value.trim()) || "Исправление ошибки ввода";
+      if (!newValue) { toast("Укажите новое (верное) значение"); return; }
+      if (typeof window.applyLocalMutation === "function") {
+        window.applyLocalMutation({
+          action: "submit_correction_request",
+          actor: userName || "Бариста",
+          targetType,
+          oldValue,
+          newValue,
+          reason
+        });
+      }
+      if ($("corrOldValInput")) $("corrOldValInput").value = "";
+      if ($("corrNewValInput")) $("corrNewValInput").value = "";
+      if ($("corrReasonInput")) $("corrReasonInput").value = "";
+      renderShiftHistoryDialogV80();
+      toast("✅ Запрос на исправление сохранён в истории и отправлен администратору");
+    });
+  }
+  if ($("btnSaveShiftHandover")) {
+    $("btnSaveShiftHandover").addEventListener("click", () => {
+      const note = ($("shiftHandoverNoteInput") && $("shiftHandoverNoteInput").value.trim()) || "";
+      if (!note) { toast("Введите текст заметки для следующей смены"); return; }
+      if (typeof window.applyLocalMutation === "function") {
+        window.applyLocalMutation({
+          action: "save_shift_handover",
+          fromBarista: userName || "Бариста",
+          note
+        });
+      }
+      if ($("shiftHandoverNoteInput")) $("shiftHandoverNoteInput").value = "";
+      renderShiftHandoverBannerV80();
+      toast("🤝 Заметка передачи смены сохранена");
+    });
+  }
+
+  const ttkBox = $("ttkListContainer");
+  if (ttkBox) {
+    ttkBox.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-openttk]");
+      if (!btn) return;
+      const nm = btn.getAttribute("data-openttk") || "";
+      const allTtk = (window.coffeeGetInstantAdmin && window.coffeeGetInstantAdmin().ttk) || window.COFFEE_DEFAULT_TTK || [];
+      const item = allTtk.find((x) => x && x.name === nm) || allTtk[0];
+      if (!item) return;
+      const dlg = $("sampleDlg");
+      if (!dlg) return;
+      if ($("sampleDlgTitle")) $("sampleDlgTitle").textContent = "☕ Техкарта: " + item.name + " (" + (item.volume || "250 мл") + ")";
+      if ($("sampleDlgInstr")) {
+        $("sampleDlgInstr").innerHTML =
+          "<b>Категория:</b> " + esc(item.category || "Классика") + " · <b>Цена:</b> " + esc(item.price || 45) + " руб.<br>" +
+          "<b>Ингредиенты и граммовки:</b><br>" + esc(item.recipe || "") +
+          (item.serving ? ("<br><br><b>Стандарт подачи и важные замечания:</b><br>" + esc(item.serving)) : "");
+      }
+      if ($("sampleDlgPhotos")) {
+        const svgUrl = window.coffeeMakeSampleSvg
+          ? window.coffeeMakeSampleSvg(item.name, (item.volume || "250 мл") + " · " + (item.category || "Классика"), [item.recipe || "", item.serving || "Стандарт кофейни"], "#C88D55")
+          : "";
+        $("sampleDlgPhotos").innerHTML = svgUrl ? ('<img src="' + svgUrl + '" alt="' + esc(item.name) + '" style="width:100%;border-radius:12px">') : "";
+      }
+      safeShowModal(dlg);
+    });
+  }
+  const prevRepBtn = $("togglePrevCashReportsBtn") || $("cashTogglePrevReportsBtn");
+  const prevRepBox = $("cashPrevReportsBox");
+  if (prevRepBtn && prevRepBox) {
+    prevRepBtn.addEventListener("click", () => {
+      const isHidden = prevRepBox.style.display === "none" || prevRepBox.hidden;
+      prevRepBox.style.display = isHidden ? "block" : "none";
+      prevRepBox.hidden = !isHidden;
+      if (isHidden) {
+        const db = typeof getUDB === "function" ? getUDB() : { cash: [] };
+        const rows = (Array.isArray(db.cash) ? db.cash : []).slice(0, 5);
+        prevRepBox.innerHTML = rows.length
+          ? rows.map((r) => '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line)"><span><b>' + esc(r.date) + '</b> · ' + esc(r.barista || "Бариста") + '</span><span>Нал: <b>' + (r.cash || 0) + ' руб.</b> · Счётчик: <b>' + (r.counterEnd != null ? r.counterEnd : "—") + '</b></span></div>').join("")
+          : '<span class="muted">Предыдущих отчётов на этом устройстве пока нет.</span>';
+      }
+    });
+  }
+})();
 
 })();

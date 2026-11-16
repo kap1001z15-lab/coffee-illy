@@ -27,7 +27,6 @@ async function call(action,data){
 let admBlockFlt = 'all';
 async function load(){
   if ($('err')) $('err').hidden=true;
-  try { if (window.coffeeCheckPin) window.coffeeCheckPin('1234'); } catch (_) {}
   /* 1. Мгновенная отрисовка за 0 мс без запроса пароля */
   if(window.coffeeGetInstantAdmin){
     const inst = window.coffeeGetInstantAdmin();
@@ -43,7 +42,7 @@ async function load(){
     }
   }
   try{
-    const d=await coffeeFetch(API_URL+'?action=admin&nocache=1&pin='+encodeURIComponent(getPin()||'1234'));
+    const d=await coffeeFetch(API_URL,{method:'POST',body:JSON.stringify({action:'admin',sessionToken:(window.coffeeAuth&&window.coffeeAuth.getSessionToken)?window.coffeeAuth.getSessionToken('admin'):'',pin:getPin()||''})});
     const data = (d && d.tasks) ? d : (window.coffeeGetInstantAdmin ? window.coffeeGetInstantAdmin() : { tasks: [], settings: [] });
     if (window.coffeeCache) coffeeCache.set('admin',data);
     D=data;
@@ -123,8 +122,19 @@ function rChecklists(){
 function rTasks(){ return rTasksAndInfo(); }
 function rTasksAndInfo(){
   const defList=(window.COFFEE&&window.COFFEE.DEFAULT_TASKS)||[];
-  if((!D.tasks||!D.tasks.length)&&defList.length){D.tasks=window.coffeeNormalizeTasksTimeline?window.coffeeNormalizeTasksTimeline(defList.slice()):defList.slice();}
-  if(window.coffeeNormalizeTasksTimeline) D.tasks = window.coffeeNormalizeTasksTimeline(D.tasks);
+  const delIds = (typeof getUDB === 'function' && getUDB().deletedTaskIds) || {};
+  if (window.coffeeMergeTasksPreservingDefaults) {
+    D.tasks = window.coffeeMergeTasksPreservingDefaults(D.tasks || [], [], delIds);
+    if (typeof getUDB === 'function' && window.coffeeSyncGoodDeedsToChecklistTasks) {
+      const udb = getUDB();
+      udb.tasks = D.tasks;
+      window.coffeeSyncGoodDeedsToChecklistTasks(udb);
+      D.tasks = udb.tasks;
+    }
+  } else {
+    if((!D.tasks||!D.tasks.length)&&defList.length){D.tasks=window.coffeeNormalizeTasksTimeline?window.coffeeNormalizeTasksTimeline(defList.slice()):defList.slice();}
+    if(window.coffeeNormalizeTasksTimeline) D.tasks = window.coffeeNormalizeTasksTimeline(D.tasks);
+  }
   const cBlocks = (window.coffeeGetChecklistBlocks ? window.coffeeGetChecklistBlocks() : []).filter((b) => !b.isCash && b.name !== 'Касса').map((b) => b.name);
   D.blocks = cBlocks.length ? cBlocks : ['Открытие', 'Лайн Чек 1', 'Лайн Чек 2', 'Закрытие'];
 
@@ -155,11 +165,11 @@ function rTasksAndInfo(){
   const doneChksToday = (typeof getUDB === 'function' ? (getUDB().checklists || []) : []).filter((c) => c && c.date === todayIso);
   const doneBlocksSet = new Set(doneChksToday.map((c) => c.block));
   const kanbanCols = [
-    { key: 'new', title: '1. Новые', color: 'var(--info,#668DB5)', items: [] },
-    { key: 'assigned', title: '2. Назначены', color: 'var(--brew,#C88D55)', items: [] },
-    { key: 'in_progress', title: '3. В работе', color: 'var(--warn,#D69A43)', items: [] },
-    { key: 'review', title: '4. На проверке', color: 'var(--crema,#E3B987)', items: [] },
-    { key: 'done', title: '5. Выполнены', color: 'var(--good,#398568)', items: [] }
+    { key: 'new', title: 'Новые', color: 'var(--info,#668DB5)', items: [] },
+    { key: 'in_progress', title: 'В работе', color: 'var(--brew,#C88D55)', items: [] },
+    { key: 'review', title: 'Ожидают подтверждения', color: 'var(--crema,#E3B987)', items: [] },
+    { key: 'overdue', title: 'Просроченные', color: 'var(--bad,#C65C50)', items: [] },
+    { key: 'done', title: 'Выполненные', color: 'var(--good,#398568)', items: [] }
   ];
   D.tasks.slice(0, 30).forEach((t, idx) => {
     if (t.active === 'нет') {
@@ -197,7 +207,7 @@ function rTasksAndInfo(){
     '<div class="acts">' +
       '<button type="button" class="b ' + (!isKanban ? 'ok' : '') + '" data-a="tasks-view-list">📋 Список</button>' +
       '<button type="button" class="b ' + (isKanban ? 'ok' : '') + '" data-a="tasks-view-kanban">🗂 Канбан (5 колонок)</button>' +
-      '<button class="b" data-a="task-csv">⬇ CSV</button>' +
+      '<button type="button" class="b md3-btn md3-btn-tonal" data-a="tasks-restore-defaults" title="Восстановить все стандартные пункты чек-листов без потери ваших правок">↺ Восстановить стандартные</button><button class="b" data-a="task-csv">⬇ CSV</button>' +
       '<button class="p" data-a="task-new">+ Добавить задачу</button>' +
     '</div></div>' + kanbanHtml;
   h += '<div class="blk-pills">' +
@@ -234,7 +244,7 @@ function taskForm(t){
     {k:'responsible',label:'Ответственный (при нарушении на него назначается задача)',type:'select',opts:respOpts},
     {k:'active',label:'Показывать в терминале',type:'select',opts:YN}],
     {block:t.block,title:t.title,instruction:t.instruction,photoMode:t.photoMode||t.photo||'нет',responsible:t.responsible||respOpts[0],active:t.active},
-    (o)=>call('save_task',Object.assign(o,{mediaRequired:o.photoMode},isNew?{}:{row:t.row,id:t.id,expect:t.title})))}
+    (o)=>call('save_task',Object.assign(o,{mediaRequired:o.photoMode,seedTasks:(D.tasks||[]).filter(x=>x&&x.block!=='Карта добрых дел').map(x=>({id:x.id,block:x.block,groupName:x.groupName||'',title:x.title,instruction:x.instruction||'',photoMode:x.photoMode||x.photo||'нет',responsible:x.responsible||'Администратор',active:x.active||'да'}))},isNew?{}:{row:t.row,id:t.id,expect:t.title})))}
 
 function rAudit(){
   const list=D.serviceAudits||[];
@@ -300,7 +310,15 @@ function auditForm(){
 function rCash(){
   const totalDays = (D.cash||[]).length;
   const diffDays = (D.cash||[]).filter((r)=>((Number(r.cash)||0)+(Number(r.card)||0))!==Number(r.zTotal!=null?r.zTotal:((Number(r.cash)||0)+(Number(r.card)||0))) || Number(r.unaccountedShots)>0).length;
-  let h='<div class="top"><h2 style="font-size:18px">⚖️ Выручка и сверка кассы (ТЗ п. 9.2)</h2><button class="p" data-a="cash-new">+ Внести / сверить Z-отчёт</button></div>' +
+  const confirmedDays = Math.max(0, totalDays - diffDays);
+  let h='<div class="top"><h2 style="font-size:18px">⚖️ Центр контроля кассовых отчётов (Часть 4.5)</h2><button class="p" data-a="cash-new">+ Внести / сверить Z-отчёт</button></div>' +
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-bottom:12px;font-size:12px">' +
+    '<div style="padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block">Ожидают сдачи</span><b style="font-size:16px">0</b></div>' +
+    '<div style="padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block">Отправлены</span><b style="font-size:16px">' + totalDays + '</b></div>' +
+    '<div style="padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block">Требуют проверки</span><b style="font-size:16px;color:' + (diffDays ? 'var(--warn)' : 'var(--ink)') + '">' + diffDays + '</b></div>' +
+    '<div style="padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block">Есть расхождения</span><b style="font-size:16px;color:' + (diffDays ? 'var(--bad)' : 'var(--good)') + '">' + diffDays + '</b></div>' +
+    '<div style="padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block">Подтверждены</span><b style="font-size:16px;color:var(--good)">' + confirmedDays + '</b></div>' +
+  '</div>' +
   '<div style="padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--bg);margin-bottom:12px;font-size:12.5px">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px"><b>🔍 Регламент сверки смены (8 шагов контроля без перезаписи первоисточника):</b><span class="kpi-pill '+(diffDays===0?'ok':'warn')+'">'+(diffDays===0?'Все смены сходятся ('+totalDays+')':'Требуют внимания: '+diffDays+' из '+totalDays)+'</span></div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;color:var(--muted)"><span>1. Выбор даты</span>➔<span>2. Исходные CSV</span>➔<span>3. Смены сотрудников</span>➔<span>4. Нал/Безнал vs Z-отчёт</span>➔<span>5. Счётчики (0–999)</span>➔<span>6. Списания</span>➔<span>7. Выделение расхождений</span>➔<span>8. Корректировка с сохранением оригинала</span></div>' +
@@ -470,11 +488,11 @@ function rStaff(){
 function staffForm(s){
   const isNew=!s;
   const roles=(window.COFFEE_MVP&&window.COFFEE_MVP.ROLES)||['Бариста','Шеф-бариста','Администратор','Владелец'];
-  s=s||{name:'',role:'Бариста',pin:'1111',tgId:'',shop:D.location||'Кофейня №1',active:'да'};
+  s=s||{name:'',role:'Бариста',pin:'',tgId:'',shop:D.location||'Кофейня №1',active:'да'};
   openForm(isNew?'Добавить сотрудника и код доступа':'Изменить сотрудника и код доступа',[
     {k:'name',label:'Имя и фамилия',ph:'Например: Соня'},
     {k:'role',label:'Роль в системе (п. 2.1 ТЗ)',type:'select',opts:roles},
-    {k:'pin',label:'🔑 Персональный код доступа (PIN для входа в Терминал)',ph:'Например: 1111'},
+    {k:'pin',label:'🔑 Персональный код доступа (PIN для входа в Терминал)',ph:'Оставьте пустым для автогенерации 6-значного PIN'},
     {k:'tgId',label:'📱 Telegram ID или @username (для авто-входа в ILLY_BOT без PIN)',ph:'Привязывается сам при первом входе или укажите ID / @username'},
     {k:'shop',label:'Кофейня',ph:'Кофейня №1'},
     {k:'active',label:'Доступ активен',type:'select',opts:YN}],
@@ -989,3 +1007,67 @@ if (window.coffeeBus) {
     }
   });
 }
+
+/* === V80 ADMIN EXCEPTION CONTROL CENTER, NOTIFICATION ACTIONS & TEST MODE === */
+(function () {
+  if (typeof document === 'undefined') return;
+  document.addEventListener('click', function (e) {
+    const btn = e.target && e.target.closest && e.target.closest('[data-a]');
+    if (!btn) return;
+    const act = btn.getAttribute('data-a');
+    const id = btn.getAttribute('data-id') || '';
+
+    if (act === 'tasks-restore-defaults') {
+      if (typeof window.applyLocalMutation === 'function') {
+        window.applyLocalMutation({ action: 'restore_default_tasks' });
+      }
+      if (typeof window.coffeePushAllToGoogleSheet === 'function') {
+        try { window.coffeePushAllToGoogleSheet(); } catch (_) {}
+      }
+      if (typeof load === 'function') load();
+      if (typeof toast === 'function') toast('✓ Все стандартные пункты чек-листов восстановлены!');
+      return;
+    }
+    if (act === 'task-return-rev') {
+      const comment = (typeof window.prompt === 'function')
+        ? window.prompt('Укажите комментарий для бариста (что доработать / какое фото прикрепить):', 'Пожалуйста, переделайте и прикрепите дополнительное фото')
+        : 'Пожалуйста, переделайте и прикрепите дополнительное фото';
+      if (comment === null) return;
+      if (typeof window.applyLocalMutation === 'function') {
+        window.applyLocalMutation({
+          action: 'return_task_revision',
+          id: id,
+          comment: comment || 'Возвращено на доработку',
+          needExtraPhoto: true
+        });
+      }
+      if (typeof window.renderAdminApp === 'function') window.renderAdminApp();
+    } else if (act === 'notif-act') {
+      const nType = btn.getAttribute('data-ntype') || 'accept';
+      const targetId = btn.getAttribute('data-target') || id;
+      let assignee = '';
+      let comment = '';
+      if (nType === 'assign' && typeof window.prompt === 'function') {
+        assignee = window.prompt('Кому назначить (имя сотрудника):', 'Алина') || 'Алина';
+      } else if (nType === 'clarify' && typeof window.prompt === 'function') {
+        comment = window.prompt('Что уточнить у сотрудника:', 'Пришлите фото крупным планом') || 'Пришлите фото крупным планом';
+      }
+      if (window.coffeeCentralNotifier && typeof window.coffeeCentralNotifier.executeAction === 'function') {
+        window.coffeeCentralNotifier.executeAction(id, nType, { targetId, assignee, comment });
+      }
+      if (typeof window.renderAdminApp === 'function') window.renderAdminApp();
+    } else if (act === 'toggle-test-mode') {
+      if (typeof window.coffeeSetTestMode === 'function') {
+        const nextState = !window.coffeeIsTestMode();
+        window.coffeeSetTestMode(nextState);
+        if (typeof window.renderAdminApp === 'function') window.renderAdminApp();
+      }
+    } else if (act === 'mute-noncritical-4h') {
+      if (window.coffeeCentralNotifier && typeof window.coffeeCentralNotifier.setQuietMode === 'function') {
+        window.coffeeCentralNotifier.setQuietMode({ muteHours: 4 });
+        if (typeof window.renderAdminApp === 'function') window.renderAdminApp();
+      }
+    }
+  });
+})();
+

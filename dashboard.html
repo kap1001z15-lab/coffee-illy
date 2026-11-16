@@ -1,32 +1,32 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-design-system="material-3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F7F5F0">
-<title>Кофейня — Дашборд владельца</title>
+<title>Coffee Illy — Дашборд владельца</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <script>try{var t=localStorage.getItem('coffee_illy_theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){}</script>
 <script>window.OWNER_START_SECTION='dashboard';</script>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/owner.css?v=77">
-<link rel="stylesheet" href="css/light.css?v=77">
-<script src="version.js?v=77"></script>
+<script src="https://telegram.org/js/telegram-web-app.js" async defer></script>
+<link rel="stylesheet" href="css/tokens.css?v=86">
+<link rel="stylesheet" href="css/components.css?v=86">
+<link rel="stylesheet" href="css/owner.css?v=86">
+<link rel="stylesheet" href="css/light.css?v=86">
+<script src="version.js?v=86"></script>
 </head>
 <body>
 <header class="app-header"><div class="wrap">
-  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4c0 2.5 2.5 2.5 2.5 5M16 3c0 3 2.5 3 2.5 6M22 4c0 2.5 2.5 2.5 2.5 5"/><path d="M5 13h18v7a9 9 0 0 1-18 0v-7Z" fill="rgba(224,167,106,.18)"/><path d="M23 15h2.5a3.5 3.5 0 0 1 0 7H23"/><path d="M3 29h22"/></svg>Кофейня</h1><span class="sub" id="sub">Панель владельца</span> <span id="netStatusBadge" class="net-pill online" style="margin-left:6px" title="Статус соединения">🟢 Онлайн</span> <span id="ownerDataSyncBadge" class="sync-pill synced" style="margin-left:4px" title="Статус сохранения данных">✓ Данные сохранены</span></div></div>
+  <div class="brand"><div><h1><svg viewBox="0 0 32 32" fill="none" stroke="#e0a76a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4c0 2.5 2.5 2.5 2.5 5M16 3c0 3 2.5 3 2.5 6M22 4c0 2.5 2.5 2.5 2.5 5"/><path d="M5 13h18v7a9 9 0 0 1-18 0v-7Z" fill="rgba(224,167,106,.18)"/><path d="M23 15h2.5a3.5 3.5 0 0 1 0 7H23"/><path d="M3 29h22"/></svg>Кофейня</h1><span class="sub" id="sub">Панель владельца</span> <span id="netStatusBadge" class="net-pill online ci-u-243" title="Статус соединения">🟢 Онлайн</span> <span id="ownerDataSyncBadge" class="sync-pill synced ci-u-244" title="Статус сохранения данных">✓ Данные сохранены</span></div></div>
   <nav id="ownerMainNav" aria-label="Разделы владельца">
-    <button type="button" data-osec="dashboard" class="on">🏎️ Дашборд</button>
+    <button type="button" data-osec="dashboard" class="on">📊 Обзор</button>
     <button type="button" data-osec="report" class="">📊 Отчёты</button>
     <button type="button" data-osec="admin" class="">⚙️ Управление</button>
   </nav>
-  <div style="display:flex;align-items:center;gap:8px"><button type="button" id="ownerNotifBtn" style="border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#f6ece2;border-radius:12px;height:40px;padding:0 12px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">🔔 <span id="ownerNotifCount">0</span></button><button class="theme-btn" id="theme" type="button" aria-label="Тема">🌙</button></div>
-    <div id="ownerCombinedNav" class="owner-combined-nav" role="navigation" aria-label="7 разделов панели владельца (Owner Combined)">
+  <div class="ci-u-245"><button class="ci-u-256" type="button" id="ownerNotifBtn">🔔 <span id="ownerNotifCount">0</span></button><button class="theme-btn" id="theme" type="button" aria-label="Тема">🌙</button></div>
+    <div id="ownerCombinedNav" class="owner-combined-nav md3-navigation-drawer" hidden role="navigation" aria-label="7 разделов панели владельца (Owner Combined)">
     <button type="button" data-cnav="overview" class="on">Обзор</button>
     <button type="button" data-cnav="operations">Операции</button>
     <button type="button" data-cnav="finance">Финансы</button>
@@ -37,18 +37,18 @@
   </div>
 </div></header>
 <main>
-  <div id="workspaceTopRoleBar" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding:10px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line)">
+  <div class="ci-u-246" id="workspaceTopRoleBar">
     <div class="ws-breadcrumbs" id="wsBreadcrumbs">
       <span>Coffee Illy</span><span>›</span><span id="wsBreadcrumbShop">Кофейня №1</span><span>›</span><b id="wsBreadcrumbSection">Обзор бизнеса</b>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="ci-u-247">
       <div class="ws-role-switch" id="workspaceRoleSwitcher" role="tablist" aria-label="Режим рабочего пространства (Разделы 4 и 5)">
-        <button type="button" data-wsrole="owner" class="on">💼 Панель владельца (9 разделов)</button>
-        <button type="button" data-wsrole="admin">🛠 Панель администратора (11 разделов)</button>
+        <button type="button" data-wsrole="owner" class="on">💼 Панель владельца</button>
+        <button type="button" data-wsrole="admin">🛠 Панель администратора</button>
       </div>
     </div>
   </div>
-  <div id="ownerWorkspace9Nav" class="owner-combined-nav" style="margin:0 0 10px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:14px" aria-label="9 разделов панели владельца (Раздел 5.1)">
+  <div id="ownerWorkspace9Nav" class="owner-combined-nav md3-navigation-drawer ci-u-248" aria-label="9 разделов панели владельца (Раздел 5.1)">
     <button type="button" data-own9="overview" class="on">Обзор</button>
     <button type="button" data-own9="finance">Финансы</button>
     <button type="button" data-own9="sales">Продажи</button>
@@ -59,7 +59,7 @@
     <button type="button" data-own9="analytics">Аналитика</button>
     <button type="button" data-own9="settings">Настройки</button>
   </div>
-  <div id="adminWorkspace11Nav" class="owner-combined-nav" hidden style="margin:0 0 10px;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:14px" aria-label="11 разделов панели администратора (Раздел 4.1)">
+  <div id="adminWorkspace11Nav" class="owner-combined-nav md3-navigation-drawer ci-u-248" hidden aria-label="11 разделов панели администратора (Раздел 4.1)">
     <button type="button" data-adm11="overview" class="on">Обзор</button>
     <button type="button" data-adm11="operations">Операции</button>
     <button type="button" data-adm11="tasks">Задачи (Канбан)</button>
@@ -74,7 +74,7 @@
   </div>
   <div id="ownerSectionSubbar" class="owner-subbar" aria-label="Подразделы текущего раздела"></div>
   <div id="err" class="al" hidden></div>
-  <div id="ownerNotifDrawer" class="card" hidden style="margin-bottom:14px;border:2px solid var(--accent,#9c5a25)"></div>
+  <div id="ownerNotifDrawer" class="card md3-card md3-surface-container ci-u-249" hidden></div>
 
   <!-- 1. ДАШБОРД ВЛАДЕЛЬЦА -->
   <div id="ownerSecDashboard"></div>
@@ -95,30 +95,30 @@
       <button data-t="audit" title="Стандарты: Чек-листы аудита сервиса">⭐ Аудит</button>
       <button data-t="set" title="Система: Настройки, Безопасность, Склад и Резервные копии">⚙️ Настройки</button>
     </div>
-    <section class="card" id="panel"></section>
+    <section class="card md3-card md3-surface-container" id="panel"></section>
   </div>
 </main>
-<dialog id="dlg"><form id="dform" method="dialog"><h2 id="dtitle" style="font-size:20px"></h2><div id="dfields"></div><div id="derr" style="color:var(--bad);font-size:14px;margin-top:8px"></div>
-  <div class="acts" style="margin-top:12px"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" id="dsave" value="ok">Сохранить</button></div></form></dialog>
+<dialog class="md3-dialog md3-bottom-sheet" id="dlg"><form id="dform" method="dialog"><h2 class="ci-u-250" id="dtitle"></h2><div id="dfields"></div><div class="ci-u-251" id="derr"></div>
+  <div class="acts ci-u-37"><button class="b" type="button" id="dcancel">Отмена</button><button class="p" id="dsave" value="ok">Сохранить</button></div></form></dialog>
 <aside id="workspaceRightDrawer" class="ws-right-drawer" hidden aria-label="Боковая панель деталей проверки и событий">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line)">
-    <b id="wsDrawerTitle" style="font-size:16px">Детали события</b>
-    <button type="button" id="wsDrawerCloseBtn" class="b" style="padding:4px 10px;font-size:12px">✕ Закрыть</button>
+  <div class="ci-u-252">
+    <b class="ci-u-253" id="wsDrawerTitle">Детали события</b>
+    <button type="button" id="wsDrawerCloseBtn" class="b ci-u-254">✕ Закрыть</button>
   </div>
-  <div id="wsDrawerBody" style="font-size:13px;line-height:1.5"></div>
+  <div class="ci-u-255" id="wsDrawerBody"></div>
 </aside>
 <div class="toast" id="toast" hidden></div>
-<script src="config.js?v=77"></script>
-<script src="js/defaults.js?v=77"></script>
-<script src="js/security.js?v=77"></script>
-<script src="js/storage.js?v=77"></script>
-<script src="js/analytics.js?v=77"></script>
-<script src="js/sales-reconciliation.js?v=77"></script>
-<script src="js/sync.js?v=77"></script>
-<script src="js/telegram.js?v=77"></script>
-<script src="tests/unit-tests.js"></script>
-<script src="js/page-admin.js?v=77"></script>
-<script src="js/page-owner.js?v=77"></script>
-<script src="app.js?v=77" defer></script>
+<script src="config.js?v=86"></script>
+<script src="js/defaults.js?v=86"></script>
+<script src="js/security.js?v=86"></script>
+<script src="js/storage.js?v=86"></script>
+<script src="js/analytics.js?v=86"></script>
+<script src="js/sales-reconciliation.js?v=86"></script>
+<script src="js/material-design.js?v=86"></script>
+<script src="js/sync.js?v=86"></script>
+<script src="js/telegram.js?v=86"></script>
+<script src="js/page-admin.js?v=86"></script>
+<script src="js/page-owner.js?v=86"></script>
+<script src="app.js?v=86" defer></script>
 </body>
 </html>

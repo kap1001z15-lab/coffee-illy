@@ -1,34 +1,20 @@
 /* =========================================================================
-   КАМЕРА (v58 — ТОЛЬКО ЖИВАЯ СЪЁМКА):
-   Никакого выбора из галереи, файлов или буфера обмена (<input type="file"> запрещён).
-   Снимок или видео можно сделать ТОЛЬКО в реальном времени через объектив
-   основной (📷 Основная) или фронтальной (🤳 Фронтальная) камеры со вспышкой (⚡ Вспышка).
-   Пул тёплого потока (window.coffeeCameraPool) удерживает разрешение в течение смены,
-   чтобы браузер не запрашивал доступ повторно на каждом шаге.
+   КАМЕРА (v79 — ЕДИНЫЙ МЕХАНИЗМ COFFEE ILLY С ПОДДЕРЖКОЙ ANDROID / IPHONE / TELEGRAM):
+   - Использует единый модуль window.CoffeeCameraPermission (js/camera-permission.js).
+   - Запрашивает только видео ({ video: { facingMode: { ideal: 'environment' } }, audio: false }), без микрофона.
+   - Не держит камеру включённой в фоновом режиме: все видеотреки останавливаются через track.stop() сразу после съёмки или отмены.
+   - Предусматривает резервную загрузку фото через <input type="file" accept="image/*" capture="environment"> при отказе или недоступности камеры.
    ========================================================================= */
 (function () {
   'use strict';
   const VID_MAX = 15; // секунд
-  const CAM_GRANTED_KEY = 'coffee_cam_granted_v1';
   let busy = false;
 
-  // Хранилище активных потоков камеры на время сессии (чтобы не запрашивать разрешение повторно)
-  const _warmStreams = { environment: null, user: null };
-
-  function _isStreamAlive(s) {
-    if (!s || typeof s.getVideoTracks !== 'function') return false;
-    const tracks = s.getVideoTracks();
-    return tracks.length > 0 && tracks.every((t) => t && t.readyState === 'live');
-  }
-
-  function _enableStreamTracks(s, enabled) {
-    if (!s || typeof s.getTracks !== 'function') return;
-    s.getTracks().forEach((t) => {
-      try { t.enabled = !!enabled; } catch (_) {}
-    });
-  }
-
   function _stopStreamCompletely(s) {
+    if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.stopStreamTracks === 'function') {
+      window.CoffeeCameraPermission.stopStreamTracks(s);
+      return;
+    }
     if (!s || typeof s.getTracks !== 'function') return;
     s.getTracks().forEach((t) => {
       try {
@@ -71,117 +57,16 @@
     }
   }
 
-  async function _findCameraDeviceId(facing) {
-    if (!(typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function')) {
-      return null;
-    }
-    try {
-      const list = await navigator.mediaDevices.enumerateDevices();
-      const vids = (list || []).filter((d) => d && d.kind === 'videoinput');
-      if (vids.length < 2) return null;
-      const re = facing === 'user'
-        ? /front|user|selfie|facetime|передн|фронт/i
-        : /back|rear|environment|main|wide|0|задн|основн/i;
-      const match = vids.find((d) => re.test(String(d.label || '')));
-      if (match && match.deviceId) return match.deviceId;
-      return facing === 'user' ? vids[vids.length - 1].deviceId : vids[0].deviceId;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  async function acquireWarmStream(facingOpt) {
+  async function acquireCameraStream(facingOpt) {
     const facing = facingOpt === 'user' ? 'user' : 'environment';
-    const alt = facing === 'user' ? 'environment' : 'user';
-
-    if (_warmStreams[alt]) {
-      await setStreamTorch(_warmStreams[alt], false);
-      _enableStreamTracks(_warmStreams[alt], false);
+    if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.acquireStream === 'function') {
+      return await window.CoffeeCameraPermission.acquireStream(facing);
     }
-
-    if (_isStreamAlive(_warmStreams[facing])) {
-      _enableStreamTracks(_warmStreams[facing], true);
-      return _warmStreams[facing];
-    }
-    if (_warmStreams[facing]) {
-      _stopStreamCompletely(_warmStreams[facing]);
-      _warmStreams[facing] = null;
-    }
-
-    if (!(typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function')) {
-      throw new Error('NO_GET_USER_MEDIA');
-    }
-
-    const tries = [
-      { video: { facingMode: { exact: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-      { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }
-    ];
-
-    const devId = await _findCameraDeviceId(facing);
-    if (devId) {
-      tries.splice(1, 0, { video: { deviceId: { exact: devId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-    }
-    tries.push({ video: true, audio: false });
-
-    let s = null, lastErr = null;
-    for (let i = 0; i < tries.length; i++) {
-      const c = tries[i];
-      try {
-        s = await navigator.mediaDevices.getUserMedia(c);
-        if (s) break;
-      } catch (e) {
-        lastErr = e;
-        if (e && /NotAllowed|Permission|Security/i.test(String(e.name || ''))) break;
-        if (_warmStreams[alt]) {
-          _stopStreamCompletely(_warmStreams[alt]);
-          _warmStreams[alt] = null;
-          try {
-            s = await navigator.mediaDevices.getUserMedia(c);
-            if (s) break;
-          } catch (e2) {
-            lastErr = e2;
-          }
-        }
-      }
-    }
-    if (!s) {
-      if (_isStreamAlive(_warmStreams[alt])) {
-        _enableStreamTracks(_warmStreams[alt], true);
-        return _warmStreams[alt];
-      }
-      throw lastErr || new Error('NO_CAMERA');
-    }
-
-    _warmStreams[facing] = s;
-    try { localStorage.setItem(CAM_GRANTED_KEY, '1'); } catch (_) {}
+    const s = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing } },
+      audio: false
+    });
     return s;
-  }
-
-  function suspendWarmStream(streamOpt) {
-    if (streamOpt) {
-      setStreamTorch(streamOpt, false);
-      _enableStreamTracks(streamOpt, false);
-    }
-    Object.keys(_warmStreams).forEach((k) => {
-      if (_warmStreams[k]) {
-        setStreamTorch(_warmStreams[k], false);
-        _enableStreamTracks(_warmStreams[k], false);
-      }
-    });
-  }
-
-  function releaseAllWarmStreams() {
-    Object.keys(_warmStreams).forEach((k) => {
-      if (_warmStreams[k]) {
-        _stopStreamCompletely(_warmStreams[k]);
-        _warmStreams[k] = null;
-      }
-    });
-  }
-
-  if (typeof window !== 'undefined' && window.addEventListener) {
-    window.addEventListener('pagehide', releaseAllWarmStreams);
-    window.addEventListener('beforeunload', releaseAllWarmStreams);
   }
 
   function enhanceFlashExposure(c) {
@@ -244,9 +129,13 @@
   }
 
   window.coffeeCameraPool = {
-    acquire: acquireWarmStream,
-    suspend: suspendWarmStream,
-    releaseAll: releaseAllWarmStreams,
+    acquire: acquireCameraStream,
+    suspend: _stopStreamCompletely,
+    releaseAll: function () {
+      if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.stopActiveStream === 'function') {
+        window.CoffeeCameraPermission.stopActiveStream();
+      }
+    },
     setTorch: setStreamTorch,
     hasTorch: hasHardwareTorch,
     triggerScreenFlash,
@@ -289,7 +178,7 @@
       const ov = mk('dialog', 'position:fixed;inset:0;margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;z-index:2147483000;background:#000;color:#fff;display:flex;flex-direction:column;font-family:system-ui,sans-serif;touch-action:manipulation;overflow:hidden');
       ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'Камера');
       const video = mk('video', 'flex:1;min-height:0;width:100%;object-fit:cover;background:#000');
-      video.autoplay = true; video.muted = true; video.setAttribute('playsinline', '');
+      video.autoplay = true; video.muted = true; video.playsInline = true; video.setAttribute('playsinline', ''); video.setAttribute('muted', '');
       const screenFlashEl = mk('div', 'position:fixed;inset:0;z-index:2147483005;background:#fffdf6;opacity:0;pointer-events:none;transition:opacity .12s ease;display:none');
 
       const top = mk('div', 'position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;background:linear-gradient(#000c,#0000);z-index:2');
@@ -306,8 +195,9 @@
       const lensRow = mk('div', 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center');
       const bRear = mk('button', '', '📷 Основная');
       const bFront = mk('button', '', '🤳 Фронтальная');
-      bRear.type = bFront.type = 'button';
-      lensRow.append(bRear, bFront);
+      const bFallback = mk('button', 'border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:7px 14px;font-weight:600;font-size:12.5px;cursor:pointer;background:#202126;color:#F3F1ED', '📁 Загрузить фото');
+      bRear.type = bFront.type = bFallback.type = 'button';
+      lensRow.append(bRear, bFront, bFallback);
 
       const modes = mk('div', 'display:flex;gap:8px');
       const mPhoto = mk('button', '', 'Фото'), mVideo = mk('button', '', 'Видео');
@@ -359,7 +249,7 @@
       function detachStream() {
         try { video.pause(); } catch (_) {}
         video.srcObject = null;
-        suspendWarmStream(stream);
+        _stopStreamCompletely(stream);
         stream = null;
       }
       function finish(result) {
@@ -378,16 +268,17 @@
       document.addEventListener('keydown', onKey, true);
 
       function camError(e) {
-        const n = (e && e.name) || '';
-        say(/NotAllowed|Permission|Security/i.test(n)
-          ? 'Нет доступа к камере. Разрешите камеру в настройках браузера и повторите.'
-          : 'Камера недоступна на этом устройстве. Выбрать снимок из галереи нельзя.', true);
+        const msg = (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.getErrorMessage === 'function')
+          ? window.CoffeeCameraPermission.getErrorMessage(e)
+          : 'Доступ к камере запрещён. Разрешите камеру в настройках браузера или Telegram';
+        say(msg + ' · Вы можете нажать «📁 Загрузить фото» ниже.', true);
       }
 
       async function startStream() {
         shutter.disabled = true;
-        const s = await acquireWarmStream(facing);
-        if (closed) { suspendWarmStream(s); return; }
+        detachStream();
+        const s = await acquireCameraStream(facing);
+        if (closed) { _stopStreamCompletely(s); return; }
         stream = s;
         video.srcObject = s;
         video.style.transform = facing === 'user' ? 'scaleX(-1)' : '';
@@ -463,13 +354,19 @@
       bRear.onclick = () => switchFacing('environment');
       bFront.onclick = () => switchFacing('user');
       bFlip.onclick = () => switchFacing(facing === 'user' ? 'environment' : 'user');
+      bFallback.onclick = async () => {
+        if (window.CoffeeCameraPermission && typeof window.CoffeeCameraPermission.pickFallbackImage === 'function') {
+          const fallbackData = await window.CoffeeCameraPermission.pickFallbackImage({ stamp: opts.stamp || '' });
+          if (fallbackData) finish(fallbackData);
+        }
+      };
       mPhoto.onclick = () => { mode = 'photo'; paintControls(); say(''); };
       mVideo.onclick = () => { mode = 'video'; paintControls(); say('Видео до ' + VID_MAX + ' сек'); };
       shutter.onclick = () => { if (mode === 'video') toggleRec(); else takePhoto(0); };
 
       paintControls();
-      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-        say('Камера недоступна (нужно открыть по https). Выбрать снимок из галереи нельзя.', true);
+      if (!(window.CoffeeCameraPermission ? window.CoffeeCameraPermission.isSupported() : (navigator.mediaDevices && navigator.mediaDevices.getUserMedia))) {
+        camError('unsupported');
         return;
       }
       startStream().then(() => { if (!closed) say(''); })

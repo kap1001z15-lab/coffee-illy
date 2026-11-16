@@ -1,6 +1,6 @@
 # Карта API-контрактов и структуры данных (`API_CONTRACTS.md`)
 
-**Актуальный статус релиза:** `v77` (совместимость протокола `api: 2`, `serverVersion: 'v77'`)  
+**Актуальный статус релиза:** `v78` (совместимость протокола `api: 2`, `serverVersion: 'v86'`)  
 **Серверное ядро:** Google Apps Script (`Code.gs`) + Google Sheets (16 основных + 2 служебных листа) + Google Drive (`Coffee_ERP_Photos`)
 
 ## 1. Общий протокол обмена данными (`coffeeFetch`)

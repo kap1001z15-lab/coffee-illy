@@ -580,5 +580,255 @@ check('16. Аудит полноты обработчиков v76: Приход,
   assert(Array.isArray(db2.inventoryHistory) && db2.inventoryHistory.length >= 2 && db2.inventoryHistory[0].type === 'Списание', 'История движений склада должна фиксировать операции Списания и Прихода');
 });
 
-process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/16 успешно.\n');
-process.exit(0);
+
+check('17. Полное ТЗ UI/UX (Modern Coffee Premium, 5-шаговая касса, техкарты, 9 отчётов, Kanban и Sidebar)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const css = fs.readFileSync(path.join(rootDir, 'css/light.css'), 'utf8');
+  const idx = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const termJs = fs.readFileSync(path.join(rootDir, 'js/page-terminal.js'), 'utf8');
+  const admJs = fs.readFileSync(path.join(rootDir, 'js/page-admin.js'), 'utf8');
+  const ownJs = fs.readFileSync(path.join(rootDir, 'js/page-owner.js'), 'utf8');
+  assert(fs.existsSync(path.join(rootDir, 'UI_UX_CURRENT_STATE.md')), 'UI_UX_CURRENT_STATE.md должен существовать');
+  assert(css.includes('#151619') && css.includes('#C88D55') && css.includes('#F5F2ED') && css.includes('#A96E3E'), 'Палитра Modern Coffee Premium должна быть в css/light.css');
+  assert(idx.includes('id="cashHeaderCard"') && idx.includes('id="togglePrevCashReportsBtn"'), 'Заголовок Сдача кассы и кнопка Предыдущие отчёты должны быть в index.html');
+  assert(idx.includes('data-ttkcat="Прочее"'), 'В базе знаний должна быть категория Прочее');
+  assert(termJs.includes('Открыть техкарту') && termJs.includes('initV78TermExtras'), 'Карточки напитков должны содержать кнопку Открыть техкарту и модальное окно');
+  assert(idx.includes('Введено сотрудником') && idx.includes('Рассчитано системой'), 'Шаг 4 кассы должен разделять Введено сотрудником и Рассчитано системой');
+  assert(admJs.includes('Ожидают подтверждения') && admJs.includes('Требуют проверки'), 'Kanban задач и Центр контроля кассы должны содержать новые статусы');
+  assert(ownJs.includes('data-orp="quarter"') && ownJs.includes('id="repCategoryTabs"'), 'Финансы и Отчёты владельца должны поддерживать Квартал и 9 категорий отчётов');
+});
+
+
+check('18. Единый запрос разрешения на камеру v79 (CoffeeCameraPermission, onboarding, stopTracks, ошибки и резервная загрузка)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const vm = require('vm');
+  const rootDir = path.resolve(__dirname, '..');
+  const camPermCode = fs.readFileSync(path.join(rootDir, 'js/camera-permission.js'), 'utf8');
+  const idx = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const camJs = fs.readFileSync(path.join(rootDir, 'js/camera.js'), 'utf8');
+
+  assert(idx.includes('id="cameraOnboardingDlg"') && idx.includes('Разрешите доступ к камере') && idx.includes('Только по вашему действию'), 'В index.html должно быть собственное окно первичной настройки камеры Coffee Illy');
+  assert(idx.includes('id="btnCameraOnboardingAllow"') && idx.includes('id="btnCameraOnboardingLater"'), 'Кнопки Разрешить камеру и Позже должны быть в окне первичной настройки');
+  assert(idx.includes('id="cameraFallbackFileInput"') && idx.includes('capture="environment"'), 'Должен присутствовать резервный input[type=file][accept=image/*][capture=environment]');
+  assert(camPermCode.includes("STORAGE_KEY = 'coffee_camera_permission_v1'") && camPermCode.includes("audio: false"), 'Модуль должен сохранять состояние в coffee_camera_permission_v1 и запрашивать только видео без микрофона');
+
+  let stoppedCount = 0;
+  let lastConstraints = null;
+  const store = {};
+  const sandbox = {
+    window: {
+      isSecureContext: true,
+      Telegram: { WebApp: { platform: 'android' } },
+      addEventListener: () => {}
+    },
+    localStorage: {
+      getItem: (k) => store[k] || null,
+      setItem: (k, v) => { store[k] = String(v); }
+    },
+    navigator: {
+      userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/124.0',
+      mediaDevices: {
+        getUserMedia: async (c) => {
+          lastConstraints = c;
+          return {
+            getVideoTracks: () => [{ readyState: 'live', stop: () => { stoppedCount++; } }],
+            getTracks: () => [{ readyState: 'live', stop: () => { stoppedCount++; } }]
+          };
+        }
+      }
+    },
+    console
+  };
+  sandbox.window.navigator = sandbox.navigator;
+  sandbox.window.localStorage = sandbox.localStorage;
+  vm.runInNewContext(camPermCode, sandbox);
+  const api = sandbox.window.CoffeeCameraPermission;
+  assert(api && typeof api.initialize === 'function' && typeof api.request === 'function', 'window.CoffeeCameraPermission должен экспортировать initialize и request');
+  assert(api.isSupported() === true && api.isTelegram() === true, 'Определение поддержки HTTPS/getUserMedia и Telegram WebView должно работать корректно');
+  assert(api.getErrorMessage('denied').includes('Доступ к камере запрещён'), 'Сообщение для NotAllowedError должно соответствовать разделу 12 ТЗ');
+  assert(api.getErrorMessage('not_found').includes('Камера не обнаружена'), 'Сообщение для NotFoundError должно соответствовать разделу 12 ТЗ');
+  assert(api.getErrorMessage('not_readable').includes('Камера занята другим приложением'), 'Сообщение для NotReadableError должно соответствовать разделу 12 ТЗ');
+  assert(api.getErrorMessage('security').includes('защищённое HTTPS-соединение'), 'Сообщение для SecurityError должно соответствовать разделу 12 ТЗ');
+  assert(api.getErrorMessage('unsupported').includes('не поддерживается'), 'Сообщение для unsupported должно соответствовать разделу 12 ТЗ');
+  const recSteps = api.getRecoveryInstructions('android_chrome');
+  assert(recSteps && Array.isArray(recSteps.steps) && recSteps.steps.length >= 3, 'Инструкция восстановления доступа для Android Chrome должна возвращать пошаговый список');
+});
+
+
+check('19. Требования к полноценному продукту v80 (Помощь, История смены, Исправление с историей, Передача смены, Возврат задач, Кнопки уведомлений и Тестовый режим)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const idx = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const cgs = fs.readFileSync(path.join(rootDir, 'Code.gs'), 'utf8');
+
+  assert(idx.includes('id="globalHelpBtn"') && idx.includes('id="globalHelpDlg"'), 'Раздел Помощь должен быть доступен с любого экрана терминала');
+  assert(idx.includes('id="shiftHistoryAndCorrectionDlg"') && idx.includes('id="btnSubmitCorrectionReq"'), 'Должно быть окно истории действий за смену и контролируемого исправления ошибок');
+  assert(idx.includes('id="shiftHandoverBanner"') && idx.includes('id="btnSaveShiftHandover"'), 'Должен работать механизм передачи смены следующему сотруднику');
+  assert(cgs.includes('buildTelegramInteractiveButtonsV80_') && cgs.includes('Принять в работу') && cgs.includes('Назначить ответственного'), 'В Code.gs должны формироваться интерактивные кнопки Telegram-уведомлений');
+
+  // Проверка интерактивного действия уведомления (реальная смена статуса задачи в БД)
+  const db0 = window.getUDB();
+  if (!Array.isArray(db0.tasks)) db0.tasks = [];
+  db0.tasks.push({ id: 'tsk_v80_1', title: 'Проверить холодильник', status: 'new', done: false });
+  window.saveUDB(db0);
+
+  window.coffeeCentralNotifier.executeAction('notif_1', 'accept', { targetId: 'tsk_v80_1' });
+  const tAfterAccept = window.getUDB().tasks.find((t) => t && t.id === 'tsk_v80_1');
+  assert(tAfterAccept && tAfterAccept.status === 'in_progress', 'Кнопка Принять в работу в уведомлении должна реально менять статус задачи на in_progress');
+
+  // Проверка возврата задачи на доработку с запросом фото
+  window.applyLocalMutation({ action: 'return_task_revision', id: 'tsk_v80_1', comment: 'Нужно фото термометра', needExtraPhoto: true });
+  const tAfterRev = window.getUDB().tasks.find((t) => t && t.id === 'tsk_v80_1');
+  assert(tAfterRev && tAfterRev.revisionRequested === true && tAfterRev.needExtraPhoto === true, 'Возврат задачи на доработку должен выставлять revisionRequested и needExtraPhoto');
+
+  // Проверка контролируемого исправления ошибки с сохранением в истории аудита
+  const corrRes = window.applyLocalMutation({
+    action: 'submit_correction_request',
+    actor: 'Алина',
+    targetType: 'Касса наличные',
+    oldValue: '1500',
+    newValue: '1650',
+    reason: 'Опечатка при вводе купюр'
+  });
+  assert(corrRes && corrRes.ok && window.getUDB().corrections.length >= 1, 'Запрос на исправление должен сохраняться в истории исправлений и журнале аудита');
+
+  // Проверка передачи смены и контроля закрытия смены
+  window.applyLocalMutation({ action: 'save_shift_handover', fromBarista: 'Алина', note: 'Заказать молоко к утру' });
+  assert(window.getUDB().handovers && window.getUDB().handovers[0].note === 'Заказать молоко к утру', 'Передача смены должна сохранять заметку для следующего сотрудника');
+  const closeCheck = window.coffeeVerifyShiftCloseReadiness();
+  assert(closeCheck && typeof closeCheck.ready === 'boolean' && Array.isArray(closeCheck.warnings), 'Функция контроля закрытия смены должна проверять отчёты, задачи и инциденты');
+
+  // Проверка тестового режима (песочницы) и тихого режима уведомлений
+  assert(window.coffeeSetTestMode(true) === true && window.coffeeIsTestMode() === true, 'Тестовый режим должен включаться');
+  window.coffeeSetTestMode(false);
+  window.coffeeCentralNotifier.setQuietMode({ muteHours: 4 });
+  assert(window.coffeeCentralNotifier.isNonCriticalMuted() === true, 'Отключение некритичных уведомлений на 4 часа должно активировать тихий режим');
+});
+
+
+check('20. Material Design 3 (M3) во всей системе v81 (токены md-sys-color, M3 Elevation, скругления 28px/9999px, Navigation Pill и Ripple)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const css = fs.readFileSync(path.join(rootDir, 'css/light.css'), 'utf8');
+  const idx = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const own = fs.readFileSync(path.join(rootDir, 'owner.html'), 'utf8');
+  const rep = fs.readFileSync(path.join(rootDir, 'report.html'), 'utf8');
+
+  assert(css.includes('--md-sys-color-primary') && css.includes('--md-sys-color-secondary-container') && css.includes('--md-sys-color-surface-container-low'), 'В css/light.css должны быть цветовые роли Material Design 3');
+  assert(css.includes('--md-sys-elevation-1') && css.includes('--md-sys-shape-corner-xl: 28px') && css.includes('.md-ripple-wave'), 'В css/light.css должны быть уровни теней M3, скругления 28px и анимация .md-ripple-wave');
+  assert(idx.includes('data-design-system="material-3"') && own.includes('data-design-system="material-3"') && rep.includes('data-design-system="material-3"'), 'Все страницы (Терминал, Владелец/Админ, Отчёты) должны иметь атрибут data-design-system="material-3"');
+  assert(window.CoffeeMaterialDesign3 && window.CoffeeMaterialDesign3.isEnabled() === true, 'Движок интерактивного отклика Material Design 3 (window.CoffeeMaterialDesign3) должен быть активен');
+});
+
+
+check('21. Аудит безопасности P0/P1 и полная система Material Design 3 v82 (синхронизация версий, защита Telegram HMAC, приватные фото, палитра M3, 4 статуса сети, Skeleton/EmptyState)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const verJs = fs.readFileSync(path.join(rootDir, 'version.js'), 'utf8');
+  const syncJs = fs.readFileSync(path.join(rootDir, 'js/sync.js'), 'utf8');
+  const mdJs = fs.readFileSync(path.join(rootDir, 'js/material-design.js'), 'utf8');
+  const css = fs.readFileSync(path.join(rootDir, 'css/light.css'), 'utf8');
+  const idx = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const own = fs.readFileSync(path.join(rootDir, 'owner.html'), 'utf8');
+  const cgs = fs.readFileSync(path.join(rootDir, 'Code.gs'), 'utf8');
+
+  // 1) Проверка единой версии v82 и отсутствия дублирования M3 в sync.js (Документ 1)
+  assert(/^v8\d$/.test(window.COFFEE_APP_VERSION), 'Версия в version.js должна быть синхронизирована');
+  assert(!syncJs.includes('initMaterialDesign3System'), 'Движок Material Design 3 не должен дублироваться внутри js/sync.js');
+  assert(idx.includes('js/material-design.js?v=8') && own.includes('js/material-design.js?v=8'), 'js/material-design.js должен быть напрямую подключён в HTML-страницах');
+
+  // 2) Проверка закрытия P0/P1 уязвимостей в Code.gs (Документ 1)
+  assert(cgs.includes('verifyTelegramInitDataHmac_') && cgs.includes('verifySafeTelegramBindingV82_'), 'В Code.gs должна быть криптографическая защита привязки Telegram от подмены сотрудника (P0)');
+  assert(cgs.includes('applySecureDriveFileSharingV82_') && !cgs.includes('file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);'), 'В Code.gs фотографии по умолчанию не должны открываться публично всем по ссылке (P1)');
+  assert(cgs.includes('sendTelegramVerifiedV82_'), 'В Code.gs должна проверяться доставка уведомлений Telegram API (P1)');
+
+  // 3) Проверка полной палитры и компонентов Material Design 3 (Документ 2)
+  assert(css.includes('#FFFBF8') && css.includes('#F1E8E1') && css.includes('#241B16') && css.includes('#286B4D') && css.includes('#805600') && css.includes('#BA1A1A'), 'В css/light.css должна быть рекомендованная палитра Material Design 3 (Раздел 2.1)');
+  assert(css.includes('prefers-reduced-motion: reduce') && css.includes('border-radius: 28px 28px 0 0'), 'В css/light.css должны быть мобильные Bottom Sheets и поддержка prefers-reduced-motion');
+  const m3 = window.CoffeeMaterialDesign3;
+  assert(m3 && /^M3-v8[23456]$/.test(m3.version), 'Модуль window.CoffeeMaterialDesign3 должен иметь актуальную версию');
+  assert(m3.SYNC_STATES && m3.SYNC_STATES.local_saved && m3.SYNC_STATES.sending && m3.SYNC_STATES.server_confirmed && m3.SYNC_STATES.send_error, 'Должны поддерживаться все 4 честных состояния синхронизации (Раздел 4 п. 9)');
+  assert(m3.renderEmptyState('Нет задач').includes('md3-empty-state') && m3.renderSkeleton(2).includes('md3-skeleton-line'), 'Генераторы Empty State и Skeleton Loading должны работать корректно');
+});
+
+
+check('22. Полная проверка релиза v83 (Единая версия v83 в корневом version.js и version.js, STATIC_ASSETS в sw.js, применение M3-классов в HTML и DOM, честный код выхода тестов)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const rootDir = path.resolve(__dirname, '..');
+  const rootVer = fs.readFileSync(path.join(rootDir, 'version.js'), 'utf8');
+  const jsVer = fs.readFileSync(path.join(rootDir, 'version.js'), 'utf8');
+  const swCode = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
+  const idxHtml = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const ownHtml = fs.readFileSync(path.join(rootDir, 'owner.html'), 'utf8');
+  const repHtml = fs.readFileSync(path.join(rootDir, 'report.html'), 'utf8');
+  const cgsCode = fs.readFileSync(path.join(rootDir, 'Code.gs'), 'utf8');
+
+  // 1) Единый источник версии v83
+  assert(rootVer.includes("COFFEE_VERSION = '" + window.COFFEE_VERSION + "'"), 'Корневой version.js должен содержать единую версию');
+  assert(window.COFFEE_VERSION === window.COFFEE_APP_VERSION && /^v8\d$/.test(window.COFFEE_VERSION), 'В глобальном объекте должна быть установлена версия v83');
+  assert(cgsCode.includes("serverVersion: '" + window.COFFEE_VERSION + "'"), 'Серверная версия в Code.gs должна быть синхронизирована на v83');
+
+  // 2) Офлайн-кэш STATIC_ASSETS в sw.js содержит js/material-design.js и js/camera-permission.js
+  assert(swCode.includes("'./js/material-design.js'") && swCode.includes("'./js/camera-permission.js'"), 'STATIC_ASSETS в sw.js должен включать ./js/material-design.js и ./js/camera-permission.js');
+
+  // 3) Фактическое применение классов Material Design 3 в HTML-разметке и апгрейдере DOM
+  assert(idxHtml.includes('md3-top-app-bar') && idxHtml.includes('md3-navigation-bar') && idxHtml.includes('md3-nav-item'), 'В index.html должны быть применены M3-классы навигации и шапки');
+  assert(idxHtml.includes('md3-btn-filled') && idxHtml.includes('md3-btn-tonal') && idxHtml.includes('md3-card-hero'), 'В index.html должны быть применены M3-классы кнопок и карточек');
+  assert(idxHtml.includes('md3-dialog md3-bottom-sheet') && idxHtml.includes('md3-linear-progress'), 'В index.html диалоги и прогресс-бар должны иметь M3-классы');
+  assert(ownHtml.includes('md3-navigation-drawer') && repHtml.includes('md3-navigation-drawer'), 'В owner.html и report.html должна быть навигация md3-navigation-drawer');
+  assert(typeof window.CoffeeMaterialDesign3.upgradeDomToM3 === 'function' && typeof window.CoffeeMaterialDesign3.openBottomSheet === 'function', 'В CoffeeMaterialDesign3 должны быть методы upgradeDomToM3 и openBottomSheet');
+});
+
+
+check('23. Регрессионный тест BUG-09 (Редактирование пункта в «Лайн Чек 1» с обязательным фото «да» НЕ удаляет задачи из «Открытия», «Лайн Чек 2» и «Закрытия» + авто-исцеление пустой базы)', () => {
+  // 1) Сценарий из скриншота пользователя: в базе повреждено состояние (остался только 1 пункт в Лайн Чек 1 и 4 в Карте добрых дел)
+  const dbCorrupted = window.getUDB();
+  dbCorrupted.deletedTaskIds = {};
+  dbCorrupted.deletedGoodDeedIds = {};
+  dbCorrupted.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((g) => Object.assign({}, g));
+  dbCorrupted.tasks = [
+    { id: 'd01', block: 'Лайн Чек 1', title: '🌬️ Помещение проветрено и свежесть воздуха', instruction: 'Проверка', photo: 'да', photoMode: 'да', mediaRequired: true, responsible: 'Администратор', active: 'да' }
+  ];
+  window.saveUDB(dbCorrupted);
+
+  // Вызываем нормализацию схемы (как при открытии Панели администратора или Терминала)
+  const healedDb = window.coffeeEnsureV19Schema(window.getUDB());
+  const openTasksAfterHeal = healedDb.tasks.filter((t) => t.block === 'Открытие');
+  const lc1TasksAfterHeal = healedDb.tasks.filter((t) => t.block === 'Лайн Чек 1');
+  const lc2TasksAfterHeal = healedDb.tasks.filter((t) => t.block === 'Лайн Чек 2');
+  const closeTasksAfterHeal = healedDb.tasks.filter((t) => t.block === 'Закрытие');
+  const gdTasksAfterHeal = healedDb.tasks.filter((t) => t.block === 'Карта добрых дел');
+
+  assert(openTasksAfterHeal.length >= 29, 'После авто-исцеления блок «Открытие» должен содержать все 29 стандартных пунктов (получено: ' + openTasksAfterHeal.length + ')');
+  assert(lc1TasksAfterHeal.length >= 6, 'Блок «Лайн Чек 1» должен содержать все 6 пунктов');
+  assert(lc2TasksAfterHeal.length >= 9, 'Блок «Лайн Чек 2» должен содержать все 9 пунктов');
+  assert(closeTasksAfterHeal.length >= 47, 'Блок «Закрытие» должен содержать все 47 пунктов');
+  assert(gdTasksAfterHeal.length >= 4, 'Блок «Карта добрых дел» должен содержать 4 пункта');
+
+  const editedD01 = lc1TasksAfterHeal.find((t) => t.id === 'd01');
+  assert(editedD01 && editedD01.photoMode === 'да' && editedD01.mediaRequired === true, 'Пользовательская настройка обязательного фото («да») в Лайн Чек 1 должна сохраниться');
+
+  // 2) Симуляция ответа сервера, когда в Google Таблице записана только 1 отредактированная задача из «Лайн Чек 1»
+  window.absorbServerData('https://script.google.com/macros/s/test/exec?action=admin', {
+    ok: true,
+    tasks: [
+      { id: 'd02', block: 'Лайн Чек 1', title: '☕ Оборудование проверено', photo: 'да', photoMode: 'да', mediaRequired: true, responsible: 'Техник', active: 'да' }
+    ]
+  }, { forceFromSheet: true });
+
+  const dbAfterSync = window.getUDB();
+  const openAfterSync = dbAfterSync.tasks.filter((t) => t.block === 'Открытие');
+  const d02AfterSync = dbAfterSync.tasks.find((t) => t.id === 'd02');
+  assert(openAfterSync.length >= 29, 'При получении 1 задачи из Google Таблицы пункты «Открытия» НЕ должны пропадать (получено: ' + openAfterSync.length + ')');
+  assert(d02AfterSync && d02AfterSync.photoMode === 'да', 'Обновлённый пункт d02 из «Лайн Чек 1» должен получить photoMode = да');
+});
+
+process.stdout.write('\nИТОГО E2E-ТЕСТОВ КНОПОК И СИНХРОНИЗАЦИИ: ' + passed + '/23 успешно.\n');
+process.exit((process.exitCode || passed < 23) ? 1 : 0);

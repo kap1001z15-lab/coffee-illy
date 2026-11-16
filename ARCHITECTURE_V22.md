@@ -1,4 +1,4 @@
-> **Актуальный статус релиза: v77 (14.11.2026)** — синхронизировано с `version.js`, `Code.gs` (`api: 2, serverVersion: 'v77'`) и `PATCH_NOTES.md`.
+> **Актуальный статус релиза: v86 (14.11.2026)** — синхронизировано с `version.js`, `Code.gs` (`api: 2, serverVersion: 'v86'`) и `PATCH_NOTES.md`.
 
 # Coffee Management System — Architecture v22 foundation
 

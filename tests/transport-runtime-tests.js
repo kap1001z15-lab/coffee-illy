@@ -42,6 +42,30 @@ const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
     global.fetch = async (u, o) => { const b = JSON.parse(o.body); return { ok: true, status: 200, json: async () => (b.operationId === 'bad1' ? { ok: false, error: 'VALIDATION_FAILED' } : { ok: true }) }; };
     const flushed3 = await window.coffeeFlushOutbox(true);
     assert(flushed3.sent === 1 && flushed3.pending === 0 && window.coffeeGetOutboxStatus().failed === 1, 'invalid operation must be parked, valid one delivered');
+    // T8: Истёкшая сессия во время submit_checklist (STAFF_AUTH_REQUIRED) -> авто-перелогин и повтор без потери данных
+    const sHash = window.coffeeHashPin('5719');
+    window.coffeeAuth.createLocalSession('staff', 'Соня', sHash, 'st_evicted_001');
+    try { localStorage.setItem('coffee_server_tok_at', String(Date.now())); } catch (_) {}
+    let chkCalls = 0;
+    let reauthCalled = false;
+    global.fetch = async (u, o) => {
+      const b = JSON.parse((o && o.body) || '{}');
+      if (b.action === 'submit_checklist') {
+        chkCalls++;
+        if (chkCalls === 1) return { ok: true, status: 200, json: async () => ({ ok: false, error: 'STAFF_AUTH_REQUIRED: Сессия вытеснена из CacheService' }) };
+        return { ok: true, status: 200, json: async () => ({ ok: true, saved: true }) };
+      }
+      if (b.action === 'auth_login') {
+        reauthCalled = true;
+        return { ok: true, status: 200, json: async () => ({ ok: true, sessionToken: 'st_fresh_002', role: 'staff', staffName: 'Соня' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const chkRes = await window.coffeeFetch(window.COFFEE.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'submit_checklist', userName: 'Соня', block: 'Открытие', items: [{ id: 'o01', title: 'Селфи', status: 'ok' }] })
+    });
+    assert(chkRes.ok === true && chkRes.confirmed === true && reauthCalled && chkCalls === 2, 'submit_checklist must auto-reauth and retry on STAFF_AUTH_REQUIRED');
     process.stdout.write('[PASS] POST rejects server errors, queues offline writes, flushes after server confirmation; transient errors retried; invalid ops do not block queue\n');
     process.exit(0);
   } finally {

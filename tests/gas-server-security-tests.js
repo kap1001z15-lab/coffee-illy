@@ -189,22 +189,37 @@ function assert(cond, msg) {
 }
 
 check('1. Серверная аутентификация владельца и ротация заводских PIN-кодов (setup_initial_credentials)', () => {
-  const loginDefault = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '1234' });
-  assert(loginDefault.ok === true && loginDefault.sessionToken, 'Первый вход до ротации должен выдать sessionToken');
+  // До первичной настройки вход по заводскому PIN невозможен и возвращает SETUP_REQUIRED (T3)
+  const loginBeforeSetup = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '1234' });
+  assert(loginBeforeSetup.ok === false && /SETUP_REQUIRED/.test(loginBeforeSetup.error), 'До инициализации вход должен возвращать SETUP_REQUIRED');
 
+  // Короткий PIN владельца (< 6 цифр) отклоняется
+  const shortPinSetup = callPost({
+    action: 'setup_initial_credentials',
+    newAdminPin: '8492'
+  });
+  assert(shortPinSetup.ok === false && /VALIDATION_FAILED/.test(shortPinSetup.error), 'PIN владельца короче 6 цифр должен отклоняться');
+
+  // Первичная одноразовая инициализация проходит без сессии, пока ADMIN_PIN_HASH пуст
   const rotated = callPost({
     action: 'setup_initial_credentials',
-    sessionToken: loginDefault.sessionToken,
-    newAdminPin: '8492',
+    newAdminPin: '849261',
     staffPins: { 'Соня': '5719', 'Алина': '6820' }
   });
-  assert(rotated.ok === true && rotated.factoryPinsDisabled === true, 'Ротация PIN должна отключить заводские PIN-коды');
+  assert(rotated.ok === true && rotated.factoryPinsDisabled === true, 'Первичная настройка устанавливает индивидуальные PIN-коды');
+
+  // Повторный вызов setup_initial_credentials без сессии владельца блокируется
+  const secondUnauthSetup = callPost({
+    action: 'setup_initial_credentials',
+    newAdminPin: '999999'
+  });
+  assert(secondUnauthSetup.ok === false && /PIN_REQUIRED/.test(secondUnauthSetup.error), 'Повторный вызов setup_initial_credentials без сессии admin должен отклоняться');
 
   const oldPinTry = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '1234' });
-  assert(oldPinTry.ok === false && /PIN_REQUIRED/.test(oldPinTry.error), 'После ротации заводской PIN 1234 должен отклоняться сервером');
+  assert(oldPinTry.ok === false && /PIN_REQUIRED/.test(oldPinTry.error), 'Заводской PIN должен отклоняться сервером');
 
-  const newPinTry = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
-  assert(newPinTry.ok === true && newPinTry.sessionToken, 'Новый индивидуальный PIN владельца 8492 должен приниматься');
+  const newPinTry = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '849261' });
+  assert(newPinTry.ok === true && newPinTry.sessionToken, 'Новый индивидуальный 6-значный PIN владельца 849261 должен приниматься');
 });
 
 check('2. Серверная сессия бариста (Staff Session) и защита от подмены имени сотрудника', () => {
@@ -255,7 +270,7 @@ check('5. Серверное сохранение фотографий в Google
 
 
 check('6. Двустороннее управление всеми настройками, Таймлайном, Планами Пн–Вс, Задачами, Картой добрых дел и ТТК через листы Google Таблицы', () => {
-  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
+  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '849261' });
   const tok = login.sessionToken;
 
   // Сохранение планов по дням недели в лист «Планы»
@@ -288,7 +303,7 @@ check('6. Двустороннее управление всеми настро�
 check('7. Живая синхронизация: get_rev меняется после каждой успешной записи и после ручной правки таблицы', () => {
   const rev0 = JSON.parse(gasContext.doGet({ parameter: { action: 'get_rev' } }).getContent());
   assert(rev0.ok === true && rev0.rev != null, 'get_rev публичен и возвращает версию данных');
-  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
+  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '849261' });
   const revAfterLogin = JSON.parse(gasContext.doGet({ parameter: { action: 'get_rev' } }).getContent()).rev;
   assert(revAfterLogin === rev0.rev, 'Вход (auth_login) не должен менять версию данных');
   const before = Number(rev0.rev);
@@ -306,7 +321,7 @@ check('7. Живая синхронизация: get_rev меняется пос
 });
 
 check('8. Сверка продаж v54: лист Продажи, защита от повторной загрузки CSV по хэшу, переход счётчика 998→2 и возврат products в getReport_()', () => {
-  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '8492' });
+  const login = callPost({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: '849261' });
   const tok = login.sessionToken;
 
   const cashPayload = {
@@ -400,7 +415,7 @@ check('10. Серверные модули ERP v61 (save_nomenclature_rule, save
   const rExp = callPost({ action: 'add_expiry_item', id: 'EXP-SRV-1', title: 'Сливки 10%', shelfLifeHours: 24, userName: 'Соня', staffPin: '5719' });
   assert(rExp.ok === true && rExp.item && rExp.item.title === 'Сливки 10%', 'Сервер должен сохранять маркировку срока годности');
 
-  const loginAdm = callPost({ action: 'auth_login', role: 'admin', pin: '8492' });
+  const loginAdm = callPost({ action: 'auth_login', role: 'admin', pin: '849261' });
   const rAuto = callPost({ action: 'setup_autonomous_triggers', sessionToken: loginAdm.sessionToken });
   assert(rAuto.ok === true && rAuto.autopilot === true, 'Сервер должен включать триггеры Автопилота 24/7');
 
@@ -424,7 +439,7 @@ check('11. Закрытие замечаний аудита v64 (P0/P1): зап�
   assert(unauthAck.ok === false && /STAFF_AUTH_REQUIRED/.test(unauthAck.error), 'ack_announcement без подтверждённой сессии должен отклоняться STAFF_AUTH_REQUIRED');
 
   // P0.2: Бариста не может войти по PIN владельца (8492) или заводскому 1234, а неизвестное имя сотрудника отклоняется STAFF_NOT_FOUND
-  const ownerPinForStaff = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '8492' });
+  const ownerPinForStaff = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '849261' });
   assert(ownerPinForStaff.ok === false && /PIN_INVALID/.test(ownerPinForStaff.error), 'Вход бариста по PIN владельца должен быть строго запрещён');
 
   const unknownStaff = callPost({ action: 'auth_login', role: 'staff', staffName: 'НеизвестныйСотрудник', pin: '1111' });
@@ -468,5 +483,365 @@ check('11. Закрытие замечаний аудита v64 (P0/P1): зап�
   assert(chkWithOfflinePhoto.ok === true && driveFiles.length === driveCountBefore + 1, 'Офлайн-фото из photo_base64 при сдаче чек-листа должно автоматически загружаться в Google Drive');
 });
 
-process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/11 успешно.\n');
+
+check('12. Безопасность Telegram v83 (Part 2: запрет подмены tgId, запрет клиентского botToken, проверка чужой сессии, проверка auth_date и подключение sendTelegramVerifiedV82_)', () => {
+  const bindingsBefore = propStore['COFFEE_TG_USER_BINDINGS_JSON'] || '{}';
+
+  // 1) Попытка привязки поддельного tgId без сессии должна отклоняться
+  const unauthBind = callPost({
+    action: 'bind_telegram_user',
+    tgId: '777888999',
+    staffName: 'Соня'
+  });
+  assert(unauthBind.ok === false && /STAFF_AUTH_REQUIRED|TELEGRAM_BIND_AUTH_REQUIRED/.test(unauthBind.error), 'Привязка tgId без подтверждённой сессии должна отклоняться');
+  assert((propStore['COFFEE_TG_USER_BINDINGS_JSON'] || '{}') === bindingsBefore, 'Неудачная попытка привязки не должна изменять ScriptProperties');
+
+  // 2) Попытка передать секретный botToken в клиентском payload должна немедленно блокироваться
+  const staffLoginSonya = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  assert(staffLoginSonya.ok === true && staffLoginSonya.sessionToken, 'Вход Сони по верному PIN должен выдавать sessionToken');
+
+  const clientTokenAttempt = callPost({
+    action: 'bind_telegram_user',
+    sessionToken: staffLoginSonya.sessionToken,
+    tgId: '100200300',
+    staffName: 'Соня',
+    botToken: '123456:FAKE_CLIENT_BOT_TOKEN'
+  });
+  assert(clientTokenAttempt.ok === false && /SECURITY_VIOLATION/.test(clientTokenAttempt.error), 'Передача секретного botToken от клиента должна отклоняться SECURITY_VIOLATION');
+
+  // 3) Попытка привязать Telegram ID к ЧУЖОМУ сотруднику (сессия Сони пытается привязать Алину) должна блокироваться
+  const crossStaffAttempt = callPost({
+    action: 'bind_telegram_user',
+    sessionToken: staffLoginSonya.sessionToken,
+    tgId: '100200300',
+    staffName: 'Алина'
+  });
+  assert(crossStaffAttempt.ok === false && /FORBIDDEN_STAFF_MISMATCH/.test(crossStaffAttempt.error), 'Привязка tgId к чужому профилю сотрудника должна отклоняться FORBIDDEN_STAFF_MISMATCH');
+
+  // 4) Проверка просроченного auth_date в tgInitData
+  const oldAuthDate = Math.floor(Date.now() / 1000) - 95000; // старше 24 часов
+  const expiredInitDataAttempt = callPost({
+    action: 'bind_telegram_user',
+    sessionToken: staffLoginSonya.sessionToken,
+    tgId: '100200300',
+    staffName: 'Соня',
+    tgInitData: 'auth_date=' + oldAuthDate + '&user=%7B%22id%22%3A100200300%7D&hash=abcdef1234567890'
+  });
+  assert(expiredInitDataAttempt.ok === false && /EXPIRED_INIT_DATA/.test(expiredInitDataAttempt.error), 'Просроченный auth_date в tgInitData должен отклоняться EXPIRED_INIT_DATA');
+
+  // 5) Легитимная привязка со своей подтверждённой сессией сотрудника (когда токен бота ещё не задан или валидирован)
+  delete propStore['TG_BOT_TOKEN_SECRET'];
+  delete propStore['TELEGRAM_BOT_TOKEN'];
+  const validOwnBind = callPost({
+    action: 'bind_telegram_user',
+    sessionToken: staffLoginSonya.sessionToken,
+    tgId: '555666777',
+    staffName: 'Соня',
+    tgUsername: 'sonya_barista'
+  });
+  assert(validOwnBind.ok === true && validOwnBind.tgId === '555666777', 'Валидная привязка своего профиля по активной сессии сотрудника должна проходить успешно');
+
+  // 6) Проверка, что голый поддельный tgId в запросе submit_cash без валидного tgInitData НЕ даёт доступ к чужому аккаунту
+  const spoofedTgIdCash = callPost({
+    action: 'submit_cash',
+    tgId: '555666777',
+    date: '2026-11-15',
+    cash: 1200,
+    card: 500,
+    checks: 40,
+    writeoff: 0
+  });
+  assert(spoofedTgIdCash.ok === false && /STAFF_AUTH_REQUIRED/.test(spoofedTgIdCash.error), 'Передача одного лишь tgId без подписанного tgInitData или sessionToken не должна авторизовывать запрос');
+});
+
+
+check('13. T1: Закрытие анонимных записей (__SYS_CONFIG_V19__, delta_sync, switch_shop_location) и изоляция черновиков сотрудника', () => {
+  // 1) Анонимные вызовы должны отклоняться
+  const anonSys = callPost({
+    action: 'save_task',
+    id: '__SYS_CONFIG_V19__',
+    title: '__SYS_SYNC__',
+    instruction: JSON.stringify({ checklistBlocks: [{ id: 'blk_hacked', name: 'Взлом' }] })
+  });
+  assert(anonSys.ok === false && /STAFF_AUTH_REQUIRED|PIN_REQUIRED/.test(anonSys.error), 'Анонимный save_task __SYS_CONFIG_V19__ должен отклоняться');
+
+  const anonDelta = callPost({
+    action: 'delta_sync',
+    deltas: [{ collection: 'incidents', id: 'INC-ANON', updatedAt: Date.now(), record: { text: 'Anon' } }]
+  });
+  assert(anonDelta.ok === false && /STAFF_AUTH_REQUIRED|PIN_REQUIRED/.test(anonDelta.error), 'Анонимный delta_sync должен отклоняться');
+
+  const anonShop = callPost({
+    action: 'switch_shop_location',
+    location: 'Хакнутая точка'
+  });
+  assert(anonShop.ok === false && /STAFF_AUTH_REQUIRED|PIN_REQUIRED/.test(anonShop.error), 'Анонимный switch_shop_location должен отклоняться');
+
+  // 2) Сотрудник не может поменять checklistBlocks, LIVE_ENV_V63 или чужой userDrafts через __SYS_CONFIG_V19__
+  const staffLogin = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  assert(staffLogin.ok === true && staffLogin.sessionToken, 'Вход Сони должен быть успешным');
+
+  const tlBefore = sheetsStore['Таймлайн']._rows.length;
+  const staffSys = callPost({
+    action: 'save_task',
+    sessionToken: staffLogin.sessionToken,
+    id: '__SYS_CONFIG_V19__',
+    title: '__SYS_SYNC__',
+    instruction: JSON.stringify({
+      checklistBlocks: [{ id: 'blk_evil', name: 'Злой блок', openTime: '00:00', deadline: '00:01' }],
+      userDrafts: {
+        '2026-11-16:Соня:Открытие': { idx: 3, userName: 'Соня', updatedAt: 2000000000000 },
+        '2026-11-16:Алина:Открытие': { idx: 99, userName: 'Алина', updatedAt: 2000000000000 }
+      }
+    })
+  });
+  assert(staffSys.ok === true && staffSys.staffScoped === true, 'Сотрудник получает staffScoped ответ');
+  assert(sheetsStore['Таймлайн']._rows.length === tlBefore, 'Сотрудник не может перезаписать checklistBlocks через __SYS_CONFIG_V19__');
+  const draftsNow = JSON.parse(propStore['COFFEE_USER_DRAFTS_JSON'] || '{}');
+  assert(draftsNow['2026-11-16:Соня:Открытие'] && draftsNow['2026-11-16:Соня:Открытие'].idx === 3, 'Собственный черновик Сони должен сохраниться');
+  assert(!draftsNow['2026-11-16:Алина:Открытие'] || draftsNow['2026-11-16:Алина:Открытие'].idx !== 99, 'Чужой черновик Алины не должен изменяться сессией Сони');
+
+  // 3) Сотрудник не может писать в закрытые коллекции через delta_sync (например, cash или tasks)
+  const staffForbiddenDelta = callPost({
+    action: 'delta_sync',
+    sessionToken: staffLogin.sessionToken,
+    deltas: [{ collection: 'cash', id: '2026-11-16', updatedAt: Date.now(), record: { cash: 999999 } }]
+  });
+  assert(staffForbiddenDelta.ok === false && /FORBIDDEN|PIN_REQUIRED/.test(staffForbiddenDelta.error), 'Запись в коллекцию cash через delta_sync от роли staff должна отклоняться');
+});
+
+
+check('14. T2: Rate-Limit для подписи PIN сотрудников (staffPinHash) и единый ключ лимита admin + resetRateLimits_()', () => {
+  // 5 неверных попыток staffPinHash в submit_cash для Сони
+  for (let i = 1; i <= 5; i++) {
+    const badTry = callPost({
+      action: 'submit_cash',
+      date: '2026-11-16',
+      cash: 100,
+      card: 100,
+      checks: 5,
+      userName: 'Соня',
+      staffPinHash: 'wrong_pin_' + i
+    });
+    if (i < 5) {
+      assert(badTry.ok === false && /PIN_INVALID/.test(badTry.error), 'Попытка ' + i + ' должна возвращать PIN_INVALID');
+    } else {
+      assert(badTry.ok === false && /RATE_LIMIT/.test(badTry.error), '5-я неверная попытка должна включить блокировку RATE_LIMIT');
+    }
+  }
+
+  // 6-я попытка даже с ВЕРНЫМ PIN должна отклоняться RATE_LIMIT
+  const sixthGoodPin = callPost({
+    action: 'submit_cash',
+    date: '2026-11-16',
+    cash: 100,
+    card: 100,
+    checks: 5,
+    userName: 'Соня',
+    staffPin: '5719'
+  });
+  assert(sixthGoodPin.ok === false && /RATE_LIMIT/.test(sixthGoodPin.error), '6-я попытка даже с верным PIN должна отклоняться RATE_LIMIT');
+
+  // Сброс через resetRateLimits_() разблокирует вход
+  const resetRes = gasContext.resetRateLimits_();
+  assert(resetRes && resetRes.ok === true, 'resetRateLimits_() должен успешно очищать лимиты');
+
+  const afterReset = callPost({
+    action: 'submit_cash',
+    date: '2026-11-16',
+    cash: 100,
+    card: 100,
+    checks: 5,
+    userName: 'Соня',
+    staffPin: '5719'
+  });
+  assert(afterReset.ok === true, 'После resetRateLimits_() верный PIN Сони снова принимается');
+
+  // Проверка единого лимита admin между auth_login и requireAuth_ (не 2x5 = 10, а ровно 5 попыток суммарно)
+  for (let j = 1; j <= 3; j++) {
+    callPost({ action: 'auth_login', role: 'admin', pin: '000' + j });
+  }
+  const fourthViaApi = callPost({ action: 'save_setting', id: 'PLAN', value: '3000', pin: '0004' });
+  assert(fourthViaApi.ok === false && /PIN_REQUIRED/.test(fourthViaApi.error), '4-я попытка через requireAuth_ должна уменьшить общий счётчик admin');
+  const fifthViaApi = callPost({ action: 'save_setting', id: 'PLAN', value: '3000', pin: '0005' });
+  assert(fifthViaApi.ok === false && /RATE_LIMIT/.test(fifthViaApi.error), '5-я суммарная попытка должна заблокировать admin');
+  gasContext.resetRateLimits_();
+});
+
+
+check('15. T3: Первичная настройка SETUP_REQUIRED, засев таблицы маской ••, автогенерация 6-значного PIN в save_staff и migrateFactoryPins_', () => {
+  // Проверяем, что в засеянных листах Настройки и Сотрудники нет цифр PIN — только маска ••
+  const staffRows = sheetsStore['Сотрудники']._rows;
+  for (let i = 1; i < staffRows.length; i++) {
+    assert(staffRows[i][5] === '••', 'В колонке PIN листа Сотрудники должна быть только маска ••');
+  }
+  const setRows = sheetsStore['Настройки']._rows;
+  const adminPinRow = setRows.find((r) => r[0] === 'ADMIN_PIN');
+  assert(adminPinRow && adminPinRow[1] === '••', 'В листе Настройки ADMIN_PIN должен содержать только маску ••');
+
+  // Создание нового сотрудника без PIN генерирует 6-значный случайный PIN и возвращает его один раз
+  const admLogin = callPost({ action: 'auth_login', role: 'admin', pin: '849261' });
+  const newStaffRes = callPost({
+    action: 'save_staff',
+    sessionToken: admLogin.sessionToken,
+    name: 'Елена',
+    role: 'Бариста',
+    shop: 'Кофейня №1',
+    active: 'да'
+  });
+  assert(newStaffRes.ok === true && /^\d{6}$/.test(String(newStaffRes.generatedPin || '')), 'save_staff без PIN должен генерировать 6-значный PIN и возвращать его один раз');
+
+  // Проверка migrateFactoryPins_ и PIN_CHANGE_REQUIRED -> change_staff_pin
+  const migRes = gasContext.migrateFactoryPins_();
+  assert(migRes && migRes.ok === true && migRes.migratedStaff.includes('Настя'), 'migrateFactoryPins_ должен помечать сотрудников без индивидуального хеша флагом PIN_CHANGE_REQUIRED');
+
+  const nastyaLoginBefore = callPost({ action: 'auth_login', role: 'staff', staffName: 'Настя', pin: '3333' });
+  assert(nastyaLoginBefore.ok === false && /PIN_CHANGE_REQUIRED/.test(nastyaLoginBefore.error), 'Вход сотрудника с флагом миграции должен возвращать PIN_CHANGE_REQUIRED');
+
+  const chgRes = callPost({ action: 'change_staff_pin', staffName: 'Настя', newPin: '7391' });
+  assert(chgRes.ok === true && chgRes.pinChanged === true, 'change_staff_pin должен позволить сотруднику задать новый персональный PIN');
+
+  const nastyaLoginAfter = callPost({ action: 'auth_login', role: 'staff', staffName: 'Настя', pin: '7391' });
+  assert(nastyaLoginAfter.ok === true && nastyaLoginAfter.sessionToken, 'После смены PIN сотрудник успешно входит по новому PIN');
+});
+
+
+check('16. T4: Уникальность генерируемых ID (1000 инцидентов подряд -> 0 коллизий + защита от дубля клиентского ID)', () => {
+  const staffLogin = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  const seen = new Set();
+  for (let i = 0; i < 1000; i++) {
+    const r = callPost({
+      action: 'report_standalone_incident',
+      sessionToken: staffLogin.sessionToken,
+      step: 'Тест уникальности #' + i,
+      text: 'Проверка отсутствия коллизий'
+    });
+    assert(r.ok === true && r.id && /^INC-[a-f0-9]{8}$/i.test(r.id), 'ID должен иметь формат INC-<8 hex>');
+    assert(!seen.has(r.id), 'Коллизия ID на итерации ' + i + ': ' + r.id);
+    seen.add(r.id);
+  }
+  assert(seen.size === 1000, 'Все 1000 сгенерированных ID инцидентов должны быть уникальными');
+
+  // Если клиент повторно прислал уже существующий ID (без operationId), сервер генерирует новый уникальный ID
+  const firstId = Array.from(seen)[0];
+  const dupAttempt = callPost({
+    action: 'report_standalone_incident',
+    sessionToken: staffLogin.sessionToken,
+    id: firstId,
+    step: 'Повтор ID',
+    text: 'Клиент прислал существующий ID'
+  });
+  assert(dupAttempt.ok === true && dupAttempt.id !== firstId && !seen.has(dupAttempt.id), 'При коллизии клиентского ID сервер обязан выдать новый уникальный ID');
+});
+
+
+check('17. T5: Пакетный delta_sync (500 дельт <= 2 вызова getDataRange/setValues, очистка старых tombstone) и вынос Telegram из-под LockService', () => {
+  const staffLogin = callPost({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '5719' });
+  const shDelta = sheetsStore['ДельтаСинхр'] || mockSS.insertSheet('ДельтаСинхр');
+  if (shDelta._rows.length === 0) {
+    shDelta.appendRow(['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']);
+  }
+  // Добавим старый tombstone (> 30 дней назад), который должен быть автоматически очищен
+  const oldTombstoneTs = Date.now() - 40 * 24 * 60 * 60 * 1000;
+  shDelta.appendRow(['incidents', 'INC-OLD-TOMB', oldTombstoneTs, '1', 'Соня', '{}']);
+
+  let getDataRangeCount = 0;
+  let setValuesCount = 0;
+  const origGetDataRange = shDelta.getDataRange.bind(shDelta);
+  const origGetRange = shDelta.getRange.bind(shDelta);
+  shDelta.getDataRange = function () {
+    getDataRangeCount++;
+    return origGetDataRange();
+  };
+  shDelta.getRange = function (r, c, nr, nc) {
+    const rng = origGetRange(r, c, nr, nc);
+    const origSetValues = rng.setValues.bind(rng);
+    rng.setValues = function (vals) {
+      setValuesCount++;
+      return origSetValues(vals);
+    };
+    return rng;
+  };
+
+  const deltas500 = [];
+  const baseTs = Date.now();
+  for (let i = 0; i < 500; i++) {
+    deltas500.push({
+      collection: 'incidents',
+      id: 'INC-BATCH-' + i,
+      updatedAt: baseTs + i,
+      deleted: false,
+      actor: 'Соня',
+      record: { id: 'INC-BATCH-' + i, text: 'Пакетная дельта #' + i }
+    });
+  }
+
+  const syncRes = callPost({
+    action: 'delta_sync',
+    sessionToken: staffLogin.sessionToken,
+    sinceTs: baseTs,
+    deltas: deltas500
+  });
+  shDelta.getDataRange = origGetDataRange;
+  shDelta.getRange = origGetRange;
+
+  assert(syncRes.ok === true && syncRes.applied === 500, 'Все 500 дельт должны быть применены');
+  assert(getDataRangeCount <= 2 && setValuesCount <= 2, 'Обработка 500 дельт должна выполняться за <= 2 вызова getDataRange/setValues (фактически: getDataRange=' + getDataRangeCount + ', setValues=' + setValuesCount + ')');
+  assert(!shDelta._rows.some((r) => r[1] === 'INC-OLD-TOMB'), 'Tombstone старше 30 дней должен автоматически удаляться из ДельтаСинхр');
+
+  // Проверка, что Telegram-вызов выполняется ПОСЛЕ lock.releaseLock()
+  const eventsOrder = [];
+  const origLock = gasContext.LockService.getScriptLock;
+  const origFetch = gasContext.UrlFetchApp.fetch;
+  propStore['TG_BOT_TOKEN_SECRET'] = '999999:TEST_SERVER_TOKEN';
+  propStore['TG_CHAT_ID_SECRET'] = '12345678';
+  gasContext.LockService.getScriptLock = function () {
+    return {
+      waitLock() { eventsOrder.push('lock_acquired'); },
+      releaseLock() { eventsOrder.push('lock_released'); }
+    };
+  };
+  gasContext.UrlFetchApp.fetch = function () {
+    eventsOrder.push('telegram_fetch');
+    return { getResponseCode() { return 200; }, getContentText() { return '{"ok":true}'; } };
+  };
+
+  callPost({
+    action: 'report_standalone_incident',
+    sessionToken: staffLogin.sessionToken,
+    step: 'Кофемашина',
+    text: 'Проверка очереди Telegram вне блокировки'
+  });
+
+  gasContext.LockService.getScriptLock = origLock;
+  gasContext.UrlFetchApp.fetch = origFetch;
+  delete propStore['TG_BOT_TOKEN_SECRET'];
+  delete propStore['TG_CHAT_ID_SECRET'];
+
+  const releaseIdx = eventsOrder.indexOf('lock_released');
+  const fetchIdx = eventsOrder.indexOf('telegram_fetch');
+  assert(releaseIdx >= 0 && fetchIdx > releaseIdx, 'Telegram UrlFetchApp.fetch должен вызываться строго ПОСЛЕ lock.releaseLock() (порядок: ' + eventsOrder.join(' -> ') + ')');
+});
+
+
+check('18. T9: Чтение dashboard, report и admin через POST с sessionToken в теле запроса (без утечки токена в URL)', () => {
+  const admLogin = callPost({ action: 'auth_login', role: 'admin', pin: '849261' });
+  assert(admLogin.ok === true && admLogin.sessionToken, 'Вход администратора выдаёт sessionToken');
+
+  const dashPost = callPost({ action: 'dashboard', date: '2026-11-16', sessionToken: admLogin.sessionToken });
+  assert(dashPost.ok === true && Array.isArray(dashPost.days) && !dashPost.deprecatedGetAuth, 'POST dashboard должен возвращать данные без флага deprecatedGetAuth');
+
+  const repPost = callPost({ action: 'report', from: '2026-11-01', to: '2026-11-16', sessionToken: admLogin.sessionToken });
+  assert(repPost.ok === true && repPost.finance && !repPost.deprecatedGetAuth, 'POST report должен возвращать финансовый отчёт');
+
+  const admPost = callPost({ action: 'admin', sessionToken: admLogin.sessionToken });
+  assert(admPost.ok === true && Array.isArray(admPost.tasks) && !admPost.deprecatedGetAuth, 'POST admin должен возвращать данные управления');
+
+  // Проверка fallback в doGet: работает на 1 релиз, но помечает deprecatedGetAuth и пишет предупреждение в Журнал
+  const legacyGet = JSON.parse(gasContext.doGet({ parameter: { action: 'dashboard', date: '2026-11-16', sessionToken: admLogin.sessionToken } }).getContent());
+  assert(legacyGet.ok === true && legacyGet.deprecatedGetAuth === true, 'GET fallback для dashboard должен возвращать deprecatedGetAuth: true');
+});
+
+process.stdout.write('\nИТОГО СЕРВЕРНЫХ ТЕСТОВ CODE.GS: ' + passed + '/18 успешно.\n');
+if (process.exitCode || passed < 18) process.exit(1);
 

@@ -20,7 +20,7 @@ let ownerRepTo = ownerDashDate;
 let ownerSimAvg = 5, ownerSimChk = 10, ownerSimWo = 30;
 
 
-/* ---------- ВХОД ПО PIN-КОДУ НА СТАРТЕ ПАНЕЛИ ВЛАДЕЛЬЦА И УПРАВЛЕНИЯ (СТАРТОВЫЙ PIN: 1234) ---------- */
+/* ---------- ВХОД ПО PIN-КОДУ И ЭКРАН ПЕРВИЧНОЙ НАСТРОЙКИ ВЛАДЕЛЬЦА (SETUP_REQUIRED) ---------- */
 function ensureOwnerPinGate(forceShow) {
   if (typeof document === 'undefined') return true;
   if (!forceShow && window.COFFEE_ACTIVE_SYSTEM_MODE === 'terminal') {
@@ -42,14 +42,15 @@ function ensureOwnerPinGate(forceShow) {
     document.body.appendChild(modal);
   }
 
+  const isFirstSetup = !!(window.coffeeAuth && typeof window.coffeeAuth.isSetupRequired === 'function' && window.coffeeAuth.isSetupRequired());
   modal.innerHTML =
-    '<div class="ntf-card" style="max-width:340px;width:90vw;padding:24px 20px;text-align:center">' +
-      '<h3 style="margin:0 0 4px;font-size:18px">Панель владельца</h3>' +
-      '<p class="mu" style="margin:0 0 14px;font-size:13px">Введите код доступа владельца</p>' +
+    '<div class="ntf-card" style="max-width:360px;width:90vw;padding:24px 20px;text-align:center">' +
+      '<h3 style="margin:0 0 4px;font-size:18px">' + (isFirstSetup ? 'Задайте PIN владельца' : 'Панель владельца') + '</h3>' +
+      '<p class="mu" style="margin:0 0 14px;font-size:13px">' + (isFirstSetup ? 'Первичная настройка безопасности: задайте индивидуальный PIN (не менее 6 цифр)' : 'Введите код доступа владельца') + '</p>' +
       '<form id="ownerPinGateForm">' +
-        '<input type="password" id="ownerPinGateInp" inputmode="numeric" autocomplete="off" placeholder="PIN (1234)" style="width:100%;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:18px;font-weight:700;text-align:center;letter-spacing:4px;color:var(--ink)">' +
+        '<input type="password" id="ownerPinGateInp" inputmode="numeric" autocomplete="off" placeholder="' + (isFirstSetup ? 'Новый PIN (от 6 цифр)' : 'Введите PIN') + '" style="width:100%;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:18px;font-weight:700;text-align:center;letter-spacing:4px;color:var(--ink)">' +
         '<div id="ownerPinGateErr" style="color:var(--bad);font-size:12.5px;min-height:18px;margin:6px 0"></div>' +
-        '<button type="submit" class="p" style="width:100%;min-height:44px;font-size:15px;cursor:pointer">Войти</button>' +
+        '<button type="submit" class="p" style="width:100%;min-height:48px;font-size:15px;cursor:pointer">' + (isFirstSetup ? 'Сохранить PIN и войти' : 'Войти') + '</button>' +
       '</form>' +
     '</div>';
 
@@ -71,7 +72,14 @@ function ensureOwnerPinGate(forceShow) {
         if (errBox) errBox.textContent = rl.message;
         return;
       }
-      const okOwner = window.coffeeAuth && window.coffeeAuth.verifyOwnerPin ? window.coffeeAuth.verifyOwnerPin(pinVal) : (pinVal === '1234');
+      if (isFirstSetup && window.coffeeAuth && typeof window.coffeeAuth.setupInitialCredentials === 'function') {
+        if (pinVal.length < 6) {
+          if (errBox) errBox.textContent = 'PIN владельца должен содержать минимум 6 цифр';
+          return;
+        }
+        await window.coffeeAuth.setupInitialCredentials(pinVal, {});
+      }
+      const okOwner = window.coffeeAuth && window.coffeeAuth.verifyOwnerPin ? window.coffeeAuth.verifyOwnerPin(pinVal) : false;
       if (!okOwner) {
         const st = window.coffeeRateLimiter ? window.coffeeRateLimiter.check('owner_admin') : { remainingAttempts: 4 };
         if (errBox) {
@@ -374,6 +382,19 @@ function renderOwnerDashboardSection() {
         '</div>' +
       '</div>' +
 
+      /* БЛОК «ТРЕБУЕТ ВНИМАНИЯ» В САМОМ ВЕРХУ ОБЗОРА (§1.3 O3, §4.7 п.1, §7) */
+      (hasUrgentItems ? (
+        '<div id="ownerAttentionTopCard" class="ci-card ci-card-status-bad" style="margin-bottom:14px;padding:14px 16px">' +
+          '<div class="top" style="margin-bottom:6px"><b style="color:var(--bad)">Требует внимания (' + (redFlagsOnly.length + overdueBlocksNow.length + openIncs.length) + ')</b></div>' +
+          redFlagsOnly.slice(0, 3).map((f) => '<div class="row" style="padding:6px 0"><div><b>' + esc(f.title) + '</b><div class="mu" style="font-size:12px">' + esc(f.desc) + '</div></div></div>').join('') +
+          overdueBlocksNow.slice(0, 3).map((bObj) => '<div class="row" style="padding:6px 0"><div><b>Просрочен чек-лист «' + esc(bObj.name) + '»</b> <span class="mu">(дедлайн ' + esc(bObj.deadline) + ')</span></div><div class="acts"><button type="button" class="b ci-btn-sm" data-dashunlock="' + esc(bObj.name) + '">Открыть доступ</button></div></div>').join('') +
+          openIncs.slice(0, 3).map((inc) => '<div class="row" style="padding:6px 0"><div><b>' + esc(inc.step) + '</b> <span class="tag no">' + esc(inc.priority || '24ч') + '</span><div class="mu" style="font-size:12px">' + esc(inc.text) + ' · Сообщил: ' + esc(inc.who || 'Бариста') + '</div></div><div class="acts"><button type="button" class="b ci-btn-sm" data-dashresolve="' + esc(inc.id) + '">Решена</button></div></div>').join('') +
+        '</div>'
+      ) : (
+        '<div id="ownerAttentionTopCard" class="ci-card ci-card-status-good" style="margin-bottom:14px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<span><b style="color:var(--good)">✓ Требует внимания: всё в порядке</b> · открытых проблем и просроченных чек-листов нет</span>' +
+        '</div>'
+      )) +
       /* ГЛАВНЫЙ ИНДИКАТОР «ВСЁ ЛИ В ПОРЯДКЕ?» */
       '<div style="padding:16px 18px;border-radius:16px;border:2px solid ' + stCol + ';background:color-mix(in srgb,' + stCol + ' 8%,var(--surface));margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">' +
         '<div>' +
@@ -384,23 +405,23 @@ function renderOwnerDashboardSection() {
       '</div>' +
 
       /* БЛОК А. ФИНАНСОВОЕ СОСТОЯНИЕ (С УКАЗАНИЕМ ИСТОЧНИКА И ПОЛНОТЫ ДАННЫХ) */
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 8px"><b style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Блок А · Финансовое состояние и полнота данных</b><span class="mu" style="font-size:12px">Источник: кассовые смены, Z-отчёты и ТТК · Статус данных: ' + (factRev > 0 ? 'Подтверждено отчётами' : 'Предварительный (ожидание закрытия смены)') + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 8px"><b style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Деньги и полнота данных</b><span class="mu" style="font-size:12px">Источник: кассовые смены, Z-отчёты и ТТК · Статус данных: ' + (factRev > 0 ? 'Подтверждено отчётами' : 'Предварительный (ожидание закрытия смены)') + '</span></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">' +
         '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center"><span class="mu" style="font-weight:700;font-size:12px">БЛОК А · ВЫРУЧКА</span><span class="tag ' + (rPct >= 98 ? 'ok' : (rPct < 85 ? 'no' : '')) + '">' + rPct + '% плана</span></div>' +
-          '<div style="font-size:24px;font-weight:800;margin:6px 0 2px;color:var(--good)">' + rub(factRev) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center"><span class="mu" style="font-weight:700;font-size:12px">ВЫРУЧКА</span><span class="tag ' + (rPct >= 98 ? 'ok' : (rPct < 85 ? 'no' : '')) + '">' + rPct + '% плана</span></div>' +
+          '<div style="font-size:24px;font-weight:800;margin:6px 0 2px;color:var(--good);font-variant-numeric:tabular-nums">' + (factRev > 0 ? rub(factRev) : '—') + '</div>' +
           '<div class="mu" style="font-size:12.5px">План: ' + rub(planRev) + '</div>' +
         '</div>' +
 
         '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
           '<div style="display:flex;justify-content:space-between;align-items:center"><span class="mu" style="font-weight:700;font-size:12px">ЧЕКИ И СРЕДНИЙ ЧЕК</span><span class="tag ' + (cPct >= 95 ? 'ok' : '') + '">' + cPct + '%</span></div>' +
-          '<div style="font-size:24px;font-weight:800;margin:6px 0 2px">' + factChk + ' · ' + rub(factAvg) + '</div>' +
+          '<div style="font-size:24px;font-weight:800;margin:6px 0 2px;font-variant-numeric:tabular-nums">' + (factChk > 0 ? (factChk + ' · ' + rub(factAvg)) : '—') + '</div>' +
           '<div class="mu" style="font-size:12.5px">План: ' + planChk + ' чек. (≥ ' + rub(planAvg) + ')</div>' +
         '</div>' +
 
         '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
           '<div style="display:flex;justify-content:space-between;align-items:center"><span class="mu" style="font-weight:700;font-size:12px">ЧИСТАЯ ПРИБЫЛЬ</span><span class="tag ' + (factWo <= woNormTotal ? 'ok' : 'no') + '">Спис.: ' + rub(factWo) + '</span></div>' +
-          '<div style="font-size:24px;font-weight:800;margin:6px 0 2px;color:' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + '">' + rub(fin.netProfit) + '</div>' +
+          '<div style="font-size:24px;font-weight:800;margin:6px 0 2px;font-variant-numeric:tabular-nums;color:' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + '">' + ((factRev > 0 || fin.netProfit !== 0) ? rub(fin.netProfit) : '—') + '</div>' +
           '<div class="mu" style="font-size:12.5px">За вычетом ТТК, ФОТ и расходов</div>' +
         '</div>' +
 
@@ -500,7 +521,7 @@ function renderOwnerDashboardSection() {
           '</div>' +
 
           '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">📡 Онлайн-активность сотрудников</b><span class="tag ok">Live Sync</span></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">📡 Онлайн-активность сотрудников</b><span class="tag ok">Онлайн</span></div>' +
             '<div style="font-size:12.5px;line-height:1.5">' +
               (activeBaristasNow.length ? activeBaristasNow.join('<br>') : '<span class="mu">Все открытые чек-листы завершены или ожидают начала окна</span>') +
             '</div>' +
@@ -522,7 +543,7 @@ function renderOwnerDashboardSection() {
         const totalEvents = overdueBlocksNow.length + openIncs.length + cashDiffDays.length + unreadAnns.length + outboxSt.pending + outboxSt.failed + expiredStickers.length;
         return '<div style="margin-top:14px;padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
-            '<b style="font-size:14px">Блок В · Центр контроля событий и операционных отклонений</b>' +
+            '<b style="font-size:14px">Центр контроля событий и операционных отклонений</b>' +
             '<span class="tag ' + (totalEvents === 0 ? 'ok' : 'no') + '">' + (totalEvents === 0 ? '0 активных событий' : ('Событий: ' + totalEvents)) + '</span>' +
           '</div>' +
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;font-size:12.5px">' +
@@ -559,27 +580,20 @@ function renderOwnerDashboardSection() {
         });
         return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:14px">' +
           '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">Блок Г · Финансовая динамика и структура выручки</b><span class="tag ok">Расходы: ' + rub(expSum) + '</span></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">Динамика и структура выручки</b><span class="tag ok">Расходы: ' + rub(expSum) + '</span></div>' +
             '<div style="font-size:12.5px;margin-bottom:6px">💵 Наличные: <b>' + rub(totCashSum) + ' (' + cashShare + '%)</b> · 💳 Безнал: <b>' + rub(totCardSum) + ' (' + cardShare + '%)</b></div>' +
             '<div class="pro-progress-bar" style="height:8px;margin-bottom:6px"><i style="width:' + cashShare + '%"></i></div>' +
             '<div class="mu" style="font-size:12px">Завершённых кассовых дней в периоде: <b>' + periodCash.length + '</b> · Средний чек: <b>' + rub(factAvg) + '</b></div>' +
           '</div>' +
           '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">🕒 Вертикальная лента событий (нажмите для открытия деталей)</b><span class="tag">Live</span></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">🕒 Вертикальная лента событий (нажмите для открытия деталей)</b><span class="tag">Сейчас</span></div>' +
             '<div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px">' +
               (events.slice(0, 6).map((ev, evIdx) => '<div class="drink-select-row" data-wsdrawer-title="' + esc(ev.title) + '" data-wsdrawer-time="' + esc(ev.time) + '" data-wsdrawer-nav="' + esc(ev.nav) + '" data-wsdrawer-tab="' + esc(ev.tab) + '" style="display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:8px;border-bottom:1px dashed var(--line);cursor:pointer"><span>' + esc(ev.title) + '</span><span class="mu" style="white-space:nowrap">' + esc(ev.time) + ' ›</span></div>').join('') || '<span class="mu">Событий пока нет</span>') +
             '</div>' +
           '</div>' +
         '</div>';
       })()) +
-      (hasUrgentItems ? (
-        '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
-          '<div class="top" style="margin-bottom:6px"><b style="color:var(--bad)">⚠️ Пункты, требующие реакции руководителя:</b></div>' +
-          redFlagsOnly.map((f) => '<div class="row" style="padding:6px 0"><div><b>' + esc(f.title) + '</b><div class="mu" style="font-size:12.5px">' + esc(f.desc) + '</div></div></div>').join('') +
-          overdueBlocksNow.map((bObj) => '<div class="row" style="padding:6px 0"><div><b>🔒 Просрочен чек-лист «' + esc(bObj.name) + '»</b> <span class="mu">(дедлайн ' + esc(bObj.deadline) + ')</span></div><div class="acts"><button type="button" class="b ok" data-dashunlock="' + esc(bObj.name) + '">🔓 Открыть доступ бариста</button></div></div>').join('') +
-          openIncs.slice(0, 5).map((inc) => '<div class="row" style="padding:6px 0"><div><b>🔧 ' + esc(inc.step) + '</b> <span class="tag no">' + esc(inc.priority || '24ч') + '</span><div class="mu" style="font-size:12.5px">' + esc(inc.text) + ' · Сообщил: ' + esc(inc.who || 'Бариста') + '</div></div><div class="acts"><button type="button" class="b ok" data-dashresolve="' + esc(inc.id) + '">✓ Решена</button></div></div>').join('') +
-        '</div>'
-      ) : '') +
+
     '</div>';
   const _dashEl = $('ownerSecDashboard');
   if (_dashEl && _dashEl._lastHtml !== _newDashHtml) {
@@ -753,11 +767,12 @@ function renderOwnerReportSection() {
         '<div><h2 style="margin:0">📊 Полный аналитический и финансовый отчёт (' + dmy(ownerRepFrom) + ' — ' + dmy(ownerRepTo) + ')</h2>' +
         '<div class="mu">Абсолютно все собираемые данные системы: P&amp;L (ОПиУ), касса и Z-отчёты, счётчики кофемашины, продажи и ТТК, фотоотчёты 6 чек-листов, ФОТ и KPI бариста, поломки и журнал аудита</div></div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
-          '<button type="button" class="b" data-orp="today">Сегодня</button>' +
+          '<button type="button" class="b" data-orp="today">День</button>' +
           '<button type="button" class="b" data-orp="yest">Вчера</button>' +
-          '<button type="button" class="b" data-orp="7">7 дней</button>' +
-          '<button type="button" class="b" data-orp="30">30 дней</button>' +
+          '<button type="button" class="b" data-orp="7">Неделя (7 дн.)</button>' +
           '<button type="button" class="b" data-orp="month">Месяц</button>' +
+          '<button type="button" class="b" data-orp="quarter">Квартал (90 дн.)</button>' +
+          '<button type="button" class="b" data-orp="30">30 дней</button>' +
           '<input type="date" id="oRepFrom" value="' + esc(ownerRepFrom) + '" style="width:auto;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">' +
           '<span>—</span>' +
           '<input type="date" id="oRepTo" value="' + esc(ownerRepTo) + '" style="width:auto;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">' +
@@ -774,7 +789,20 @@ function renderOwnerReportSection() {
         '<div style="padding:13px;border-radius:14px;border:1.5px solid ' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ';background:color-mix(in srgb,' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ' 6%,var(--surface))"><div class="mu" style="font-weight:700">4. Чистая прибыль (Net Profit)</div><div style="font-size:23px;font-weight:800;color:' + (fin.netProfit >= 0 ? 'var(--good)' : 'var(--bad)') + ';margin:4px 0">' + rub(fin.netProfit) + '</div><div class="mu">Рентабельность: <b>' + (fin.netMarginPct || 0) + '%</b> · Потери списаний: ' + rub(fin.wasteCost) + '</div><div>' + _dlt(fin.netProfit, prevFin && prevFin.netProfit) + '</div></div>' +
         '<div style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg)"><div class="mu">5. Гости, Чеки и CAC</div><div style="font-size:22px;font-weight:800;margin:4px 0">' + fin.checksTotal + ' чек. · ' + rub(fin.avgCheck) + '</div><div class="mu">Ср. выручка смены: ' + rub(fin.avgRevPerShift || 0) + ' · CAC: ' + rub(fin.cac) + '</div><div>' + _dlt(fin.checksTotal, prevFin && prevFin.checksTotal) + ' <span class="mu">(чеки)</span></div></div>' +
       '</div>' +
-      '<div class="rep-hl"><b>Главное за период:</b> ' + _highlights.join(' · ') + '</div>' +
+      '<div class="rep-hl"><b>Главное за период:</b> ' + _highlights.join(' · ') + ' · <span class="mu">Сформировано: ' + dmy(_isoToday()) + '</span></div>' +
+      '<div class="rep-cat-tabs" id="repCategoryTabs" role="tablist" aria-label="9 категорий отчётов (Часть 6.2)">' +
+        [
+          ['all', '9. Сводный отчёт (Все)'],
+          ['fin', '1. Финансовый отчёт'],
+          ['sales', '2. Отчёт по продажам'],
+          ['cash', '3. Отчёт по кассе'],
+          ['shifts', '4. Отчёт по сменам'],
+          ['staff', '5. Отчёт по персоналу'],
+          ['exp', '6. Отчёт по расходам'],
+          ['warehouse', '7. Отчёт по складу'],
+          ['inc', '8. Отчёт по инцидентам']
+        ].map((c) => '<button type="button" data-repcat="' + c[0] + '" class="' + ((window._activeRepCat || 'all') === c[0] ? 'on' : '') + '">' + c[1] + '</button>').join('') +
+      '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:10px;font-size:12.5px">' +
         '<div style="padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--good) 45%,var(--line));background:color-mix(in srgb,var(--good) 7%,var(--bg))"><b>🟢 ФАКТИЧЕСКИЕ ПОКАЗАТЕЛИ (Касса и Расходы):</b><div class="mu" style="margin-top:3px">Выручка: <b>' + rub(fin.revenue) + '</b> (Нал: ' + rub(fin.cashTotal) + ' · Безнал: ' + rub(fin.cardTotal) + ') · Внесённые расходы OpEx: <b>' + rub(fin.nonPayrollOpex) + '</b> · Списания: <b>' + rub(fin.wasteCost) + '</b></div></div>' +
         '<div style="padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)"><b>🔵 РАСЧЁТНЫЕ ПОКАЗАТЕЛИ (ТТК и смены):</b><div class="mu" style="margin-top:3px">Средний чек: <b>' + rub(fin.avgCheck) + '</b> · Себестоимость COGS по ТТК: <b>' + rub(fin.cogs) + '</b> · Расчётный ФОТ (' + (fin.shiftsCount || 0) + ' см.): <b>' + rub(fin.effectivePayroll) + '</b></div></div>' +
@@ -1135,6 +1163,7 @@ document.addEventListener('click', (e) => {
     else if (p === '7') ownerRepFrom = _shiftIso(t, -6);
     else if (p === '30') ownerRepFrom = _shiftIso(t, -29);
     else if (p === 'month') ownerRepFrom = t.slice(0, 8) + '01';
+    else if (p === 'quarter') ownerRepFrom = _shiftIso(t, -89);
     renderOwnerReportSection();
     return;
   }
@@ -1448,7 +1477,7 @@ if (typeof document !== 'undefined' && document.addEventListener) {
 setTimeout(syncOwnerCombinedNavHighlight, 60);
 
 
-/* === COFFEE ILLY v70: ПЕРЕКЛЮЧАТЕЛЬ РОЛЕВЫХ ПРОСТРАНСТВ (АДМИНИСТРАТОР 11 РАЗДЕЛОВ / ВЛАДЕЛЕЦ 9 РАЗДЕЛОВ), БОКОВАЯ ПАНЕЛЬ ДЕТАЛЕЙ И РЕЖИМЫ ФИНАНСОВ === */
+/* === COFFEE ILLY v84: ПЕРЕКЛЮЧАТЕЛЬ РОЛЕВЫХ ПРОСТРАНСТВ (АДМИНИСТРАТОР 11 РАЗДЕЛОВ / ВЛАДЕЛЕЦ 9 РАЗДЕЛОВ), БОКОВАЯ ПАНЕЛЬ ДЕТАЛЕЙ И РЕЖИМЫ ФИНАНСОВ === */
 var activeWorkspaceRole = 'owner';
 
 function updateOwnerDataSyncBadge() {

@@ -228,9 +228,18 @@
     getExpectedOwnerPinHash(dbOpt) {
       const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
       const sPin = ((db && db.settings) || []).find((x) => x.id === 'ADMIN_PIN');
-      const raw = (sPin && sPin.value ? String(sPin.value).trim() : '') || (db && db.adminPin) || '';
+      let raw = (sPin && sPin.value ? String(sPin.value).trim() : '') || (db && db.adminPin) || '';
+      if (!raw || raw.indexOf('••') !== -1) {
+        try {
+          const savedLoc = localStorage.getItem('coffee_illy_pin') || '';
+          if (savedLoc && savedLoc.indexOf('••') === -1) raw = savedLoc;
+        } catch (_) {}
+      }
       if (raw && raw.indexOf('••') === -1) return window.coffeeHashPin(raw);
-      return window.COFFEE_DEFAULT_OWNER_PIN_HASH || window.coffeeHashPin('1234');
+      return '';
+    },
+    isSetupRequired(dbOpt) {
+      return !this.getExpectedOwnerPinHash(dbOpt);
     },
     verifyOwnerPin(pinOrHash, dbOpt) {
       const rl = window.coffeeRateLimiter.check('owner_admin');
@@ -238,6 +247,7 @@
       const cand = window.coffeeHashPin(pinOrHash);
       if (!cand) return false;
       const expected = this.getExpectedOwnerPinHash(dbOpt);
+      if (!expected) return false;
       const ok = cand === expected;
       if (!ok) {
         window.coffeeRateLimiter.recordFailure('owner_admin');
@@ -295,10 +305,6 @@
           if (found.pin && String(found.pin).indexOf('••') === -1) return window.coffeeHashPin(found.pin);
         }
       }
-      const defPins = { 'Соня': '1111', 'Алина': '2222', 'Настя': '3333', 'Максим': '4444' };
-      if (!db.factoryPinsDisabled && cleanName && defPins[cleanName]) {
-        return window.coffeeHashPin(defPins[cleanName]);
-      }
       return '';
     },
     getSession(preferRole) {
@@ -334,9 +340,8 @@
       const sess = this.getSession();
       if (!sess) return false;
       const expectedOwner = this.getExpectedOwnerPinHash(dbOpt);
-      const defaultHash = window.COFFEE_DEFAULT_OWNER_PIN_HASH || window.coffeeHashPin('1234');
       if (requiredRole === 'admin') {
-        return sess.role === 'admin' && sess.pinHash === expectedOwner;
+        return sess.role === 'admin' && (!!expectedOwner ? sess.pinHash === expectedOwner : !!sess.pinHash);
       }
       return true;
     },
@@ -415,12 +420,19 @@
       return { ok: true, sessionToken: sess.token, staffName: cleanName, pinHash };
     },
     async setupInitialCredentials(newAdminPin, staffPinsMap) {
+      const rawStr = String(newAdminPin || '').trim();
+      const stripped = rawStr.indexOf('sha256:') === 0 ? rawStr.slice(7) : rawStr;
+      if (rawStr && !/^[a-f0-9]{64}$/i.test(stripped) && stripped.length < 6) {
+        return { ok: false, error: 'VALIDATION_FAILED: PIN владельца должен содержать минимум 6 цифр' };
+      }
       const db = typeof getUDB === 'function' ? getUDB() : {};
       const adminHash = window.coffeeHashPin(newAdminPin);
       if (adminHash) {
         db.adminPin = 'sha256:' + adminHash;
         const sRow = (db.settings || []).find((x) => x.id === 'ADMIN_PIN');
         if (sRow) sRow.value = 'sha256:' + adminHash;
+        else if (Array.isArray(db.settings)) db.settings.push({ id: 'ADMIN_PIN', label: 'Код доступа', value: 'sha256:' + adminHash, secret: true });
+        this.createLocalSession('admin', 'Администратор', adminHash);
       }
       if (staffPinsMap && typeof staffPinsMap === 'object' && Array.isArray(db.staff)) {
         db.staff.forEach((s) => {

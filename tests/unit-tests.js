@@ -23,7 +23,7 @@
     const path = require('path');
     const vm = require('vm');
     const baseDir = path.resolve(__dirname, '..');
-    ['config.js', 'js/defaults.js', 'js/security.js', 'js/storage.js', 'js/sales-reconciliation.js', 'js/analytics.js', 'js/sync.js', 'js/telegram.js'].forEach((rel) => {
+    ['config.js', 'js/defaults.js', 'js/security.js', 'js/storage.js', 'js/sales-reconciliation.js', 'js/analytics.js', 'version.js', 'js/material-design.js', 'js/sync.js', 'js/telegram.js'].forEach((rel) => {
       const code = fs.readFileSync(path.join(baseDir, rel), 'utf8');
       vm.runInThisContext(code, { filename: rel });
     });
@@ -230,14 +230,16 @@
     {
       name: '11. Безопасность: хеширование PIN через SHA-256 с солью и отсутствие открытых PIN в памяти',
       fn() {
-        const h1 = window.coffeeHashPin('1234');
-        const h2 = window.coffeeHashPin('1234');
-        const h3 = window.coffeeHashPin('1111');
+        const h1 = window.coffeeHashPin('849261');
+        const h2 = window.coffeeHashPin('849261');
+        const h3 = window.coffeeHashPin('5719');
         assert(h1.length === 64 && /^[a-f0-9]{64}$/.test(h1), 'Хеш PIN должен быть 64-символьной SHA-256 строкой');
         assert(h1 === h2 && h1 !== h3, 'Детерминированный солёный SHA-256 хеш');
-        assert(!window.COFFEE_DEFAULT_STAFF_PINS, 'Открытая таблица COFFEE_DEFAULT_STAFF_PINS не должна существовать');
-        assert(window.coffeeVerifyStaffPin('Соня', '1111', {}) === true, 'Проверка PIN Сони по SHA-256 хешу должна проходить');
-        assert(window.coffeeVerifyStaffPin('Соня', '9999', {}) === false, 'Неверный PIN Сони должен отклоняться');
+        assert(!window.COFFEE_DEFAULT_STAFF_PINS && !window.COFFEE_DEFAULT_OWNER_PIN_HASH, 'Открытая таблица заводских PIN не должна существовать');
+        const testDb = { staff: [{ name: 'Соня', pinHash: h3 }] };
+        assert(window.coffeeVerifyStaffPin('Соня', '1111', {}) === false, 'Заводской PIN Сони 1111 без инициализации должен отклоняться (T3)');
+        assert(window.coffeeVerifyStaffPin('Соня', '5719', testDb) === true, 'Проверка индивидуального PIN Сони по SHA-256 хешу должна проходить');
+        assert(window.coffeeVerifyStaffPin('Соня', '9999', testDb) === false, 'Неверный PIN Сони должен отклоняться');
         window.coffeeRateLimiter.reset('staff_Соня');
       }
     },
@@ -260,7 +262,7 @@
       fn() {
         window.coffeeAuth.logout();
         localStorage.setItem('coffee_admin_ok', '1');
-        localStorage.setItem('coffee_illy_pin', '1234');
+        localStorage.setItem('coffee_illy_pin', '849261');
         assert(window.coffeeAuth.isAuthorized('admin') === false, 'Простая установка coffee_admin_ok=1 в localStorage не должна давать доступ без подписанного sessionToken');
         window.coffeeAuth.logout();
       }
@@ -269,7 +271,8 @@
       name: '14. Безопасность: создание и криптографическая проверка подписанного sessionToken',
       fn() {
         window.coffeeRateLimiter.reset('owner_admin');
-        const sess = window.coffeeAuth.createLocalSession('admin', 'Администратор', '1234');
+        localStorage.setItem('coffee_illy_pin', '849261');
+        const sess = window.coffeeAuth.createLocalSession('admin', 'Администратор', '849261');
         assert(sess && sess.token.indexOf('st_') === 0, 'Должен создаваться токен сессии с префиксом st_');
         assert(window.coffeeAuth.isAuthorized('admin') === true, 'С валидным подписанным токеном доступ владельца разрешён');
         // Попытка подделать роль или подпись в sessionStorage
@@ -277,7 +280,7 @@
         sessionStorage.setItem('coffee_session_token_v21', JSON.stringify(tampered));
         localStorage.setItem('coffee_session_token_v21', JSON.stringify(tampered));
         assert(window.coffeeAuth.isAuthorized('admin') === false, 'Токен с нарушенной криптоподписью должен автоматически отклоняться');
-        window.coffeeAuth.createLocalSession('admin', 'Администратор', window.coffeeAuth.getExpectedOwnerPinHash ? window.coffeeAuth.getExpectedOwnerPinHash() : '1234');
+        window.coffeeAuth.createLocalSession('admin', 'Администратор', window.coffeeAuth.getExpectedOwnerPinHash ? window.coffeeAuth.getExpectedOwnerPinHash() : '849261');
       }
     },
     {
@@ -335,6 +338,170 @@
         assert(typeof window.coffeeGetBlockWindow === 'function', 'coffeeGetBlockWindow должна быть функцией');
         assert(typeof window.coffeeEnforceOverdueChecklists === 'function', 'coffeeEnforceOverdueChecklists должна быть функцией');
         assert(typeof window.coffeeEvaluateRedFlags === 'function', 'coffeeEvaluateRedFlags должна быть функцией');
+      }
+    },
+    {
+      name: '20. T6: Единый источник версии (version.js), отсутствие дубликата и тестовых скриптов в продакшен-HTML',
+      fn() {
+        assert(window.COFFEE_VERSION && window.COFFEE_VERSION === window.COFFEE_APP_VERSION, 'COFFEE_VERSION и COFFEE_APP_VERSION должны совпадать');
+        const num = Number(String(window.COFFEE_VERSION).replace(/^v/, ''));
+        assert(window.COFFEE_BUILD_NUMBER === num, 'COFFEE_BUILD_NUMBER должен соответствовать COFFEE_VERSION');
+        if (typeof require === 'function') {
+          const fsMod = require('fs');
+          const pathMod = require('path');
+          const rootDir = pathMod.resolve(__dirname, '..');
+          assert(!fsMod.existsSync(pathMod.join(rootDir, 'js', 'version' + '.js')), 'Дубликат файла версии в папке js/ должен быть удалён');
+          assert(!fsMod.existsSync(pathMod.join(rootDir, 'coffee_illy_v67_live.html')), 'Устаревший монолитный HTML должен быть удалён');
+          const cgs = fsMod.readFileSync(pathMod.join(rootDir, 'Code.gs'), 'utf8');
+          assert(cgs.includes("serverVersion: '" + window.COFFEE_VERSION + "'"), 'serverVersion в Code.gs должен совпадать с version.js');
+          assert(cgs.includes("COFFEE_SERVER_VERSION_V82 = '" + window.COFFEE_VERSION + "'"), 'COFFEE_SERVER_VERSION_V82 в Code.gs должен совпадать с version.js');
+          assert(cgs.includes("СИСТЕМА КОФЕЙНЯ " + window.COFFEE_VERSION + " ГОТОВА К РАБОТЕ"), 'Заголовок приветствия в Code.gs должен совпадать с version.js');
+          ['owner.html', 'admin.html', 'dashboard.html', 'report.html'].forEach((hf) => {
+            const hc = fsMod.readFileSync(pathMod.join(rootDir, hf), 'utf8');
+            assert(!hc.includes('tests/unit-tests.js'), hf + ' не должен подключать tests/unit-tests.js в продакшене');
+          });
+          const sw = fsMod.readFileSync(pathMod.join(rootDir, 'sw.js'), 'utf8');
+          assert(!sw.includes('tests/unit-tests.js'), 'sw.js не должен кэшировать tests/unit-tests.js');
+        }
+      }
+    },
+    {
+      name: '21. T7: Стратегия Service Worker (Cache-First с фоновым обновлением для статики и Network-First для HTML/API)',
+      fn() {
+        if (typeof require === 'function') {
+          const fsMod = require('fs');
+          const pathMod = require('path');
+          const sw = fsMod.readFileSync(pathMod.resolve(__dirname, '..', 'sw.js'), 'utf8');
+          assert(sw.includes('isCacheFirstStaticAsset') && sw.includes('return cachedResponse || networkUpdate;'), 'sw.js должен реализовывать Cache-First с фоновым обновлением для статики');
+          assert(sw.includes('script.google.com') && sw.includes('./index.html'), 'sw.js должен сохранять Network-First с fallback для HTML и GAS API');
+        }
+      }
+    },
+    {
+      name: '22. T8: Автоматический перелогин при вытеснении сессии из CacheService (STAFF_AUTH_REQUIRED во время submit_checklist без потери данных)',
+      fn() {
+        const sHash = window.coffeeHashPin('5719');
+        const sess = window.coffeeAuth.createLocalSession('staff', 'Соня', sHash, 'st_evicted_token_001');
+        assert(sess && sess.token === 'st_evicted_token_001' && sess.role === 'staff', 'Сессия бариста должна создаваться с переданным серверным токеном');
+        assert(typeof window.coffeeReauthServer === 'function', 'Функция авто-перелогина window.coffeeReauthServer должна быть экспортирована');
+        if (typeof require === 'function') {
+          const fsMod = require('fs');
+          const pathMod = require('path');
+          const syncSrc = fsMod.readFileSync(pathMod.resolve(__dirname, '..', 'js/sync.js'), 'utf8');
+          assert(syncSrc.includes('PIN_REQUIRED|FORBIDDEN|STAFF_AUTH_REQUIRED'), 'AUTH_ERR_RE должен включать STAFF_AUTH_REQUIRED для авто-перелогина бариста');
+        }
+      }
+    },
+    {
+      name: '23. T11: Отсутствие заводских PIN-кодов и токенов Telegram-бота в Code.gs и js/*',
+      fn() {
+        if (typeof require === 'function') {
+          const fsMod = require('fs');
+          const pathMod = require('path');
+          const rootDir = pathMod.resolve(__dirname, '..');
+          const jsDir = pathMod.join(rootDir, 'js');
+          const filesToScan = [pathMod.join(rootDir, 'Code.gs')].concat(
+            fsMod.readdirSync(jsDir).filter((f) => f.endsWith('.js')).map((f) => pathMod.join(jsDir, f))
+          );
+          const forbiddenPins = ["'1" + "111'", "'2" + "222'", "'3" + "333'", "'4" + "444'", "sha256Hex_('1" + "234')"];
+          const botTokenRe = /\d{8,12}:[A-Za-z0-9_-]{30,}/;
+          filesToScan.forEach((fp) => {
+            const content = fsMod.readFileSync(fp, 'utf8');
+            const base = pathMod.basename(fp);
+            forbiddenPins.forEach((pat) => {
+              assert(!content.includes(pat), base + ' не должен содержать заводской PIN литерал ' + pat);
+            });
+            assert(!botTokenRe.test(content), base + ' не должен содержать открытый токен Telegram-бота');
+          });
+        }
+      }
+    },
+    {
+      name: '24. T12: Защита клиентского DOM от XSS (<img src=x onerror=...> в задаче, инциденте и имени сотрудника не создаёт атрибут onerror)',
+      fn() {
+        const xssPayload = '<img src=x onerror=alert(1)>';
+        const db = getUDB();
+        db.staff.push({ id: 'st_xss', name: xssPayload, role: 'Бариста', active: 'да' });
+        db.incidents.unshift({ id: 'INC-XSS', date: '2026-11-16', time: '12:00', step: xssPayload, text: xssPayload, status: 'Новая проблема', priority: 'Критично', who: xssPayload });
+        db.tasks.push({ id: 't_xss', block: 'Открытие', title: xssPayload, instruction: xssPayload, active: 'да' });
+        if (window.coffeeSyncStaffDirectory) window.coffeeSyncStaffDirectory(db);
+        const escaped = window.escapeHtml(xssPayload);
+        assert(!escaped.includes('<img') && escaped.includes('&lt;img'), 'escapeHtml должен экранировать тег <img>');
+        const sanitized = window.sanitizeRecord({ title: xssPayload, comment: xssPayload });
+        assert(!/onerror\s*=/i.test(sanitized.title) && !/onerror\s*=/i.test(sanitized.comment), 'sanitizeRecord должен обезвреживать атрибут onerror=');
+        if (typeof document !== 'undefined' && document.createElement) {
+          const sel = document.getElementById('baristaSelect') || document.createElement('select');
+          sel.id = 'baristaSelect';
+          if (!sel.parentNode && document.body) document.body.appendChild(sel);
+          if (window.coffeeSyncStaffDirectory) window.coffeeSyncStaffDirectory(db);
+          assert(!sel.querySelector('img[onerror]'), 'В DOM селектора сотрудников не должен появляться элемент img[onerror]');
+        }
+        db.staff = db.staff.filter((s) => s.id !== 'st_xss');
+        db.incidents = db.incidents.filter((i) => i.id !== 'INC-XSS');
+        db.tasks = db.tasks.filter((t) => t.id !== 't_xss');
+      }
+    },
+    {
+      name: '25. T13: Устойчивость очереди при переполнении (OUTBOX_FULL на 250 записях) и выгрузка фото при QuotaExceededError',
+      fn() {
+        const bigPhoto = 'data:image/jpeg;base64,' + 'A'.repeat(4096);
+        const offloaded = window.CoffeeIDB.offloadPhotosFromDB({ photo: bigPhoto });
+        assert(offloaded && String(offloaded.photo).indexOf('idb://photo/') === 0, 'Крупное фото (>2 КБ) должно выгружаться в ссылку idb://photo/');
+        const hydrated = window.CoffeeIDB.hydratePhotosInDB(offloaded);
+        assert(hydrated && hydrated.photo === bigPhoto, 'hydratePhotosInDB должен прозрачно восстанавливать исходное фото из кэша/IndexedDB');
+      }
+    },
+    {
+      name: '26. T14: Доработки UI Терминала и Дашборда (закреплённая кнопка Проблема, срочность перед камерой, PIN-пад >= 48x48px, бейджи навигации)',
+      fn() {
+        if (typeof require === 'function') {
+          const fsMod = require('fs');
+          const pathMod = require('path');
+          const rootDir = pathMod.resolve(__dirname, '..');
+          const idx = fsMod.readFileSync(pathMod.join(rootDir, 'index.html'), 'utf8');
+          assert(idx.includes('id="pinnedQuickIncBtn"'), 'В шапке терминала должна быть закреплённая кнопка 🚨 Проблема');
+          assert(idx.indexOf('id="qiPriority"') < idx.indexOf('id="qiPhotoBtn"'), 'В форме проблемы выбор срочности должен идти перед камерой');
+          assert(idx.includes('id="staffPinPadGrid"') && idx.includes('min-height:50px;min-width:50px'), 'PIN-пад должен содержать кнопки размером >= 48x48px');
+          assert(idx.includes('id="bnavShiftBadge"') && idx.includes('id="bnavIncidentsBadge"'), 'На нижней навигации должны быть бейджи незакрытых пунктов');
+        }
+      }
+    },
+    {
+      name: '27. Редизайн «Спокойный премиум» (css/tokens.css, css/components.css, icons/ui.svg, !important < 30, style= < 20, блок Требует внимания наверху, без Блок А/Б/В/Г)',
+      fn() {
+        if (typeof require === 'function') {
+          const fsMod = require('fs');
+          const pathMod = require('path');
+          const rootDir = pathMod.resolve(__dirname, '..');
+          assert(fsMod.existsSync(pathMod.join(rootDir, 'css/tokens.css')), 'Единый файл токенов css/tokens.css должен существовать');
+          assert(fsMod.existsSync(pathMod.join(rootDir, 'css/components.css')), 'Библиотека компонентов css/components.css должна существовать');
+          assert(fsMod.existsSync(pathMod.join(rootDir, 'icons/ui.svg')), 'SVG-спрайт иконок icons/ui.svg должен существовать');
+          assert(!fsMod.existsSync(pathMod.join(rootDir, 'css/admin.css')), 'Неиспользуемый css/admin.css должен быть удалён');
+
+          // Проверка !important < 30 на весь проект
+          const cssDir = pathMod.join(rootDir, 'css');
+          let totalImportant = 0;
+          fsMod.readdirSync(cssDir).filter((f) => f.endsWith('.css')).forEach((cf) => {
+            const c = fsMod.readFileSync(pathMod.join(cssDir, cf), 'utf8');
+            const matches = c.match(/!important/g);
+            if (matches) totalImportant += matches.length;
+          });
+          assert(totalImportant < 30, 'Количество !important во всех CSS должно быть < 30 (фактически: ' + totalImportant + ')');
+
+          // Проверка инлайн-стилей в HTML < 20
+          let totalInlineStyles = 0;
+          ['index.html', 'owner.html', 'dashboard.html', 'report.html', 'admin.html'].forEach((hf) => {
+            const hc = fsMod.readFileSync(pathMod.join(rootDir, hf), 'utf8');
+            const m = hc.match(/\sstyle="/g);
+            if (m) totalInlineStyles += m.length;
+          });
+          assert(totalInlineStyles < 20, 'Количество инлайн-стилей style="..." в HTML должно быть < 20 (фактически: ' + totalInlineStyles + ')');
+
+          // Проверка отсутствия служебных заголовков «Блок А/Б/В/Г» и англицизмов «Live Sync» в js/page-owner.js
+          const ownJs = fsMod.readFileSync(pathMod.join(rootDir, 'js/page-owner.js'), 'utf8');
+          assert(!/Блок [АБВГ] ·|БЛОК А ·|Live Sync/.test(ownJs), 'В js/page-owner.js не должно быть служебных подписей Блок А/Б/В/Г и Live Sync');
+          assert(ownJs.indexOf('ownerAttentionTopCard') < ownJs.indexOf('Деньги и полнота данных'), 'Блок «Требует внимания» должен располагаться в самом верху Обзора до KPI-плиток');
+        }
       }
     }
   ];

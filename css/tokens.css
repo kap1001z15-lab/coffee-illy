@@ -1,0 +1,151 @@
+/* =========================================================================
+   COFFEE ILLY — ЕДИНЫЙ ИСТОЧНИК ДИЗАЙН-ТОКЕНОВ (css/tokens.css — v86)
+   Направление «Спокойный премиум» (§2–§3 ТЗ):
+   - Светлая тема по умолчанию (#F7F5F0 бумага, #262522 эспрессо-текст, #795548 акцент)
+   - Шкала типографики строго из 7 значений (--fs-display .. --fs-overline)
+   - Сетка отступов 4 px (--sp-1 .. --sp-7), 3 радиуса (--r-sm, --r-md, --r-full), 2 тени
+   - Обратная совместимость через алиасы (--brew, --muted, --md-sys-*)
+   ========================================================================= */
+
+:root,
+[data-theme="light"] {
+  /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
+  --bg: #F7F5F0;
+  --surface: #FFFFFF;
+  --surface-2: #F1EEE7;
+  --line: #E6E1D8;
+  --ink: #262522;
+  --ink-2: #5E5A53; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
+  --accent: #795548;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #EFE6E1;
+
+  --good: #2F7A5E;
+  --good-soft: #E4F1EB;
+  --warn: #9A6A14;
+  --warn-soft: #FBF0DA;
+  --bad: #B4483C;
+  --bad-soft: #F8E6E3;
+  --info: #4B7AA6;
+  --info-soft: #E5EEF6;
+
+  /* §3.2 Шкала типографики (строго 7 размеров в rem) */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-d: var(--font);
+  --font-m: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --fs-display: 2rem;      /* 32px / 1.15, 700, KPI-числа */
+  --lh-display: 1.15;
+  --fs-h1: 1.5rem;         /* 24px / 1.25, 700, заголовок экрана */
+  --lh-h1: 1.25;
+  --fs-h2: 1.125rem;       /* 18px / 1.3, 600, заголовок карточки/секции */
+  --lh-h2: 1.3;
+  --fs-body-lg: 1rem;      /* 16px / 1.5, 400, основной текст бариста */
+  --lh-body-lg: 1.5;
+  --fs-body: 0.875rem;     /* 14px / 1.5, 400, основной текст владельца, таблицы */
+  --lh-body: 1.5;
+  --fs-caption: 0.75rem;   /* 12px / 1.4, 500, подписи, метки */
+  --lh-caption: 1.4;
+  --fs-overline: 0.6875rem;/* 11px / 1.2, 600, uppercase, letter-spacing .06em */
+  --lh-overline: 1.2;
+
+  /* §3.3 Отступы (шаг 4 px) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* §3.3 Радиусы (всего три + верх шторки) */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-full: 999px;
+  --r-sheet: 24px;
+
+  /* §3.3 Тени (всего две) */
+  --shadow-1: 0 1px 2px rgb(38 37 34 / .05), 0 8px 24px -12px rgb(38 37 34 / .10);
+  --shadow-2: 0 16px 40px -12px rgb(38 37 34 / .22), 0 4px 12px rgb(38 37 34 / .08);
+
+  /* Размеры зон касания и контейнеров (§3.3) */
+  --touch-min: 48px;
+  --touch-barista-lg: 56px;
+  --touch-owner-sm: 36px;
+  --header-barista-h: 56px;
+  --header-owner-h: 64px;
+  --bottom-nav-h: 64px;
+  --owner-rail-w: 240px;
+
+  /* Алиасы обратной совместимости для существующих JS-скриптов и тестов */
+  --muted: var(--ink-2);
+  --brew: var(--accent);
+  --crema: var(--accent-soft);
+  --cream: var(--surface-2);
+  --espresso: var(--ink);
+  --chip: var(--surface-2);
+  --card: var(--surface);
+  --card2: var(--surface-2);
+  --shadow: var(--shadow-1);
+  --r: var(--r-md);
+
+  --md-sys-color-primary: var(--accent);
+  --md-sys-color-on-primary: var(--accent-ink);
+  --md-sys-color-primary-container: var(--accent-soft);
+  --md-sys-color-on-primary-container: var(--ink);
+  --md-sys-color-secondary: var(--ink-2);
+  --md-sys-color-secondary-container: var(--surface-2);
+  --md-sys-color-on-secondary-container: var(--ink);
+  --md-sys-color-background: var(--bg);
+  --md-sys-color-on-background: var(--ink);
+  --md-sys-color-surface: var(--surface);
+  --md-sys-color-on-surface: var(--ink);
+  --md-sys-color-surface-variant: var(--surface-2);
+  --md-sys-color-on-surface-variant: var(--ink-2);
+  --md-sys-color-surface-container-lowest: var(--surface);
+  --md-sys-color-surface-container-low: var(--surface);
+  --md-sys-color-surface-container: var(--surface-2);
+  --md-sys-color-surface-container-high: var(--surface-2);
+  --md-sys-color-surface-container-highest: var(--line);
+  --md-sys-color-outline: var(--line);
+  --md-sys-color-outline-variant: var(--line);
+  --md-sys-color-error: var(--bad);
+  --md-sys-color-error-container: var(--bad-soft);
+  --md-sys-color-success: var(--good);
+  --md-sys-color-success-container: var(--good-soft);
+  --md-sys-color-warning: var(--warn);
+  --md-sys-color-warning-container: var(--warn-soft);
+  --md-sys-elevation-1: var(--shadow-1);
+  --md-sys-elevation-2: var(--shadow-1);
+  --md-sys-elevation-3: var(--shadow-2);
+  --md-sys-shape-corner-sm: var(--r-sm);
+  --md-sys-shape-corner-md: var(--r-md);
+  --md-sys-shape-corner-lg: var(--r-md);
+  --md-sys-shape-corner-xl: 28px;
+  --md-sys-shape-corner-full: var(--r-full);
+}
+
+[data-theme="dark"] {
+  /* §3.1 Палитра тёмной темы */
+  --bg: #141413;
+  --surface: #1E1D1B;
+  --surface-2: #262522;
+  --line: #34322E;
+  --ink: #F5F3EE;
+  --ink-2: #B2AEA5; /* Контраст >= 6.8:1 на #1E1D1B (WCAG AA) */
+  --accent: #C49A85;
+  --accent-ink: #1B1410;
+  --accent-soft: rgb(196 154 133 / .16);
+
+  --good: #52B788;
+  --good-soft: rgb(82 183 136 / .16);
+  --warn: #E0A458;
+  --warn-soft: rgb(224 164 88 / .16);
+  --bad: #E07A6F;
+  --bad-soft: rgb(224 122 111 / .16);
+  --info: #7BA7CC;
+  --info-soft: rgb(123 167 204 / .16);
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / .28), 0 8px 24px -12px rgb(0 0 0 / .45);
+  --shadow-2: 0 18px 44px -12px rgb(0 0 0 / .65), 0 4px 14px rgb(0 0 0 / .35);
+}

@@ -738,7 +738,7 @@ window.saveUDB = saveUDB;
           const curVal = sel.value;
           const isPinModal = selId === 'staffPinUserSelect';
           sel.innerHTML = activeNames.map((nm) => (
-            '<option value="' + nm.replace(/"/g, '&quot;') + '">' + (isPinModal ? '👤 ' : '') + nm + '</option>'
+            '<option value="' + (window.escapeHtml ? window.escapeHtml(nm) : nm) + '">' + (isPinModal ? '👤 ' : '') + (window.escapeHtml ? window.escapeHtml(nm) : nm) + '</option>'
           )).join('');
           if (curVal && activeNames.indexOf(curVal) >= 0) sel.value = curVal;
         });

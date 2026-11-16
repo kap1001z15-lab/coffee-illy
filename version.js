@@ -1,11 +1,13 @@
-/* ЕДИНСТВЕННОЕ место с номером версии. Меняйте командой: node tools/bump-version.js 53
-   Используется страницами (очистка старых кэшей) и sw.js (имя кэша через importScripts). */
+/* ЕДИНЫЙ ИСТОЧНИК ВЕРСИИ ПРИЛОЖЕНИЯ COFFEE ILLY (v86)
+   Используется всеми HTML-страницами, модулями JS и Service Worker (sw.js). */
 (function (g) {
-  g.COFFEE_VERSION = 'v77';
+  g.COFFEE_VERSION = 'v86';
+  g.COFFEE_APP_VERSION = 'v86';
+  g.COFFEE_BUILD_NUMBER = 86;
+  g.COFFEE_DESIGN_SYSTEM = 'Material Design 3 (Coffee Illy Premium v86)';
   g.COFFEE_CACHE_NAME = 'kofeinya-enterprise-' + g.COFFEE_VERSION;
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
-    /* При смене версии один раз удаляем старые кэши (в т.ч. в Telegram WebView) и обновляем сервис-воркер. */
     if (localStorage.getItem('coffee_sw_ver') === g.COFFEE_VERSION) return;
     localStorage.setItem('coffee_sw_ver', g.COFFEE_VERSION);
     if (typeof caches !== 'undefined' && caches.keys) {

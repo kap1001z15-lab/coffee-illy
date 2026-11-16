@@ -1,5 +1,5 @@
 /* Стили страницы admin.html (v21 Enterprise) */
-html.gate body>*:not(#gate){display:none!important}
+html.gate body>*:not(#gate){display:none}
 /* === v12 PRO UI/UX COMMERCIAL DESIGN SYSTEM === */
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -49,7 +49,7 @@ html.gate body>*:not(#gate){display:none!important}
   border-radius: 12px;
   background: color-mix(in srgb, var(--crema, #c89b6d) 10%, var(--bg));
   border: 1px solid var(--line);
-  font-size: 13px;
+  font-size: var(--fs-body);
 }
 .pro-progress-bar {
   flex: 1;
@@ -106,7 +106,7 @@ html.gate body>*:not(#gate){display:none!important}
   border: 1px solid var(--line);
   background: var(--surface, var(--card, #fff));
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 600;
   cursor: pointer;
 }
@@ -120,7 +120,7 @@ html.gate body>*:not(#gate){display:none!important}
 --shadow:0 1px 2px rgba(23,35,38,.05),0 14px 30px -18px rgba(23,35,38,.35);--font-d:"Bricolage Grotesque",system-ui,sans-serif;--w:860px;color-scheme:light}
 :root[data-theme=dark]{color-scheme:dark;--bg:#12191b;--surface:#1b2528;--ink:#e8eff0;--muted:#8fa3a8;--line:#2c3a3e;--brew:#b98a64;--crema:#e0a76a;--good:#4cc38a;--bad:#ff7a5f;--warn:#e5b04d;--shadow:0 1px 0 rgba(255,255,255,.03),0 14px 30px -18px rgba(0,0,0,.7)}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#12191b;--surface:#1b2528;--ink:#e8eff0;--muted:#8fa3a8;--line:#2c3a3e;--brew:#b98a64;--crema:#e0a76a;--good:#4cc38a;--bad:#ff7a5f;--warn:#e5b04d;--shadow:0 1px 0 rgba(255,255,255,.03),0 14px 30px -18px rgba(0,0,0,.7)}}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}[hidden]{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}[hidden]{display:none}
 body{margin:0;min-height:100vh;min-height:100dvh;color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:radial-gradient(900px 400px at 50% -120px,color-mix(in srgb,var(--crema) 22%,transparent),transparent),var(--bg);padding-bottom:env(safe-area-inset-bottom,0)}
 h1,h2,h3{font-family:var(--font-d);letter-spacing:-.02em;margin:0}
 button,input,select,textarea{font:inherit;color:var(--ink)}
@@ -137,7 +137,7 @@ h3{font-size:16px;margin:18px 0 6px}h3:first-child{margin-top:0}
 .row:first-of-type{border-top:0}
 .row .t{font-weight:600;overflow-wrap:anywhere}
 .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.b{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;min-height:38px}
+.b{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:7px 12px;font-weight:600;font-size: var(--fs-body);cursor:pointer;min-height:38px}
 .b:hover{border-color:var(--crema)}.b.del:hover{border-color:var(--bad);color:var(--bad)}.b.ok:hover{border-color:var(--good);color:var(--good)}
 .p{border:0;background:var(--brew);color:var(--surface);border-radius:12px;padding:0 18px;min-height:44px;font-weight:700;cursor:pointer}
 .p:disabled{opacity:.5;cursor:wait}
@@ -146,7 +146,7 @@ h3{font-size:16px;margin:18px 0 6px}h3:first-child{margin-top:0}
 .tbl{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.tbl th,.tbl td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--line)}.tbl th:first-child,.tbl td:first-child{text-align:left}.tbl th{color:var(--muted);font-weight:600}
 .sx{overflow-x:auto}
 .top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
-.fld{margin-top:12px}.fld label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.fld{margin-top:12px}.fld label{display:block;font-size: var(--fs-body);color:var(--muted);margin-bottom:4px}
 .fld input,.fld select,.fld textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
 .set{padding:14px 0;border-top:1px solid var(--line)}.set:first-of-type{border-top:0}
 .set .line{display:flex;gap:8px;margin-top:8px}.set input{flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
@@ -157,11 +157,11 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .app-header{position:relative;z-index:20;color:var(--cream);background:linear-gradient(160deg,#2e1b11,#5a3a29);border-radius:0 0 24px 24px;box-shadow:0 10px 30px -14px rgba(0,0,0,.55);padding:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px) + 14px) 16px 14px}
 .app-header .wrap{max-width:var(--w);margin:0 auto}
 .app-header .brand{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.app-header h1{font-size:20px;display:flex;align-items:center;gap:8px;color:var(--cream)}.app-header h1 svg{width:26px;height:26px}
-.app-header .sub{color:rgba(246,236,226,.68);font-size:13px}
+.app-header h1{font-size: var(--fs-h2);display:flex;align-items:center;gap:8px;color:var(--cream)}.app-header h1 svg{width:26px;height:26px}
+.app-header .sub{color:rgba(246,236,226,.68);font-size: var(--fs-body)}
 .app-header .theme-btn{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:var(--cream);border-radius:12px;width:42px;height:42px;font-size:18px;cursor:pointer}
 .app-header .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:rgba(255,255,255,.1);padding:4px;border-radius:16px;margin-top:14px;max-width:480px}
-.app-header .tabs a{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size:13px;text-decoration:none}
+.app-header .tabs a{display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:12px;color:rgba(246,236,226,.8);font-weight:600;font-size: var(--fs-body);text-decoration:none}
 .app-header .tabs a.on{background:var(--cream);color:var(--espresso)}
 @media(max-width:400px){.app-header .tabs a{font-size:12px}}
 
@@ -181,9 +181,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     .file:hover, .drop:hover { border-color:var(--brew); background:color-mix(in srgb, var(--crema) 8%, var(--bg)); }
   }
   .file.dragover, .drop.dragover {
-    border-style:solid !important;
-    border-color:var(--good) !important;
-    background:color-mix(in srgb, var(--good) 12%, var(--bg)) !important;
+    border-style:solid;
+    border-color:var(--good);
+    background:color-mix(in srgb, var(--good) 12%, var(--bg));
     transform:scale(1.01);
   }
 
@@ -213,7 +213,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     .app-header .brand { flex:1 1 auto; }
     .app-header .tabs, .app-header .nav-bar { margin-top:0; }
     .app-header .dp, .app-header .sub-bar { margin-top:0; width:auto; }
-    .k, .k4 { grid-template-columns:repeat(4, 1fr) !important; gap:16px; }
+    .k, .k4 { grid-template-columns:repeat(4, 1fr); gap:16px; }
     .dash-two-col { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
     .dash-two-col > .card { margin-top:16px; }
     .settings-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px 22px; }
@@ -224,7 +224,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     #tCashView, #cashView {
       display:grid; grid-template-columns:1.1fr 0.9fr; gap:18px; align-items:start;
     }
-    #tCashView > *, #cashView > * { margin-top:0 !important; }
+    #tCashView > *, #cashView > * { margin-top:0; }
     #tCashView > .panel:first-child, #cashView > .panel:first-child,
     #tSubmitCashBtn, #submitCashBtn { grid-column:1 / -1; }
   }
@@ -243,15 +243,15 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
       min-height:38px; font-size:12px; padding:0 4px; border-radius:10px;
     }
     .app-header .dp, .sub-bar { margin-top:8px; }
-    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size:13px; }
+    .app-header .dp button, .app-header .dp input, .dp button, .dp input { height:38px; font-size: var(--fs-body); }
     main { padding:12px 10px calc(36px + env(safe-area-inset-bottom,0px)); }
     .card, .panel { padding:15px 14px; border-radius:18px; margin-top:10px; }
     .big, .total { font-size:clamp(30px, 9vw, 40px); }
     .k, .k4 { grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:10px; }
     .k .card, .k4 .card { padding:13px; }
-    .k b, .k4 b { font-size:21px; }
+    .k b, .k4 b { font-size: var(--fs-h2); }
     .k6 { grid-template-columns:repeat(2, 1fr); gap:10px; }
-    .kpi .num { font-size:21px; }
+    .kpi .num { font-size: var(--fs-h2); }
     .seg, .seg-bar { scrollbar-width:none; -ms-overflow-style:none; }
     .seg::-webkit-scrollbar, .seg-bar::-webkit-scrollbar { display:none; }
     .adm-row, .inc-row, .row { grid-template-columns:1fr; gap:8px; }
@@ -279,113 +279,113 @@ html, body {
 /* 1. Широкоэкранный режим ПК (Desktop-First: от 1025px и выше) */
 @media (min-width: 1025px) {
   header.app-header .wrap, main, #main, .page-wrap {
-    max-width: 1380px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-    padding-left: 28px !important;
-    padding-right: 28px !important;
+    max-width: 1380px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 28px;
+    padding-right: 28px;
   }
   .gauge-trio {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 16px !important;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
   }
   .k, .k4 {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 14px !important;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
   }
   .dash-two-col {
-    display: grid !important;
-    grid-template-columns: 1.15fr 0.85fr !important;
-    gap: 18px !important;
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 18px;
     align-items: start;
   }
   .pro-matrix-grid {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 12px !important;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
   }
   .smart-grid {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 12px !important;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 @media (min-width: 1280px) {
   .k6 {
-    display: grid !important;
-    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-    gap: 12px !important;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
   }
 }
 /* 2. Планшеты и компактные ноутбуки (641px – 1024px) */
 @media (max-width: 1024px) {
   header.app-header .wrap {
-    flex-wrap: wrap !important;
-    gap: 10px !important;
+    flex-wrap: wrap;
+    gap: 10px;
   }
   .gauge-trio {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 12px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
   .k, .k4, .k6 {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
   .dash-two-col, .g2, .g11 {
-    grid-template-columns: 1fr !important;
-    gap: 14px !important;
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
   .pro-matrix-grid, .smart-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 }
 /* 3. Мобильные устройства (до 640px) */
 @media (max-width: 640px) {
   input, select, textarea {
-    font-size: 16px !important;
+    font-size: 16px;
   }
   header.app-header .wrap {
-    padding: 10px 12px !important;
+    padding: 10px 12px;
   }
   nav.tabs, .seg, .top-nav {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     max-width: 100%;
   }
   nav.tabs::-webkit-scrollbar, .seg::-webkit-scrollbar { display: none; }
   nav.tabs a, .seg button {
-    flex: 0 0 auto !important;
-    white-space: nowrap !important;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
   main, #main, .page-wrap {
-    padding: 12px !important;
+    padding: 12px;
   }
   .gauge-trio, .pro-matrix-grid, .smart-grid, .dash-two-col, .sim-controls {
-    grid-template-columns: 1fr !important;
-    gap: 10px !important;
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
   .k, .k4, .k6 {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
   .card, .panel {
-    padding: 14px !important;
-    border-radius: 16px !important;
+    padding: 14px;
+    border-radius: 16px;
   }
   .top, .top-bar, .row {
-    flex-wrap: wrap !important;
-    gap: 8px !important;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   dialog {
-    width: 95vw !important;
-    max-width: 95vw !important;
-    padding: 16px !important;
+    width: 95vw;
+    max-width: 95vw;
+    padding: 16px;
   }
 }
 
@@ -401,80 +401,80 @@ h1, h2, h3, p, span, b, label, td, th {
   word-wrap: break-word;
 }
 header.app-header .wrap {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 10px 14px !important;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
 }
 #ownerMainNav {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 6px !important;
-  max-width: 100% !important;
-  background: rgba(0, 0, 0, 0.22) !important;
-  padding: 4px !important;
-  border-radius: 14px !important;
-  margin-top: 0 !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 4px;
+  border-radius: 14px;
+  margin-top: 0;
 }
 #ownerMainNav button {
-  flex: 1 1 auto !important;
-  white-space: nowrap !important;
-  min-height: 38px !important;
-  padding: 7px 13px !important;
-  font-size: 13.5px !important;
-  line-height: 1.2 !important;
+  flex: 1 1 auto;
+  white-space: nowrap;
+  min-height: 38px;
+  padding: 7px 13px;
+  font-size: var(--fs-body);
+  line-height: 1.2;
   text-align: center;
 }
 /* 9 вкладок Управления: аккуратная плитка с переносом по строкам, чтобы ВСЕ вкладки были видны сразу без обрезания */
 #tabs.seg {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  overflow-x: visible !important;
-  gap: 6px !important;
-  padding: 6px !important;
+  display: flex;
+  flex-wrap: wrap;
+  overflow-x: visible;
+  gap: 6px;
+  padding: 6px;
 }
 #tabs.seg button {
-  flex: 1 1 auto !important;
-  white-space: nowrap !important;
-  padding: 8px 11px !important;
-  font-size: 13px !important;
-  min-height: 38px !important;
-  border-radius: 10px !important;
+  flex: 1 1 auto;
+  white-space: nowrap;
+  padding: 8px 11px;
+  font-size: var(--fs-body);
+  min-height: 38px;
+  border-radius: 10px;
   text-align: center;
 }
 .b, .p {
-  white-space: normal !important;
-  height: auto !important;
-  padding-top: 7px !important;
-  padding-bottom: 7px !important;
-  line-height: 1.25 !important;
+  white-space: normal;
+  height: auto;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  line-height: 1.25;
   text-align: center;
 }
 .row {
-  grid-template-columns: minmax(0, 1fr) auto !important;
-  gap: 10px 14px !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
 }
 @media (max-width: 720px) {
   .row {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
   .row .acts {
-    justify-content: flex-start !important;
+    justify-content: flex-start;
   }
 }
 .tbl th, .tbl td {
-  padding: 8px 7px !important;
-  font-size: 13px !important;
-  line-height: 1.3 !important;
+  padding: 8px 7px;
+  font-size: var(--fs-body);
+  line-height: 1.3;
   vertical-align: top;
 }
 .tbl th:first-child, .tbl td:first-child {
-  position: static !important;
+  position: static;
 }
 
 
-.net-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; font-size:11.5px; font-weight:700; vertical-align:middle; }
+.net-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; font-size: var(--fs-caption); font-weight:700; vertical-align:middle; }
 .net-pill.online { background:rgba(27,138,87,.22); color:#8ce5b8; border:1px solid rgba(76,195,138,.35); }
 .net-pill.offline { background:rgba(229,176,77,.22); color:#ffd480; border:1px solid rgba(229,176,77,.45); }
 .net-pill.syncing { background:rgba(92,164,242,.22); color:#a8d1ff; border:1px solid rgba(92,164,242,.45); }
@@ -486,7 +486,7 @@ header.app-header .wrap {
   padding: 8px 15px;
   border-radius: 12px;
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--fs-body);
   font-weight: 700;
   cursor: pointer;
 }
@@ -516,16 +516,16 @@ header.app-header .wrap {
 
 /* ===== Отчёты: закреплённая панель, сводка, печать ===== */
 .rep-sticky{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
-.rep-sticky-p{font-size:13.5px;white-space:nowrap}
+.rep-sticky-p{font-size: var(--fs-body);white-space:nowrap}
 .rep-toc{display:flex;gap:4px;flex-wrap:wrap;flex:1 1 auto}
-.rep-toc a{padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;text-decoration:none;color:var(--ink);background:var(--bg)}
+.rep-toc a{padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size: var(--fs-caption);text-decoration:none;color:var(--ink);background:var(--bg)}
 .rep-toc a:hover{border-color:var(--brew)}
 .rep-sticky-act{display:flex;gap:6px}
-.rep-sticky-act button{min-height:32px;padding:0 12px;font-size:12.5px}
-.rep-hl{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px dashed var(--line);font-size:13.5px;line-height:1.6}
+.rep-sticky-act button{min-height:32px;padding:0 12px;font-size: var(--fs-caption)}
+.rep-hl{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px dashed var(--line);font-size: var(--fs-body);line-height:1.6}
 @media print{
-  .rep-sticky,#ownerMainNav,.theme-btn,#ownerNotifBtn,[data-jumpadm],[data-orp],#oRepApplyBtn,#oRepCsvBtn,#oRepPrintBtn,#oRepFrom,#oRepTo{display:none!important}
+  .rep-sticky,#ownerMainNav,.theme-btn,#ownerNotifBtn,[data-jumpadm],[data-orp],#oRepApplyBtn,#oRepCsvBtn,#oRepPrintBtn,#oRepFrom,#oRepTo{display:none}
   .card{box-shadow:none;break-inside:avoid-page}
 }
 /* overflow-x:hidden на html/body делал body контейнером прокрутки и ломал sticky; clip не создаёт контейнер */
-html, body { overflow-x: clip !important; }
+html, body { overflow-x: clip; }

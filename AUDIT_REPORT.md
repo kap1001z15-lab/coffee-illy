@@ -1,4 +1,4 @@
-> **Актуальный статус релиза: v77 (14.11.2026)** — синхронизировано с `version.js`, `Code.gs` (`api: 2, serverVersion: 'v77'`) и `PATCH_NOTES.md`.
+> **Актуальный статус релиза: v86 (14.11.2026)** — синхронизировано с `version.js`, `Code.gs` (`api: 2, serverVersion: 'v86'`) и `PATCH_NOTES.md`.
 
 # Технический аудит репозитория «Кофейня»
 
@@ -145,3 +145,73 @@
 
 ### Ограничения
 Это фундаментальная часть рефакторинга, а не завершённая перепись всех бизнес-модулей. Не выполнялись реальные запросы к опубликованному Apps Script и реальной Google Spreadsheet. Существующие PIN fallback, отсутствие полноценной серверной staff-сессии и хранилища медиа остаются блокерами production. Перед запуском обязательно пройти `DEPLOYMENT_MIGRATION_V22.md` на копии таблицы.
+
+
+---
+
+## Аудит T12: Проверка всех мест `innerHTML` / `insertAdjacentHTML` в клиентских модулях (`v85`)
+
+| Файл | Строка | Поле / Данные | Статус до T12 | Статус в v85 |
+|---|---|---|---|---|
+| `js/page-terminal.js` | 391 | `bObj.openTime` в `tlBar.innerHTML` | Конкатенация без `esc()` | **Исправлено**: обёрнуто в `esc(bObj.openTime)` |
+| `js/page-terminal.js` | 530 | `s.name` в `#baristaSelect` (`sel.innerHTML`) | Значение атрибута экранировалось частично, текст `<option>` — без `esc()` | **Исправлено**: обёрнуто в `esc(s.name)` |
+| `js/page-terminal.js` | 546 | `s.name` в `#staffPinUserSelect` | Безопасно (`esc(s.name)`) | Безопасно |
+| `js/page-terminal.js` | 847–851 | `win.deadline`, `win.openTime` в `#deadlineBadge` | Конкатенация без `esc()` | **Исправлено**: обёрнуто в `esc(win.deadline)` и `esc(win.openTime)` |
+| `js/page-terminal.js` | 1002–1003 | `t.title`, `t.instruction` карточки шага | Безопасно (используется `textContent`) | Безопасно |
+| `js/page-terminal.js` | 1010 | `s.url` в `#inlineSamplePhotos` | Конкатенация `src` без `esc()` | **Исправлено**: обёрнуто в `esc(s.url)` |
+| `js/page-terminal.js` | 1080, 1699 | `src` в `#multiPhotoGallery` и `#qiMediaPreview` | Конкатенация `src` без `esc()` | **Исправлено**: обёрнуто в `esc(src)` |
+| `js/page-terminal.js` | 1525–1530 | `t.name`, `t.volume`, `t.category`, `shortDesc` в ТТК | Безопасно (`esc()`) | Безопасно |
+| `js/page-terminal.js` | 1580–1595 | `t.title`, `t.block`, `t.instruction`, `t.responsible` | Безопасно (`esc()`) | Безопасно |
+| `js/page-terminal.js` | 1641–1650 | `a.title`, `a.text`, `a.category`, `calDateStr` в Информировании | `calDateStr` без `esc()` | **Исправлено**: обёрнуто в `esc(calDateStr)` |
+| `js/page-terminal.js` | 2736–2737 | `top[i].name` в `#topList` | Безопасно (`b.textContent = top[i].name`) | Безопасно |
+| `js/page-terminal.js` | 3376–3390 | `inc.id`, `inc.step`, `inc.text`, `inc.priority` | Безопасно (`esc()`) | Безопасно |
+| `js/storage.js` | 476 | `nm` (`staff.name`) в `coffeeSyncStaffDirectory` | Конкатенация текста `<option>` без `escapeHtml()` | **Исправлено**: обёрнуто в `window.escapeHtml(nm)` |
+| `js/page-admin.js` | 60–65 | `field(f, v)` в модальных формах управления | Безопасно (`esc(val)`, `esc(o)`, `esc(f.label)`) | Безопасно |
+| `js/page-admin.js` | 86–970 | Таблицы задач, кассы, расходов, инцидентов, ТТК, журнала | Безопасно (все поля проходят через `esc()`) | Безопасно |
+| `js/page-owner.js` | 165–175, 230–270 | Уведомления владельца и медиа-модалка `openNtfModal` | Безопасно (`esc(n.title)`, `esc(n.text)`, `esc(m.url)`) | Безопасно |
+| `js/page-owner.js` | 595, 1062, 1499 | Дашборд, Отчёты, боковая панель деталей `wsDrawerBody` | Безопасно (все пользовательские поля экранируются через `esc()`) | Безопасно |
+
+
+---
+
+## Аудит T13: Размер и устойчивость `js/sync.js` и `js/storage.js` (`v85`)
+
+### 1. Обработка `QuotaExceededError` при записи в `localStorage` и fallback в `IndexedDB` (`js/storage.js`)
+- **Механизм выгрузки медиа (`CoffeeIDB.offloadPhotosFromDB`, строки 68–103)**: все строки `data:image/*` и `data:video/*` размером `>= 2048` байт автоматически заменяются на компактные ссылки `idb://photo/<sha256_20>` и асинхронно сохраняются в объектное хранилище `photos` базы `CoffeeEnterpriseDB_v21` в `IndexedDB`, а также кэшируются в оперативной памяти (`_photoMemCache`) для синхронного чтения.
+- **Двухуровневая защита в `saveUDB(db)` (строки 408–425)**:
+  1. Превентивный порог: если сериализованный JSON превышает `1 800 000` символов (~1.8 МБ), вызывается `CoffeeIDB.offloadPhotosFromDB(db)` до обращения к `localStorage.setItem`.
+  2. Перехват `QuotaExceededError` в `catch (qErr)`: при переполнении квоты `localStorage` база повторно сжимается через `offloadPhotosFromDB(db)`, сохраняется в `_memVaultFallback` (in-memory) и дублируется целиком в `IndexedDB` (`CoffeeOwnerPermanentVault -> snapshots -> master`, функция `_idbSaveVault`). При старте приложения `_idbRestoreVaultIfNeeded()` автоматически восстанавливает базу из `IndexedDB`, если `localStorage` был очищен браузером или WebView.
+
+### 2. Размер очереди офлайн-операций и поведение при переполнении (`OUTBOX_FULL` в `js/sync.js`)
+- **Лимит очереди (`_enqueueCoffeeOperation`, строки 2469–2477)**: очередь `coffee_api_outbox_v1` ограничена **250 операциями** (плюс дедупликация однотипных правок по `action:id` в `_deduplicateCoffeeOutbox`, строки 2486–2511).
+- **Поведение при переполнении (`OUTBOX_FULL`, строки 3241 и 3260)**: если в очереди уже накоплено 250 неподтверждённых операций, `_enqueueCoffeeOperation` возвращает `{ queued: false, pending: 250 }`, а `coffeeFetch` возвращает явную ошибку `{ ok: false, local: false, pending: false, error: "OUTBOX_FULL: Очередь офлайн-операций заполнена..." }` без молчаливой потери данных.
+- **Изоляция невалидных операций (`_isPermanentApiError` / `_moveToFailedOutbox`, строки 2480–2485, 2566–2571)**: операции, отклонённые сервером с `VALIDATION_FAILED` или превысившие `COFFEE_OUTBOX_MAX_ATTEMPTS = 30`, переносятся в карантин `coffee_api_outbox_failed_v1` (до 100 записей) и эмитируют событие `outbox_error`, не блокируя отправку следующих элементов очереди.
+
+### 3. Пересечения логики между `js/sync.js`, `js/analytics.js` и `js/defaults.js`
+- **Классификатор напитков (`classifyCoffee`)**: в `js/sync.js` (строка 183) присутствует компактный inline-fallback регулярных выражений на случай, если `window.CoffeeSalesReconciliation.classifyCoffee` (`js/sales-reconciliation.js`) ещё не инициализирован; основной расчёт делегируется в `CoffeeSalesReconciliation`.
+- **Справочники по умолчанию**: `js/sync.js` читает `window.COFFEE.DEFAULT_TASKS`, `window.COFFEE_DEFAULT_CHECKLIST_BLOCKS`, `window.COFFEE_DEFAULT_TTK` и `window.COFFEE_DEFAULT_GOOD_DEEDS` из `js/defaults.js`, а нормализацию схемы и расчёт планов делегирует в `window.coffeeEnsureV19Schema` и `window.coffeeGetDayPlan` из `js/analytics.js`.
+- **Вывод**: согласно регламенту T13, декомпозиция монолитного `js/sync.js` не проводится без отдельного согласования, чтобы сохранить 100% стабильность всех 23 E2E-тестов и офлайн-синхронизации.
+
+
+### Дополнение T12: Проверка `app.js` (2 присваивания `innerHTML`)
+| Файл | Строка | Поле / Данные | Статус |
+|---|---|---|---|
+| `app.js` | 25 | Статический шаблон диалога `#coffeeConfirmDlg`; текст `message` вставляется через `dlg.querySelector('#ccMsg').textContent = message` (строка 42) | Безопасно (`textContent`) |
+| `app.js` | 94 | Статическая форма входа `#gate`; текст ошибки пишется через `errBox.textContent = x.message` (строка 117) | Безопасно (`textContent`) |
+
+### Дополнение T13: Реестр функций > 150 строк и проверка `JSON.parse` / `localStorage` (`js/sync.js` 196 КБ, `js/page-terminal.js` 191 КБ, `js/storage.js` 36 КБ)
+| Модуль | Функция | Диапазон строк | Объём | Рекомендация (без рефакторинга в v85) |
+|---|---|---|---|---|
+| `js/sync.js` | `applyLocalMutation` | 961–1797 | 837 строк | Выделить таблицы обработчиков по доменам (`tasks`, `cash`, `incidents`, `warehouse`) при следующем мажорном цикле |
+| `js/sync.js` | `absorbServerData` | 605–955 | 351 строка | Вынести слияние разделов листа в отдельные чистые функции |
+| `js/sync.js` | `mergeOrSaveCashDay` | 179–457 | 279 строк | Объединить с `CoffeeSalesReconciliation` |
+| `js/sync.js` | `coffeeFetch` | 3173–3407 | 235 строк | Разделить ветки POST-мутаций и чтения |
+| `js/sync.js` | `_extractAndAbsorbSysTaskRow` | 2913–3108 | 196 строк | Оставить только для миграции старых таблиц |
+| `js/sync.js` | `buildReportResponse` | 1896–2048 | 153 строки | Перенести агрегацию в `js/analytics.js` |
+| `js/page-terminal.js` | `renderBatchSummaryUI` | 2229–2484 | 256 строк | Вынести генератор карточек смен в отдельный шаблон |
+| `js/page-terminal.js` | `captureQuickCash` | 2843–3068 | 226 строк | Разделить парсер текста и обновление UI |
+| `js/page-terminal.js` | `switchBaristaBottomNav` | 3503–3700 | 198 строк | Вынести переключение секций в карту состояний |
+| `js/page-terminal.js` | `renderShiftHistoryDialogV80` | 3752–3930 | 179 строк | Вынести рендер таймлайна истории смены |
+| `js/page-terminal.js` | `updateV70BaristaEnhancements` | 42–200 | 159 строк | Объединить с `updateMyShiftSummaryCard` |
+
+- **Проверка `JSON.parse` и `localStorage`**: все обращения к `localStorage` и `JSON.parse` в `js/sync.js`, `js/storage.js`, `js/security.js` и `app.js` обёрнуты в `try { ... } catch (_) {}` (в `app.js` используется безопасная обёртка `ls.get/set/del`, в `js/storage.js` — in-memory fallback `_memVaultFallback` и `IndexedDB` `CoffeeEnterpriseDB_v21`).

@@ -1,8 +1,27 @@
-# Единый журнал релизов и обновлений Coffee Illy ERP (Актуальная версия: v77)
+# Единый журнал релизов и обновлений Coffee Illy ERP (Актуальная версия: v86)
 
-- **Версия клиента**: `v77` (`version.js`, `index.html`, `owner.html`, `admin.html`, `dashboard.html`, `report.html`, `sw.js`)
-- **Версия серверного API (`Code.gs`)**: `v77` (`api: 2`)
-- **Дата релиза**: 14.11.2026
+- **Версия клиента**: `v85` (`version.js`, `index.html`, `owner.html`, `admin.html`, `dashboard.html`, `report.html`, `sw.js`)
+- **Версия серверного API (`Code.gs`)**: `v85` (`api: 2`)
+- **Дата релиза**: 16.11.2026
+
+
+## Что вошло в релиз v85 (Выполнение полного плана T1–T15: безопасность P0, пакетный delta_sync, удаление заводских PIN и доработка UI)
+
+### 1. Серверная безопасность P0 и удаление заводских PIN (T1–T3, T10–T11)
+- **T1 (`F1`, `F2`, `F3`)**: закрыта анонимная запись через `save_task` (`__SYS_CONFIG_V19__`/`__SYS_SYNC__`), `delta_sync` (переведён на белый список коллекций `STAFF_DELTA_WHITELIST_` и фильтрацию `getDeltasSince_` по ролям) и `switch_shop_location`.
+- **T2 (`F4`, `F6`)**: подключён `checkRateLimit_('staff_' + staffName)` при проверке `staffPinHash`, объединён ключ лимита `'admin'` между `auth_login` и `requireAuth_`, добавлена сервисная функция `resetRateLimits_()` для ручного сброса из редактора GAS.
+- **T3 (`F5`)**: полностью удалены заводские PIN-коды из `Code.gs` и `js/*`; при пустом `ADMIN_PIN_HASH` возвращается `SETUP_REQUIRED`, а `setup_initial_credentials` разрешён без сессии только один раз (PIN владельца ≥ 6 цифр). В засеве листов пишется только `'••'`, добавлены `migrateFactoryPins_()`, `PIN_CHANGE_REQUIRED` и `change_staff_pin`.
+- **T10 & T11**: добавлен сквозной тест `tests/gas-anon-access-tests.js` для всех 65 защищённых точек входа `doPost`/`doGet` и тест отсутствия секретов/заводских PIN в коде.
+
+### 2. Надёжность данных, пакетный `delta_sync` и вынос Telegram из-под блокировки (T4–T5, T8–T9)
+- **T4 (`F7`)**: 3-значные случайные ID заменены на `newId_(prefix)` (`Utilities.getUuid().slice(0, 8)`) и `_newClientRecordId(prefix)` (проверено создание 1000 инцидентов без единой коллизии).
+- **T5 (`F8`, `F9`)**: вызовы `UrlFetchApp` для Telegram вынесены в очередь `pendingAlerts`, отправляемую в `finally` строго после `lock.releaseLock()`; `handleDeltaSync_` переведён на однократное чтение листа, пакетный `setValues` и очистку tombstone старше 30 дней.
+- **T8 & T9 (`F10`, `F11`)**: добавлен авто-перелогин при `STAFF_AUTH_REQUIRED` во время сдачи чек-листа; запросы `dashboard`, `report` и `admin` переведены на `POST` с передачей `sessionToken` в теле запроса.
+
+### 3. Чистка репозитория, Service Worker, XSS-защита и интерфейс (T6–T7, T12–T15)
+- **T6 & T7**: удалены `coffee_illy_v67_live.html` и дубликат в `js/`, убран `tests/unit-tests.js` из продакшен-HTML и `sw.js`, обновлён `tools/bump-version.js`, в `sw.js` внедрён Cache-First с фоновым обновлением для статики.
+- **T12 & T13**: экранированы все оставшиеся вставки в `innerHTML`, оформлены таблицы аудитов T12 и T13 в `AUDIT_REPORT.md`.
+- **T14**: в Терминале закреплена кнопка `🚨 Проблема` в 1 тап (с выбором срочности перед камерой), внедрён PIN-пад `50×50 px` с показом оставшихся попыток и сменой временного PIN, сворачиваемая лента этапов и бейджи нижней навигации; проверено в headless Chromium на `390×844` и `1280×800`.
 
 ## Что вошло в релиз v64 (Закрытие замечаний полного аудита P0 / P1 / P2)
 

@@ -480,6 +480,91 @@ window.coffeeBuildDailyDigestText = function (d, sm) {
 };
 
 
+
+/* Неразрушающее слияние и авто-восстановление задач чек-листов (v84 — фикс BUG-09):
+   Гарантирует, что при редактировании одного пункта (например, в «Лайн Чек 1») или при получении
+   неполного списка с сервера (1 изменённая строка из листа «Задачи») все остальные стандартные пункты
+   («Открытие», «Лайн Чек 1», «Лайн Чек 2», «Закрытие») сохраняются на 100%, а уже повреждённая база
+   автоматически восстанавливает пропавшие блоки с сохранением всех пользовательских правок! */
+window.coffeeMergeTasksPreservingDefaults = function (existingTasks, incomingTasks, deletedTaskIdsOpt) {
+  const delMap = (deletedTaskIdsOpt && typeof deletedTaskIdsOpt === 'object') ? deletedTaskIdsOpt : {};
+  const rawDefaults = (window.COFFEE && Array.isArray(window.COFFEE.DEFAULT_TASKS)) ? window.COFFEE.DEFAULT_TASKS : [];
+  const normDefaults = window.coffeeNormalizeTasksTimeline
+    ? window.coffeeNormalizeTasksTimeline(rawDefaults.map((t, i) => Object.assign({ row: i + 2 }, t)))
+    : rawDefaults.map((t, i) => Object.assign({ row: i + 2 }, t));
+
+  const byId = new Map();
+  const orderIds = [];
+
+  function putTask(t, isOverlay) {
+    if (!t || typeof t !== 'object') return;
+    const id = String(t.id || '').trim();
+    if (!id || id === '__SYS_CONFIG_V19__' || t.title === '__SYS_SYNC__') return;
+    if (delMap[id]) return;
+
+    const normT = (window.coffeeNormalizeTasksTimeline ? window.coffeeNormalizeTasksTimeline([t])[0] : t) || t;
+    const pMode = normT.photoMode || normT.photo || (normT.mediaRequired ? 'да' : 'нет');
+    const cleanItem = Object.assign({}, normT, {
+      id: id,
+      block: normT.block || 'Открытие',
+      photo: pMode,
+      photoMode: pMode,
+      mediaRequired: pMode === 'да',
+      active: normT.active || 'да'
+    });
+
+    if (byId.has(id)) {
+      const prev = byId.get(id);
+      byId.set(id, Object.assign({}, prev, cleanItem, { row: cleanItem.row || prev.row }));
+    } else {
+      byId.set(id, cleanItem);
+      orderIds.push(id);
+    }
+  }
+
+  // 1) Базовый эталонный набор (все 91 стандартных задач Открытия, Лайн Чек 1, Лайн Чек 2, Закрытия, кроме явно удалённых)
+  normDefaults.forEach((d) => putTask(d, false));
+
+  // 2) Локальные задачи и правки пользователя
+  if (Array.isArray(existingTasks)) {
+    existingTasks.forEach((loc) => {
+      if (!loc) return;
+      // Если у задачи нет стандартного id, но совпадает название и блок со стандартной задачей — обновляем стандартную
+      const locId = String(loc.id || '').trim();
+      if (locId && !byId.has(locId) && loc.title) {
+        const matchDef = Array.from(byId.values()).find((x) => x.block !== 'Карта добрых дел' && String(x.title || '').trim() === String(loc.title || '').trim() && (x.block === loc.block || !loc.block));
+        if (matchDef && !delMap[matchDef.id]) {
+          putTask(Object.assign({}, matchDef, loc, { id: matchDef.id }), true);
+          return;
+        }
+      }
+      putTask(loc, true);
+    });
+  }
+
+  // 3) Входящие задачи с сервера (обновляют изменённые строки без удаления остальных блоков!)
+  if (Array.isArray(incomingTasks)) {
+    incomingTasks.forEach((rem) => {
+      if (!rem) return;
+      const remId = String(rem.id || '').trim();
+      if (remId && !byId.has(remId) && rem.title) {
+        const matchDef = Array.from(byId.values()).find((x) => x.block !== 'Карта добрых дел' && String(x.title || '').trim() === String(rem.title || '').trim() && (x.block === rem.block || !rem.block));
+        if (matchDef && !delMap[matchDef.id]) {
+          putTask(Object.assign({}, matchDef, rem, { id: matchDef.id }), true);
+          return;
+        }
+      }
+      putTask(rem, true);
+    });
+  }
+
+  return orderIds.map((id, idx) => {
+    const item = byId.get(id);
+    item.row = idx + 2;
+    return item;
+  });
+};
+
 window.coffeeNormalizeTasksTimeline = function (tasksList) {
   if (!Array.isArray(tasksList)) return [];
   return tasksList
@@ -567,7 +652,10 @@ window.coffeeEnsureV19Schema = function (db) {
   db.blocks = db.checklistBlocks.filter((b) => b && b.active !== false && !b.isCash && b.name !== 'Касса').map((b) => b.name);
   if (!db.blocks.length) db.blocks = ['Открытие', 'Лайн Чек 1', 'Лайн Чек 2', 'Закрытие'];
 
-  if (Array.isArray(db.tasks)) {
+  db.deletedTaskIds = (db.deletedTaskIds && typeof db.deletedTaskIds === 'object') ? db.deletedTaskIds : {};
+  if (window.coffeeMergeTasksPreservingDefaults) {
+    db.tasks = window.coffeeMergeTasksPreservingDefaults(db.tasks || [], [], db.deletedTaskIds);
+  } else if (Array.isArray(db.tasks)) {
     db.tasks = window.coffeeNormalizeTasksTimeline(db.tasks);
   }
 
@@ -596,24 +684,14 @@ window.coffeeEnsureV19Schema = function (db) {
     });
   }
 
-  /* Коды доступа для всех сотрудников (по умолчанию единый стартовый PIN 1234 для каждого участника) */
+  /* Коды доступа сотрудников хранятся исключительно в виде персональных SHA-256 хешей (без заводских PIN) */
   if (Array.isArray(db.staff)) {
-    const legacyDefaultHashes = {
-      '9bc15aadcaa6d8175bf37a1d498da565fdc2e4b3636511eb599a0eb2ac0ce40d': true,
-      'f8b24f9259114254fa264f01c3abb5fb6f58ec1931b662bf1a5e3f6d177938ff': true,
-      '00a7ca85ad96149231a77246ca33a9e3c32a519cf95bf8c8bcae525d6ded5a29': true,
-      'f6860b84aca52bb0e90e27df3f9406ae0b9ef28e33888704b03804db73c59e08': true
-    };
     db.staff.forEach((s) => {
-      if (s.pin && !s.pinHash) {
+      if (s.pin && String(s.pin).indexOf('••') === -1 && !s.pinHash) {
         s.pinHash = window.coffeeHashPin ? window.coffeeHashPin(s.pin) : s.pin;
         delete s.pin;
       }
-      if (!s.pinHash || (!db.pinUnified1234V41 && legacyDefaultHashes[s.pinHash])) {
-        s.pinHash = '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532';
-      }
     });
-    db.pinUnified1234V41 = true;
   }
   if (!Array.isArray(db.goodDeeds)) {
     db.goodDeeds = (window.COFFEE_DEFAULT_GOOD_DEEDS || []).map((g) => Object.assign({}, g));
@@ -666,16 +744,10 @@ window.coffeeVerifyStaffPin = function (staffName, pinInput, dbOpt) {
   const cleanPin = String(pinInput || '').trim();
   if (!cleanPin) return false;
   const candHash = window.coffeeHashPin ? window.coffeeHashPin(cleanPin) : cleanPin;
-  const ownerHash = window.coffeeAuth ? window.coffeeAuth.getExpectedOwnerPinHash(db) : (window.COFFEE_DEFAULT_OWNER_PIN_HASH || '');
-  const defaultOwnerHash = window.COFFEE_DEFAULT_OWNER_PIN_HASH || (window.coffeeHashPin ? window.coffeeHashPin('1234') : '');
-  if (candHash === ownerHash || candHash === defaultOwnerHash) {
-    if (window.coffeeRateLimiter) window.coffeeRateLimiter.reset(actorKey);
-    return true;
-  }
   const st = (db.staff || []).find((s) => s && s.name === staffName);
-  const defHashes = window.COFFEE_STAFF_PIN_HASHES || {};
-  const expectedHash = (st && (st.pinHash || (st.pin && window.coffeeHashPin(st.pin)))) || defHashes[staffName] || '29988ab000447c5c7de176a7961c1a233374ea78da6843a640a03d5535fb7532';
-  const ok = (candHash === expectedHash) || (staffName === 'Соня' && candHash === '9bc15aadcaa6d8175bf37a1d498da565fdc2e4b3636511eb599a0eb2ac0ce40d');
+  if (st && st.pinChangeRequired) return false;
+  const expectedHash = (st && (st.pinHash || (st.pin && String(st.pin).indexOf('••') === -1 && window.coffeeHashPin(st.pin)))) || '';
+  const ok = !!expectedHash && (candHash === expectedHash);
   if (window.coffeeRateLimiter) {
     if (ok) window.coffeeRateLimiter.reset(actorKey);
     else window.coffeeRateLimiter.recordFailure(actorKey);
