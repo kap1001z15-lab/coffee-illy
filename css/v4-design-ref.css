@@ -1,0 +1,240 @@
+/* =========================================================================
+   COFFEE ILLY v4.2 — DESIGN REFERENCE v4.0 FINAL OVERRIDE LAYER
+   Подключается последним после light.css / terminal.css / owner.css.
+   Реализует кремово-кофейную палитру (#F5EDE3, #FFFBF8, #8B5022, #241B16)
+   и устраняет все визуальные/UX-наложения на телефоне, планшете и ПК.
+   ========================================================================= */
+
+:root:not([data-theme="dark"]),
+:root[data-theme="light"] {
+  --bg: #F5EDE3;
+  --surface: #FFFBF8;
+  --surface-2: #F1E8E1;
+  --surface-active: #E8DDD3;
+  --chip: #EFE6E1;
+  --ink: #241B16;
+  --ink-2: #65574F;
+  --muted: #65574F;
+  --line: #E6E1D8;
+  --brew: #8B5022;
+  --crema: #C88D55;
+  --accent: #8B5022;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #EFE6E1;
+  --sidebar-bg: #241B16;
+  --sidebar-ink: #FFFBF8;
+  --sidebar-active: #6E3F1C;
+  --good: #286B4D;
+  --bad: #BA1A1A;
+  --warn: #805600;
+  --info: #4B7AA6;
+  --espresso: #241B16;
+  --cream: #FFFBF8;
+  --shadow: 0 2px 10px rgba(36, 27, 22, .05), 0 8px 24px -14px rgba(36, 27, 22, .08);
+  --md-sys-color-primary: #8B5022;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #EFE6E1;
+  --md-sys-color-on-primary-container: #241B16;
+  --md-sys-color-surface: #FFFBF8;
+  --md-sys-color-surface-container: #FFFBF8;
+  --md-sys-color-background: #F5EDE3;
+  --md-sys-color-outline: #E6E1D8;
+}
+
+html body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* 1. Запрет галереи: скрытие резервных кнопок выбора файла в чек-листах и камере */
+#btnFallbackChecklistPhoto,
+#camFallbackBtn {
+  display: none;
+}
+
+/* 2. Терминал бариста: чистая светлая шапка и кнопки без наложений */
+html body header.md3-top-app-bar {
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(36, 27, 22, .04);
+}
+html body header.md3-top-app-bar .brand h1,
+html body header.md3-top-app-bar .brand-meta,
+html body header.md3-top-app-bar .sub {
+  color: var(--ink);
+}
+html body header.md3-top-app-bar .ci-u-9 {
+  max-width: 720px;
+  margin: 8px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+html body header.md3-top-app-bar .ci-u-10 {
+  flex: 1 1 180px;
+  min-height: 38px;
+  border-radius: 12px;
+}
+html body header.md3-top-app-bar .ci-u-11 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+html body header.md3-top-app-bar .theme-btn.ci-u-12 {
+  width: auto;
+  min-width: max-content;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+html body header.md3-top-app-bar .theme-btn.ci-u-12:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+html body header.md3-top-app-bar .theme-btn#baristaProfileBtn,
+html body header.md3-top-app-bar .theme-btn#theme {
+  width: auto;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+/* 3. Этапы смены: без разрывов слов («Открыт ие») */
+html body #termTimelineTabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+html body #termTimelineTabs button {
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  min-height: 54px;
+}
+html body #termTimelineTabs button.on,
+html body #termTimelineTabs button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+@media (min-width: 900px) {
+  html body .shift-stages-card #termTimelineTabs {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* 4. Нижняя навигация и бейджи */
+html body .md3-navigation-bar,
+html body nav.bnav {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 16px rgba(36, 27, 22, .05);
+}
+html body .md3-navigation-bar .nav-badge,
+html body nav.bnav .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 12px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 9999px;
+}
+
+/* 5. Панель владельца и администратора: эспрессо-сайдбар + кремовые карточки */
+html body header.app-header {
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(36, 27, 22, .04);
+}
+html body header.app-header .brand h1,
+html body header.app-header .sub {
+  color: var(--ink);
+}
+html body .card,
+html body .panel,
+html body .kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+html body .btn.primary,
+html body .md3-btn-filled,
+html body button.ok,
+html body #btnOk,
+html body [data-odp].on,
+html body [data-orp].on {
+  background: var(--accent);
+  color: #FFFFFF;
+  border-color: var(--accent);
+}
+html body #ownerAttentionCard {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+@media (min-width: 1024px) {
+  html body:not([data-barista-page="1"]) > main {
+    grid-template-columns: 248px minmax(0, 1fr);
+    gap: 20px;
+  }
+  html body #ownerWorkspace9Nav:not([hidden]),
+  html body #adminWorkspace11Nav:not([hidden]) {
+    background: var(--sidebar-bg);
+    color: var(--sidebar-ink);
+    border: 0;
+    border-radius: 20px;
+    padding: 14px 12px;
+    box-shadow: 0 12px 28px rgba(36, 27, 22, .16);
+  }
+  html body #ownerWorkspace9Nav button,
+  html body #adminWorkspace11Nav button {
+    background: transparent;
+    border: 0;
+    color: rgba(255, 251, 248, .82);
+    border-radius: 12px;
+    padding: 10px 14px;
+    min-height: 42px;
+    font-weight: 600;
+  }
+  html body #ownerWorkspace9Nav button:hover,
+  html body #adminWorkspace11Nav button:hover {
+    background: rgba(255, 251, 248, .10);
+    color: #FFFFFF;
+  }
+  html body #ownerWorkspace9Nav button.on,
+  html body #adminWorkspace11Nav button.on {
+    background: var(--sidebar-active);
+    color: #FFFFFF;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(110, 63, 28, .35);
+  }
+}
