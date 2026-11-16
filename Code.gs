@@ -1,3 +1,12 @@
+var TARGET_SPREADSHEET_ID = '1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM';
+function getTargetSpreadsheet_() {
+  try {
+    var active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (_) {}
+  return SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+}
+
 /**
  * ============================================================================
  * 🚀 ЗАПУСК И НАСТРОЙКА ВСЕЙ СИСТЕМЫ В GOOGLE APPS SCRIPT ОДНОЙ КНОПКОЙ (v62)
@@ -19,7 +28,7 @@ function ЗАПУСТИТЬ_ВСЁ_ОДНОЙ_КНОПКОЙ() {
 }
 
 function RUN_ONE_CLICK_SETUP() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getTargetSpreadsheet_();
   ensureSheets_(ss);
   var folderStatus = 'OK';
   try {
@@ -78,7 +87,7 @@ function RUN_ONE_CLICK_SETUP() {
  * После этого нажмите: Начать развертывание -> Управление развертываниями -> ✏️ Изменить -> Версия: Новая версия -> Развернуть.
  */
 function setupAndVerifyCoffeeServer() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getTargetSpreadsheet_();
   ensureSheets_(ss);
   var rev = bumpDataRev_();
   Logger.log('✅ Сервер Кофейни успешно инициализирован! Ревизия данных: ' + rev);
@@ -151,7 +160,7 @@ function doGet(e) {
       });
     }
     if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v87', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
-    ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss = getTargetSpreadsheet_();
     ensureSheets_(ss);
 
     // 1. Публичный pre-login запрос: только минимальные статические данные для экрана входа (без планов, черновиков, tgId и финансов)
@@ -218,7 +227,7 @@ function doPost(e) {
   try {
     body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     action = String(body.action || '').trim();
-    ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss = getTargetSpreadsheet_();
     ensureSheets_(ss);
 
     // 1. Публичные действия входа/выхода (выполняются без удержания глобальной блокировки)
@@ -669,7 +678,7 @@ function setupInitialCredentials_(ss, body) {
 }
 
 function migrateFactoryPins_(ss) {
-  ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+  ss = ss || getTargetSpreadsheet_();
   var props = PropertiesService.getScriptProperties();
   var sh = ss ? ss.getSheetByName('Сотрудники') : null;
   var migrated = [];
@@ -896,7 +905,7 @@ function resetRateLimits_() {
   var cache = CacheService.getScriptCache();
   var keysToClear = ['rl_v21_admin', 'rl_v21_admin_api', 'rl_v21_default'];
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getTargetSpreadsheet_();
     var sh = ss ? ss.getSheetByName('Сотрудники') : null;
     if (sh && sh.getLastRow() > 1) {
       var rows = sh.getDataRange().getValues();
@@ -3819,7 +3828,7 @@ function setupAutonomousTriggers_(ss) {
       ScriptApp.newTrigger('cronCheckDeadlinesAndDigest').timeBased().everyMinutes(15).create();
     }
     PropertiesService.getScriptProperties().setProperty('AUTOPILOT_ENABLED', '1');
-    appendAudit_(ss || SpreadsheetApp.getActiveSpreadsheet(), 'Администратор', 'Включён Автопилот триггеров 24/7', 'Контроль дедлайнов каждые 15 мин + вечерняя сводка в Telegram');
+    appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Включён Автопилот триггеров 24/7', 'Контроль дедлайнов каждые 15 мин + вечерняя сводка в Telegram');
     return { ok: true, autopilot: true };
   } catch (e) {
     return { ok: true, autopilot: true, note: String((e && e.message) || e) };
@@ -3827,7 +3836,7 @@ function setupAutonomousTriggers_(ss) {
 }
 
 function sendDailyDigestNow_(ss, b) {
-  ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+  ss = ss || getTargetSpreadsheet_();
   var day = (b && b.date) || isoDate_();
   var map = getSettingsMap_(ss);
   var loc = map.LOCATION || 'Кофейня №1';
@@ -3867,7 +3876,7 @@ function sendDailyDigestNow_(ss, b) {
 
 function cronCheckDeadlinesAndDigest() {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getTargetSpreadsheet_();
     var tz = Session.getScriptTimeZone() || 'GMT+2';
     var now = new Date();
     var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');

@@ -1,18 +1,25 @@
 /* =========================================================================
-   COFFEE ILLY v4.0 — УПРАВЛЕНИЕ ТЕМОЙ (Auto / Light / Dark)
+   COFFEE ILLY v4.4 — УПРАВЛЕНИЕ ТЕМОЙ (Auto / Light / Dark)
    Подключается в <head> до основного CSS для предотвращения вспышки темы.
+   Оформление и геометрия 100% одинаковы во всех темах; меняются только цвета.
    ========================================================================= */
 (function (g) {
   var STORAGE_KEY = 'coffee_illy_theme_v4';
   var LEGACY_KEY = 'coffee_illy_theme';
   var VALID_MODES = { auto: true, light: true, dark: true };
+  var LABELS = { auto: '🌓 Авто', light: '☀️ Светлая', dark: '🌙 Тёмная' };
+  var TITLES = {
+    auto: 'Тема: Авто (как на устройстве)',
+    light: 'Тема: Светлая',
+    dark: 'Тема: Тёмная'
+  };
 
   function getSavedMode() {
     try {
-      var v = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'light';
+      var v = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || 'auto';
       return VALID_MODES[v] ? v : 'auto';
     } catch (_) {
-      return 'light';
+      return 'auto';
     }
   }
 
@@ -30,6 +37,18 @@
     return m;
   }
 
+  function syncThemeButtons(mode) {
+    if (typeof document === 'undefined') return;
+    var btns = document.querySelectorAll('.theme-btn#theme, #themeToggleBtn, [data-theme-cycle]');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (!b) continue;
+      b.textContent = LABELS[mode] || LABELS.auto;
+      b.setAttribute('title', TITLES[mode] || TITLES.auto);
+      b.setAttribute('aria-label', TITLES[mode] || TITLES.auto);
+    }
+  }
+
   function applyTheme(modeOpt) {
     var mode = VALID_MODES[modeOpt] ? modeOpt : getSavedMode();
     var effective = resolveEffectiveTheme(mode);
@@ -39,8 +58,9 @@
     }
     try {
       var meta = typeof document !== 'undefined' ? document.querySelector('meta[name="theme-color"]') : null;
-      if (meta) meta.setAttribute('content', effective === 'dark' ? '#141413' : '#F7F5F0');
+      if (meta) meta.setAttribute('content', effective === 'dark' ? '#141210' : '#F5EDE3');
     } catch (_) {}
+    syncThemeButtons(mode);
     return effective;
   }
 
@@ -73,17 +93,16 @@
     }
   } catch (_) {}
 
-
   if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { syncThemeButtons(getSavedMode()); }, { once: true });
+    }
     document.addEventListener('click', function (ev) {
-      var btn = ev.target && ev.target.closest && ev.target.closest('.theme-btn, #themeToggleBtn');
+      var btn = ev.target && ev.target.closest && ev.target.closest('.theme-btn#theme, #themeToggleBtn, [data-theme-cycle]');
       if (!btn) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      var next = cycleMode();
-      var titles = { auto: 'Тема: Авто', light: 'Тема: Светлая', dark: 'Тема: Тёмная' };
-      btn.setAttribute('title', titles[next] || 'Тема');
-      btn.setAttribute('aria-label', titles[next] || 'Тема');
+      cycleMode();
     }, true);
   }
 

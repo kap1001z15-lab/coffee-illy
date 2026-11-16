@@ -238,3 +238,163 @@ html body #ownerAttentionCard {
     box-shadow: 0 4px 12px rgba(110, 63, 28, .35);
   }
 }
+
+/* === v87.6: FIX CAMERA OVERLAP, PROFILE PILL, BOTTOM NAV & DESKTOP CASH VIEW === */
+html body .cam {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: #000000;
+}
+html body .cam .bar {
+  padding: 16px 24px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+html body header.md3-top-app-bar .theme-btn#baristaProfileBtn {
+  width: auto;
+  min-width: max-content;
+  max-width: none;
+  height: 38px;
+  padding: 0 12px 0 6px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
+  white-space: nowrap;
+}
+html body #baristaAvatarInitials {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+html body #baristaBottomNav .bnav-btn,
+html body .md3-navigation-bar .md3-nav-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 4px;
+}
+html body #baristaBottomNav .bnav-btn .nav-badge,
+html body .md3-navigation-bar .nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 12px;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  border-radius: 9999px;
+}
+html body #baristaBottomNav .bnav-btn .bnav-ico {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+html body[data-barista-page="1"] > main {
+  display: block;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 14px 16px calc(88px + env(safe-area-inset-bottom, 0px));
+}
+html body[data-barista-page="1"] #cashView,
+html body[data-barista-page="1"] #infoView,
+html body[data-barista-page="1"] #incView {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  html body:not([data-barista-page="1"]) .k,
+  html body:not([data-barista-page="1"]) .k4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+
+/* === v87.7: ЕДИНАЯ ТЁМНАЯ ТЕМА (ИДЕНТИЧНАЯ ГЕОМЕТРИЯ И РАСПОЛОЖЕНИЕ КНОПОК) === */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141210;
+  --surface: #1E1A17;
+  --surface-2: #29231F;
+  --surface-active: #352D28;
+  --chip: #29231F;
+  --ink: #F5EDE3;
+  --ink-2: #BFB3A8;
+  --muted: #BFB3A8;
+  --line: #362E28;
+  --brew: #C88D55;
+  --crema: #E0A76A;
+  --accent: #C88D55;
+  --accent-ink: #141210;
+  --accent-soft: #33261D;
+  --sidebar-bg: #110F0D;
+  --sidebar-ink: #FFFBF8;
+  --sidebar-active: #8B5022;
+  --good: #4CC38A;
+  --bad: #FF7A5F;
+  --warn: #E5B04D;
+  --info: #7AA7D6;
+  --espresso: #110F0D;
+  --cream: #F5EDE3;
+  --shadow: 0 2px 12px rgba(0, 0, 0, .32), 0 8px 24px -14px rgba(0, 0, 0, .45);
+  --md-sys-color-primary: #C88D55;
+  --md-sys-color-on-primary: #141210;
+  --md-sys-color-primary-container: #33261D;
+  --md-sys-color-on-primary-container: #F5EDE3;
+  --md-sys-color-surface: #1E1A17;
+  --md-sys-color-surface-container: #1E1A17;
+  --md-sys-color-background: #141210;
+  --md-sys-color-outline: #362E28;
+}
+
+html body .btn.primary,
+html body .md3-btn-filled,
+html body button.ok,
+html body #btnOk,
+html body [data-odp].on,
+html body [data-orp].on {
+  color: var(--accent-ink);
+}
+
+html body .theme-btn#theme,
+html body #themeToggleBtn {
+  width: auto;
+  min-width: max-content;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+html body .theme-btn#theme:hover,
+html body #themeToggleBtn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
