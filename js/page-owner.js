@@ -46,9 +46,9 @@ function ensureOwnerPinGate(forceShow) {
   modal.innerHTML =
     '<div class="ntf-card" style="max-width:360px;width:90vw;padding:24px 20px;text-align:center">' +
       '<h3 style="margin:0 0 4px;font-size:18px">' + (isFirstSetup ? 'Задайте PIN владельца' : 'Панель владельца') + '</h3>' +
-      '<p class="mu" style="margin:0 0 14px;font-size:13px">' + (isFirstSetup ? 'Первичная настройка безопасности: задайте индивидуальный PIN (не менее 6 цифр)' : 'Введите код доступа владельца') + '</p>' +
+      '<p class="mu" style="margin:0 0 14px;font-size:13px">' + (isFirstSetup ? 'Первичная настройка безопасности: задайте индивидуальный PIN (не менее 4 цифр)' : 'Введите код доступа владельца') + '</p>' +
       '<form id="ownerPinGateForm">' +
-        '<input type="password" id="ownerPinGateInp" inputmode="numeric" autocomplete="off" placeholder="' + (isFirstSetup ? 'Новый PIN (от 6 цифр)' : 'Введите PIN') + '" style="width:100%;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:18px;font-weight:700;text-align:center;letter-spacing:4px;color:var(--ink)">' +
+        '<input type="password" id="ownerPinGateInp" inputmode="numeric" autocomplete="off" placeholder="' + (isFirstSetup ? 'Новый PIN (от 4 цифр)' : 'Введите PIN') + '" style="width:100%;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--bg);padding:0 14px;font-size:18px;font-weight:700;text-align:center;letter-spacing:4px;color:var(--ink)">' +
         '<div id="ownerPinGateErr" style="color:var(--bad);font-size:12.5px;min-height:18px;margin:6px 0"></div>' +
         '<button type="submit" class="p" style="width:100%;min-height:48px;font-size:15px;cursor:pointer">' + (isFirstSetup ? 'Сохранить PIN и войти' : 'Войти') + '</button>' +
       '</form>' +
@@ -73,8 +73,8 @@ function ensureOwnerPinGate(forceShow) {
         return;
       }
       if (isFirstSetup && window.coffeeAuth && typeof window.coffeeAuth.setupInitialCredentials === 'function') {
-        if (pinVal.length < 6) {
-          if (errBox) errBox.textContent = 'PIN владельца должен содержать минимум 6 цифр';
+        if (pinVal.length < 4) {
+          if (errBox) errBox.textContent = 'PIN владельца должен содержать минимум 4 цифры';
           return;
         }
         await window.coffeeAuth.setupInitialCredentials(pinVal, {});
