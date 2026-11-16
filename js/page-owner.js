@@ -405,6 +405,18 @@ function renderOwnerDashboardSection() {
       '</div>' +
 
       /* БЛОК А. ФИНАНСОВОЕ СОСТОЯНИЕ (С УКАЗАНИЕМ ИСТОЧНИКА И ПОЛНОТЫ ДАННЫХ) */
+      ((function () {
+        if (factRev > 0 || !Array.isArray(db.cash) || !db.cash.length) return '';
+        const sortedHist = db.cash.slice().filter((c) => c && ((Number(c.cash) || 0) + (Number(c.card) || 0) > 0)).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        if (!sortedHist.length) return '';
+        const latestDay = sortedHist[0];
+        const latestRev = (Number(latestDay.cash) || 0) + (Number(latestDay.card) || 0);
+        const totHistRev = sortedHist.reduce((s, c) => s + (Number(c.cash) || 0) + (Number(c.card) || 0), 0);
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:10px;border-radius:12px;background:var(--accent-soft,#EFE6E1);border:1px solid var(--accent,#8B5022);font-size:13px">' +
+          '<span>📊 За <b>' + esc(periodLabel) + '</b> касса ещё не закрыта. В таблице загружено <b>' + sortedHist.length + ' смен</b> на сумму <b>' + rub(totHistRev) + '</b> (крайняя: <b>' + dmy(latestDay.date) + ' — ' + rub(latestRev) + '</b>).</span>' +
+          '<button type="button" class="b on" data-odp="30" style="padding:6px 12px;border-radius:10px;font-weight:700;cursor:pointer">Показать за 30 дней →</button>' +
+        '</div>';
+      })()) +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 8px"><b style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Деньги и полнота данных</b><span class="mu" style="font-size:12px">Источник: кассовые смены, Z-отчёты и ТТК · Статус данных: ' + (factRev > 0 ? 'Подтверждено отчётами' : 'Предварительный (ожидание закрытия смены)') + '</span></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">' +
         '<div style="padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg)">' +

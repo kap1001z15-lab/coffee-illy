@@ -1683,6 +1683,13 @@ function fmtIso_(v) {
   return s.slice(0, 10);
 }
 
+function parseRubNum_(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  var s = String(v == null ? '' : v).replace(/[₽a-zA-Zа-яА-ЯёЁ\s ]/g, '').replace(',', '.');
+  var n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
 function ensureSheets_(ss) {
   /* Проверка 16 листов на каждый запрос стоила секунды: делаем её не чаще раза в 10 минут. */
   var _sheetsCache = null;
@@ -2297,10 +2304,10 @@ function getAdmin_(ss) {
     }
     cash.push({
       date: cDate,
-      cash: Number(rc[1]) || 0,
-      card: Number(rc[2]) || 0,
-      checks: Number(rc[3]) || 0,
-      writeoff: Number(rc[4]) || 0,
+      cash: parseRubNum_(rc[1]),
+      card: parseRubNum_(rc[2]),
+      checks: parseRubNum_(rc[3]),
+      writeoff: parseRubNum_(rc[4]),
       topItems: String(rc[5] || ''),
       barista: String(rc[6] || ''),
       counterStart: cStart,
@@ -2316,6 +2323,87 @@ function getAdmin_(ss) {
     });
   }
 
+  // Автоматическое подключение и миграция ранее загруженных финансовых данных из листа «Coffee_illy_Cash»
+  var shLegacyCash = ss.getSheetByName('Coffee_illy_Cash');
+  if (shLegacyCash) {
+    var legCashRows = shLegacyCash.getDataRange().getValues();
+    var existingCashDates = {};
+    cash.forEach(function(cItem) { existingCashDates[cItem.date] = true; });
+    for (var lc = 1; lc < legCashRows.length; lc++) {
+      var lrc = legCashRows[lc];
+      if (!lrc[0]) continue;
+      var lDate = fmtIso_(lrc[0]);
+      if (!lDate || existingCashDates[lDate]) continue;
+      var lWho = String(lrc[2] || 'Бариста');
+      var lCashVal = parseRubNum_(lrc[3]);
+      var lCardVal = parseRubNum_(lrc[4]);
+      var lChecksVal = parseRubNum_(lrc[6]);
+      var lWoVal = parseRubNum_(lrc[8]);
+      var lHits = String(lrc[9] || '');
+      var lProds = [];
+      if (lrc[10]) {
+        try { lProds = JSON.parse(String(lrc[10])); } catch (_) { lProds = []; }
+      }
+      if (!Array.isArray(lProds)) lProds = [];
+      lProds = lProds.map(function(p) {
+        var pName = String((p && p.name) || '');
+        var pQty = parseRubNum_(p && p.qty);
+        var pSum = parseRubNum_(p && p.sum);
+        return {
+          name: pName,
+          kind: (p && p.kind) || classifyCoffeeServer_(pName),
+          price: pQty > 0 ? Math.round(pSum / pQty) : 0,
+          qty: pQty,
+          sum: pSum,
+          date: lDate,
+          barista: lWho
+        };
+      }).filter(function(p) { return p.name && p.qty > 0; });
+      if (lProds.length && (!productsByDate[lDate] || !productsByDate[lDate].length)) {
+        productsByDate[lDate] = lProds;
+      }
+      var lCof = lProds.filter(function(p){ return p.kind === 'coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+      var lNonCof = lProds.filter(function(p){ return p.kind === 'non_coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+      var lRevw = lProds.filter(function(p){ return p.kind === 'review'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+      var legShift = [{
+        name: lWho,
+        cash: lCashVal,
+        card: lCardVal,
+        checks: lChecksVal,
+        writeoff: lWoVal,
+        writeoffShots: 0,
+        prevCounter: null,
+        counter: null,
+        cups: lCof || lChecksVal,
+        coffeeQty: lCof
+      }];
+      cash.push({
+        date: lDate,
+        cash: lCashVal,
+        card: lCardVal,
+        checks: lChecksVal,
+        writeoff: lWoVal,
+        topItems: lHits,
+        barista: lWho,
+        counterStart: null,
+        counterEnd: null,
+        writeoffShots: 0,
+        coffeeQty: lCof,
+        nonCoffeeQty: lNonCof,
+        reviewQty: lRevw,
+        unaccountedShots: 0,
+        csvHashes: [],
+        shifts: legShift,
+        products: productsByDate[lDate] || lProds
+      });
+      existingCashDates[lDate] = true;
+      try {
+        ss.getSheetByName('Касса').appendRow([lDate, lCashVal, lCardVal, lChecksVal, lWoVal, lHits, lWho, '', '', 0, lCof, lNonCof, lRevw, 0, '[]', JSON.stringify(legShift)]);
+      } catch (_) {}
+    }
+  }
+  cash.sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
+
   var shE = ss.getSheetByName('Расходы').getDataRange().getValues();
   var expenses = [];
   for (var k = 1; k < shE.length; k++) {
@@ -2324,10 +2412,32 @@ function getAdmin_(ss) {
       id: String(re[0]),
       date: fmtIso_(re[1]),
       category: String(re[2] || 'Прочее'),
-      amount: Number(re[3]) || 0,
+      amount: parseRubNum_(re[3]),
       comment: String(re[4] || '')
     });
   }
+  var shLegacyExp = ss.getSheetByName('Coffee_illy_Expenses');
+  if (shLegacyExp) {
+    var legExpRows = shLegacyExp.getDataRange().getValues();
+    var existingExpKeys = {};
+    expenses.forEach(function(eItem) { existingExpKeys[eItem.date + ':' + eItem.category + ':' + eItem.amount] = true; });
+    for (var le = 1; le < legExpRows.length; le++) {
+      var lre = legExpRows[le];
+      if (!lre[0] && !lre[1]) continue;
+      var leDate = fmtIso_(lre[1]);
+      var leCat = String(lre[2] || 'Прочее');
+      var leAmt = parseRubNum_(lre[3]);
+      var leCom = String(lre[4] || '');
+      if (!leDate || leAmt <= 0) continue;
+      var eKey = leDate + ':' + leCat + ':' + leAmt;
+      if (existingExpKeys[eKey]) continue;
+      var leId = String(lre[0] || ('EXP-LEG-' + le));
+      expenses.push({ id: leId, date: leDate, category: leCat, amount: leAmt, comment: leCom });
+      existingExpKeys[eKey] = true;
+      try { ss.getSheetByName('Расходы').appendRow([leId, leDate, leCat, leAmt, leCom]); } catch (_) {}
+    }
+  }
+  expenses.sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
 
   var shI = ss.getSheetByName('Поломки').getDataRange().getValues();
   var incidents = [];
@@ -2349,6 +2459,35 @@ function getAdmin_(ss) {
       incType: String(ri[10] || 'Поломка оборудования'),
       history: hist
     });
+  }
+  var shLegacyInc = ss.getSheetByName('Coffee_illy_Incidents');
+  if (shLegacyInc) {
+    var legIncRows = shLegacyInc.getDataRange().getValues();
+    var existingIncIds = {};
+    incidents.forEach(function(iItem) { existingIncIds[iItem.id] = true; });
+    for (var li = 1; li < legIncRows.length; li++) {
+      var lri = legIncRows[li];
+      if (!lri[0] && !lri[1]) continue;
+      var liId = 'INC-LEG-' + String(lri[0] || li).replace(/[^0-9a-zA-Z_-]/g, '');
+      if (existingIncIds[liId]) continue;
+      var liDate = fmtIso_(lri[1]);
+      if (!liDate) continue;
+      incidents.push({
+        id: liId,
+        date: liDate,
+        time: fmtTime_(lri[2]),
+        step: String(lri[5] || 'Проблема'),
+        text: String(lri[6] || ''),
+        priority: String(lri[7] || 'Терпит'),
+        status: String(lri[9] || '').toLowerCase() === 'resolved' ? 'Решена' : (String(lri[9] || '') || 'Новая проблема'),
+        who: String(lri[4] || 'Бариста'),
+        owner: String(lri[10] || 'Администратор'),
+        photo: String(lri[8] || ''),
+        incType: 'Поломка оборудования',
+        history: []
+      });
+      existingIncIds[liId] = true;
+    }
   }
 
   var extMap = {};
@@ -3470,6 +3609,30 @@ function getChecklistsLogFromSheet_(ss) {
       isLate: statusStr === 'Просрочено',
       status: statusStr === 'Просрочено' ? 'Просрочено' : 'Выполнено'
     });
+  }
+  var shLegLogs = ss.getSheetByName('Coffee_illy_Logs');
+  if (shLegLogs) {
+    var lRows = shLegLogs.getDataRange().getValues();
+    for (var j = 1; j < lRows.length; j++) {
+      var lr = lRows[j];
+      if (!lr[1] || !lr[5]) continue;
+      var lDate = fmtIso_(lr[1]);
+      var lBlk = String(lr[5] || 'Открытие');
+      var lWho = String(lr[4] || 'Бариста');
+      var lPhs = [];
+      try { lPhs = JSON.parse(String(lr[8] || '[]')); } catch (_) {}
+      list.push({
+        date: lDate,
+        time: fmtTime_(lr[2]),
+        block: lBlk,
+        who: lWho,
+        problems: Number(lr[7]) || 0,
+        photos: Array.isArray(lPhs) ? lPhs : [],
+        deadline: '08:30',
+        isLate: false,
+        status: 'Выполнено'
+      });
+    }
   }
   return list;
 }
