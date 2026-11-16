@@ -704,7 +704,8 @@ check('15. T3: Первичная настройка SETUP_REQUIRED, засев 
   const nastyaLoginBefore = callPost({ action: 'auth_login', role: 'staff', staffName: 'Настя', pin: '3333' });
   assert(nastyaLoginBefore.ok === false && /PIN_CHANGE_REQUIRED/.test(nastyaLoginBefore.error), 'Вход сотрудника с флагом миграции должен возвращать PIN_CHANGE_REQUIRED');
 
-  const chgRes = callPost({ action: 'change_staff_pin', staffName: 'Настя', newPin: '7391' });
+  const rstRes = callPost({ action: 'issue_staff_reset_code', sessionToken: admLogin.sessionToken, staffName: 'Настя' });
+  const chgRes = callPost({ action: 'change_staff_pin', staffName: 'Настя', resetCode: rstRes.resetCode, newPin: '7391' });
   assert(chgRes.ok === true && chgRes.pinChanged === true, 'change_staff_pin должен позволить сотруднику задать новый персональный PIN');
 
   const nastyaLoginAfter = callPost({ action: 'auth_login', role: 'staff', staffName: 'Настя', pin: '7391' });

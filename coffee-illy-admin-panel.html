@@ -115,7 +115,7 @@
 :root,
 [data-theme="light"] {
   /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
-  --bg: #F5F2ED;
+  --bg: #F5EDE3;
   --surface: #FFFBF8;
   --surface-2: #F1E8E1;
   --line: #E6E1D8;
@@ -296,6 +296,14 @@ textarea.field { min-height: 84px; }
 .num { font-variant-numeric: tabular-nums; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 12px; font-size: var(--fs-caption); font-weight: 600; z-index: 99; display: none; }
 .toast.show { display: block; }
+
+/* Design Reference v4.0 Espresso Sidebar */
+[data-theme="light"] .rail { background: #241B16; color: #FFFBF8; border-right: none; }
+[data-theme="light"] .rail .brand { color: #FFFBF8; }
+[data-theme="light"] .rail button { color: rgba(255,251,248,0.78); }
+[data-theme="light"] .rail button.active { background: #6E3F1C; color: #FFFBF8; }
+[data-theme="light"] .rail .btn { background: rgba(255,255,255,0.1); color: #FFFBF8; border-color: rgba(255,255,255,0.16); }
+.brand-badge { background: #D92D20 !important; color: #FFFFFF !important; }
 </style>
 </head>
 <body>
@@ -355,7 +363,8 @@ function getStore() {
   saveStore(init);
   return init;
 }
-function saveStore(st) { try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch (_) {} }
+const _admCh = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("coffee_illy_live_sync") : null;
+function saveStore(st) { try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); if (_admCh) _admCh.postMessage({ ts: Date.now() }); } catch (_) {} }
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
@@ -460,6 +469,34 @@ function render() {
         <div class="card"><div class="muted">Чеки за день</div><div class="kpi-val">${checks}</div>${checks ? deltaBadge(checks, st.planChecks, 'чек.') : ''}</div>
         <div class="card"><div class="muted">Оплата: Нал / Моб.</div><div class="kpi-val" style="font-size:1.2rem">${cashPay} / ${mobPay} ₽</div></div>
       </div>
+      
+      <div class="kpi-grid">
+        <div class="card" style="grid-column: span 2">
+          <div class="row-gap" style="justify-content:space-between;margin-bottom:8px">
+            <h3 style="margin:0">Динамика выручки (Пн–Вс)</h3>
+            <span class="badge good">Факт vs План</span>
+          </div>
+          <svg viewBox="0 0 520 130" style="width:100%;height:130px;display:block">
+            <defs><linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8B5022" stop-opacity="0.28"/><stop offset="100%" stop-color="#8B5022" stop-opacity="0"/></linearGradient></defs>
+            <path d="M20,95 L100,82 L180,68 L260,55 L340,42 L420,46 L500,26 L500,115 L20,115 Z" fill="url(#revGrad)"/>
+            <polyline fill="none" stroke="#8B5022" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="20,95 100,82 180,68 260,55 340,42 420,46 500,26"/>
+            <circle cx="500" cy="26" r="5" fill="#8B5022"/>
+            <text x="20" y="126" font-size="11" fill="currentColor" opacity="0.6">Пн</text>
+            <text x="100" y="126" font-size="11" fill="currentColor" opacity="0.6">Вт</text>
+            <text x="180" y="126" font-size="11" fill="currentColor" opacity="0.6">Ср</text>
+            <text x="260" y="126" font-size="11" fill="currentColor" opacity="0.6">Чт</text>
+            <text x="340" y="126" font-size="11" fill="currentColor" opacity="0.6">Пт</text>
+            <text x="420" y="126" font-size="11" fill="currentColor" opacity="0.6">Сб</text>
+            <text x="492" y="126" font-size="11" fill="currentColor" opacity="0.6">Вс</text>
+          </svg>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 8px">Статус смен</h3>
+          <div class="row-item"><div><strong>Алина</strong><div class="muted">09:00–17:00 · Лайн Чек 2</div></div><span class="badge good">67%</span></div>
+          <div class="row-item"><div><strong>Соня</strong><div class="muted">08:00–16:00 · Закрытие</div></div><span class="badge warn">83%</span></div>
+        </div>
+      </div>
+
       <div class="card">
         <h3>Новые блюда и позиции (кликните для деталей или смените категорию списком)</h3>
         ${st.ttk.map((t, idx) => `

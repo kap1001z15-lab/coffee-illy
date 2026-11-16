@@ -116,7 +116,7 @@
 :root,
 [data-theme="light"] {
   /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
-  --bg: #F5F2ED;
+  --bg: #F5EDE3;
   --surface: #FFFBF8;
   --surface-2: #F1E8E1;
   --line: #E6E1D8;
@@ -260,7 +260,7 @@
 html, body { margin: 0; max-width: 100%; overflow-x: clip; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-body); line-height: 1.45; }
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: var(--fs-h2); }
-.brand-badge { background: var(--accent); color: var(--accent-ink); padding: 4px 10px; border-radius: 8px; font-size: var(--fs-caption); font-weight: 700; }
+.brand-badge { background: #D92D20; color: #FFFFFF; padding: 4px 10px; border-radius: 8px; font-size: var(--fs-caption); font-weight: 700; }
 .row-gap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 7px 13px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
@@ -332,7 +332,7 @@ dialog.dlg::backdrop { background: rgba(0,0,0,.55); }
   <div class="row-gap" style="margin-top:10px;justify-content:space-between">
     <button class="btn primary" onclick="capturePhoto()">Снять фото</button>
     <button class="btn" onclick="switchFacing()">Сменить камеру</button>
-    <label class="btn warn" style="cursor:pointer">Камера ОС<input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFallbackFile(event)"></label>
+    
     <button class="btn" onclick="closeCamera()">Закрыть</button>
   </div>
 </dialog>
@@ -413,6 +413,30 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') pressPin('C');
 });
 
+
+const syncCh = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('coffee_illy_live_sync') : null;
+if (syncCh) syncCh.onmessage = () => { if (session) render(); };
+window.addEventListener('storage', (e) => { if (e.key === STORE_KEY && session) render(); });
+
+function isWindowOpenNow(win) {
+  if (!win) return { open: true, status: 'Активен' };
+  if (win.unlocked) return { open: true, status: 'Разблокирован админом' };
+  const nowHm = new Date().toTimeString().slice(0, 5);
+  if (nowHm < win.start) return { open: false, status: 'Откроется в ' + win.start };
+  if (nowHm > win.deadline) return { open: false, status: 'Просрочен (дедлайн ' + win.deadline + ')' };
+  return { open: true, status: 'Активен до ' + win.deadline };
+}
+let _lastNotifiedWin = '';
+function checkActiveWindowAlert(st) {
+  const nowHm = new Date().toTimeString().slice(0, 5);
+  const active = (st.windows || []).find(w => nowHm >= w.start && nowHm <= w.deadline);
+  if (active && _lastNotifiedWin !== active.block) {
+    _lastNotifiedWin = active.block;
+    showToast('🔔 Открылся чек-лист «' + active.block + '» — пройдите до ' + active.deadline);
+  }
+  return active;
+}
+
 function toggleNet() { offline = !offline; const p = document.getElementById('netPill'); p.textContent = offline ? 'Офлайн' : 'Онлайн'; p.className = 'pill ' + (offline ? 'warn' : 'good'); }
 function pressPin(d) {
   if (d === 'C') pinBuf = ''; else if (d === 'B') pinBuf = pinBuf.slice(0, -1); else if (pinBuf.length < 4) pinBuf += d;
@@ -489,14 +513,17 @@ function render() {
     const stageTasks = st.tasks.filter(t => t.active !== false && t.block === curStage);
     if (taskIdx >= stageTasks.length) taskIdx = Math.max(0, stageTasks.length - 1);
     const t = stageTasks[taskIdx], res = t && t.resultBy ? t.resultBy[session.name] : null, ph = (t && t.photos) || [];
-    const win = st.windows.find(w => w.block === curStage) || { start: '07:30', deadline: '22:30' };
+    const win = st.windows.find(w => w.block === curStage) || { block: curStage, start: '07:30', deadline: '22:30' };
+    const winState = isWindowOpenNow(win);
+    const activeAlertWin = checkActiveWindowAlert(st);
     const lastHnd = st.handovers[0];
 
     main.innerHTML = `
+      ${activeAlertWin ? `<div class="card" style="padding:10px 14px;border-color:var(--accent);background:var(--accent-soft)"><strong>🔔 Открыт чек-лист «${activeAlertWin.block}»</strong> — необходимо пройти до <b>${activeAlertWin.deadline}</b></div>` : ''}
       ${lastHnd ? `<div class="card" style="padding:12px;background:var(--surface-2)"><div class="muted">Передача смены от <strong>${lastHnd.from}</strong> (${lastHnd.ts}):</div><div>${lastHnd.notes}</div></div>` : ''}
       <div class="row-gap" style="justify-content:space-between">
         <select class="field" style="width:auto;margin:0" onchange="curStage=this.value;taskIdx=0;render()">${stages.map(s=>`<option ${curStage===s?'selected':''}>${s}</option>`).join('')}</select>
-        <span class="pill good">Окно ${win.start}–${win.deadline}</span>
+        <span class="pill ${winState.open ? 'good' : 'bad'}">${winState.status}</span>
       </div>
       ${t ? `
         <div class="focus-card">
@@ -508,7 +535,7 @@ function render() {
           <div class="instr-box">${t.instruction}</div>
           ${t.photoReq ? `<button class="btn warn" style="width:100%" onclick="openCameraFor('${t.id}')">Открыть камеру (${ph.length} фото)</button>${ph.length?`<div class="thumb-row">${ph.map(s=>`<img src="${s}">`).join('')}</div>`:''}` : ''}
           <div class="seg-choice">
-            <button class="seg-btn ${res==='ok'?'ok-active':''}" onclick="markOk('${t.id}')">Всё в норме</button>
+            <button class="seg-btn ${res==='ok'?'ok-active':''}" onclick="if(!isWindowOpenNow(getStore().windows.find(w=>w.block===curStage)).open){showToast('Окно чек-листа закрыто! Обратитесь к администратору.');return;}markOk('${t.id}')">Всё в норме</button>
             <button class="seg-btn ${res==='problem'||problemDraftOpen?'bad-active':''}" onclick="problemDraftOpen=true;render()">Обнаружена проблема</button>
           </div>
           ${res==='ok'?'<div style="color:var(--good);font-weight:600">✓ Подтверждено</div>':''}

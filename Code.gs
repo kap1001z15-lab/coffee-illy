@@ -229,6 +229,8 @@ function doPost(e) {
       return jsonOut_(handleAuthLogout_(body));
     }
     if (action === 'change_staff_pin') {
+      lock.waitLock(15000);
+      hasLock = true;
       return jsonOut_(changeStaffPin_(ss, body));
     }
     if (action === 'setup_initial_credentials') {
@@ -249,6 +251,11 @@ function doPost(e) {
       }
     } else {
       actorSess = requireAuth_(ss, body, 'admin');
+    }
+
+    if (actorSess && actorSess.role === 'staff' && actorSess.staffName) {
+      body.userName = actorSess.staffName;
+      body.barista = actorSess.staffName;
     }
 
     // 3. Проверка идемпотентности строго ПОСЛЕ авторизации и с привязкой к субъекту (actorId + role + action)
@@ -288,14 +295,14 @@ function doPost(e) {
       if (body.isLate) {
         pendingAlerts.push({
           type: 'overdue',
-          text: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\nБлок: ' + (body.block || '') + '\nСотрудник: ' + (body.userName || 'Бариста') + '\nДедлайн: ' + (body.deadline || '')
+          text: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\nБлок: ' + escapeTgHtml_(body.block || '') + '\nСотрудник: ' + escapeTgHtml_(body.userName || 'Бариста') + '\nДедлайн: ' + escapeTgHtml_(body.deadline || '')
         });
       }
       // Инциденты из чек-листа ставим в очередь и отправляем после освобождения блокировки (T5).
       (Array.isArray(body.items) ? body.items : []).filter(function(x) { return x && x.isIncident; }).forEach(function(x) {
         pendingAlerts.push({
           type: 'incident',
-          text: '🚨 ПРОБЛЕМА ПО ЧЕК-ЛИСТУ\nБлок: ' + String(body.block || '').slice(0, 100) + '\nУчасток: ' + String(x.title || '').slice(0, 150) + '\nСотрудник: ' + String(body.userName || 'Бариста').slice(0, 100) + '\nОписание: ' + String(x.comment || '').slice(0, 700)
+          text: '🚨 ПРОБЛЕМА ПО ЧЕК-ЛИСТУ\nБлок: ' + escapeTgHtml_(String(body.block || '')).slice(0, 100) + '\nУчасток: ' + escapeTgHtml_(String(x.title || '').slice(0, 150)) + '\nСотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100) + '\nОписание: ' + escapeTgHtml_(String(x.comment || '').slice(0, 700))
         });
       });
       return idempotentJsonOut_(ss, body, resChk, actorSess);
@@ -333,7 +340,7 @@ function doPost(e) {
       var resInc = reportIncident_(ss, body);
       pendingAlerts.push({
         type: 'incident',
-        text: '🚨 НОВАЯ ПОЛОМКА / ЭКШН-ПЛАН (24ч)\nУчасток: ' + (body.step || '') + '\nОписание: ' + (body.text || body.comment || '') + '\nИсполнитель: ' + (body.responsible || 'Техник') + '\nСообщил: ' + (body.userName || 'Бариста')
+        text: '🚨 НОВАЯ ПОЛОМКА / ЭКШН-ПЛАН (24ч)\nУчасток: ' + escapeTgHtml_(body.step || '') + '\nОписание: ' + escapeTgHtml_(body.text || body.comment || '') + '\nИсполнитель: ' + (body.responsible || 'Техник') + '\nСообщил: ' + escapeTgHtml_(body.userName || 'Бариста')
       });
       return idempotentJsonOut_(ss, body, resInc, actorSess);
     }
@@ -384,6 +391,7 @@ function doPost(e) {
     if (action === 'add_checklist_block') return idempotentJsonOut_(ss, body, addChecklistBlock_(ss, body), actorSess);
     if (action === 'delete_checklist_block') return idempotentJsonOut_(ss, body, deleteChecklistBlock_(ss, body), actorSess);
     if (action === 'save_daily_plans') return idempotentJsonOut_(ss, body, saveDailyPlans_(ss, body), actorSess);
+    if (action === 'issue_staff_reset_code') return idempotentJsonOut_(ss, body, issueStaffResetCode_(ss, body), actorSess);
     if (action === 'save_staff_pins') return idempotentJsonOut_(ss, body, saveStaffPins_(ss, body), actorSess);
     if (action === 'save_good_deed') return idempotentJsonOut_(ss, body, saveGoodDeed_(ss, body), actorSess);
     if (action === 'delete_good_deed') return idempotentJsonOut_(ss, body, deleteGoodDeed_(ss, body), actorSess);
@@ -441,6 +449,9 @@ function resolveVerifiedStaffSession_(ss, body) {
   if (tok && tok.indexOf('st_') === 0 && tok.indexOf('st_local_') !== 0) {
     var sess = getServerSession_(tok);
     if (sess && sess.staffName) {
+      if (sess.role === 'staff' && PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + sess.staffName) === '1') {
+        throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + sess.staffName + '» необходимо сменить временный PIN-код');
+      }
       if (sess.role === 'staff') {
         body.userName = sess.staffName;
         if (!body.barista) body.barista = sess.staffName;
@@ -457,6 +468,9 @@ function resolveVerifiedStaffSession_(ss, body) {
     if (hmacCheckSession && hmacCheckSession.ok && String(hmacCheckSession.tgUserId || '') === tgId) {
       var bindings = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
       if (bindings && bindings[tgId] && bindings[tgId].staffName) {
+        if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + bindings[tgId].staffName) === '1') {
+          throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + bindings[tgId].staffName + '» необходимо сменить временный PIN-код');
+        }
         body.userName = bindings[tgId].staffName;
         if (!body.barista) body.barista = bindings[tgId].staffName;
         return { role: 'staff', staffName: bindings[tgId].staffName, verifiedByTgId: true };
@@ -688,24 +702,79 @@ function migrateFactoryPins_(ss) {
   return { ok: true, migratedStaff: migrated };
 }
 
+function issueStaffResetCode_(ss, body) {
+  var name = String((body && (body.staffName || body.userName)) || '').trim();
+  if (!name) throw new Error('VALIDATION_FAILED: Не указано имя сотрудника');
+  var staffOk = getStaffPinHash_(ss, name) || (getStaffList_(ss) || []).some(function(x){ return x && String(x.name||'').toLowerCase() === name.toLowerCase(); });
+  if (!staffOk) throw new Error('STAFF_NOT_FOUND: Сотрудник «' + name + '» не найден');
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + ':' + Date.now());
+  var num = ((digest[0] & 0x7f) << 24) | ((digest[1] & 0xff) << 16) | ((digest[2] & 0xff) << 8) | (digest[3] & 0xff);
+  var code = String(10000000 + (num % 90000000));
+  PropertiesService.getScriptProperties().setProperty('RESET_' + name, JSON.stringify({
+    h: sha256Hex_(SALT_V21 + code),
+    exp: Date.now() + 60 * 60 * 1000,
+    used: false
+  }));
+  appendAudit_(ss, 'Администратор', 'Выдан одноразовый код сброса PIN', 'Сотрудник: ' + name + ' (срок 60 мин)');
+  return { ok: true, staffName: name, resetCode: code, expiresInMinutes: 60 };
+}
+
+function consumeStaffResetCode_(name, code) {
+  if (!name || !code) return false;
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty('RESET_' + name);
+  if (!raw) return false;
+  try {
+    var rec = JSON.parse(raw);
+    if (!rec || rec.used || Date.now() > Number(rec.exp || 0)) return false;
+    if (sha256Hex_(SALT_V21 + String(code).trim()) !== rec.h) return false;
+    rec.used = true;
+    props.setProperty('RESET_' + name, JSON.stringify(rec));
+    return true;
+  } catch (_) { return false; }
+}
+
+function bumpSessionEpoch_(name) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var cur = Number(props.getProperty('EPOCH_' + name) || '1') || 1;
+    props.setProperty('EPOCH_' + name, String(cur + 1));
+  } catch (_) {}
+}
+
 function changeStaffPin_(ss, body) {
   var staffName = String((body && (body.staffName || body.userName)) || '').trim();
   var newPin = String((body && body.newPin) || '').trim();
-  if (!staffName || !newPin || newPin.length < 4 || /^(\d)\1{3,}$/.test(newPin)) {
-    throw new Error('VALIDATION_FAILED: Новый персональный PIN должен содержать не менее 4 цифр и не состоять из одинаковых цифр');
+  if (!staffName || !newPin || !/^\d{4,12}$/.test(newPin) || /^(\d)\1{3,}$/.test(newPin)) {
+    throw new Error('VALIDATION_FAILED: Новый персональный PIN должен содержать от 4 до 12 цифр и не состоять из одинаковых цифр');
   }
-  var props = PropertiesService.getScriptProperties();
-  var reqChange = props.getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1';
-  if (!reqChange) {
-    var oldPin = String((body && (body.oldPin || body.staffPin || body.pin)) || '').trim();
-    var expHash = getStaffPinHash_(ss, staffName);
-    if (!expHash || !oldPin || normalizePinHash_(oldPin) !== expHash) {
-      requireAuth_(ss, body, 'admin');
+  var rateKey = 'pinchg_' + staffName;
+  checkRateLimit_(rateKey);
+  var expHash = getStaffPinHash_(ss, staffName);
+  var staffExists = !!expHash || (getStaffList_(ss) || []).some(function(x){ return x && String(x.name||'').toLowerCase() === staffName.toLowerCase(); });
+  if (!staffExists) throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден');
+
+  var oldPin = String((body && (body.oldPin || body.staffPin || body.pin)) || '').trim();
+  var resetCode = String((body && body.resetCode) || '').trim();
+  var verified = false;
+  if (oldPin && normalizePinHash_(oldPin) === expHash) verified = true;
+  if (!verified && resetCode && consumeStaffResetCode_(staffName, resetCode)) verified = true;
+  if (!verified) {
+    try { requireAuth_(ss, body, 'admin'); verified = true; } catch (_) {}
+  }
+  if (!verified) {
+    var left = recordFailedAttempt_(ss, rateKey);
+    if (!oldPin && !resetCode && !(body && body.sessionToken)) {
+      throw new Error('PIN_REQUIRED: Для смены PIN требуется текущий PIN, код сброса или сессия администратора (осталось попыток: ' + left + ')');
     }
+    throw new Error('PIN_INVALID: Неверный текущий PIN или код сброса (осталось попыток: ' + left + ')');
   }
+  clearFailedAttempts_(rateKey);
+  var props = PropertiesService.getScriptProperties();
   var newHash = normalizePinHash_(newPin);
   props.setProperty('STAFF_PIN_HASH_' + staffName, newHash);
   props.setProperty('PIN_CHANGE_REQUIRED_' + staffName, '0');
+  bumpSessionEpoch_(staffName);
   var sh = ss ? ss.getSheetByName('Сотрудники') : null;
   if (sh && sh.getLastRow() > 1) {
     var rows = sh.getDataRange().getValues();
@@ -739,6 +808,42 @@ function sha256Hex_(inputStr) {
     out += hex;
   }
   return out;
+}
+
+
+function getOrCreatePinPepper_() {
+  var props = PropertiesService.getScriptProperties();
+  var pep = props.getProperty('PIN_PEPPER') || '';
+  if (!pep) {
+    pep = sha256Hex_(Utilities.getUuid() + ':' + Date.now());
+    props.setProperty('PIN_PEPPER', pep);
+  }
+  return pep;
+}
+
+function hashPinV2_(pin, saltOpt) {
+  var s = String(pin || '').trim();
+  if (s.indexOf('v2$') === 0) return s;
+  var salt = saltOpt || sha256Hex_(Utilities.getUuid()).slice(0, 16);
+  var pep = getOrCreatePinPepper_();
+  var h = sha256Hex_(pep + ':' + salt + ':' + s);
+  for (var i = 0; i < 25; i++) {
+    h = sha256Hex_(pep + ':' + salt + ':' + h);
+  }
+  return 'v2$25$' + salt + '$' + h;
+}
+
+function verifyPinStored_(stored, candidateRaw) {
+  var st = String(stored || '').trim();
+  var cand = String(candidateRaw || '').trim();
+  if (!st || !cand) return false;
+  if (st.indexOf('v2$') === 0) {
+    var parts = st.split('$');
+    if (parts.length !== 4) return false;
+    var recomputed = hashPinV2_(cand, parts[2]);
+    return recomputed === st;
+  }
+  return normalizePinHash_(cand) === st;
 }
 
 function normalizePinHash_(val) {
@@ -859,8 +964,7 @@ function handleAuthLogin_(ss, body) {
     if (!expectedStaffHash) {
       throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден в штатном расписании или отключён');
     }
-    var candStaffHash = normalizePinHash_(pinCandidate);
-    if (!pinCandidate || candStaffHash !== expectedStaffHash) {
+    if (!pinCandidate || !verifyPinStored_(expectedStaffHash, pinCandidate)) {
       var left = recordFailedAttempt_(ss, actorKey);
       throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника «' + staffName + '» (осталось попыток: ' + left + ')');
     }
@@ -889,69 +993,56 @@ function handleAuthLogin_(ss, body) {
 
 function saveServerSession_(sessionObj) {
   if (!sessionObj || !sessionObj.token) return;
+  var props = PropertiesService.getScriptProperties();
+  var epoch = Number(props.getProperty('EPOCH_' + (sessionObj.staffName || '')) || '1') || 1;
+  var stored = {
+    role: sessionObj.role,
+    staffName: sessionObj.staffName,
+    issuedAt: sessionObj.issuedAt,
+    expiresAt: sessionObj.expiresAt,
+    epoch: epoch
+  };
+  var tokHash = sha256Hex_(sessionObj.token);
   try {
-    CacheService.getScriptCache().put('sess_' + sessionObj.token, JSON.stringify(sessionObj), SESSION_TTL_SECONDS);
+    CacheService.getScriptCache().put('sess_' + sessionObj.token, JSON.stringify(stored), SESSION_TTL_SECONDS);
   } catch (_) {}
   try {
-    var store = getJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', {});
-    var now = Date.now();
-    var cleaned = {};
-    var keys = Object.keys(store || {});
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i];
-      if (store[k] && store[k].expiresAt > now) cleaned[k] = store[k];
-    }
-    cleaned[sessionObj.token] = {
-      token: sessionObj.token,
-      role: sessionObj.role,
-      staffName: sessionObj.staffName,
-      issuedAt: sessionObj.issuedAt,
-      expiresAt: sessionObj.expiresAt
-    };
-    var cleanKeys = Object.keys(cleaned);
-    if (cleanKeys.length > 50) {
-      cleanKeys.sort(function(a, b) { return (cleaned[a].issuedAt || 0) - (cleaned[b].issuedAt || 0); });
-      for (var j = 0; j < cleanKeys.length - 50; j++) delete cleaned[cleanKeys[j]];
-    }
-    setJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', cleaned);
+    props.setProperty('SESS_' + tokHash, JSON.stringify(stored));
   } catch (_) {}
 }
 
 function getServerSession_(token) {
   var tok = String(token || '').trim();
   if (!tok || tok.indexOf('st_') !== 0 || tok.indexOf('st_local_') === 0) return null;
+  var props = PropertiesService.getScriptProperties();
+  var rec = null;
   try {
     var raw = CacheService.getScriptCache().get('sess_' + tok);
-    if (raw) {
-      var parsed = JSON.parse(raw);
-      if (parsed && parsed.expiresAt > Date.now()) return parsed;
-    }
+    if (raw) rec = JSON.parse(raw);
   } catch (_) {}
-  try {
-    var store = getJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', {});
-    var rec = store && store[tok];
-    if (rec && rec.expiresAt > Date.now()) {
-      try {
-        var ttlLeft = Math.max(60, Math.floor((rec.expiresAt - Date.now()) / 1000));
-        CacheService.getScriptCache().put('sess_' + tok, JSON.stringify(rec), Math.min(SESSION_TTL_SECONDS, ttlLeft));
-      } catch (_) {}
-      return rec;
-    }
-  } catch (_) {}
-  return null;
+  if (!rec) {
+    try {
+      var rawP = props.getProperty('SESS_' + sha256Hex_(tok));
+      if (rawP) {
+        rec = JSON.parse(rawP);
+        if (rec && rec.expiresAt > Date.now()) {
+          var ttlLeft = Math.max(60, Math.floor((rec.expiresAt - Date.now()) / 1000));
+          CacheService.getScriptCache().put('sess_' + tok, JSON.stringify(rec), Math.min(SESSION_TTL_SECONDS, ttlLeft));
+        }
+      }
+    } catch (_) {}
+  }
+  if (!rec || rec.expiresAt <= Date.now()) return null;
+  var curEpoch = Number(props.getProperty('EPOCH_' + (rec.staffName || '')) || '1') || 1;
+  if (rec.epoch && rec.epoch < curEpoch) return null;
+  return rec;
 }
 
 function removeServerSession_(token) {
   var tok = String(token || '').trim();
   if (!tok) return;
   try { CacheService.getScriptCache().remove('sess_' + tok); } catch (_) {}
-  try {
-    var store = getJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', {});
-    if (store && store[tok]) {
-      delete store[tok];
-      setJsonProp_('COFFEE_ACTIVE_SESSIONS_V4', store);
-    }
-  } catch (_) {}
+  try { PropertiesService.getScriptProperties().deleteProperty('SESS_' + sha256Hex_(tok)); } catch (_) {}
 }
 
 function handleAuthLogout_(body) {
@@ -1542,6 +1633,14 @@ function idempotentJsonOut_(ss, body, result, actorSess) {
     }
   }
   return jsonOut_(result);
+}
+
+
+function escapeTgHtml_(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function jsonOut_(obj) {
@@ -2607,11 +2706,13 @@ function saveStaffPins_(ss, b) {
   var rows = sh ? sh.getDataRange().getValues() : [];
   (Array.isArray(b.pins) ? b.pins : []).forEach(function(p) {
     if (!p || !p.name || !p.pin) return;
-    var pHash = normalizePinHash_(p.pin);
+    var pHash = hashPinV2_(String(p.pin));
     props.setProperty('STAFF_PIN_HASH_' + p.name, pHash);
+    bumpSessionEpoch_(String(p.name).trim());
     for (var i = 1; i < rows.length; i++) {
       if (String(rows[i][1] || '').trim().toLowerCase() === String(p.name).trim().toLowerCase()) {
-        PropertiesService.getScriptProperties().setProperty('STAFF_PIN_HASH_' + String(rows[i][1] || '').trim(), normalizePinHash_(String(p.pin).trim()));
+        PropertiesService.getScriptProperties().setProperty('STAFF_PIN_HASH_' + String(rows[i][1] || '').trim(), pHash);
+          bumpSessionEpoch_(String(rows[i][1] || '').trim());
           sh.getRange(i + 1, 6).setValue('••');
         break;
       }
@@ -2867,7 +2968,7 @@ function saveTask_(ss, b, sessOpt) {
     var staffOwner = String((sess && sess.staffName) || '').trim();
     if (b.instruction) {
       if (isAdmin) {
-        try { CacheService.getScriptCache().put('LIVE_ENV_V63', String(b.instruction), 21600); } catch (_) {}
+        
       }
       if (String(b.instruction).length > 48000) {
         try {

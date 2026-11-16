@@ -327,4 +327,57 @@ test('v4.1-9. Передача смены (handover_shift), списания (su
   assert(admAdj.ok === true && admAdj.appendOnly === true && admAdj.adjustmentId, 'Администратор должен создавать append-only корректировку');
 });
 
-console.log('\nИТОГО ТЕСТОВ COFFEE ILLY v4.1: ' + passed + '/' + passed + ' успешно.');
+
+test('S-01 + S-06b + R-12. Защита change_staff_pin при PIN_CHANGE_REQUIRED, отзыв старых сессий по epoch и экранирование HTML в Telegram', () => {
+  scriptProps['PIN_CHANGE_REQUIRED_Соня'] = '1';
+  const hijack = callPost({ action: 'change_staff_pin', staffName: 'Соня', newPin: '998877' });
+  assert(hijack.ok === false && /PIN_REQUIRED|PIN_INVALID/.test(hijack.error), 'Аноним не может сменить PIN даже при PIN_CHANGE_REQUIRED=1');
+
+  const resetIssued = callPost({ action: 'issue_staff_reset_code', sessionToken: adminLogin.sessionToken, staffName: 'Соня' });
+  assert(resetIssued.ok === true && /^\d{8}$/.test(resetIssued.resetCode), 'Админ должен выдавать 8-значный одноразовый код сброса');
+
+  const oldTok = sonyaLogin.sessionToken;
+  const chgOk = callPost({ action: 'change_staff_pin', staffName: 'Соня', resetCode: resetIssued.resetCode, newPin: '482910' });
+  assert(chgOk.ok === true && chgOk.pinChanged === true, 'Смена PIN по одноразовому коду должна проходить');
+
+  const oldSessCheck = callPost({ action: 'staff_bootstrap', sessionToken: oldTok });
+  assert(oldSessCheck.ok === false, 'Старый токен должен отзываться после смены PIN (epoch)');
+
+  const replayCode = callPost({ action: 'change_staff_pin', staffName: 'Соня', resetCode: resetIssued.resetCode, newPin: '112233' });
+  assert(replayCode.ok === false, 'Одноразовый код сброса не должен работать повторно');
+
+  assert(gasCtx.escapeTgHtml_('<b>xss</b> & <a href="x">') === '&lt;b&gt;xss&lt;/b&gt; &amp; &lt;a href="x"&gt;', 'escapeTgHtml_ должен экранировать HTML-теги');
+});
+
+
+test('v87.1. save_staff_pins отзывает старые сессии, PIN_CHANGE_REQUIRED блокирует живую сессию, isIncident без ReferenceError и hashPinV2_', () => {
+  // 1. hashPinV2_ с разными солями и PIN_PEPPER
+  const h1 = gasCtx.hashPinV2_('556677');
+  const h2 = gasCtx.hashPinV2_('556677');
+  assert(h1.indexOf('v2$') === 0 && h1 !== h2 && gasCtx.verifyPinStored_(h1, '556677'), 'hashPinV2_ должен давать разные солёные хеши');
+
+  // 2. submit_checklist с isIncident: true не падает с ReferenceError
+  const chkInc = callPost({
+    action: 'submit_checklist',
+    sessionToken: alinaLogin.sessionToken,
+    block: 'Открытие',
+    items: [{ id: 'o01', title: '<b>Кофемашина</b>', isIncident: true, comment: 'Течь & пар' }]
+  });
+  assert(chkInc.ok === true, 'submit_checklist с isIncident должен выполняться без ReferenceError');
+
+  // 3. save_staff_pins отзывает старую сессию Алины
+  const alinaOldTok = alinaLogin.sessionToken;
+  callPost({ action: 'save_staff_pins', sessionToken: adminLogin.sessionToken, pins: [{ name: 'Алина', pin: '774411' }] });
+  const alinaAfterAdminPin = callPost({ action: 'staff_bootstrap', sessionToken: alinaOldTok });
+  assert(alinaAfterAdminPin.ok === false, 'save_staff_pins должен отзывать старую сессию через bumpSessionEpoch_');
+
+  // 4. PIN_CHANGE_REQUIRED блокирует даже активную сессию
+  const alinaNewLogin = callPost({ action: 'auth_login', role: 'staff', staffName: 'Алина', pin: '774411' });
+  assert(alinaNewLogin.ok === true && alinaNewLogin.sessionToken, 'Вход по новому PIN должен работать');
+  scriptProps['PIN_CHANGE_REQUIRED_Алина'] = '1';
+  const blockedByFlag = callPost({ action: 'staff_bootstrap', sessionToken: alinaNewLogin.sessionToken });
+  assert(blockedByFlag.ok === false && /PIN_CHANGE_REQUIRED/.test(blockedByFlag.error), 'PIN_CHANGE_REQUIRED должен блокировать действующую сессию');
+  delete scriptProps['PIN_CHANGE_REQUIRED_Алина'];
+});
+
+console.log('\nИТОГО ТЕСТОВ COFFEE ILLY v87.1: ' + passed + '/' + passed + ' успешно.');

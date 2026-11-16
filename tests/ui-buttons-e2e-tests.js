@@ -741,7 +741,7 @@ check('21. Аудит безопасности P0/P1 и полная систе�
   // 1) Проверка единой версии v82 и отсутствия дублирования M3 в sync.js (Документ 1)
   assert(/^v8\d$/.test(window.COFFEE_APP_VERSION), 'Версия в version.js должна быть синхронизирована');
   assert(!syncJs.includes('initMaterialDesign3System'), 'Движок Material Design 3 не должен дублироваться внутри js/sync.js');
-  assert(idx.includes('js/material-design.js?v=8') && own.includes('js/material-design.js?v=8'), 'js/material-design.js должен быть напрямую подключён в HTML-страницах');
+  assert(/js\/material-design\.js\?v=[\w.]+/.test(idx) && /js\/material-design\.js\?v=[\w.]+/.test(own), 'js/material-design.js должен быть напрямую подключён в HTML-страницах');
 
   // 2) Проверка закрытия P0/P1 уязвимостей в Code.gs (Документ 1)
   assert(cgs.includes('verifyTelegramInitDataHmac_') && cgs.includes('verifySafeTelegramBindingV82_'), 'В Code.gs должна быть криптографическая защита привязки Telegram от подмены сотрудника (P0)');

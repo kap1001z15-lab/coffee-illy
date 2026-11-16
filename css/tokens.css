@@ -10,13 +10,16 @@
 :root,
 [data-theme="light"] {
   /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
-  --bg: #F5F2ED;
+  --bg: #F5EDE3;
   --surface: #FFFBF8;
   --surface-2: #F1E8E1;
   --line: #E6E1D8;
   --ink: #241B16;
   --ink-2: #65574F; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
   --accent: #8B5022;
+  --sidebar-bg: #241B16;
+  --sidebar-ink: #FFFBF8;
+  --sidebar-active: #6E3F1C;
   --accent-ink: #FFFFFF;
   --accent-soft: #EFE6E1;
 

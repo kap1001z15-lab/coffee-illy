@@ -270,7 +270,7 @@
         if ((role || 'admin') === 'admin') {
           sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sess));
-          localStorage.setItem('coffee_illy_pin', 'sha256:' + pinHash);
+          try { localStorage.removeItem('coffee_illy_pin'); } catch (_) {}
         } else {
           sessionStorage.setItem('coffee_staff_session_v21', JSON.stringify(sess));
           localStorage.setItem('coffee_staff_session_v21', JSON.stringify(sess));
@@ -369,7 +369,7 @@
           fetch(window.COFFEE.API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pinHash })
+            body: JSON.stringify({ action: 'auth_login', role: 'admin', staffName: 'Администратор', pin: pinInput })
           })
             .then((r) => r.json())
             .then((res) => {
@@ -406,7 +406,7 @@
           fetch(window.COFFEE.API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'auth_login', role: 'staff', staffName: cleanName, pinHash })
+            body: JSON.stringify({ action: 'auth_login', role: 'staff', staffName: cleanName, pin: pinInput })
           })
             .then((r) => r.json())
             .then((res) => {

@@ -998,3 +998,49 @@ html, body {
     margin-right: auto;
   }
 }
+
+/* === DESIGN REFERENCE v4.0: ESPRESSO SIDEBAR + CREAM CARDS === */
+@media (min-width: 900px) {
+  .owner-combined-nav.md3-navigation-drawer {
+    background: var(--sidebar-bg, #241B16);
+    color: var(--sidebar-ink, #FFFBF8);
+    border-radius: 18px;
+    padding: 12px;
+  }
+  .owner-combined-nav.md3-navigation-drawer button {
+    color: var(--sidebar-ink, #FFFBF8);
+    border-radius: 12px;
+    min-height: 44px;
+    opacity: .86;
+  }
+  .owner-combined-nav.md3-navigation-drawer button.on,
+  .owner-combined-nav.md3-navigation-drawer button.active {
+    background: var(--sidebar-active, #6E3F1C);
+    color: var(--sidebar-ink, #FFFBF8);
+    opacity: 1;
+  }
+}
+
+/* === DESIGN REFERENCE v4.0: FIXED ESPRESSO SIDEBAR + CLEAN TOPBAR === */
+.app-header {
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+@media (min-width: 900px) {
+  body.owner-layout main,
+  main:has(#ownerCombinedNav) {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .owner-combined-nav.md3-navigation-drawer {
+    position: sticky;
+    top: 76px;
+    min-height: calc(100vh - 96px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
