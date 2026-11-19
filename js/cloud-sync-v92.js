@@ -343,6 +343,17 @@
       });
       changed = true;
     }
+    if (data.userActiveState && typeof data.userActiveState === 'object') {
+      state.liveProgress = state.liveProgress || {};
+      Object.keys(data.userActiveState).forEach((k) => {
+        const rec = data.userActiveState[k];
+        if (rec && rec.block && Number(rec.total) > 0) {
+          const who = rec.userName || k.split(':')[0] || k;
+          state.liveProgress[who] = { block: rec.block, done: Number(rec.done || 0), total: Number(rec.total || 0), updatedAt: rec.updatedAt || '' };
+        }
+      });
+      changed = true;
+    }
     if (data.staffPresence && typeof data.staffPresence === 'object') {
       state.staffPresence = data.staffPresence;
       changed = true;
@@ -482,6 +493,7 @@
     const mode = (opts && opts.mode) || 'terminal';
     const getState = opts && opts.getState;
     const onSynced = opts && opts.onSynced;
+    const onAuthRequired = opts && opts.onAuthRequired;
 
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -508,6 +520,14 @@
         const sess = getSession();
         if (mode === 'owner' && sess.adminToken) {
           data = await gasPost('admin', { sessionToken: sess.adminToken });
+          if (data && data.ok === false && /PIN_REQUIRED|PIN_INVALID|FORBIDDEN|SETUP_REQUIRED/i.test(String(data.error || ''))) {
+            setSession({ adminToken: '' });
+            if (onAuthRequired) onAuthRequired(String(data.error || 'PIN_REQUIRED'));
+            data = await gasGet({ action: 'get_checklists', nocache: '1' });
+          }
+        } else if (mode === 'owner' && !sess.adminToken) {
+          if (onAuthRequired) onAuthRequired('PIN_REQUIRED');
+          data = await gasGet({ action: 'get_checklists', nocache: '1' });
         } else if (mode === 'terminal' && sess.staffToken) {
           data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
         } else {
@@ -723,7 +743,11 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
-    importPosBatch: importPosBatch
+    importPosBatch: importPosBatch,
+    sendStepProgress: function (userName, block, done, total) {
+      if (!userName || !block) return;
+      enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
+    }
   };
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;

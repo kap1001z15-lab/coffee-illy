@@ -1,8 +1,8 @@
-/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
+  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
   const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
@@ -81,6 +81,12 @@
             const t0 = Date.now();
             const res = await gasPost(item.action, item.payload);
             _lastRttMs = Math.max(1, Date.now() - t0);
+            const errStr = String((res && res.error) || '');
+            if (res && res.ok === false && /PIN_REQUIRED|STAFF_AUTH_REQUIRED|FORBIDDEN/i.test(errStr)) {
+              anyRetryableFailure = true;
+              if (_syncCallbacks && _syncCallbacks.onAuthRequired) _syncCallbacks.onAuthRequired(errStr);
+              break;
+            }
             doneIds.add(opId);
             if (!res || res.ok !== false) flushed++;
           } catch (_) {
@@ -108,8 +114,8 @@
     const q = readOutbox();
     q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now() });
     writeOutbox(q);
-    flushOutbox().then(() => {
-      if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(false);
+    flushOutbox().then((r) => {
+      if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(!!(r && r.flushed > 0));
     }).catch(() => {});
   }
 
@@ -317,6 +323,7 @@
         cat: k.cat || k.category || 'Классика',
         price: Number(k.price || 0),
         cost: Number(k.cost || 0),
+        ingredients: k.ingredients || '',
         recipe: k.recipe || '',
         serve: k.serve || ''
       }));
@@ -341,6 +348,33 @@
           roster: (data.shiftRoster && data.shiftRoster[d] !== undefined ? data.shiftRoster[d] : (p.roster || prev.roster || ''))
         };
       });
+      changed = true;
+    }
+    if (data.userActiveState && typeof data.userActiveState === 'object') {
+      state.liveProgress = state.liveProgress || {};
+      Object.keys(data.userActiveState).forEach((k) => {
+        const rec = data.userActiveState[k];
+        if (rec && rec.block && Number(rec.total) > 0) {
+          const who = rec.userName || k.split(':')[0] || k;
+          state.liveProgress[who] = { block: rec.block, done: Number(rec.done || 0), total: Number(rec.total || 0), updatedAt: rec.updatedAt || '' };
+        }
+      });
+      changed = true;
+    }
+    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
+      const todayKey = localISO();
+      const nextExt = {};
+      Object.keys(data.deadlineExtensions).forEach((k) => {
+        const val = data.deadlineExtensions[k];
+        if (!val || !val.forceOpen) return;
+        const parts = String(k).split(':');
+        if (parts.length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) {
+          if (parts[0] === todayKey) nextExt[parts.slice(1).join(':')] = val;
+        } else {
+          nextExt[k] = val;
+        }
+      });
+      state.extensions = nextExt;
       changed = true;
     }
     if (data.staffPresence && typeof data.staffPresence === 'object') {
@@ -469,9 +503,22 @@
       const nm = desc.replace('Обновлена ТТК ', '').trim();
       const k = (st.ttk || []).find((x) => x.name === nm);
       if (k) enqueueOp('save_ttk', k);
+    } else if (desc.indexOf('Возвращено штатное окно') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
+    } else if (desc.indexOf('Обновлён статус инцидента') === 0) {
+      const m = desc.match(/инцидента\s+(\S+)\s*→\s*(.+)$/);
+      if (m) enqueueOp('update_incident', { id: m[1].trim(), status: m[2].trim() });
+    } else if (desc.indexOf('Удалена задача:') === 0) {
+      const tid = desc.replace('Удалена задача:', '').trim();
+      if (tid) enqueueOp('delete_task', { id: tid });
+    } else if (desc.indexOf('Обновлена задача:') === 0 && st.tasks) {
+      const tid = desc.replace('Обновлена задача:', '').trim();
+      const t = st.tasks.find((x) => x.id === tid);
+      if (t) enqueueOp('save_task', Object.assign({}, t, { groupName: t.group || t.block || '', photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: t.active === false ? 'нет' : 'да' }));
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
-      enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
+      enqueueOp('save_task', Object.assign({}, t, { groupName: t.group || t.block || '', photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
     }
   }
 
@@ -482,6 +529,7 @@
     const mode = (opts && opts.mode) || 'terminal';
     const getState = opts && opts.getState;
     const onSynced = opts && opts.onSynced;
+    const onAuthRequired = opts && opts.onAuthRequired;
 
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -508,6 +556,14 @@
         const sess = getSession();
         if (mode === 'owner' && sess.adminToken) {
           data = await gasPost('admin', { sessionToken: sess.adminToken });
+          if (data && data.ok === false && /PIN_REQUIRED|PIN_INVALID|FORBIDDEN|SETUP_REQUIRED/i.test(String(data.error || ''))) {
+            setSession({ adminToken: '' });
+            if (onAuthRequired) onAuthRequired(String(data.error || 'PIN_REQUIRED'));
+            data = await gasGet({ action: 'get_checklists', nocache: '1' });
+          }
+        } else if (mode === 'owner' && !sess.adminToken) {
+          if (onAuthRequired) onAuthRequired('PIN_REQUIRED');
+          data = await gasGet({ action: 'get_checklists', nocache: '1' });
         } else if (mode === 'terminal' && sess.staffToken) {
           data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
         } else {
@@ -556,7 +612,7 @@
       }
     }
 
-    _syncCallbacks = { pullNow: pullNow, flushOutbox: flushOutbox };
+    _syncCallbacks = { pullNow: pullNow, flushOutbox: flushOutbox, onAuthRequired: opts && opts.onAuthRequired };
     pullNow(true).finally(schedule);
     return _syncCallbacks;
   }
@@ -723,8 +779,13 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
-    importPosBatch: importPosBatch
+    importPosBatch: importPosBatch,
+    sendStepProgress: function (userName, block, done, total) {
+      if (!userName || !block) return;
+      enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
+    }
   };
+  window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
 })();

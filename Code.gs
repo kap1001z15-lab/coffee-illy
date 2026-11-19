@@ -1426,11 +1426,13 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
   var safeTtk = Array.isArray(full.ttk) ? full.ttk.map(function(t) {
     return {
       id: t.id,
-      category: t.category,
+      category: t.category || t.cat || 'Классика',
       name: t.name,
-      volume: t.volume,
-      ingredients: t.ingredients,
-      recipe: t.recipe
+      volume: t.volume || t.vol || '',
+      price: Number(t.price || 0),
+      ingredients: t.ingredients || '',
+      recipe: t.recipe || '',
+      serve: t.serve || t.serving || ''
     };
   }) : [];
 
@@ -2304,7 +2306,9 @@ function getTtkList_(ss) {
       costSyrup: Number(r[7]) || 0,
       costCup: Number(r[8]) || 0,
       recipe: String(r[9] || ''),
-      serving: String(r[10] || '')
+      serving: String(r[10] || ''),
+      serve: String(r[10] || ''),
+      ingredients: String(r[11] || '')
     });
   }
   return list;
@@ -2641,6 +2645,7 @@ function getAdmin_(ss) {
       who: String(ri[7] || 'Бариста'),
       owner: String(ri[8] || 'Администратор'),
       photo: String(ri[9] || ''),
+      photoUrl: String(ri[9] || ''),
       incType: String(ri[10] || 'Поломка оборудования'),
       history: hist
     });
@@ -2668,6 +2673,7 @@ function getAdmin_(ss) {
         who: String(lri[4] || 'Бариста'),
         owner: String(lri[10] || 'Администратор'),
         photo: String(lri[8] || ''),
+        photoUrl: String(lri[8] || ''),
         incType: 'Поломка оборудования',
         history: []
       });
@@ -3147,16 +3153,26 @@ function extendDeadline_(ss, b) {
   var extMap = {};
   try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
   var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
-  extMap[extKey] = {
-    openFrom: b.openFrom || '00:00',
-    until: b.until || '23:59',
-    forceOpen: true,
-    reason: b.reason || 'Разблокировано администратором онлайн',
-    at: tm
-  };
-  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
-  bumpDataRev_();
-  appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
+  if (b.clear || b.cancel) {
+    delete extMap[extKey];
+    Object.keys(extMap).forEach(function(k) {
+      if (k === blk || k.slice(-(':' + blk).length) === ':' + blk) delete extMap[k];
+    });
+    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Возврат штатного окна чек-листа', blk + ' возвращён в расписание');
+  } else {
+    extMap[extKey] = {
+      openFrom: b.openFrom || '00:00',
+      until: b.until || '23:59',
+      forceOpen: true,
+      reason: b.reason || 'Разблокировано администратором онлайн',
+      at: tm
+    };
+    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
+  }
   return { ok: true, deadlineExtensions: extMap, rev: getDataRev_() };
 }
 
@@ -3279,6 +3295,7 @@ function saveStaff_(ss, b) {
   sh.appendRow([id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••']);
   var resNew = { ok: true, id: id };
   if (generatedPin) resNew.generatedPin = generatedPin;
+  bumpDataRev_();
   return resNew;
 }
 
@@ -3298,14 +3315,20 @@ function saveTtk_(ss, b) {
   var sh = ss.getSheetByName('Техкарты');
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
-  var rowVals = [id, b.name || '', b.volume || '', b.category || '', Number(b.price) || 0, Number(b.costBeans) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || ''];
+  var vol = b.volume || b.vol || '';
+  var cat = b.category || b.cat || 'Классика';
+  var srv = b.serving || b.serve || '';
+  var ing = b.ingredients || '';
+  var rowVals = [id, b.name || '', vol, cat, Number(b.price) || 0, Number(b.costBeans != null ? b.costBeans : (b.cost || 0)) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', srv, ing];
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
-      sh.getRange(i + 1, 1, 1, 11).setValues([rowVals]);
+      sh.getRange(i + 1, 1, 1, 12).setValues([rowVals]);
+      bumpDataRev_();
       return { ok: true, id: id };
     }
   }
   sh.appendRow(rowVals);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3318,6 +3341,7 @@ function deleteTtk_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3434,6 +3458,7 @@ function saveTask_(ss, b, sessOpt) {
     return { ok: true, id: id, row: Number(b.row) };
   }
   sh.appendRow(rowVals);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3452,6 +3477,7 @@ function deleteTask_(ss, b) {
   if (b.row && Number(b.row) >= 2 && Number(b.row) <= sh.getLastRow()) {
     sh.deleteRow(Number(b.row));
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -4107,6 +4133,7 @@ function reportIncident_(ss, b) {
     JSON.stringify(hist)
   ]);
   appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -4129,6 +4156,7 @@ function updateIncident_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
