@@ -19,6 +19,7 @@ const STATIC_ASSETS = [
   './css/terminal.css',
   './css/owner.css',
   './css/light.css', './css/v4-design-ref.css',
+  './css/v90-minimal.css',
   './config.js',
   './app.js',
   './js/theme.js',

@@ -1,25 +1,223 @@
 /* =========================================================================
-   COFFEE ILLY v90.0 — MINIMALIST M3 SOFT POLISH & LIVE SYNC PILL
-   Единый минималистичный слой для Терминала бариста и Дашборда владельца.
-   Автоматически адаптируется под светлую/тёмную тему ОС и Telegram Mini App.
+   COFFEE ILLY v90.1 — UNIFIED MINIMALIST MATERIAL 3 SOFT DESIGN SYSTEM
+   Применяет чистую минималистичную эстетику M3 Soft (как в тестовом превью)
+   к боевым owner.html / admin.html и index.html / barista.html.
+   Автоматически поддерживает светлую и тёмную тему ОС и Telegram Mini App.
    ========================================================================= */
 
-:root {
-  --v90-radius-sm: 10px;
-  --v90-radius-md: 14px;
-  --v90-radius-lg: 18px;
+:root,
+html:not([data-theme="dark"]),
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #FCF8F4;
+  --surface: #F4ECE4;
+  --surface-2: #EAE0D5;
+  --surface-active: #E1D4C6;
+  --card: #FFFFFF;
+  --ink: #271C15;
+  --ink-2: #6E5D51;
+  --muted: #6E5D51;
+  --mu: #6E5D51;
+  --accent: #7D4E24;
+  --brew: #7D4E24;
+  --crema: #7D4E24;
+  --accent-soft: rgba(125, 78, 36, 0.12);
+  --accent-ink: #FFFFFF;
+  --sidebar-bg: #F4ECE4;
+  --sidebar-ink: #271C15;
+  --sidebar-active: rgba(125, 78, 36, 0.14);
+  --line: rgba(39, 28, 21, 0.10);
+  --border: rgba(39, 28, 21, 0.10);
+  --chip: #EAE0D5;
+  --good: #266D45;
+  --good-soft: rgba(38, 109, 69, 0.12);
+  --warn: #A46200;
+  --warn-soft: rgba(164, 98, 0, 0.13);
+  --bad: #B33A3A;
+  --bad-soft: rgba(179, 58, 58, 0.12);
+  --shadow: 0 2px 10px rgba(39, 28, 21, 0.05);
+  --shadow-1: 0 2px 10px rgba(39, 28, 21, 0.05);
+  --r-sm: 14px;
+  --r-md: 24px;
+  --r-full: 999px;
   --v90-transition: 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #171311;
+  --surface: #221D1A;
+  --surface-2: #2E2723;
+  --surface-active: #372F2A;
+  --card: #26201D;
+  --ink: #F2E7DF;
+  --ink-2: #B8A79A;
+  --muted: #B8A79A;
+  --mu: #B8A79A;
+  --accent: #E8B88A;
+  --brew: #E8B88A;
+  --crema: #E8B88A;
+  --accent-soft: rgba(232, 184, 138, 0.16);
+  --accent-ink: #2B1A0D;
+  --sidebar-bg: #221D1A;
+  --sidebar-ink: #F2E7DF;
+  --sidebar-active: rgba(232, 184, 138, 0.18);
+  --line: rgba(242, 231, 223, 0.10);
+  --border: rgba(242, 231, 223, 0.10);
+  --chip: #2E2723;
+  --good: #8AD6A7;
+  --good-soft: rgba(138, 214, 167, 0.15);
+  --warn: #F0BE6F;
+  --warn-soft: rgba(240, 190, 111, 0.15);
+  --bad: #F2A2A2;
+  --bad-soft: rgba(242, 162, 162, 0.15);
+  --shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
+  --shadow-1: 0 2px 14px rgba(0, 0, 0, 0.28);
+}
+
 html, body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Inter', sans-serif;
   transition: background-color var(--v90-transition), color var(--v90-transition);
 }
 
-/* Минималистичные группировки в разделе Настроек */
+/* Минималистичная шапка и боковая панель (без тяжёлого тёмного блока) */
+body header,
+body .topbar,
+body .hdr,
+body .owner-topbar,
+body .barista-topbar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  box-shadow: none;
+}
+
+body .owner-sidebar,
+body aside.sidebar,
+body .owner-rail {
+  background: var(--surface);
+  color: var(--ink);
+  border-right: 1px solid var(--line);
+  box-shadow: none;
+}
+
+body .owner-sidebar button,
+body .owner-sidebar a,
+body .owner-rail button,
+body .owner-rail a {
+  color: var(--ink);
+  border-radius: 999px;
+}
+
+body .owner-sidebar .active,
+body .owner-sidebar [aria-current="page"],
+body .owner-rail .active,
+body .owner-rail [aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Воздушные M3 Soft карточки (24px скругление, чистый фон, мягкая тень) */
+body .card,
+body .kpi,
+body .kpi-card,
+body .box,
+body .panel-card,
+body .task-card,
+body .step-card,
+body .set,
+body .owner-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  transition: border-color var(--v90-transition), background-color var(--v90-transition), transform 140ms ease;
+}
+
+/* Кнопки и вкладки в стиле pill (999px) */
+body button.p,
+body .btn-primary,
+body .m3-btn-filled {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0 18px;
+}
+
+body button.b,
+body .btn-secondary,
+body .m3-btn-tonal {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+body #tabs button,
+body .tabs button,
+body .owner-subbar button {
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+
+body #tabs button.on,
+body #tabs button.active,
+body .tabs button.on,
+body .tabs button.active,
+body .owner-subbar button.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Нижняя навигация терминала */
+body .bottom-nav,
+body .bnav,
+body nav.mobile-nav {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: none;
+}
+
+/* Чистые поля ввода и выпадающие списки */
+body input[type="text"],
+body input[type="number"],
+body input[type="time"],
+body input[type="password"],
+body input[type="search"],
+body select,
+body textarea {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-height: 42px;
+  font-size: 14px;
+  transition: border-color var(--v90-transition);
+}
+
+body input:focus,
+body select:focus,
+body textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Сгруппированный раздел настроек v90 */
 .v90-set-group {
-  margin: 18px 0 22px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line, rgba(128, 128, 128, 0.22));
+  margin: 22px 0 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
 }
 
 .v90-set-group-head {
@@ -27,41 +225,19 @@ html, body {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .v90-set-group-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--ink, inherit);
+  color: var(--ink);
 }
 
 .v90-set-group-sub {
-  font-size: 12.5px;
-  color: var(--mu, #64748b);
-}
-
-.settings-grid .set {
-  border-radius: var(--v90-radius-md) !important;
-  border: 1px solid var(--line, rgba(128, 128, 128, 0.2)) !important;
-  box-shadow: none !important;
-  transition: border-color var(--v90-transition), background-color var(--v90-transition);
-}
-
-.settings-grid .set:focus-within {
-  border-color: var(--crema, #8b5a2b) !important;
-}
-
-.settings-grid .set select,
-.settings-grid .set input[type="number"],
-.settings-grid .set input[type="time"],
-.settings-grid .set input[type="text"],
-.settings-grid .set input[type="password"] {
-  min-height: 42px;
-  border-radius: var(--v90-radius-sm);
-  font-size: 14px;
-  transition: border-color var(--v90-transition), box-shadow var(--v90-transition);
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* Индикатор живой синхронизации между устройствами */
@@ -69,22 +245,22 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px;
+  padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid var(--line, rgba(128, 128, 128, 0.28));
-  background: var(--surface, var(--bg, transparent));
-  color: var(--ink, inherit);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  transition: border-color var(--v90-transition), opacity var(--v90-transition), transform 120ms ease;
+  transition: border-color var(--v90-transition), transform 120ms ease;
 }
 
 .v90-sync-pill:hover {
-  border-color: var(--crema, #8b5a2b);
+  border-color: var(--accent);
 }
 
 .v90-sync-pill:active {
@@ -95,7 +271,7 @@ html, body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #16a34a;
+  background: var(--good);
   flex-shrink: 0;
 }
 
@@ -106,11 +282,11 @@ html, body {
 
 .v90-sync-pill[data-state="offline"] .v90-sync-dot,
 .v90-sync-pill[data-state="pending"] .v90-sync-dot {
-  background: #d97706;
+  background: var(--warn);
 }
 
 .v90-sync-pill[data-state="error"] .v90-sync-dot {
-  background: #dc2626;
+  background: var(--bad);
 }
 
 @keyframes v90-pulse {
@@ -120,7 +296,7 @@ html, body {
 
 @media (max-width: 640px) {
   .v90-sync-pill {
-    padding: 5px 9px;
+    padding: 5px 10px;
     font-size: 11.5px;
   }
   .settings-grid .set .line {
