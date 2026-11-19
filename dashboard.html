@@ -105,7 +105,7 @@ tr:last-child td { border-bottom:none; }
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=92"></script>
-  <script src="js/cloud-sync-v94.js?v=92"></script>
+  <script src="js/cloud-sync-v93.js?v=92"></script>
 </head>
 <body>
 <header class="topbar">
@@ -240,11 +240,6 @@ function initTheme(btnId) {
   let adminAuthNeeded = !adminUnlocked;
   let incFilter = 'open';
   let chkFilter = 'all';
-  let ovRange = 'all';
-  let ovFrom = '';
-  let ovTo = '';
-  let editTasksBlock = null;
-  let taskSearchQ = '';
 
   initTheme('btn-theme');
   function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); }
@@ -327,82 +322,36 @@ function initTheme(btnId) {
         : (adminAuthNeeded
           ? `<div class="card-soft" style="margin-bottom:14px;border:1px solid var(--warn);display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>🔒 Войдите по PIN владельца, чтобы подтянуть живую кассу, расходы и поломки из Google Таблицы.</span><button class="chip-btn accent" id="ov-unlock">Войти по PIN</button></div>`
           : '');
-      function shiftIso(daysDelta) {
-        const d = new Date();
-        d.setDate(d.getDate() + daysDelta);
-        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-      }
-      function getRangeBounds() {
-        if (ovRange === 'today') return { from: TODAY, to: TODAY, label: 'Сегодня (' + TODAY + ')' };
-        if (ovRange === 'yesterday') { const y = shiftIso(-1); return { from: y, to: y, label: 'Вчера (' + y + ')' }; }
-        if (ovRange === '7d') return { from: shiftIso(-6), to: TODAY, label: 'Последние 7 дней' };
-        if (ovRange === '30d') return { from: shiftIso(-29), to: TODAY, label: 'Последние 30 дней' };
-        if (ovRange === '90d') return { from: shiftIso(-89), to: TODAY, label: 'Последние 90 дней' };
-        if (ovRange === 'custom') return { from: ovFrom || '2000-01-01', to: ovTo || '2099-12-31', label: (ovFrom || '…') + ' — ' + (ovTo || '…') };
-        return { from: '', to: '', label: 'Всё время' };
-      }
-      const rb = getRangeBounds();
-      const inRange = (dtStr) => {
-        const s = String(dtStr || '').slice(0, 10);
-        if (!rb.from && !rb.to) return true;
-        if (rb.from && s < rb.from) return false;
-        if (rb.to && s > rb.to) return false;
-        return true;
-      };
-      const fCash = state.cash.filter(c => inRange(c.date));
-      const fExp = state.expenses.filter(e => inRange(e.date));
-      const fChk = state.checklists.filter(c => inRange(c.date));
-      const fInc = state.incidents.filter(i => inRange(i.date));
-      const fOpenIncs = fInc.filter(i => i.status !== 'Решена').length;
-      const fRev = fCash.reduce((a, c) => a + (Number(c.revenue) || 0), 0);
-      const fExpSum = fExp.reduce((a, e) => a + (Number(e.amount) || 0), 0);
       const todayPlan = getDayPlan(TODAY);
-      const totalPlanRev = fCash.reduce((a, c) => a + getDayPlan(c.date).rev, 0);
-      const totalChecks = fCash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
-      const totalPlanChecks = fCash.reduce((a, c) => a + getDayPlan(c.date).checks, 0);
-      const actualAvgCheck = totalChecks > 0 ? Math.round(fRev / totalChecks) : 0;
-      const targetAvgCheck = fCash.length ? Math.round(fCash.reduce((a, c) => a + getDayPlan(c.date).avg, 0) / fCash.length) : todayPlan.avg;
-      const revPlanPct = totalPlanRev > 0 ? Math.round((fRev / totalPlanRev) * 100) : 0;
+      const totalPlanRev = state.cash.reduce((a, c) => a + getDayPlan(c.date).rev, 0);
+      const totalChecks = state.cash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
+      const totalPlanChecks = state.cash.reduce((a, c) => a + getDayPlan(c.date).checks, 0);
+      const actualAvgCheck = totalChecks > 0 ? Math.round(totalRev / totalChecks) : 0;
+      const targetAvgCheck = state.cash.length ? Math.round(state.cash.reduce((a, c) => a + getDayPlan(c.date).avg, 0) / state.cash.length) : todayPlan.avg;
+      const revPlanPct = totalPlanRev > 0 ? Math.round((totalRev / totalPlanRev) * 100) : 0;
       const checksPlanPct = totalPlanChecks > 0 ? Math.round((totalChecks / totalPlanChecks) * 100) : 0;
-      const days = fCash.slice(0, 14).reverse();
+      const days = state.cash.slice(0,10).reverse();
       const maxRev = Math.max(todayPlan.rev, ...days.map(c => Math.max(c.revenue, getDayPlan(c.date).rev)), 1);
       const todayPlanPct = Math.round((todayPlan.rev / maxRev) * 100);
-      const presets = [
-        ['today','Сегодня'],['yesterday','Вчера'],['7d','7 дней'],['30d','30 дней'],['90d','90 дней'],['all','Всё время'],['custom','Период']
-      ];
-      const filterBar = `
-        <div class="card" style="margin-bottom:14px;padding:12px 14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-              ${presets.map(([k, lbl]) => `<button class="chip-btn ${ovRange===k?'accent':''}" data-ovp="${k}" style="padding:6px 11px;font-size:12.5px;">${lbl}</button>`).join('')}
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              <span style="font-size:12px;color:var(--muted);">С</span>
-              <input id="ov-from" type="date" value="${esc(ovFrom || (rb.from || ''))}" style="padding:5px 8px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:12.5px;">
-              <span style="font-size:12px;color:var(--muted);">По</span>
-              <input id="ov-to" type="date" value="${esc(ovTo || (rb.to || ''))}" style="padding:5px 8px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:12.5px;">
-            </div>
-          </div>
-        </div>`;
-      root.innerHTML = syncBanner + filterBar + `
+      root.innerHTML = syncBanner + `
         <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-lbl">Выручка (${fCash.length} смен · ${esc(rb.label)})</div><div class="kpi-val">${fmtRub(fRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>)</div></div>
-          <div class="kpi"><div class="kpi-lbl">Чеки и средний чек</div><div class="kpi-val" style="color:${actualAvgCheck>=targetAvgCheck?'var(--good)':'var(--accent)'}">${actualAvgCheck} ₽</div><div class="kpi-meta">Чеков: <b>${totalChecks}</b> / ${totalPlanChecks} (${checksPlanPct}%) · Мин. ср. чек: ${targetAvgCheck} ₽</div></div>
-          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(fRev-fExpSum)}</div><div class="kpi-meta">Расходы: ${fmtRub(fExpSum)} · Чек-листов: ${fChk.length}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${fOpenIncs?'var(--bad)':'var(--good)'}">${fOpenIncs}</div><div class="kpi-meta">За период: ${fInc.length} · Всего открыто: ${openIncs}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Выручка (${state.cash.length} смен)</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Чеки и средний чек</div><div class="kpi-val" style="color:${actualAvgCheck>=targetAvgCheck?'var(--good)':'var(--accent)'}">${actualAvgCheck} ₽</div><div class="kpi-meta">Чеков: <b>${totalChecks}</b> / ${totalPlanChecks} (${checksPlanPct}%) · Мин. ср. чек (${todayPlan.day}): ${todayPlan.avg} ₽</div></div>
+          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${state.checklists.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">Всего: ${state.incidents.length} · Задач: ${state.tasks.length}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Динамика выручки · ${esc(rb.label)}</h2><div class="card-sub">Каждый столбец сравнивается с планом своего дня недели (Пн–Вс) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)} / ${todayPlan.checks} чек. / ≥${todayPlan.avg} ₽</div></div></div>
+          <div class="card-head"><div><h2 class="card-title">Динамика выручки по индивидуальному плану дня</h2><div class="card-sub">Каждый столбец сравнивается с планом своего дня недели (Пн–Вс) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)} / ${todayPlan.checks} чек. / ≥${todayPlan.avg} ₽</div></div></div>
           <div class="chart-wrap">
-            ${days.length ? `<div class="chart-plan-line" style="bottom:${Math.min(92,Math.max(16,todayPlanPct*0.78))}%"><span class="chart-plan-lbl">План ${todayPlan.day}: ${fmtRub(todayPlan.rev)}</span></div>
+            <div class="chart-plan-line" style="bottom:${Math.min(92,Math.max(16,todayPlanPct*0.78))}%"><span class="chart-plan-lbl">План ${todayPlan.day}: ${fmtRub(todayPlan.rev)}</span></div>
             ${days.map(c => {
               const dp = getDayPlan(c.date);
               const avgC = c.checks ? Math.round(c.revenue / c.checks) : 0;
               const hit = c.revenue >= dp.rev;
               const pct = dp.rev > 0 ? Math.round((c.revenue / dp.rev) * 100) : 0;
               const tip = `${dp.day} ${c.date} · Выручка: ${c.revenue} / ${dp.rev} ₽ (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} / ≥${dp.avg} ₽`;
-              return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val">${c.revenue}</div><div class="bar-fill ${hit?'hit':''}" style="height:${Math.max(12,Math.round((c.revenue/maxRev)*100))}%"></div><div class="bar-dt">${dp.day} ${c.date.slice(5)}</div></div>`;
-            }).join('')}` : `<div style="padding:28px;text-align:center;color:var(--muted);width:100%;">За выбранный период (${esc(rb.label)}) кассовых смен нет</div>`}
+              return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val">${c.revenue}</div><div class="bar-fill ${hit?'hit':''}" style="height:${Math.max(12,Math.round((c.revenue/maxRev)*100))}%"></div><div class="bar-dt">${dp.day} ${c.date.slice(8)}</div></div>`;
+            }).join('')}
           </div>
         </div>
         <div class="card">
@@ -423,9 +372,6 @@ function initTheme(btnId) {
           </div>
         </div>`;
       const _ovU = document.getElementById('ov-unlock'); if (_ovU) _ovU.onclick = () => guard('Живые данные дашборда', () => {});
-      root.querySelectorAll('[data-ovp]').forEach(b => b.onclick = () => { ovRange = b.dataset.ovp; if (ovRange !== 'custom') { ovFrom = ''; ovTo = ''; } render(); });
-      const _of = document.getElementById('ov-from'); if (_of) _of.onchange = e => { ovFrom = e.target.value; ovRange = 'custom'; render(); };
-      const _ot = document.getElementById('ov-to'); if (_ot) _ot.onchange = e => { ovTo = e.target.value; ovRange = 'custom'; render(); };
       return;
     }
 
@@ -443,52 +389,18 @@ function initTheme(btnId) {
                 <div class="row-sub">Окно: <b>${b.openTime}–${b.deadline}</b> · <span class="badge ${st.cls}">${st.label}</span></div>
               </div><div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <button class="chip-btn" data-eb="${esc(b.id)}">✏️ Окно</button>
-                ${!b.isCash ? `<button class="chip-btn ${editTasksBlock===b.name?'accent':''}" data-vt="${esc(b.name)}">📋 Задачи (${blockTasks(b.name).length})</button>`:''}
-                ${b.active!==false && !st.open ? `<button class="chip-btn good" data-un="${esc(b.name)}">🔓 Открыть</button>` : ''}
-                ${isExt ? `<button class="chip-btn warn" data-lk="${esc(b.name)}">↩️ Вернуть окно</button>` : ''}
+                ${!b.isCash ? `<button class="chip-btn" data-vt="${esc(b.name)}">Задачи</button>`:''}
+                ${b.active!==false && !st.open ? `<button class="chip-btn good" data-un="${esc(b.name)}">🔓 Открыть</button>` : (isExt ? `<button class="chip-btn" data-lk="${esc(b.name)}">Вернуть окно</button>`:'')}
               </div></div>`;
             }).join('')}
           </div>
         </div>
-        ${editTasksBlock ? (() => {
-          const allT = blockTasks(editTasksBlock);
-          const visT = allT.filter(t => !taskSearchQ || t.title.toLowerCase().includes(taskSearchQ.toLowerCase()) || (t.instruction||'').toLowerCase().includes(taskSearchQ.toLowerCase()));
-          return `<div class="card" style="margin-bottom:16px;border:1px solid var(--accent);">
-            <div class="card-head">
-              <div><h2 class="card-title">📋 Задачи блока «${esc(editTasksBlock)}» (${allT.length})</h2><div class="card-sub">Нажмите на бейдж камеры для переключения в 1 клик или ✏️ для редактирования текста и описания фото</div></div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="chip-btn accent" id="t-add-inline">+ Добавить задачу</button>
-                <button class="chip-btn" id="t-close-inline">✕ Свернуть</button>
-              </div>
-            </div>
-            <div style="margin-bottom:10px;"><input id="t-search" value="${esc(taskSearchQ)}" placeholder="Быстрый поиск по задачам блока..." style="width:100%;padding:8px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--border);color:var(--text);"></div>
-            <div class="grid-2" style="gap:10px;">
-              ${visT.map((t, i) => `
-                <div class="card-soft" style="padding:12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
-                  <div>
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                      <div style="font-weight:700;font-size:13.5px;">${i+1}. ${esc(t.title)}</div>
-                      <button class="chip-btn ${t.photo?'accent':''}" data-tcam="${esc(t.id)}" style="padding:3px 8px;font-size:11.5px;white-space:nowrap;" title="Переключить обязательность фото">${t.photo?'📷 Фото: Да':'Без фото'}</button>
-                    </div>
-                    <div style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.4;">${t.photo?'<b>Что сфотографировать:</b> ':'<b>Описание:</b> '}${esc(t.instruction || 'Не указано — нажмите ✏️ чтобы добавить описание')}</div>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding-top:6px;border-top:1px solid var(--border);">
-                    <span class="badge" style="font-size:11px;">👤 ${esc(t.owner || 'Бариста')}</span>
-                    <div style="display:flex;gap:5px;">
-                      <button class="chip-btn" data-tedit="${esc(t.id)}" style="padding:4px 9px;font-size:12px;">✏️ Изменить</button>
-                      <button class="chip-btn bad" data-tdel="${esc(t.id)}" style="padding:4px 8px;font-size:12px;">✕</button>
-                    </div>
-                  </div>
-                </div>`).join('') || '<div style="color:var(--muted);padding:12px;">Задачи не найдены</div>'}
-            </div>
-          </div>`;
-        })() : ''}
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">История прохождения (${logs.length})</h2></div>
             <select id="cf" class="chip-btn"><option value="all">Все сотрудники</option>${[...new Set(state.checklists.map(c=>c.who))].map(w=>`<option value="${esc(w)}" ${chkFilter===w?'selected':''}>${esc(w)}</option>`).join('')}</select>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">📷 ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">${/export=download|\.(webm|mp4)/i.test(u)?'🎬':'📷'} ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
           </tbody></table></div>
         </div>`;
       document.getElementById('cf').onchange = e => { chkFilter = e.target.value; render(); };
@@ -517,30 +429,7 @@ function initTheme(btnId) {
           saveSharedState(state, 'Администратор', 'Окно «' + nm + '»: ' + op + '–' + dl); closeModal(); showToast('Синхронизировано!'); render();
         };
       }));
-      root.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => {
-        editTasksBlock = (editTasksBlock === b.dataset.vt) ? null : b.dataset.vt;
-        taskSearchQ = '';
-        render();
-      });
-      const _tcl = document.getElementById('t-close-inline'); if (_tcl) _tcl.onclick = () => { editTasksBlock = null; render(); };
-      const _tsr = document.getElementById('t-search'); if (_tsr) _tsr.oninput = e => { taskSearchQ = e.target.value; render(); };
-      const _tad = document.getElementById('t-add-inline'); if (_tad) _tad.onclick = () => guard('Новая задача', () => openSingleTaskModal(editTasksBlock, null));
-      root.querySelectorAll('[data-tedit]').forEach(b => b.onclick = () => guard('Изменить задачу', () => openSingleTaskModal(editTasksBlock, b.dataset.tedit)));
-      root.querySelectorAll('[data-tcam]').forEach(b => b.onclick = () => guard('Переключить фото', () => {
-        const t = state.tasks.find(x => x.id === b.dataset.tcam);
-        if (!t) return;
-        t.photo = !t.photo;
-        saveSharedState(state, 'Администратор', 'Обновлена задача: ' + t.id);
-        showToast(t.photo ? '📷 Фото включено для «' + t.title + '»' : 'Фото отключено для «' + t.title + '»');
-        render();
-      }));
-      root.querySelectorAll('[data-tdel]').forEach(b => b.onclick = () => guard('Удалить задачу', () => {
-        const tid = b.dataset.tdel;
-        state.tasks = state.tasks.filter(x => x.id !== tid);
-        saveSharedState(state, 'Администратор', 'Удалена задача: ' + tid);
-        showToast('Задача удалена и синхронизирована');
-        render();
-      }));
+      root.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => openTasksModal(b.dataset.vt));
       document.getElementById('b-add').onclick = () => guard('Новый блок', () => {
         openModal('Новый блок чек-листа', `
           <div class="field"><label>Название</label><input id="nn" placeholder="Например: Вечерняя ревизия"></div>
@@ -693,22 +582,10 @@ function initTheme(btnId) {
 
     if (tab === 'incidents') {
       const list = incFilter==='all'?state.incidents:(incFilter==='open'?state.incidents.filter(i=>i.status!=='Решена'):state.incidents.filter(i=>i.status==='Решена'));
-      root.innerHTML = `<div class="card"><div class="card-head"><div><h2 class="card-title">Поломки (${list.length})</h2><div class="card-sub">Нажмите на любую поломку, чтобы развернуть подробную карточку и фотографию</div></div><div class="seg"><button class="${incFilter==='open'?'active':''}" data-f="open">Открытые (${openIncs})</button><button class="${incFilter==='resolved'?'active':''}" data-f="resolved">Решённые</button><button class="${incFilter==='all'?'active':''}" data-f="all">Все</button></div></div>
-      <div class="stack">${list.map(i=>`
-        <div class="row-item" data-inc-open="${esc(i.id)}" style="cursor:pointer;align-items:center;">
-          ${i.photoUrl ? `<img src="${esc(i.photoUrl)}" alt="Фото" style="width:52px;height:52px;object-fit:cover;border-radius:10px;border:1px solid var(--border);flex-shrink:0;" onerror="this.style.display='none'">` : `<div style="width:52px;height:52px;border-radius:10px;background:var(--surface);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted);flex-shrink:0;">🔧</div>`}
-          <div class="row-main">
-            <div class="row-title">${esc(i.step)} <span class="badge ${String(i.priority||'').includes('Критич')||String(i.priority||'').includes('Сроч')?'bad':'warn'}">${esc(i.priority)}</span> <span class="badge ${i.status==='Решена'?'good':''}">${esc(i.status)}</span></div>
-            <div class="row-sub">${i.date} ${i.time} · 👤 ${esc(i.who || 'Бариста')} — ${esc(i.text||'—')} ${i.photoUrl ? '<span class="badge accent" style="margin-left:4px;">📷 Есть фото</span>' : ''}</div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;" onclick="event.stopPropagation()">
-            <button class="chip-btn" data-inc-open="${esc(i.id)}">Открыть</button>
-            ${i.status!=='Решена'?`<button class="chip-btn good" data-rs="${esc(i.id)}">✓ Решить</button>`:''}
-          </div>
-        </div>`).join('') || '<div style="padding:18px;text-align:center;color:var(--muted);">Поломок в этой категории нет</div>'}</div></div>`;
+      root.innerHTML = `<div class="card"><div class="card-head"><div><h2 class="card-title">Поломки (${list.length})</h2></div><div class="seg"><button class="${incFilter==='open'?'active':''}" data-f="open">Открытые (${openIncs})</button><button class="${incFilter==='resolved'?'active':''}" data-f="resolved">Решённые</button><button class="${incFilter==='all'?'active':''}" data-f="all">Все</button></div></div>
+      <div class="stack">${list.map(i=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(i.step)} <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span></div><div class="row-sub">${i.date} ${i.time} · ${esc(i.who)} — ${esc(i.text||'—')}${i.photoUrl?` · <a href="${esc(i.photoUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;">📷 Фото (Диск)</a>`:''}</div></div>${i.status!=='Решена'?`<button class="chip-btn good" data-rs="${esc(i.id)}">✓ Решить</button>`:'<span class="badge good">Решена</span>'}</div>`).join('')}</div></div>`;
       root.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ incFilter=b.dataset.f; render(); });
-      root.querySelectorAll('[data-inc-open]').forEach(el => el.onclick = () => openIncidentDetailModal(el.dataset.incOpen));
-      root.querySelectorAll('[data-rs]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); guard('Закрыть поломку',()=>{ const x=state.incidents.find(i=>i.id===b.dataset.rs); if(x){ x.status='Решена'; saveSharedState(state,'Администратор','Решён инцидент '+x.id); render(); } }); });
+      root.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>guard('Закрыть поломку',()=>{ const x=state.incidents.find(i=>i.id===b.dataset.rs); if(x){ x.status='Решена'; saveSharedState(state,'Администратор','Решён инцидент '+x.id); render(); } }));
       return;
     }
 
@@ -814,103 +691,20 @@ function initTheme(btnId) {
     }
   }
 
-  function openPhotoLightbox(url, caption) {
-    const lb = document.createElement('div');
-    lb.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px;';
-    lb.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:900px;color:#fff;">
-        <b style="font-size:14px;">${esc(caption || 'Фотография')}</b>
-        <div style="display:flex;gap:8px;">
-          <a href="${esc(url)}" target="_blank" rel="noopener" class="chip-btn accent" style="text-decoration:none;">🔗 Открыть на Google Диске</a>
-          <button class="chip-btn" id="lb-x">✕ Закрыть</button>
-        </div>
-      </div>
-      <img src="${esc(url)}" alt="Фото" style="max-width:95vw;max-height:80vh;border-radius:14px;object-fit:contain;box-shadow:0 12px 40px rgba(0,0,0,.6);">`;
-    lb.onclick = (e) => { if (e.target === lb) lb.remove(); };
-    document.body.appendChild(lb);
-    lb.querySelector('#lb-x').onclick = () => lb.remove();
-  }
-
-  function openIncidentDetailModal(incId) {
-    const x = state.incidents.find(i => i.id === incId);
-    if (!x) return;
-    openModal('Поломка: ' + x.step + ' (' + x.id + ')', `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <span class="badge ${String(x.priority||'').includes('Критич')||String(x.priority||'').includes('Сроч')?'bad':'warn'}">${esc(x.priority || 'Терпит')}</span>
-        <span class="badge ${x.status==='Решена'?'good':'accent'}">${esc(x.status || 'Новая проблема')}</span>
-        <span class="badge">🕒 ${esc(x.date)} ${esc(x.time)}</span>
-        ${x.block ? `<span class="badge">📋 ${esc(x.block)}</span>` : ''}
-      </div>
-      <div class="card-soft" style="margin-bottom:12px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Описание проблемы</div>
-        <div style="font-size:14px;line-height:1.5;">${esc(x.text || 'Без подробного описания')}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:8px;">👤 Сообщил: <b>${esc(x.who || 'Бариста')}</b> · 🛠 Ответственный: <b>${esc(x.owner || 'Администратор')}</b></div>
-      </div>
-      <div class="card-soft" style="margin-bottom:12px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Фотография поломки</div>
-        ${x.photoUrl ? `
-          <img id="inc-big-ph" src="${esc(x.photoUrl)}" alt="Фото поломки" style="width:100%;max-height:280px;object-fit:cover;border-radius:12px;cursor:zoom-in;border:1px solid var(--border);" title="Нажмите для увеличения">
-          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-            <button class="chip-btn accent" id="inc-zoom">🔍 Увеличить на весь экран</button>
-            <a href="${esc(x.photoUrl)}" target="_blank" rel="noopener" class="chip-btn" style="text-decoration:none;">🔗 Открыть на Google Диске</a>
-          </div>
-        ` : `<div style="font-size:12.5px;color:var(--muted);">Фотография не прикреплена к этой поломке.</div>`}
-      </div>
-      <div class="field"><label>Статус поломки</label>
-        <select id="inc-st-sel">
-          ${['Новая проблема','В работе','Решена'].map(s => `<option value="${s}" ${x.status===s?'selected':''}>${s}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn-lg primary" id="inc-st-save">Сохранить статус и синхронизировать</button>
+  function openTasksModal(blk) {
+    const list = blockTasks(blk);
+    openModal('Задачи «' + blk + '» (' + list.length + ')', `
+      <div class="stack" style="margin-bottom:12px;max-height:270px;overflow-y:auto;">${list.map((t,i)=>`<div class="card-soft" style="display:flex;justify-content:space-between;gap:8px;"><div><b>${i+1}. ${esc(t.title)}</b> ${t.photo?'<span class="badge accent">📷</span>':''}</div><button class="chip-btn bad" data-dt="${esc(t.id)}" style="padding:4px 8px;">✕</button></div>`).join('')}</div>
+      <div class="field"><label>Новая задача</label><input id="nt-t" placeholder="Название шага"></div>
+      <div class="grid-2"><div class="field"><label>Ответственный</label><select id="nt-o">${optList(OWNERS,'Администратор')}</select></div><div class="field"><label>Фото</label><select id="nt-p"><option value="1">Да</option><option value="0">Нет</option></select></div></div>
+      <button class="btn-lg primary" id="nt-s">+ Добавить</button>
     `);
-    const ph = document.getElementById('inc-big-ph');
-    if (ph) ph.onclick = () => openPhotoLightbox(x.photoUrl, x.step + ' · ' + x.date);
-    const zm = document.getElementById('inc-zoom');
-    if (zm) zm.onclick = () => openPhotoLightbox(x.photoUrl, x.step + ' · ' + x.date);
-    document.getElementById('inc-st-save').onclick = () => guard('Изменить статус поломки', () => {
-      const nextSt = document.getElementById('inc-st-sel').value;
-      x.status = nextSt;
-      saveSharedState(state, 'Администратор', nextSt === 'Решена' ? ('Решён инцидент ' + x.id) : ('Обновлён статус инцидента ' + x.id + ' → ' + nextSt));
-      closeModal(); showToast('✓ Статус поломки обновлён'); render();
+    document.querySelectorAll('[data-dt]').forEach(b=>b.onclick=()=>guard('Удалить задачу',()=>{ state.tasks=state.tasks.filter(x=>x.id!==b.dataset.dt); saveSharedState(state,'Администратор','Удалена задача'); openTasksModal(blk); render(); }));
+    document.getElementById('nt-s').onclick = () => guard('Добавить задачу', () => {
+      const t = document.getElementById('nt-t').value.trim(); if (!t) return;
+      state.tasks.push({ id:'t_'+Date.now(), block:blk, group:blk, title:t, instruction:'По стандарту Coffee Illy.', photo:document.getElementById('nt-p').value==='1', owner:document.getElementById('nt-o').value });
+      saveSharedState(state, 'Администратор', 'Добавлена задача «' + t + '»'); openTasksModal(blk); render();
     });
-  }
-
-  function openSingleTaskModal(blk, taskId) {
-    const t = taskId ? state.tasks.find(x => x.id === taskId) : null;
-    openModal(t ? ('Редактировать задачу · ' + blk) : ('Новая задача · ' + blk), `
-      <div class="field"><label>Название задачи</label><input id="ts-title" value="${t?esc(t.title):''}" placeholder="Например: Проверить чистоту холдеров и группы"></div>
-      <div class="grid-2">
-        <div class="field"><label>Нужна ли камера (фото)</label>
-          <select id="ts-photo">
-            <option value="1" ${!t||t.photo?'selected':''}>📷 Да — обязательное фото</option>
-            <option value="0" ${t&&!t.photo?'selected':''}>Нет — без фото</option>
-          </select>
-        </div>
-        <div class="field"><label>Ответственный</label><select id="ts-owner">${optList(OWNERS, t?t.owner:'Бариста')}</select></div>
-      </div>
-      <div class="field"><label>Подробное описание / что именно нужно сфотографировать</label>
-        <textarea id="ts-inst" rows="4" placeholder="Например: Сфотографировать крупным планом чистую рабочую зону, манометр кофемашины и температуру холодильника.">${t?esc(t.instruction||''):''}</textarea>
-      </div>
-      <button class="btn-lg primary" id="ts-save">${t ? 'Сохранить изменения и синхронизировать' : '+ Добавить задачу и синхронизировать'}</button>
-    `);
-    document.getElementById('ts-save').onclick = () => {
-      const title = document.getElementById('ts-title').value.trim();
-      if (!title) { showToast('Введите название задачи'); return; }
-      const photo = document.getElementById('ts-photo').value === '1';
-      const owner = document.getElementById('ts-owner').value;
-      const instruction = document.getElementById('ts-inst').value.trim() || 'Выполнить по стандарту Coffee Illy.';
-      if (t) {
-        t.title = title; t.photo = photo; t.owner = owner; t.instruction = instruction;
-        saveSharedState(state, 'Администратор', 'Обновлена задача: ' + t.id);
-        showToast('✓ Задача обновлена и отправлена в терминал');
-      } else {
-        const nt = { id:'t_'+Date.now(), block:blk, group:blk, title, instruction, photo, owner, active:true };
-        state.tasks.push(nt);
-        saveSharedState(state, 'Администратор', 'Добавлена задача «' + title + '»');
-        showToast('✓ Задача добавлена и отправлена в терминал');
-      }
-      closeModal(); render();
-    };
   }
   function openStaffModal(id) {
     const s = id ? state.staff.find(x=>x.id===id) : null;
@@ -934,17 +728,14 @@ function initTheme(btnId) {
       <div class="field"><label>Название</label><input id="kn" value="${k?esc(k.name):''}"></div>
       <div class="grid-2"><div class="field"><label>Объём</label><select id="kv">${optList(VOL_OPTS, k?k.vol:VOL_OPTS[3])}</select></div><div class="field"><label>Категория</label><select id="kc">${optList(CAT_OPTS, k?k.cat:CAT_OPTS[0])}</select></div></div>
       <div class="grid-2"><div class="field"><label>Цена вручную (₽)</label><input id="kp" type="number" min="1" value="${k?k.price:22}"></div><div class="field"><label>Себест. (₽)</label><input id="ks" type="number" min="0" step="0.1" value="${k?k.cost:7.5}"></div></div>
-      <div class="field"><label>Ингредиенты и граммовки</label><textarea id="ki" rows="2" placeholder="Например: Эспрессо 36 г, молоко 180 мл, сироп ваниль 15 мл">${k?esc(k.ingredients||''):''}</textarea></div>
-      <div class="field"><label>Рецептура и пошаговое приготовление</label><textarea id="kr" rows="3">${k?esc(k.recipe||''):''}</textarea></div>
-      <div class="field"><label>Подача и посуда</label><input id="ksrv" value="${k?esc(k.serve||''):''}" placeholder="Например: Стакан 250 мл, температура молока 60–65°C"></div>
-      <button class="btn-lg primary" id="ksv">Сохранить и отправить в терминал</button>
+      <div class="field"><label>Рецептура</label><textarea id="kr" rows="2">${k?esc(k.recipe):''}</textarea></div>
+      <button class="btn-lg primary" id="ksv">Сохранить</button>
     `);
     document.getElementById('ksv').onclick = () => {
       const nm = document.getElementById('kn').value.trim(), pr = Number(document.getElementById('kp').value)||0, cs = Number(document.getElementById('ks').value)||0;
       if (!nm || pr<=0) return;
-      const ing = document.getElementById('ki').value.trim(), rec = document.getElementById('kr').value.trim(), srv = document.getElementById('ksrv').value.trim();
-      if (k) { k.name=nm; k.vol=document.getElementById('kv').value; k.cat=document.getElementById('kc').value; k.price=pr; k.cost=cs; k.ingredients=ing; k.recipe=rec; k.serve=srv; }
-      else state.ttk.push({ id:'ttk_'+Date.now(), name:nm, vol:document.getElementById('kv').value, cat:document.getElementById('kc').value, price:pr, cost:cs, ingredients:ing, recipe:rec, serve:srv });
+      if (k) { k.name=nm; k.vol=document.getElementById('kv').value; k.cat=document.getElementById('kc').value; k.price=pr; k.cost=cs; k.recipe=document.getElementById('kr').value.trim(); }
+      else state.ttk.push({ id:'ttk_'+Date.now(), name:nm, vol:document.getElementById('kv').value, cat:document.getElementById('kc').value, price:pr, cost:cs, recipe:document.getElementById('kr').value.trim(), serve:'' });
       saveSharedState(state, 'Администратор', 'Обновлена ТТК ' + nm); closeModal(); showToast('ТТК отправлена в терминал!'); render();
     };
   }

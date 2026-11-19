@@ -106,8 +106,8 @@ body { display:flex; flex-direction:column; min-height:100vh; }
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=92"></script>
-  <script src="js/cloud-sync-v94.js?v=92"></script>
-  <script src="js/camera-v92.js?v=92"></script>
+  <script src="js/cloud-sync-v93.js?v=92"></script>
+  <script src="js/camera-v94.js?v=92"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -238,7 +238,6 @@ function initTheme(btnId) {
   let stepPhotos = {};
   let instOpen = false;
   let ttkQ = '';
-  let ttkCat = 'Все';
 
   initTheme('btn-theme');
   function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); }
@@ -285,6 +284,7 @@ function initTheme(btnId) {
     welcomeBanner = greetingText || ('Добро пожаловать на смену, ' + staffName + '! Вы отмечены на работе с ' + checkedInAt + '.');
     state.staffPresence = state.staffPresence || {};
     state.staffPresence[staffName] = { staffName: staffName, status: 'on_shift', checkedInAt: checkedInAt, date: TODAY, tgId: tgIdVal || '' };
+    if (window.CoffeeCameraV94) { window.CoffeeCameraV94.primePermission(false); }
     applyDeepLinkIfNeeded();
     saveSharedState(state, staffName, 'Отмечен на работе (' + checkedInAt + ')');
     showToast('🟢 ' + welcomeBanner);
@@ -367,6 +367,7 @@ function initTheme(btnId) {
     uc.innerHTML = `<span class="badge good" style="padding:5px 9px;">🟢 На работе · ${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn" id="b-pin" style="padding:5px 9px;">🔑 ${esc(authed)}</button><button class="chip-btn" id="b-out" style="padding:5px 9px;">Выйти</button>`;
     document.getElementById('b-out').onclick = async () => {
       const prevName = authed;
+      if (window.CoffeeCameraV94) window.CoffeeCameraV94.release();
       if (window.CoffeeCloudV93) await window.CoffeeCloudV93.checkOutStaff(prevName);
       if (state.staffPresence && state.staffPresence[prevName]) state.staffPresence[prevName].status = 'off_shift';
       authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; render();
@@ -407,22 +408,29 @@ function initTheme(btnId) {
         const task = tasks[idx];
         if (!task) h += `<div class="step-card"><div class="step-title">${esc(curBlk.name)}</div><div>Нет задач</div></div>`;
         else {
-          const needPh = !!(task.photo || state.photoAll), pk = curBlk.name+':'+task.id, hasPh = !!stepPhotos[pk];
+          const needPh = !!(task.photo || state.photoAll), pk = curBlk.name+':'+task.id, phObj = stepPhotos[pk];
+          const isUploading = !!(phObj && phObj.uploading);
+          const hasReadyMedia = !!(phObj && !phObj.uploading && (phObj.url || phObj.queued || phObj.preview));
+          const mediaBlocked = needPh && !hasReadyMedia;
+          const previewHtml = (phObj && phObj.preview)
+            ? (phObj.mediaType === 'video'
+              ? '<video src="'+phObj.preview+'" controls playsinline muted style="width:100%;max-height:190px;border-radius:14px;background:#000"></video>'
+              : '<img src="'+phObj.preview+'" alt="Фото шага" style="width:100%;max-height:190px;object-fit:cover;border-radius:14px">')
+            : '';
           h += `<div class="step-card">
             <div class="step-counter"><span>${esc(curBlk.name)}</span><span>Шаг ${idx+1} из ${tasks.length}</span></div>
             <div class="pbar"><div style="width:${Math.round(((idx+1)/tasks.length)*100)}%"></div></div>
             <h3 class="step-title">${esc(task.title)}</h3>
             <button class="chip-btn" id="b-inst" style="align-self:flex-start;font-size:12px;">${instOpen?'▴ Скрыть инструкцию':'▾ Инструкция и стандарт'}</button>
             ${instOpen?`<div class="step-inst">${esc(task.instruction||'Выполнить по стандарту Coffee Illy.')}</div>`:''}
-            ${needPh?`<div class="photo-box ${hasPh?'done':''}" style="flex-direction:column;gap:8px">${hasPh?(
-              (typeof stepPhotos[curBlk.name+':'+task.id]==='object'&&stepPhotos[curBlk.name+':'+task.id].preview
-                ? '<img src="'+stepPhotos[curBlk.name+':'+task.id].preview+'" alt="Фото шага" style="width:100%;max-height:180px;object-fit:cover;border-radius:14px">' : '') +
+            ${needPh?`<div class="photo-box ${hasReadyMedia?'done':''}" style="flex-direction:column;gap:8px">${phObj?(
+              previewHtml +
               '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;flex-wrap:wrap">' +
-                '<b>'+(typeof stepPhotos[curBlk.name+':'+task.id]==='object'&&stepPhotos[curBlk.name+':'+task.id].uploading?'☁ Загрузка на Google Диск…':(typeof stepPhotos[curBlk.name+':'+task.id]==='object'&&stepPhotos[curBlk.name+':'+task.id].url?'✓ Сохранено на Google Диск':'✓ Фото снято (в очереди)'))+'</b>' +
+                '<b>'+(isUploading?'☁ Загрузка на Google Диск…':(phObj.url?(phObj.mediaType==='video'?'✓ Видео сохранено на Google Диск':'✓ Фото сохранено на Google Диск'):'✓ Снято (в очереди синхронизации)'))+'</b>' +
                 '<button class="chip-btn" id="b-ph" style="font-size:12px">📸 Переснять</button>' +
               '</div>'
-            ):'<button class="chip-btn accent" id="b-ph">📷 Сделать фото</button>'}</div>`:''}
-            <button class="btn-lg primary" id="b-nx" ${needPh && !hasPh?'disabled':''}>${idx===tasks.length-1?'✓ Завершить чек-лист':'✓ Всё в норме → Далее'}</button>
+            ):'<button class="chip-btn accent" id="b-ph">📷 Снять фото / 🎬 видео (до 15с)</button><div style="font-size:11.5px;color:var(--muted)">Обязательно для перехода к следующему шагу · Только живая камера</div>'}</div>`:''}
+            <button class="btn-lg primary" id="b-nx" ${mediaBlocked?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>${mediaBlocked?(isUploading?'☁ Ожидание загрузки медиа…':'🔒 Сначала снимите фото / видео'):(idx===tasks.length-1?'✓ Завершить чек-лист':'✓ Всё в норме → Далее')}</button>
             <button class="btn-lg danger" id="b-is">⚠ Зафиксировать проблему</button>
           </div>`;
         }
@@ -434,13 +442,14 @@ function initTheme(btnId) {
       const bp = document.getElementById('b-ph'); if (bp && curBlk) { const t = blockTasks(curBlk.name)[Math.min(stepIdx,blockTasks(curBlk.name).length-1)]; bp.onclick = () => {
         const key = curBlk.name + ':' + t.id;
         const isSelfie = /селфи|selfie/i.test(String(t.title || ''));
-        if (window.CoffeeCameraV92) {
-          window.CoffeeCameraV92.open({
-            title: t.title || 'Фото шага',
+        if (window.CoffeeCameraV94) {
+          window.CoffeeCameraV94.open({
+            title: t.title || 'Фото / видео шага',
             preferFront: isSelfie,
-            onCaptured: async (dataUri) => {
-              stepPhotos[key] = { preview: dataUri, uploading: true, url: '' };
-              showToast('☁ Сохраняем фото на Google Диск…');
+            onCaptured: async (dataUri, meta) => {
+              const mType = (meta && meta.mediaType) || (String(dataUri).startsWith('data:video/') ? 'video' : 'image');
+              stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: true, url: '' };
+              showToast(mType === 'video' ? '☁ Сохраняем видео на Google Диск…' : '☁ Сохраняем фото на Google Диск…');
               render();
               if (window.CoffeeCloudV93) {
                 const up = await window.CoffeeCloudV93.uploadPhotoToDrive({
@@ -450,21 +459,26 @@ function initTheme(btnId) {
                   taskId: t.id,
                   kind: 'checklist'
                 });
-                stepPhotos[key] = { preview: dataUri, uploading: false, url: (up && up.url) || '', fileId: (up && up.fileId) || '', queued: !!(up && up.queued) };
-                showToast(up && up.url ? '✓ Фото сохранено на Google Диск!' : '✓ Фото сохранено (отправится при синхронизации)');
+                stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', fileId: (up && up.fileId) || '', queued: !!(up && up.queued) };
+                showToast(up && up.url ? (mType === 'video' ? '✓ Видео сохранено на Google Диск!' : '✓ Фото сохранено на Google Диск!') : '✓ Медиа сохранено (в очереди)');
               } else {
-                stepPhotos[key] = { preview: dataUri, uploading: false, url: '' };
+                stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
               }
               render();
             }
           });
-        } else {
-          stepPhotos[key] = { preview: '', uploading: false, url: '' };
-          render();
         }
       }; }
       const bn = document.getElementById('b-nx'); if (bn && curBlk) bn.onclick = () => {
         const tasks = blockTasks(curBlk.name);
+        const curT = tasks[Math.min(stepIdx, Math.max(0, tasks.length - 1))];
+        if (curT && (curT.photo || state.photoAll)) {
+          const pCheck = stepPhotos[curBlk.name + ':' + curT.id];
+          if (!pCheck || pCheck.uploading || !(pCheck.url || pCheck.queued || pCheck.preview)) {
+            showToast('🔒 Сначала снимите фото или видео (до 15с) на камеру');
+            return;
+          }
+        }
         if (stepIdx < tasks.length-1) {
           stepIdx++; instOpen=false; state.liveProgress[authed] = { block:curBlk.name, done:stepIdx, total:tasks.length }; if (window.CoffeeCloudV93) window.CoffeeCloudV93.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
           saveSharedState(state, authed, ''); render();
@@ -476,15 +490,53 @@ function initTheme(btnId) {
       };
       const bis = document.getElementById('b-is'); if (bis && curBlk) bis.onclick = () => {
         const t = blockTasks(curBlk.name)[Math.min(stepIdx,blockTasks(curBlk.name).length-1)];
-        openModal('Проблема: ' + t.title, `
-          <div class="field"><label>Срочность</label><select id="ip"><option>Критично</option><option>Терпит</option></select></div>
-          <div class="field"><label>Описание</label><textarea id="it" rows="3"></textarea></div>
-          <button class="btn-lg primary" id="is">Отправить в дашборд</button>
-        `);
-        document.getElementById('is').onclick = () => {
-          const _stepPh = stepPhotos[curBlk.name+':'+t.id]; state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:state.simTime||'13:25', block:curBlk.name, step:t.title, text:document.getElementById('it').value.trim()||'Проблема', priority:document.getElementById('ip').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:(_stepPh&&_stepPh.url)||'' });
-          saveSharedState(state, authed, 'Проблема: ' + t.title); closeModal(); showToast('Отправлено в дашборд!'); render();
-        };
+        let incMedia = stepPhotos[curBlk.name+':'+t.id] ? Object.assign({}, stepPhotos[curBlk.name+':'+t.id]) : null;
+        function renderIncModal() {
+          const ready = !!(incMedia && !incMedia.uploading && (incMedia.url || incMedia.queued || incMedia.preview));
+          const prevEl = (incMedia && incMedia.preview)
+            ? (incMedia.mediaType === 'video'
+              ? '<video src="'+incMedia.preview+'" controls playsinline muted style="width:100%;max-height:150px;border-radius:12px;background:#000"></video>'
+              : '<img src="'+incMedia.preview+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:12px">')
+            : '';
+          openModal('Проблема: ' + t.title, `
+            <div class="field"><label>Срочность</label><select id="ip"><option>Критично</option><option>Терпит</option></select></div>
+            <div class="field"><label>Описание</label><textarea id="it" rows="3" placeholder="Опишите поломку или проблему"></textarea></div>
+            <div class="photo-box ${ready?'done':''}" style="flex-direction:column;gap:8px;margin-bottom:10px;">
+              ${prevEl}
+              <button type="button" class="chip-btn accent" id="inc-cam">${incMedia?(incMedia.uploading?'☁ Загрузка на Google Диск…':'📸 Переснять фото / видео'):'📷 Снять фото / 🎬 видео поломки (обязательно)'}</button>
+              <div style="font-size:11.5px;color:var(--muted)">${ready?'✓ Медиа прикреплено (Google Диск)':'🔒 Без живого фото или видео (до 15с) отправить поломку нельзя'}</div>
+            </div>
+            <button class="btn-lg primary" id="is" ${!ready?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>${ready?'Отправить поломку в дашборд':'🔒 Сначала снимите фото / видео'}</button>
+          `);
+          document.getElementById('inc-cam').onclick = () => {
+            if (!window.CoffeeCameraV94) return;
+            window.CoffeeCameraV94.open({
+              title: 'Поломка: ' + t.title,
+              preferFront: false,
+              onCaptured: async (dataUri, meta) => {
+                const mType = (meta && meta.mediaType) || (String(dataUri).startsWith('data:video/') ? 'video' : 'image');
+                incMedia = { preview: dataUri, mediaType: mType, uploading: true, url: '' };
+                renderIncModal();
+                if (window.CoffeeCloudV93) {
+                  const up = await window.CoffeeCloudV93.uploadPhotoToDrive({ dataUri, userName: authed || 'Бариста', block: curBlk.name, taskId: t.id, kind: 'incident' });
+                  incMedia = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', queued: !!(up && up.queued) };
+                } else {
+                  incMedia = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
+                }
+                stepPhotos[curBlk.name+':'+t.id] = incMedia;
+                renderIncModal();
+              }
+            });
+          };
+          document.getElementById('is').onclick = () => {
+            if (!incMedia || incMedia.uploading || !(incMedia.url || incMedia.queued || incMedia.preview)) {
+              showToast('🔒 Снимите фото или видео поломки на живую камеру'); return;
+            }
+            state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:(window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():'13:25'), block:curBlk.name, step:t.title, text:document.getElementById('it').value.trim()||'Проблема', priority:document.getElementById('ip').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:incMedia.url||'' });
+            saveSharedState(state, authed, 'Проблема: ' + t.title); closeModal(); showToast('Поломка с фото/видео отправлена в дашборд и Telegram!'); render();
+          };
+        }
+        renderIncModal();
       };
       return;
     }
@@ -545,85 +597,67 @@ function initTheme(btnId) {
     }
 
     if (tab === 'ttk') {
-      const cats = ['Все', ...new Set(state.ttk.map(k => k.cat || 'Классика').filter(Boolean))];
-      const items = state.ttk.filter(k =>
-        (ttkCat === 'Все' || (k.cat || 'Классика') === ttkCat) &&
-        (!ttkQ || k.name.toLowerCase().includes(ttkQ.toLowerCase()) || (k.recipe||'').toLowerCase().includes(ttkQ.toLowerCase()) || (k.ingredients||'').toLowerCase().includes(ttkQ.toLowerCase()))
-      );
-      body.innerHTML = `
-        <input id="tq" value="${esc(ttkQ)}" placeholder="Поиск напитка или ингредиента..." style="width:100%;padding:10px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:8px;">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-          ${cats.map(c => `<button class="chip-btn ${ttkCat===c?'accent':''}" data-tc="${esc(c)}" style="padding:5px 10px;font-size:12px;">${esc(c)}</button>`).join('')}
-        </div>
-        <div class="stack">${items.map(k=>`
-          <div class="card-soft" data-tk-open="${esc(k.id)}" style="cursor:pointer;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-              <b>☕ ${esc(k.name)}</b>
-              <span class="badge accent">${k.price ? k.price + ' ₽' : esc(k.vol)}</span>
-            </div>
-            <div style="font-size:11.5px;color:var(--muted);margin:3px 0 6px;">${esc(k.vol)} · ${esc(k.cat || 'Классика')}</div>
-            <div style="font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(k.ingredients || k.recipe || 'Нажмите, чтобы открыть техкарту')}</div>
-            <div style="font-size:11.5px;color:var(--accent);font-weight:600;margin-top:6px;">Открыть подробную техкарту →</div>
-          </div>`).join('') || '<div class="card-soft" style="text-align:center;color:var(--muted);">Ничего не найдено</div>'}</div>`;
+      const items = state.ttk.filter(k => !ttkQ || k.name.toLowerCase().includes(ttkQ.toLowerCase()));
+      body.innerHTML = `<input id="tq" value="${esc(ttkQ)}" placeholder="Поиск по ТТК..." style="width:100%;padding:10px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);"><div class="stack">${items.map(k=>`<div class="card-soft"><div style="display:flex;justify-content:space-between;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(k.vol)} · ${esc(k.cat)}</div><div style="font-size:12.5px;">${esc(k.recipe)}</div></div>`).join('')}</div>`;
       document.getElementById('tq').oninput = e => { ttkQ = e.target.value; render(); };
-      body.querySelectorAll('[data-tc]').forEach(b => b.onclick = () => { ttkCat = b.dataset.tc; render(); });
-      body.querySelectorAll('[data-tk-open]').forEach(el => el.onclick = () => {
-        const k = state.ttk.find(x => x.id === el.dataset.tkOpen);
-        if (!k) return;
-        openModal('☕ ' + k.name, `
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-            <span class="badge accent">${esc(k.vol || 'Стандарт')}</span>
-            <span class="badge">${esc(k.cat || 'Классика')}</span>
-            ${k.price ? `<span class="badge good">${k.price} ₽</span>` : ''}
-          </div>
-          ${k.ingredients ? `<div class="card-soft" style="margin-bottom:10px;"><div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;font-weight:700;">ИНГРЕДИЕНТЫ И ГРАММОВКИ</div><div style="font-size:13.5px;line-height:1.5;white-space:pre-line;">${esc(k.ingredients)}</div></div>` : ''}
-          <div class="card-soft" style="margin-bottom:10px;"><div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;font-weight:700;">РЕЦЕПТУРА И ПРИГОТОВЛЕНИЕ</div><div style="font-size:13.5px;line-height:1.55;white-space:pre-line;">${esc(k.recipe || 'По стандарту Coffee Illy')}</div></div>
-          ${k.serve ? `<div class="card-soft"><div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;font-weight:700;">ПОДАЧА И ПОСУДА</div><div style="font-size:13.5px;line-height:1.5;">${esc(k.serve)}</div></div>` : ''}
-        `);
-      });
       return;
     }
 
     if (tab === 'issues') {
-      body.innerHTML = `<button class="btn-lg primary" id="ni">+ Сообщить о поломке</button><div class="stack">${state.incidents.filter(i=>i.status!=='Решена').slice(0,8).map(i=>`<div class="card-soft" style="display:flex;gap:10px;align-items:center;">${i.photoUrl?`<img src="${esc(i.photoUrl)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">`:''}<div style="min-width:0;flex:1;"><b>${esc(i.step)}</b> <span class="badge ${String(i.priority||'').includes('Критич')?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div></div>`).join('')}</div>`;
+      body.innerHTML = `<button class="btn-lg primary" id="ni">+ Сообщить о поломке</button><div class="stack">${state.incidents.filter(i=>i.status!=='Решена').slice(0,6).map(i=>`<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div>`).join('')}</div>`;
       document.getElementById('ni').onclick = () => {
-        let incPhotoUrl = '';
-        openModal('Новая поломка', `
-          <div class="field"><label>Оборудование / зона</label><select id="nz">${optList(EQUIP_ZONES, EQUIP_ZONES[0])}</select></div>
-          <div class="field"><label>Срочность</label><select id="np"><option>Критично</option><option>Терпит</option></select></div>
-          <div class="field"><label>Описание</label><textarea id="nt" rows="3" placeholder="Опишите, что случилось..."></textarea></div>
-          <div class="field"><label>Фотография поломки</label>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <button class="chip-btn accent" id="inc-cam" type="button">📷 Сделать фото</button>
-              <span id="inc-ph-st" style="font-size:12px;color:var(--muted);">Фото не прикреплено</span>
+        let stdMedia = null;
+        let savedZone = EQUIP_ZONES[0], savedPrio = 'Критично', savedTxt = '';
+        function renderStandaloneInc() {
+          const ready = !!(stdMedia && !stdMedia.uploading && (stdMedia.url || stdMedia.queued || stdMedia.preview));
+          const prevEl = (stdMedia && stdMedia.preview)
+            ? (stdMedia.mediaType === 'video'
+              ? '<video src="'+stdMedia.preview+'" controls playsinline muted style="width:100%;max-height:150px;border-radius:12px;background:#000"></video>'
+              : '<img src="'+stdMedia.preview+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:12px">')
+            : '';
+          openModal('Новая поломка', `
+            <div class="field"><label>Оборудование / зона</label><select id="nz">${optList(EQUIP_ZONES, savedZone)}</select></div>
+            <div class="field"><label>Срочность</label><select id="np"><option ${savedPrio==='Критично'?'selected':''}>Критично</option><option ${savedPrio==='Терпит'?'selected':''}>Терпит</option></select></div>
+            <div class="field"><label>Описание</label><textarea id="nt" rows="3" placeholder="Опишите неисправность">${esc(savedTxt)}</textarea></div>
+            <div class="photo-box ${ready?'done':''}" style="flex-direction:column;gap:8px;margin-bottom:10px;">
+              ${prevEl}
+              <button type="button" class="chip-btn accent" id="std-cam">${stdMedia?(stdMedia.uploading?'☁ Загрузка на Google Диск…':'📸 Переснять фото / видео'):'📷 Снять фото / 🎬 видео поломки (обязательно)'}</button>
+              <div style="font-size:11.5px;color:var(--muted)">${ready?'✓ Медиа прикреплено (Google Диск)':'🔒 Без живого фото или видео (до 15с) отправить поломку нельзя'}</div>
             </div>
-            <img id="inc-ph-prev" style="display:none;margin-top:8px;max-height:140px;border-radius:10px;border:1px solid var(--border);">
-          </div>
-          <button class="btn-lg primary" id="ns">Отправить в дашборд и Telegram</button>
-        `);
-        document.getElementById('inc-cam').onclick = () => {
-          if (!window.CoffeeCameraV92) return;
-          window.CoffeeCameraV92.open({
-            title: 'Фото поломки',
-            onCaptured: async (dataUri) => {
-              const prev = document.getElementById('inc-ph-prev');
-              const stEl = document.getElementById('inc-ph-st');
-              if (prev) { prev.src = dataUri; prev.style.display = 'block'; }
-              if (stEl) stEl.textContent = '☁ Загрузка фото на Google Диск…';
-              if (window.CoffeeCloudV94) {
-                const up = await window.CoffeeCloudV94.uploadPhotoToDrive({ dataUri, userName: authed || 'Бариста', block: 'Поломка', kind: 'incident' });
-                incPhotoUrl = (up && up.url) || '';
-                if (stEl) stEl.textContent = incPhotoUrl ? '✓ Фото сохранено на Google Диск' : '✓ Фото в очереди отправки';
+            <button class="btn-lg primary" id="ns" ${!ready?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>${ready?'Отправить поломку':'🔒 Сначала снимите фото / видео'}</button>
+          `);
+          document.getElementById('std-cam').onclick = () => {
+            savedZone = document.getElementById('nz').value;
+            savedPrio = document.getElementById('np').value;
+            savedTxt = document.getElementById('nt').value;
+            if (!window.CoffeeCameraV94) return;
+            window.CoffeeCameraV94.open({
+              title: 'Поломка: ' + savedZone,
+              preferFront: false,
+              onCaptured: async (dataUri, meta) => {
+                const mType = (meta && meta.mediaType) || (String(dataUri).startsWith('data:video/') ? 'video' : 'image');
+                stdMedia = { preview: dataUri, mediaType: mType, uploading: true, url: '' };
+                renderStandaloneInc();
+                if (window.CoffeeCloudV93) {
+                  const up = await window.CoffeeCloudV93.uploadPhotoToDrive({ dataUri, userName: authed || 'Бариста', block: 'Поломка', kind: 'incident' });
+                  stdMedia = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', queued: !!(up && up.queued) };
+                } else {
+                  stdMedia = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
+                }
+                renderStandaloneInc();
               }
+            });
+          };
+          document.getElementById('ns').onclick = () => {
+            if (!stdMedia || stdMedia.uploading || !(stdMedia.url || stdMedia.queued || stdMedia.preview)) {
+              showToast('🔒 Снимите фото или видео поломки на живую камеру'); return;
             }
-          });
-        };
-        document.getElementById('ns').onclick = () => {
-          const z = document.getElementById('nz').value;
-          const nowT = window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : '12:00';
-          state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:nowT, step:z, text:document.getElementById('nt').value.trim()||'Неисправность', priority:document.getElementById('np').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl: incPhotoUrl });
-          saveSharedState(state, authed, 'Внеплановая поломка: ' + z); closeModal(); showToast('Отправлено в дашборд и Telegram!'); render();
-        };
+            const z = document.getElementById('nz').value;
+            state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:(window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():'13:25'), step:z, text:document.getElementById('nt').value.trim()||'Неисправность', priority:document.getElementById('np').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:stdMedia.url||'' });
+            saveSharedState(state, authed, 'Внеплановая поломка: ' + z); closeModal(); showToast('Поломка с фото/видео отправлена в дашборд и Telegram!'); render();
+          };
+        }
+        renderStandaloneInc();
       };
     }
   }

@@ -319,7 +319,7 @@ function doPost(e) {
           '👤 Сотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100),
           '📝 Описание: ' + escapeTgHtml_(String(x.comment || 'Без описания').slice(0, 700))
         ];
-        if (phUrl) msgLines.push('📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>');
+        if (phUrl) msgLines.push((/export=download|\.(webm|mp4)/i.test(phUrl) ? '🎬 <a href="' + escapeTgHtml_(phUrl) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>'));
         pendingAlerts.push({
           type: 'incident',
           force: true,
@@ -379,7 +379,7 @@ function doPost(e) {
         '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
         '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
       ];
-      if (incPh) incLines.push('📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>');
+      if (incPh) incLines.push((/export=download|\.(webm|mp4)/i.test(incPh) ? '🎬 <a href="' + escapeTgHtml_(incPh) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>'));
       pendingAlerts.push({
         type: 'incident',
         force: true,
@@ -616,7 +616,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
   if (!dataUri) {
     return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
   }
-  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)*;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
     return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
   }
@@ -667,7 +667,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
         try { lockOpt.releaseLock(); } catch (_) {}
       }
     }
-    return { ok: true, mediaId: file.getId(), fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), mediaType: /^video\//i.test(mimeType) ? 'video' : 'image', mimeType: mimeType, url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
@@ -1426,13 +1426,11 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
   var safeTtk = Array.isArray(full.ttk) ? full.ttk.map(function(t) {
     return {
       id: t.id,
-      category: t.category || t.cat || 'Классика',
+      category: t.category,
       name: t.name,
-      volume: t.volume || t.vol || '',
-      price: Number(t.price || 0),
-      ingredients: t.ingredients || '',
-      recipe: t.recipe || '',
-      serve: t.serve || t.serving || ''
+      volume: t.volume,
+      ingredients: t.ingredients,
+      recipe: t.recipe
     };
   }) : [];
 
@@ -2306,9 +2304,7 @@ function getTtkList_(ss) {
       costSyrup: Number(r[7]) || 0,
       costCup: Number(r[8]) || 0,
       recipe: String(r[9] || ''),
-      serving: String(r[10] || ''),
-      serve: String(r[10] || ''),
-      ingredients: String(r[11] || '')
+      serving: String(r[10] || '')
     });
   }
   return list;
@@ -2645,7 +2641,6 @@ function getAdmin_(ss) {
       who: String(ri[7] || 'Бариста'),
       owner: String(ri[8] || 'Администратор'),
       photo: String(ri[9] || ''),
-      photoUrl: String(ri[9] || ''),
       incType: String(ri[10] || 'Поломка оборудования'),
       history: hist
     });
@@ -2673,7 +2668,6 @@ function getAdmin_(ss) {
         who: String(lri[4] || 'Бариста'),
         owner: String(lri[10] || 'Администратор'),
         photo: String(lri[8] || ''),
-        photoUrl: String(lri[8] || ''),
         incType: 'Поломка оборудования',
         history: []
       });
@@ -3153,26 +3147,16 @@ function extendDeadline_(ss, b) {
   var extMap = {};
   try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
   var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
-  if (b.clear || b.cancel) {
-    delete extMap[extKey];
-    Object.keys(extMap).forEach(function(k) {
-      if (k === blk || k.slice(-(':' + blk).length) === ':' + blk) delete extMap[k];
-    });
-    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
-    bumpDataRev_();
-    appendAudit_(ss, 'Администратор', 'Возврат штатного окна чек-листа', blk + ' возвращён в расписание');
-  } else {
-    extMap[extKey] = {
-      openFrom: b.openFrom || '00:00',
-      until: b.until || '23:59',
-      forceOpen: true,
-      reason: b.reason || 'Разблокировано администратором онлайн',
-      at: tm
-    };
-    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
-    bumpDataRev_();
-    appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
-  }
+  extMap[extKey] = {
+    openFrom: b.openFrom || '00:00',
+    until: b.until || '23:59',
+    forceOpen: true,
+    reason: b.reason || 'Разблокировано администратором онлайн',
+    at: tm
+  };
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
   return { ok: true, deadlineExtensions: extMap, rev: getDataRev_() };
 }
 
@@ -3295,7 +3279,6 @@ function saveStaff_(ss, b) {
   sh.appendRow([id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••']);
   var resNew = { ok: true, id: id };
   if (generatedPin) resNew.generatedPin = generatedPin;
-  bumpDataRev_();
   return resNew;
 }
 
@@ -3315,20 +3298,14 @@ function saveTtk_(ss, b) {
   var sh = ss.getSheetByName('Техкарты');
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
-  var vol = b.volume || b.vol || '';
-  var cat = b.category || b.cat || 'Классика';
-  var srv = b.serving || b.serve || '';
-  var ing = b.ingredients || '';
-  var rowVals = [id, b.name || '', vol, cat, Number(b.price) || 0, Number(b.costBeans != null ? b.costBeans : (b.cost || 0)) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', srv, ing];
+  var rowVals = [id, b.name || '', b.volume || '', b.category || '', Number(b.price) || 0, Number(b.costBeans) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || ''];
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
-      sh.getRange(i + 1, 1, 1, 12).setValues([rowVals]);
-      bumpDataRev_();
+      sh.getRange(i + 1, 1, 1, 11).setValues([rowVals]);
       return { ok: true, id: id };
     }
   }
   sh.appendRow(rowVals);
-  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3341,7 +3318,6 @@ function deleteTtk_(ss, b) {
       break;
     }
   }
-  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3458,7 +3434,6 @@ function saveTask_(ss, b, sessOpt) {
     return { ok: true, id: id, row: Number(b.row) };
   }
   sh.appendRow(rowVals);
-  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3477,7 +3452,6 @@ function deleteTask_(ss, b) {
   if (b.row && Number(b.row) >= 2 && Number(b.row) <= sh.getLastRow()) {
     sh.deleteRow(Number(b.row));
   }
-  bumpDataRev_();
   return { ok: true };
 }
 
@@ -4133,7 +4107,6 @@ function reportIncident_(ss, b) {
     JSON.stringify(hist)
   ]);
   appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
-  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -4156,7 +4129,6 @@ function updateIncident_(ss, b) {
       break;
     }
   }
-  bumpDataRev_();
   return { ok: true };
 }
 
