@@ -1,9 +1,9 @@
-/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
-  const SESSION_KEY = 'coffee_illy_v93_session';
+  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
+  const SESSION_KEY = 'coffee_illy_v94_session';
 
   function localISO() {
     const d = new Date();
@@ -338,7 +338,7 @@
           avg: avg,
           avgCheck: avg,
           checks: Number(p.checks || prev.checks || 75),
-          roster: p.roster || prev.roster || ''
+          roster: (data.shiftRoster && data.shiftRoster[d] !== undefined ? data.shiftRoster[d] : (p.roster || prev.roster || ''))
         };
       });
       changed = true;
@@ -361,6 +361,30 @@
     }
     if (data.autopilotEnabled !== undefined) {
       state.autopilotEnabled = !!data.autopilotEnabled;
+      changed = true;
+    }
+    if (data.cashReviews && typeof data.cashReviews === 'object') {
+      state.cashReviews = data.cashReviews;
+      changed = true;
+    }
+    if (data.activeShift && typeof data.activeShift === 'object') {
+      state.activeShift = data.activeShift;
+      changed = true;
+    }
+    if (data.financialSummary && typeof data.financialSummary === 'object') {
+      state.financialSummary = data.financialSummary;
+      changed = true;
+    }
+    if (Array.isArray(data.notifications)) {
+      state.notifications = data.notifications;
+      changed = true;
+    }
+    if (Array.isArray(data.inventory)) {
+      state.inventory = data.inventory;
+      changed = true;
+    }
+    if (Array.isArray(data.announcements)) {
+      state.announcements = data.announcements;
       changed = true;
     }
     if (data.serverTime) {
@@ -441,8 +465,17 @@
       if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
     } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
       const plansObj = {};
-      (st.plans || []).forEach((p) => { plansObj[p.day] = { revenue: p.rev || p.revenue, avgCheck: p.avg || p.avgCheck || 35, checks: p.checks }; });
+      const rosterObj = {};
+      (st.plans || []).forEach((p) => {
+        plansObj[p.day] = {
+          revenue: Number(p.rev || p.revenue || st.plan || 2200),
+          avgCheck: Number(p.avg || p.avgCheck || st.minAvgCheck || 35),
+          checks: Number(p.checks || st.planChecks || 75)
+        };
+        if (p.roster !== undefined) rosterObj[p.day] = String(p.roster || '');
+      });
       enqueueOp('save_daily_plans', { plans: plansObj });
+      enqueueOp('save_shift_roster', { roster: rosterObj });
     } else if (desc.indexOf('Сменил личный PIN') === 0) {
       const s = (st.staff || []).find((x) => x.name === actor);
       if (s && s.pin) enqueueOp('change_staff_pin', { name: s.name, newPin: s.pin });
@@ -703,8 +736,34 @@
     saveTelegramSettings: saveTelegramSettings,
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
-    runChecklistNotificationsNow: runChecklistNotificationsNow
+    runChecklistNotificationsNow: runChecklistNotificationsNow,
+    reviewCashReport: async function (opts) { return gasPost('review_cash_report', opts || {}); },
+    markNotificationRead: async function (opts) { return gasPost('mark_notification_read', opts || {}); },
+    saveInventory: async function (items) { return gasPost('save_inventory', { items: items || [] }); },
+    ackAnnouncement: async function (id) { return gasPost('ack_announcement', { id: id }); },
+    submitCashReport: async function (payload) {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        enqueueOp('submit_cash', payload);
+        return { ok: true, queued: true, reportStatus: 'Ожидает отправки' };
+      }
+      try {
+        const res = await gasPost('submit_cash', payload);
+        if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
+        return res;
+      } catch (err) {
+        enqueueOp('submit_cash', payload);
+        return { ok: true, queued: true, reportStatus: 'Ожидает отправки', error: String(err && err.message || err) };
+      }
+    },
+    getSyncStatusInfo: function () {
+      const pending = readOutbox().length;
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
+      if (offline) return { code: 'offline', label: pending ? ('Офлайн · в очереди ' + pending) : 'Нет интернета', cls: 'warn' };
+      if (pending > 0) return { code: 'pending', label: 'Ожидает отправки (' + pending + ')', cls: 'warn' };
+      return { code: 'synced', label: 'Синхронизировано', cls: 'good' };
+    }
   };
+  window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
 })();

@@ -215,7 +215,8 @@ var STAFF_OR_ADMIN_ACTIONS_ = {
   handover_shift: true,
   submit_writeoff: true,
   staff_checkin: true,
-  staff_checkout: true
+  staff_checkout: true,
+  mark_notification_read: true
 };
 
 function doPost(e) {
@@ -330,9 +331,32 @@ function doPost(e) {
       });
       return idempotentJsonOut_(ss, body, resChk, actorSess);
     }
+    if (action === 'mark_notification_read') {
+      return idempotentJsonOut_(ss, body, markNotificationReadV94_(ss, body, actorSess), actorSess);
+    }
     if (action === 'submit_cash') {
       validateCashPayload_(ss, body);
-      return idempotentJsonOut_(ss, body, submitCash_(ss, body), actorSess);
+      var cashRes = submitCash_(ss, body);
+      var repRec = recordCashReportReviewMetaV94_(ss, body, cashRes);
+      cashRes.reportId = repRec.reportId;
+      cashRes.reportStatus = repRec.status;
+      pushInAppNotificationV94_(ss, {
+        targetRole: 'owner',
+        type: 'cash_report',
+        title: 'Новый кассовый отчёт ' + repRec.reportId,
+        text: (body.userName || body.who || 'Бариста') + ' сдал(а) кассу на ' + repRec.revenue + ' ₽ (' + repRec.status + ')',
+        entityId: repRec.reportId
+      });
+      if (repRec.status === 'Есть расхождения') {
+        pendingAlerts.push({
+          type: 'cash_discrepancy',
+          force: true,
+          targetPage: 'owner.html',
+          buttonText: '💰 Проверить отчёт в дашборде',
+          text: '⚠️ <b>РАСХОЖДЕНИЕ В КАССОВОМ ОТЧЁТЕ</b>\nНомер: <b>' + escapeTgHtml_(repRec.reportId) + '</b>\nСотрудник: ' + escapeTgHtml_(body.userName || body.who || 'Бариста') + '\nСумма: ' + repRec.revenue + ' ₽'
+        });
+      }
+      return idempotentJsonOut_(ss, body, cashRes, actorSess);
     }
     if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body), actorSess);
     // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
@@ -369,6 +393,7 @@ function doPost(e) {
     }
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
+      pushInAppNotificationV94_(ss, { targetRole: 'owner', type: 'incident', title: 'Инцидент: ' + String(body.step || body.zone || 'Поломка'), text: String(body.userName || 'Бариста') + ': ' + String(body.text || body.comment || ''), entityId: (resInc && resInc.id) || '' });
       var incPh = String(body.photoUrl || body.photo_url || body.photo || '').trim();
       var prio = String(body.priority || 'Терпит').trim();
       var prioIcon = prio.indexOf('Срочно') >= 0 ? '🔴' : (prio.indexOf('Важно') >= 0 ? '🟡' : '🟢');
@@ -413,7 +438,27 @@ function doPost(e) {
     if (action === 'add_expense') { validateExpensePayload_(ss, body); return idempotentJsonOut_(ss, body, addExpense_(ss, body), actorSess); }
     if (action === 'update_expense') return idempotentJsonOut_(ss, body, updateExpense_(ss, body), actorSess);
     if (action === 'delete_expense') return idempotentJsonOut_(ss, body, deleteExpense_(ss, body), actorSess);
-    if (action === 'resolve_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }), actorSess);
+    if (action === 'review_cash_report') {
+      var revOut = reviewCashReportV94_(ss, body, actorSess);
+      if (revOut && revOut.ok && revOut.baristaTgChatId) {
+        pendingAlerts.push({
+          chatIds: [revOut.baristaTgChatId],
+          type: 'cash_review',
+          force: true,
+          skipDedup: true,
+          text: (revOut.status === 'Подтверждён' ? '✅ <b>Кассовый отчёт подтверждён</b>' : '↩️ <b>Кассовый отчёт возвращён на уточнение</b>') +
+            '\nНомер: <b>' + escapeTgHtml_(revOut.reportId) + '</b>' +
+            '\nДата: ' + escapeTgHtml_(revOut.date || '') +
+            (revOut.comment ? ('\nКомментарий владельца: ' + escapeTgHtml_(revOut.comment)) : '')
+        });
+      }
+      return idempotentJsonOut_(ss, body, revOut, actorSess);
+    }
+    if (action === 'resolve_incident') {
+      var rIncOut = updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' });
+      pushInAppNotificationV94_(ss, { targetRole: 'staff', targetUser: body.who || '', type: 'incident_resolved', title: 'Инцидент решён', text: 'Администратор закрыл обращение ' + String(body.id || ''), entityId: String(body.id || '') });
+      return idempotentJsonOut_(ss, body, rIncOut, actorSess);
+    }
     if (action === 'update_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, body), actorSess);
     if (action === 'delete_incident') return idempotentJsonOut_(ss, body, deleteIncident_(ss, body), actorSess);
     if (action === 'save_setting') return idempotentJsonOut_(ss, body, saveSettingSecure_(ss, body), actorSess);
@@ -1477,6 +1522,9 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     personalTasksDone: filteredPersonal,
     deltas: getDeltasSince_(ss, Number(sinceTs) || 0, sess ? sess.role : 'staff', null, sess),
     staffPresence: getStaffPresenceToday_(ss),
+    activeShift: buildActiveShiftV94_(ss),
+    cashReviews: getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {}),
+    notifications: getNotificationsForRoleV94_(ss, 'staff', staffName),
     serverTime: full.serverTime,
     serverDate: full.serverDate,
     serverTs: Date.now()
@@ -2728,6 +2776,10 @@ function getAdmin_(ss) {
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
     webappUrl: map.WEBAPP_URL || '',
     autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
+    cashReviews: getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {}),
+    activeShift: buildActiveShiftV94_(ss),
+    financialSummary: computeFinancialSummaryV94_(cash, expenses, getTtkList_(ss)),
+    notifications: getNotificationsForRoleV94_(ss, 'owner', ''),
     serverTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm'),
     settings: getSettingsArray_(map)
   };
@@ -3036,6 +3088,7 @@ function saveDailyPlans_(ss, b) {
       sh.appendRow([d, Number(dp.revenue) || 2200, Number(dp.avgCheck) || 35, Number(dp.checks) || 75, roster[d] || '']);
     });
   }
+  bumpDataRev_();
   return { ok: true, dailyPlans: plans };
 }
 
@@ -3054,6 +3107,7 @@ function saveShiftRoster_(ss, b) {
       sh.appendRow([d, Number(dp.revenue) || 2200, Number(dp.avgCheck) || 35, Number(dp.checks) || 75, roster[d] || '']);
     });
   }
+  bumpDataRev_();
   return { ok: true, shiftRoster: roster };
 }
 
@@ -4108,6 +4162,16 @@ function saveNomenclatureRule_(ss, b) {
 }
 
 function saveInventory_(ss, b) {
+  if (b && Array.isArray(b.items)) {
+    var norm = b.items.filter(function(x) { return x && x.name; }).map(function(x, i) {
+      var q = Math.max(0, Number(x.qty != null ? x.qty : (x.stock != null ? x.stock : 0)) || 0);
+      var mq = Math.max(0, Number(x.minQty != null ? x.minQty : (x.minStock != null ? x.minStock : 2)) || 0);
+      return { id: String(x.id || ('inv_' + i)), name: String(x.name), qty: q, stock: q, minQty: mq, minStock: mq, unit: String(x.unit || 'шт') };
+    });
+    setJsonProp_('COFFEE_INVENTORY_JSON', norm);
+    bumpDataRev_();
+    return { ok: true, inventory: norm };
+  }
   var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
   if (!Array.isArray(list)) list = [];
   var id = String((b && b.id) || ('inv_' + Date.now().toString(36))).trim();
@@ -4239,7 +4303,12 @@ function sendDailyDigestNow_(ss, b) {
   var day = (b && b.date) || isoDate_();
   var map = getSettingsMap_(ss);
   var loc = map.LOCATION || 'Кофейня №1';
-  var plan = Number(map.PLAN || 2500) || 2500;
+  var prDig = getDailyPlansAndRosterFromSheet_(ss, map);
+  var digWeekday = getWeekdayRuV93_(new Date(day + 'T12:00:00Z'), Session.getScriptTimeZone() || 'GMT+2');
+  var dayPlanObj = (prDig && prDig.dailyPlans && prDig.dailyPlans[digWeekday]) || {};
+  var plan = Number(dayPlanObj.revenue || map.PLAN || 2200) || 2200;
+  var planChecksDay = Number(dayPlanObj.checks || map.PLAN_CHECKS || 75) || 75;
+  var minAvgDay = Number(dayPlanObj.avgCheck || map.MIN_AVG_CHECK || 35) || 35;
   var shC = ss.getSheetByName('Касса');
   var cash = 0, card = 0, checks = 0, coffeeQty = 0, unacc = 0, barista = '';
   if (shC) {
@@ -4262,7 +4331,7 @@ function sendDailyDigestNow_(ss, b) {
     '📊 ИТОГОВАЯ СВОДКА ДНЯ (' + day + ' · ' + loc + ')',
     '👤 Смена: ' + (barista || 'Бариста'),
     '💰 Выручка: ' + rev + ' руб. (План: ' + plan + ' руб. · ' + pct + '%)',
-    '💵 Нал: ' + cash + ' руб. · Безнал: ' + card + ' руб. · Чеков: ' + checks
+    '💵 Нал: ' + cash + ' руб. · Безнал: ' + card + ' руб. · Чеков: ' + checks + ' / план ' + planChecksDay + ' · Ср. чек: ' + (checks > 0 ? Math.round(rev / checks) : 0) + ' ₽ (мин. ' + minAvgDay + ' ₽)'
   ];
   if (coffeeQty) {
     lines.push('☕ Кофе по номенклатуре: ' + coffeeQty + ' шт.' + (unacc > 0 ? (' · ⚠️ Расхождение счётчика: +' + unacc) : ' · ✓ Счётчик сошёлся'));
@@ -4876,4 +4945,241 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
   }
 
   return { ok: true, date: today, time: hm, weekday: weekday, sent: sent, skipped: skipped };
+}
+
+
+/* =========================================================================
+   COFFEE ILLY v94.0 — КАССОВЫЕ ОТЧЁТЫ (ПРОВЕРКА), СМЕНЫ, УВЕДОМЛЕНИЯ И ФИНАНСЫ
+   ========================================================================= */
+
+function toKopV94_(val) {
+  return Math.round((Number(val) || 0) * 100);
+}
+function fromKopV94_(kop) {
+  return Math.round(kop) / 100;
+}
+
+function computeFinancialSummaryV94_(cashArr, expArr, ttkArr) {
+  var revKop = 0, cashKop = 0, cardKop = 0, checks = 0, expKop = 0;
+  (cashArr || []).forEach(function(c) {
+    var ck = toKopV94_(c.cash);
+    var dk = toKopV94_(c.card);
+    var rk = (ck + dk) > 0 ? (ck + dk) : toKopV94_(c.revenue || c.total);
+    cashKop += ck;
+    cardKop += dk;
+    revKop += rk;
+    checks += Number(c.checks) || 0;
+  });
+  (expArr || []).forEach(function(e) {
+    expKop += toKopV94_(e.amount);
+  });
+  var reviews = getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {});
+  var pendingReports = 0;
+  Object.keys(reviews || {}).forEach(function(k) {
+    var r = reviews[k];
+    if (r && (r.status === 'На проверке' || r.status === 'Есть расхождения')) pendingReports++;
+  });
+  var rev = fromKopV94_(revKop);
+  var exp = fromKopV94_(expKop);
+  return {
+    revenue: rev,
+    cashTotal: fromKopV94_(cashKop),
+    cardTotal: fromKopV94_(cardKop),
+    operatingExpenses: exp,
+    operatingProfit: fromKopV94_(revKop - expKop),
+    checksCount: checks,
+    avgCheck: checks > 0 ? Math.round(rev / checks) : 0,
+    pendingReportsCount: pendingReports,
+    formulaNote: 'Операционная прибыль = Выручка − Операционные расходы (точные расчёты на сервере)'
+  };
+}
+
+function buildActiveShiftV94_(ss) {
+  var today = isoDate_();
+  var presence = getStaffPresenceToday_(ss);
+  var participants = [];
+  var earliest = '';
+  Object.keys(presence || {}).forEach(function(nm) {
+    var p = presence[nm];
+    if (p && p.status === 'on_shift') {
+      participants.push({ name: nm, checkedInAt: p.checkedInAt || '', tgId: p.tgId || '' });
+      if (!earliest || (p.checkedInAt && p.checkedInAt < earliest)) earliest = p.checkedInAt;
+    }
+  });
+  var reviews = getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {});
+  var todayRep = null;
+  Object.keys(reviews || {}).forEach(function(k) {
+    var r = reviews[k];
+    if (r && String(r.date || '') === today) todayRep = r;
+  });
+  var status = 'Не начата';
+  if (todayRep && todayRep.status === 'Подтверждён') status = 'Закрыта';
+  else if (todayRep) status = 'Ожидает проверки';
+  else if (participants.length > 0) status = 'Активная смена';
+
+  return {
+    shiftId: 'SHF-' + today.replace(/-/g, ''),
+    date: today,
+    status: status,
+    startedAt: earliest,
+    participants: participants,
+    todayReport: todayRep
+  };
+}
+
+function recordCashReportReviewMetaV94_(ss, body, cashRes) {
+  var today = String((body && body.date) || isoDate_()).slice(0, 10);
+  var repId = 'REP-' + today.replace(/-/g, '') + '-' + String(Date.now()).slice(-4);
+  var cashKop = toKopV94_(body.cash);
+  var cardKop = toKopV94_(body.card);
+  var revKop = (cashKop + cardKop) > 0 ? (cashKop + cardKop) : toKopV94_(body.total || body.revenue);
+  var revenue = fromKopV94_(revKop);
+  var cStart = body.counterStart != null && body.counterStart !== '' ? Number(body.counterStart) : null;
+  var cEnd = body.counterEnd != null && body.counterEnd !== '' ? Number(body.counterEnd) : null;
+  var discrepancy = Number(body.discrepancy || 0) || 0;
+  var status = Math.abs(discrepancy) > 0 ? 'Есть расхождения' : 'На проверке';
+  var nowIso = new Date().toISOString();
+  var rec = {
+    reportId: repId,
+    date: today,
+    barista: String(body.userName || body.who || 'Бариста'),
+    cash: fromKopV94_(cashKop),
+    card: fromKopV94_(cardKop),
+    revenue: revenue,
+    checks: Number(body.checks || 0) || 0,
+    writeoff: Number(body.writeoff || 0) || 0,
+    counterStart: cStart,
+    counterEnd: cEnd,
+    discrepancy: discrepancy,
+    photoUrl: String(body.photoUrl || body.photo_url || body.photo || ''),
+    status: status,
+    reviewComment: '',
+    reviewedBy: '',
+    reviewedAt: '',
+    createdAt: nowIso,
+    history: [{ ts: nowIso, actor: String(body.userName || body.who || 'Бариста'), status: status, note: 'Отчёт отправлен из Barista Simple' }]
+  };
+  var reviews = getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {});
+  reviews[repId] = rec;
+  setJsonProp_('COFFEE_CASH_REVIEWS_JSON', reviews);
+  bumpDataRev_();
+  return rec;
+}
+
+function reviewCashReportV94_(ss, body, actorSess) {
+  var repId = String((body && body.reportId) || '').trim();
+  var dateKey = String((body && body.date) || '').slice(0, 10);
+  var decision = String((body && (body.decision || body.status)) || 'Подтверждён').trim();
+  var allowed = { 'Подтверждён': true, 'Возвращён': true, 'Отклонён': true, 'Есть расхождения': true };
+  if (!allowed[decision]) throw new Error('VALIDATION_FAILED: Недопустимый статус проверки: ' + decision);
+  var comment = String((body && body.comment) || '').trim();
+  if ((decision === 'Возвращён' || decision === 'Отклонён') && !comment) {
+    throw new Error('VALIDATION_FAILED: Укажите причину возврата или отклонения отчёта');
+  }
+  var reviews = getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {});
+  var rec = repId ? reviews[repId] : null;
+  if (!rec && dateKey) {
+    var keys = Object.keys(reviews);
+    for (var i = keys.length - 1; i >= 0; i--) {
+      if (reviews[keys[i]] && reviews[keys[i]].date === dateKey) { rec = reviews[keys[i]]; repId = keys[i]; break; }
+    }
+  }
+  if (!rec) {
+    // Поддержка проверки исторической строки кассы из таблицы без метаданных
+    repId = repId || ('REP-' + (dateKey || isoDate_()).replace(/-/g, '') + '-HIST');
+    rec = {
+      reportId: repId,
+      date: dateKey || isoDate_(),
+      barista: String(body.barista || 'Бариста'),
+      revenue: Number(body.revenue || 0),
+      status: 'На проверке',
+      history: []
+    };
+  }
+  var nowIso = new Date().toISOString();
+  var actorName = String((actorSess && actorSess.staffName) || 'Владелец');
+  rec.status = decision;
+  rec.reviewComment = comment;
+  rec.reviewedBy = actorName;
+  rec.reviewedAt = nowIso;
+  rec.history = Array.isArray(rec.history) ? rec.history : [];
+  rec.history.push({ ts: nowIso, actor: actorName, status: decision, note: comment || ('Статус изменён на «' + decision + '»') });
+  reviews[repId] = rec;
+  setJsonProp_('COFFEE_CASH_REVIEWS_JSON', reviews);
+
+  pushInAppNotificationV94_(ss, {
+    targetRole: 'staff',
+    targetUser: rec.barista || '',
+    type: 'cash_review',
+    title: decision === 'Подтверждён' ? ('Отчёт ' + repId + ' подтверждён') : ('Отчёт ' + repId + ': ' + decision),
+    text: comment || ('Владелец проверил кассовый отчёт за ' + rec.date),
+    entityId: repId
+  });
+  appendAudit_(ss, actorName, 'Проверка кассового отчёта ' + repId + ': ' + decision, comment || ('Бариста: ' + (rec.barista || '')));
+  bumpDataRev_();
+
+  var baristaTg = '';
+  if (rec.barista) {
+    var stList = getStaffList_(ss) || [];
+    for (var j = 0; j < stList.length; j++) {
+      if (stList[j] && String(stList[j].name || '').trim().toLowerCase() === String(rec.barista).trim().toLowerCase()) {
+        baristaTg = normTgNumericId_(stList[j].tgId);
+        break;
+      }
+    }
+  }
+  return { ok: true, reportId: repId, date: rec.date, status: decision, comment: comment, barista: rec.barista, baristaTgChatId: baristaTg, record: rec };
+}
+
+function pushInAppNotificationV94_(ss, opts) {
+  var list = getJsonProp_('COFFEE_NOTIFICATIONS_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  list.unshift({
+    id: 'NTF-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+    date: Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
+    time: Utilities.formatDate(now, tz, 'HH:mm'),
+    targetRole: String((opts && opts.targetRole) || 'owner'),
+    targetUser: String((opts && opts.targetUser) || ''),
+    type: String((opts && opts.type) || 'info'),
+    title: String((opts && opts.title) || 'Уведомление'),
+    text: String((opts && opts.text) || ''),
+    entityId: String((opts && opts.entityId) || ''),
+    read: false
+  });
+  if (list.length > 80) list = list.slice(0, 80);
+  setJsonProp_('COFFEE_NOTIFICATIONS_JSON', list);
+}
+
+function getNotificationsForRoleV94_(ss, role, userName) {
+  var list = getJsonProp_('COFFEE_NOTIFICATIONS_JSON', []);
+  if (!Array.isArray(list)) return [];
+  var uLow = String(userName || '').trim().toLowerCase();
+  return list.filter(function(n) {
+    if (!n) return false;
+    if (role === 'owner') return n.targetRole === 'owner';
+    if (n.targetRole !== 'staff') return false;
+    return !n.targetUser || !uLow || String(n.targetUser).trim().toLowerCase() === uLow;
+  });
+}
+
+function markNotificationReadV94_(ss, body, actorSess) {
+  var id = String((body && body.id) || '').trim();
+  var all = !!(body && body.all);
+  var list = getJsonProp_('COFFEE_NOTIFICATIONS_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var role = (actorSess && actorSess.role === 'admin') ? 'owner' : 'staff';
+  var uLow = String((actorSess && actorSess.staffName) || '').trim().toLowerCase();
+  list.forEach(function(n) {
+    if (!n) return;
+    if (all) {
+      if (n.targetRole === role && (role === 'owner' || !n.targetUser || String(n.targetUser).trim().toLowerCase() === uLow)) n.read = true;
+    } else if (id && n.id === id) {
+      n.read = true;
+    }
+  });
+  setJsonProp_('COFFEE_NOTIFICATIONS_JSON', list);
+  bumpDataRev_();
+  return { ok: true };
 }
