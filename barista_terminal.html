@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coffee Illy v92.0 — Терминал бариста (Тест с живой синхронизацией)</title>
+<title>Coffee Illy v93.0 — Терминал бариста (Тест с живой синхронизацией)</title>
 <style>
 
 :root {
@@ -105,10 +105,9 @@ body { display:flex; flex-direction:column; min-height:100vh; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=93"></script>
-  <script src="js/cloud-sync-v93.js?v=93"></script>
-  <script src="js/m3-controls-v93.js?v=93"></script>
-  <script src="js/camera-v93.js?v=93"></script>
+  <script src="config.js?v=92"></script>
+  <script src="js/cloud-sync-v93.js?v=92"></script>
+  <script src="js/camera-v92.js?v=92"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -121,7 +120,6 @@ body { display:flex; flex-direction:column; min-height:100vh; }
   </div>
   <div class="top-actions">
     <div id="user-ctl"></div>
-    <button type="button" class="chip-btn" id="btn-sync" title="Синхронизировать">↻</button>
     <button class="chip-btn" id="btn-theme">🌓 Авто</button>
   </div>
 </header>
@@ -165,7 +163,7 @@ function freshState() {
     tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
   }));
   s.liveProgress = { 'Соня': { block: 'Карта добрых дел', done: 1, total: 4 } };
-  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v92.0 на реальных данных Coffee_illy.' }];
+  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.0 на реальных данных Coffee_illy.' }];
   return s;
 }
 function loadSharedState() {
@@ -228,8 +226,11 @@ function initTheme(btnId) {
   let state = loadSharedState();
   let tab = 'checklists';
   let authed = null;
-  let simTg = 'TG-518294012';
-  let pickStaff = 'Соня';
+  let checkedInAt = '';
+  let welcomeBanner = '';
+  let autoLoginTried = false;
+  let deepLinkApplied = false;
+  let pickStaff = '';
   let pinBuf = '';
   let stagesOpen = false;
   let activeBlock = null;
@@ -263,49 +264,93 @@ function initTheme(btnId) {
     const f = nc.find(b=>getBlkSt(b).open); activeBlock = f ? f.name : null; stepIdx = 0; return f || null;
   }
 
-  function tryLogin() {
+  function applyDeepLinkIfNeeded() {
+    if (deepLinkApplied || !window.CoffeeCloudV93) return;
+    const dlBlock = window.CoffeeCloudV93.getDeepLinkBlock();
+    if (!dlBlock) { deepLinkApplied = true; return; }
+    const found = state.blocks.find(b => b.name.toLowerCase() === dlBlock.toLowerCase() || b.name.toLowerCase().includes(dlBlock.toLowerCase()));
+    if (found) {
+      tab = 'checklists';
+      activeBlock = found.name;
+      stepIdx = 0;
+      deepLinkApplied = true;
+      showToast('📋 Открыт чек-лист «' + found.name + '»');
+    }
+  }
+
+  function completeStaffSignIn(staffName, checkTime, greetingText, tgIdVal) {
+    authed = staffName;
+    checkedInAt = checkTime || (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '08:00');
+    welcomeBanner = greetingText || ('Добро пожаловать на смену, ' + staffName + '! Вы отмечены на работе с ' + checkedInAt + '.');
+    state.staffPresence = state.staffPresence || {};
+    state.staffPresence[staffName] = { staffName: staffName, status: 'on_shift', checkedInAt: checkedInAt, date: TODAY, tgId: tgIdVal || '' };
+    applyDeepLinkIfNeeded();
+    saveSharedState(state, staffName, 'Отмечен на работе (' + checkedInAt + ')');
+    showToast('🟢 ' + welcomeBanner);
+    render();
+  }
+
+  async function runAutoLogin() {
+    if (authed || !window.CoffeeCloudV93) return;
+    autoLoginTried = true;
+    const res = await window.CoffeeCloudV93.autoLoginEmployee(state);
+    if (res && res.ok && res.staffName) {
+      completeStaffSignIn(res.staffName, res.checkedInAt, res.welcomeMessage, res.tgId);
+    }
+  }
+
+  async function tryLogin() {
     const st = getSt(pickStaff);
     if (!st || st.active===false) { showToast('Сотрудник отключён'); pinBuf=''; render(); return; }
-    if (simTg && st.tgId && st.tgId !== simTg) { showToast('⛔ Профиль привязан к другому TG ID ('+st.tgId+')'); pinBuf=''; render(); return; }
+    const _tgu = window.CoffeeCloudV93 ? window.CoffeeCloudV93.getTelegramUser() : null;
+    const liveTg = _tgu ? _tgu.id : '';
+    if (liveTg && st.tgId && st.tgId.replace(/^TG-/i,'') !== liveTg.replace(/^TG-/i,'')) {
+      showToast('⛔ Профиль привязан к другому Telegram ID'); pinBuf=''; render(); return;
+    }
     if (pinBuf === st.pin) {
-      pinBuf = ''; authed = st.name; if (window.CoffeeCloudV92) { const _tgu = window.CoffeeCloudV92.getTelegramUser(); window.CoffeeCloudV92.authLogin('staff', { name: st.name, pin: st.pin || '1234', tgId: (_tgu && _tgu.id) || st.tgId || '', initData: (_tgu && _tgu.initData) || '' }); }
-      if (simTg && !st.tgId) { st.tgId = simTg; saveSharedState(state, st.name, 'Привязан Telegram ID ' + simTg + ' при входе'); showToast('✓ Telegram ID привязан и вход выполнен!'); }
-      else { saveSharedState(state, st.name, 'Вход в терминал' + (simTg?' ('+simTg+')':'')); showToast('✓ Добро пожаловать, ' + st.name); }
-      render();
+      const enteredPin = pinBuf;
+      pinBuf = '';
+      let srvTime = window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '08:00';
+      let srvMsg = '';
+      if (window.CoffeeCloudV93) {
+        const res = await window.CoffeeCloudV93.authLogin('staff', {
+          name: st.name, pin: enteredPin, tgId: liveTg || st.tgId || '', initData: (_tgu && _tgu.initData) || ''
+        });
+        if (res && res.checkedInAt) srvTime = res.checkedInAt;
+        if (res && res.welcomeMessage) srvMsg = res.welcomeMessage;
+      }
+      if (liveTg && !st.tgId) {
+        st.tgId = liveTg;
+        saveSharedState(state, st.name, 'Привязан Telegram ID ' + liveTg + ' при входе');
+      }
+      completeStaffSignIn(st.name, srvTime, srvMsg, liveTg || st.tgId || '');
     } else { pinBuf = ''; showToast('Неверный PIN'); render(); }
   }
 
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
     document.getElementById('hdr-rev').textContent = 'rev #' + state.rev;
-    document.getElementById('hdr-clock').textContent = state.simTime || '13:25';
+    document.getElementById('hdr-clock').textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (state.simTime || '13:25'));
     const body = document.getElementById('body'), nav = document.getElementById('bnav'), uc = document.getElementById('user-ctl');
 
     if (!authed) {
       nav.style.display = 'none'; uc.innerHTML = '';
-      const bound = simTg ? activeStaff().find(s=>s.tgId===simTg) : null;
+      const tgu = window.CoffeeCloudV93 ? window.CoffeeCloudV93.getTelegramUser() : null;
+      const liveTg = tgu ? tgu.id : '';
+      const bound = liveTg ? activeStaff().find(s=>s.tgId && s.tgId.replace(/^TG-/i,'')===liveTg.replace(/^TG-/i,'')) : null;
       const names = activeStaff().map(s=>s.name);
       if (bound) pickStaff = bound.name;
       else if (!names.includes(pickStaff)) pickStaff = names[0]||'Соня';
       const cur = getSt(pickStaff);
       body.innerHTML = `
         <div class="step-card">
-          <div class="step-counter"><span>Верификация бариста</span><span>${simTg?'🤖 '+esc(simTg):'🌐 Веб'}</span></div>
-          <h2 class="step-title">${bound?'С возвращением, '+esc(bound.name):'Вход в терминал'}</h2>
-          <div class="field"><label>Источник входа (Telegram ID)</label>
-            <select id="tg-sim">
-              <option value="TG-518294012" ${simTg==='TG-518294012'?'selected':''}>Бот: TG-518294012 (Соня)</option>
-              <option value="TG-604912338" ${simTg==='TG-604912338'?'selected':''}>Бот: TG-604912338 (Алина)</option>
-              <option value="TG-774009115" ${simTg==='TG-774009115'?'selected':''}>Бот: TG-774009115 (Новый ID)</option>
-              <option value="" ${!simTg?'selected':''}>Без Telegram ID</option>
-            </select>
-          </div>
+          <div class="step-counter"><span>Вход сотрудника</span><span>${liveTg?'🤖 Telegram':'🌐 Браузер'}</span></div>
+          <h2 class="step-title">${bound?'С возвращением, '+esc(bound.name):'Выберите сотрудника'}</h2>
+          <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">После первого входа устройство и Telegram запомнятся — система будет приветствовать вас и отмечать на работе автоматически.</div>
           <div class="field"><label>Сотрудник</label><select id="st-sel" ${bound?'disabled':''}>${optList(names, pickStaff)}</select></div>
           <div class="pin-dots">${[0,1,2,3].map(i=>`<span class="pin-dot ${pinBuf.length>i?'filled':''}"></span>`).join('')}</div>
-          <div style="text-align:center;font-size:12px;color:var(--muted);">PIN для ${esc(pickStaff)}: <b>${esc(cur?cur.pin:'1234')}</b></div>
           <div class="pin-pad">${['1','2','3','4','5','6','7','8','9','⌫','0','✓'].map(k=>`<button class="pin-key" data-k="${k}">${k}</button>`).join('')}</div>
         </div>`;
-      document.getElementById('tg-sim').onchange = e => { simTg = e.target.value; pinBuf=''; render(); };
       const ss = document.getElementById('st-sel'); if (ss) ss.onchange = e => { pickStaff = e.target.value; pinBuf=''; render(); };
       body.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
         const k = b.dataset.k;
@@ -318,8 +363,13 @@ function initTheme(btnId) {
 
     nav.style.display = 'grid';
     document.querySelectorAll('#bnav button').forEach(b=>b.classList.toggle('active', b.dataset.t===tab));
-    uc.innerHTML = `<button class="chip-btn" id="b-pin" style="padding:5px 9px;">🔑 ${esc(authed)}</button><button class="chip-btn" id="b-out" style="padding:5px 9px;">Выйти</button>`;
-    document.getElementById('b-out').onclick = () => { authed = null; pinBuf = ''; render(); };
+    uc.innerHTML = `<span class="badge good" style="padding:5px 9px;">🟢 На работе · ${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn" id="b-pin" style="padding:5px 9px;">🔑 ${esc(authed)}</button><button class="chip-btn" id="b-out" style="padding:5px 9px;">Выйти</button>`;
+    document.getElementById('b-out').onclick = async () => {
+      const prevName = authed;
+      if (window.CoffeeCloudV93) await window.CoffeeCloudV93.checkOutStaff(prevName);
+      if (state.staffPresence && state.staffPresence[prevName]) state.staffPresence[prevName].status = 'off_shift';
+      authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; render();
+    };
     document.getElementById('b-pin').onclick = () => {
       const s = getSt(authed);
       openModal('Сменить мой PIN (' + s.name + ')', `
@@ -337,6 +387,7 @@ function initTheme(btnId) {
     };
 
     if (tab === 'checklists') {
+      const welcomeHtml = welcomeBanner ? `<div class="card-soft" id="welcome-card" style="margin-bottom:12px;border:1px solid var(--good);display:flex;justify-content:space-between;align-items:center;gap:10px;"><div style="font-size:13px;"><b>👋 ${esc(welcomeBanner)}</b></div><button class="chip-btn" id="w-close" style="padding:3px 8px;">✕</button></div>` : '';
       const nc = state.blocks.filter(b=>!b.isCash && b.active!==false);
       const doneCnt = nc.filter(b=>isDoneToday(b.name, authed)).length;
       const curBlk = ensureBlk();
@@ -478,11 +529,7 @@ function initTheme(btnId) {
         };
       };
     }
-    if (window.M3Controls) window.M3Controls.enhanceAll(body);
   }
-
-  const tSyncBtn = document.getElementById('btn-sync');
-  if (tSyncBtn) tSyncBtn.onclick = async () => { tSyncBtn.textContent = '⟳'; if (window.CoffeeCloudV93) await window.CoffeeCloudV93.forceSyncNow(); tSyncBtn.textContent = '↻'; showToast('⚡ Синхронизировано'); };
 
   function onRemoteSync() {
     const next = loadSharedState();
@@ -497,12 +544,15 @@ function initTheme(btnId) {
   document.querySelectorAll('#bnav button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
   render();
 
-  if (window.CoffeeCloudV92) {
-    window.CoffeeCloudV92.startCloudLoop({
+  runAutoLogin();
+  if (window.CoffeeCloudV93) {
+    window.CoffeeCloudV93.startCloudLoop({
       mode: 'terminal',
       getState: () => state,
       onSynced: (st, srvRev) => {
         try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
+        if (!authed) runAutoLogin();
+        else applyDeepLinkIfNeeded();
         render();
       }
     });

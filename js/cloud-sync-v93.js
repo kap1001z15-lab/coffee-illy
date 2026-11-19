@@ -1,40 +1,21 @@
-/* Coffee Illy v93.0 — Cross-Device, Cross-OS Fast Cloud Sync (Phone / Tablet / PC · iOS / Android / Windows / macOS / Telegram) */
+/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
   const OUTBOX_KEY = 'coffee_illy_v93_outbox';
-  const LEGACY_OUTBOX_KEY = 'coffee_illy_v92_outbox';
   const SESSION_KEY = 'coffee_illy_v93_session';
-  const LEGACY_SESSION_KEY = 'coffee_illy_v92_session';
 
-  function localISO(d) {
-    const dt = d ? new Date(d) : new Date();
-    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  function localISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
-  function localHHMM(d) {
-    const dt = d ? new Date(d) : new Date();
-    return String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
-  }
-
-  function detectDeviceTag() {
-    try {
-      const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
-      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) return 'Telegram';
-      if (/iPad|Macintosh/i.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document) return 'iPadOS';
-      if (/iPhone|iPod/i.test(ua)) return 'iOS';
-      if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android' : 'Android Tablet';
-      if (/Windows/i.test(ua)) return 'Windows';
-      if (/Mac OS X/i.test(ua)) return 'macOS';
-      if (/Linux/i.test(ua)) return 'Linux';
-    } catch (_) {}
-    return 'Web';
+  function localHHMM() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
 
   function getSession() {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY) || localStorage.getItem(LEGACY_SESSION_KEY) || '{}';
-      return JSON.parse(raw) || {};
-    } catch (_) { return {}; }
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {}; } catch (_) { return {}; }
   }
   function setSession(patch) {
     const cur = Object.assign(getSession(), patch || {});
@@ -43,19 +24,7 @@
   }
 
   function readOutbox() {
-    try {
-      const cur = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || [];
-      if (cur.length) return cur;
-      const leg = JSON.parse(localStorage.getItem(LEGACY_OUTBOX_KEY) || '[]') || [];
-      if (leg.length) {
-        try {
-          localStorage.setItem(OUTBOX_KEY, JSON.stringify(leg));
-          localStorage.removeItem(LEGACY_OUTBOX_KEY);
-        } catch (_) {}
-        return leg;
-      }
-      return [];
-    } catch (_) { return []; }
+    try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || []; } catch (_) { return []; }
   }
   function writeOutbox(arr) {
     try { localStorage.setItem(OUTBOX_KEY, JSON.stringify((arr || []).slice(-200))); } catch (_) {}
@@ -89,50 +58,14 @@
   }
 
   let _flushPromise = null;
-  let _pullPromise = null;
   let _lastRttMs = 0;
   let _lastServerRev = '';
-  let _lastSyncedAt = 0;
-  let _status = 'idle'; // 'online' | 'syncing' | 'offline' | 'pending' | 'error'
   let _syncCallbacks = null;
-  let _statusListeners = [];
-
-  function emitStatus(nextStatus) {
-    if (nextStatus) _status = nextStatus;
-    const snap = getStatus();
-    _statusListeners.forEach((fn) => { try { fn(snap); } catch (_) {} });
-  }
-
-  function getStatus() {
-    const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
-    const pending = readOutbox().length;
-    let state = _status;
-    if (offline) state = 'offline';
-    else if (pending > 0 && state !== 'syncing') state = 'pending';
-    return {
-      state: state,
-      online: !offline,
-      pending: pending,
-      rttMs: _lastRttMs,
-      rev: _lastServerRev,
-      lastSyncedAt: _lastSyncedAt,
-      device: detectDeviceTag()
-    };
-  }
-
-  function onStatusChange(fn) {
-    if (typeof fn === 'function') _statusListeners.push(fn);
-    return () => { _statusListeners = _statusListeners.filter((x) => x !== fn); };
-  }
 
   async function flushOutbox() {
-    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-      emitStatus('offline');
-      return { flushed: 0, pending: readOutbox().length };
-    }
+    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { flushed: 0, pending: readOutbox().length };
     if (_flushPromise) return _flushPromise;
     if (!readOutbox().length) return { flushed: 0, pending: 0 };
-    emitStatus('syncing');
     const run = (async () => {
       let flushed = 0;
       while (true) {
@@ -162,9 +95,7 @@
         writeOutbox(remaining);
         if (!remaining.length || anyRetryableFailure) break;
       }
-      const rem = readOutbox().length;
-      emitStatus(rem ? 'pending' : 'online');
-      return { flushed: flushed, pending: rem };
+      return { flushed: flushed, pending: readOutbox().length };
     })();
     const p = run.finally(() => { if (_flushPromise === p) _flushPromise = null; });
     _flushPromise = p;
@@ -177,7 +108,6 @@
     const q = readOutbox();
     q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now() });
     writeOutbox(q);
-    emitStatus('syncing');
     flushOutbox().then(() => {
       if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(false);
     }).catch(() => {});
@@ -203,6 +133,7 @@
       if (res && res.ok) {
         return { ok: true, fileId: res.fileId || '', url: res.url || res.viewUrl || '', fileName: res.fileName || '' };
       }
+      // If session expired or transient error, queue it
       if (res && /STAFF_AUTH_REQUIRED/i.test(String(res.error || ''))) {
         return { ok: false, error: res.error };
       }
@@ -216,12 +147,7 @@
 
   async function authLogin(role, opts) {
     try {
-      const payloadAuth = Object.assign({ role: role }, opts || {});
-      if (payloadAuth.name) {
-        if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name;
-        if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name;
-      }
-      const res = await gasPost('auth_login', payloadAuth);
+      const payloadAuth = Object.assign({ role: role }, opts || {}); if (payloadAuth.name) { if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name; if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name; } const res = await gasPost('auth_login', payloadAuth);
       if (res && res.ok && res.sessionToken) {
         if (role === 'admin') setSession({ adminToken: res.sessionToken });
         else setSession({ staffToken: res.sessionToken, staffName: (opts && opts.name) || '' });
@@ -417,6 +343,30 @@
       });
       changed = true;
     }
+    if (data.staffPresence && typeof data.staffPresence === 'object') {
+      state.staffPresence = data.staffPresence;
+      changed = true;
+    }
+    if (data.tgConfiguredOnServer !== undefined) {
+      state.tgConfiguredOnServer = !!data.tgConfiguredOnServer;
+      changed = true;
+    }
+    if (data.tgChat !== undefined) {
+      state.tgChat = String(data.tgChat || '');
+      changed = true;
+    }
+    if (data.webappUrl !== undefined) {
+      state.webappUrl = String(data.webappUrl || '');
+      changed = true;
+    }
+    if (data.autopilotEnabled !== undefined) {
+      state.autopilotEnabled = !!data.autopilotEnabled;
+      changed = true;
+    }
+    if (data.serverTime) {
+      state.serverTime = String(data.serverTime);
+      changed = true;
+    }
     return changed;
   }
 
@@ -535,60 +485,45 @@
     } catch (_) {}
 
     async function pullNow(forceFull) {
-      if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-        emitStatus('offline');
-        return null;
-      }
-      if (_pullPromise && !forceFull) return _pullPromise;
-      const run = (async () => {
-        try {
-          if (forceFull) emitStatus('syncing');
-          await flushOutbox();
-          const t0 = Date.now();
-          const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
-          _lastRttMs = Math.max(1, Date.now() - t0);
-          const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
-          _lastSyncedAt = Date.now();
-          if (!forceFull && srvRev && srvRev === _lastServerRev) {
-            emitStatus(readOutbox().length ? 'pending' : 'online');
-            return { changed: false, rev: srvRev, rttMs: _lastRttMs };
-          }
-          if (srvRev) _lastServerRev = srvRev;
+      if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
+      try {
+        await flushOutbox();
+        const t0 = Date.now();
+        const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
+        _lastRttMs = Math.max(1, Date.now() - t0);
+        const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
+        if (!forceFull && srvRev && srvRev === _lastServerRev) return { changed: false, rev: srvRev };
+        if (srvRev) _lastServerRev = srvRev;
 
-          let data = null;
-          const sess = getSession();
-          if (mode === 'owner' && sess.adminToken) {
-            data = await gasPost('admin', { sessionToken: sess.adminToken });
-          } else if (mode === 'terminal' && sess.staffToken) {
-            data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
-          } else {
-            data = await gasGet({ action: 'get_checklists', nocache: '1' });
-          }
-          if (data && getState) {
-            const st = getState();
-            const changed = mergeServerIntoState(st, data);
-            if (srvRev) st.cloudRev = srvRev;
-            emitStatus(readOutbox().length ? 'pending' : 'online');
-            if ((changed || forceFull) && onSynced) onSynced(st, srvRev, _lastRttMs);
-            return { changed: changed, rev: srvRev, rttMs: _lastRttMs };
-          }
-          emitStatus(readOutbox().length ? 'pending' : 'online');
-        } catch (_) {
-          emitStatus('error');
+        let data = null;
+        const sess = getSession();
+        if (mode === 'owner' && sess.adminToken) {
+          data = await gasPost('admin', { sessionToken: sess.adminToken });
+        } else if (mode === 'terminal' && sess.staffToken) {
+          data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
+        } else {
+          data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
-        return null;
-      })();
-      const p = run.finally(() => { if (_pullPromise === p) _pullPromise = null; });
-      _pullPromise = p;
-      return p;
+        if (data && getState) {
+          const st = getState();
+          const changed = mergeServerIntoState(st, data);
+          if (srvRev) st.cloudRev = srvRev;
+          st.lastSyncAt = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          st.lastRttMs = _lastRttMs;
+          st.liveConnected = true;
+          if ((changed || forceFull) && onSynced) onSynced(st, srvRev, _lastRttMs);
+          return { changed: changed, rev: srvRev, rttMs: _lastRttMs };
+        }
+      } catch (_) {}
+      return null;
     }
 
     function nextDelay() {
-      if (typeof document !== 'undefined' && document.hidden) return 20000;
+      if (typeof document !== 'undefined' && document.hidden) return 25000;
       const idle = Date.now() - _lastActive;
-      const a = Number(CFG.SYNC_ACTIVE_MS) || 800;
-      const w = Number(CFG.SYNC_WARM_MS) || 2200;
-      const idl = Number(CFG.SYNC_IDLE_MS) || 8000;
+      const a = Number(CFG.SYNC_ACTIVE_MS) || 900;
+      const w = Number(CFG.SYNC_WARM_MS) || 2500;
+      const idl = Number(CFG.SYNC_IDLE_MS) || 10000;
       return idle < 120000 ? a : (idle < 600000 ? w : idl);
     }
 
@@ -604,24 +539,15 @@
       ['pointerdown', 'keydown', 'touchstart'].forEach((ev) =>
         window.addEventListener(ev, () => { _lastActive = Date.now(); }, { passive: true })
       );
-      const wake = (force) => { _lastActive = Date.now(); pullNow(!!force); };
-      window.addEventListener('focus', () => wake(false));
-      // Critical for iOS Safari / iPadOS bfcache restore when switching apps or tabs
-      window.addEventListener('pageshow', (e) => { if (e && e.persisted) wake(true); else wake(false); });
-      window.addEventListener('online', () => { emitStatus('syncing'); flushOutbox().then(() => wake(true)); });
-      window.addEventListener('offline', () => { emitStatus('offline'); });
+      const wake = () => { _lastActive = Date.now(); pullNow(false); };
+      window.addEventListener('focus', wake);
+      window.addEventListener('online', () => { flushOutbox().then(wake); });
       if (typeof document !== 'undefined') {
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') wake(false);
-        });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
       }
     }
 
-    _syncCallbacks = {
-      pullNow: pullNow,
-      forceSyncNow: () => pullNow(true),
-      flushOutbox: flushOutbox
-    };
+    _syncCallbacks = { pullNow: pullNow, flushOutbox: flushOutbox };
     pullNow(true).finally(schedule);
     return _syncCallbacks;
   }
@@ -641,26 +567,144 @@
     return null;
   }
 
-  const api = {
+  function getDeepLinkBlock() {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const sp = new URLSearchParams(window.location.search);
+        const b = sp.get('block') || sp.get('checklist') || '';
+        if (b) return b.trim();
+      }
+      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
+      const startParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+      if (startParam) {
+        const raw = String(startParam).trim();
+        if (raw.indexOf('block_') === 0) return decodeURIComponent(raw.slice(6));
+        return raw;
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function normTgNum(val) {
+    return String(val || '').replace(/^TG-/i, '').replace(/[^0-9-]/g, '').trim();
+  }
+
+  async function autoLoginEmployee(state) {
+    const tg = getTelegramUser();
+    const sess = getSession();
+    // 1. Telegram Mini App auto-login by Telegram User ID
+    if (tg && (tg.id || tg.rawId)) {
+      try {
+        const res = await gasPost('auth_login', {
+          role: 'staff',
+          autoLogin: true,
+          tgId: tg.id,
+          rawTgId: tg.rawId,
+          initData: tg.initData || ''
+        });
+        if (res && res.ok && res.sessionToken) {
+          setSession({ staffToken: res.sessionToken, staffName: res.staffName, tgId: res.tgId || tg.id, checkedInAt: res.checkedInAt || localHHMM(), checkedInDate: localISO() });
+          if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
+          return res;
+        }
+      } catch (_) {}
+      // Offline / fallback match against synced staff list
+      if (state && Array.isArray(state.staff)) {
+        const num = normTgNum(tg.rawId || tg.id);
+        const found = state.staff.find((s) => s && s.active !== false && normTgNum(s.tgId) === num);
+        if (found) {
+          const hm = localHHMM();
+          setSession({ staffName: found.name, tgId: found.tgId || tg.id, checkedInAt: hm, checkedInDate: localISO() });
+          return {
+            ok: true,
+            offline: true,
+            autoLoggedIn: true,
+            staffName: found.name,
+            tgId: found.tgId || tg.id,
+            onShift: true,
+            checkedInAt: hm,
+            welcomeMessage: 'Добро пожаловать на смену, ' + found.name + '! Вы отмечены на работе с ' + hm + '.'
+          };
+        }
+      }
+    }
+    // 2. Remembered staff session on this device
+    if (sess && sess.staffName) {
+      const hm = (sess.checkedInDate === localISO() && sess.checkedInAt) ? sess.checkedInAt : localHHMM();
+      if (sess.staffToken) {
+        try {
+          const ci = await gasPost('staff_checkin', { staffName: sess.staffName, tgId: sess.tgId || '', source: 'Авто-вход (устройство)' });
+          if (ci && ci.ok && ci.checkedInAt) {
+            setSession({ checkedInAt: ci.checkedInAt, checkedInDate: localISO() });
+            return {
+              ok: true,
+              autoLoggedIn: true,
+              staffName: sess.staffName,
+              tgId: sess.tgId || '',
+              onShift: true,
+              checkedInAt: ci.checkedInAt,
+              welcomeMessage: 'С возвращением на смену, ' + sess.staffName + '! Вы отмечены на работе с ' + ci.checkedInAt + '.'
+            };
+          }
+        } catch (_) {}
+      }
+      return {
+        ok: true,
+        autoLoggedIn: true,
+        staffName: sess.staffName,
+        tgId: sess.tgId || '',
+        onShift: true,
+        checkedInAt: hm,
+        welcomeMessage: 'С возвращением на смену, ' + sess.staffName + '! Вы отмечены на работе с ' + hm + '.'
+      };
+    }
+    return { ok: false };
+  }
+
+  async function checkOutStaff(staffName) {
+    try {
+      await gasPost('staff_checkout', { staffName: staffName });
+    } catch (_) {}
+    setSession({ staffToken: '', staffName: '', checkedInAt: '', checkedInDate: '' });
+    return { ok: true };
+  }
+
+  async function saveTelegramSettings(opts) {
+    return gasPost('save_telegram_settings', opts || {});
+  }
+  async function testTelegramAlert() {
+    return gasPost('test_telegram_alert', {});
+  }
+  async function setupTriggers() {
+    return gasPost('setup_autonomous_triggers', {});
+  }
+  async function runChecklistNotificationsNow(opts) {
+    return gasPost('run_checklist_notifications_now', opts || {});
+  }
+
+  const API_OBJ = {
     localISO: localISO,
     localHHMM: localHHMM,
-    detectDeviceTag: detectDeviceTag,
     authLogin: authLogin,
     enqueueOp: enqueueOp,
     flushOutbox: flushOutbox,
-    forceSyncNow: function () { return _syncCallbacks ? _syncCallbacks.pullNow(true) : Promise.resolve(null); },
     uploadPhotoToDrive: uploadPhotoToDrive,
     mergeServerIntoState: mergeServerIntoState,
     dispatchStateChange: dispatchStateChange,
     startCloudLoop: startCloudLoop,
     getTelegramUser: getTelegramUser,
-    getStatus: getStatus,
-    onStatusChange: onStatusChange,
     getPendingCount: function () { return readOutbox().length; },
     getLastRttMs: function () { return _lastRttMs; },
-    getLastRev: function () { return _lastServerRev; }
+    getLastRev: function () { return _lastServerRev; },
+    getSession: getSession,
+    getDeepLinkBlock: getDeepLinkBlock,
+    autoLoginEmployee: autoLoginEmployee,
+    checkOutStaff: checkOutStaff,
+    saveTelegramSettings: saveTelegramSettings,
+    testTelegramAlert: testTelegramAlert,
+    setupTriggers: setupTriggers,
+    runChecklistNotificationsNow: runChecklistNotificationsNow
   };
-
-  window.CoffeeCloudV93 = api;
-  window.CoffeeCloudV92 = api;
+  window.CoffeeCloudV93 = API_OBJ;
+  window.CoffeeCloudV92 = API_OBJ;
 })();

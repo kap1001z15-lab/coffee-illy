@@ -213,7 +213,9 @@ var STAFF_OR_ADMIN_ACTIONS_ = {
   save_task: true,
   report_standalone_incident: true,
   handover_shift: true,
-  submit_writeoff: true
+  submit_writeoff: true,
+  staff_checkin: true,
+  staff_checkout: true
 };
 
 function doPost(e) {
@@ -307,11 +309,23 @@ function doPost(e) {
           text: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\nБлок: ' + escapeTgHtml_(body.block || '') + '\nСотрудник: ' + escapeTgHtml_(body.userName || 'Бариста') + '\nДедлайн: ' + escapeTgHtml_(body.deadline || '')
         });
       }
-      // Инциденты из чек-листа ставим в очередь и отправляем после освобождения блокировки (T5).
+      // Инциденты из чек-листа ставим в очередь и отправляем администратору сразу после освобождения блокировки (v93.0).
       (Array.isArray(body.items) ? body.items : []).filter(function(x) { return x && x.isIncident; }).forEach(function(x) {
+        var phUrl = String(x.photo_url || x.photoUrl || x.photo || '').trim();
+        var msgLines = [
+          '🚨 <b>ПРОБЛЕМА ПО ЧЕК-ЛИСТУ</b>',
+          '📋 Блок: <b>' + escapeTgHtml_(String(body.block || '')).slice(0, 100) + '</b>',
+          '🔧 Участок: ' + escapeTgHtml_(String(x.title || '').slice(0, 150)),
+          '👤 Сотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100),
+          '📝 Описание: ' + escapeTgHtml_(String(x.comment || 'Без описания').slice(0, 700))
+        ];
+        if (phUrl) msgLines.push('📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>');
         pendingAlerts.push({
           type: 'incident',
-          text: '🚨 ПРОБЛЕМА ПО ЧЕК-ЛИСТУ\nБлок: ' + escapeTgHtml_(String(body.block || '')).slice(0, 100) + '\nУчасток: ' + escapeTgHtml_(String(x.title || '').slice(0, 150)) + '\nСотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100) + '\nОписание: ' + escapeTgHtml_(String(x.comment || '').slice(0, 700))
+          force: true,
+          targetPage: 'owner.html',
+          buttonText: '🛠 Открыть поломки в дашборде',
+          text: msgLines.join('\n')
         });
       });
       return idempotentJsonOut_(ss, body, resChk, actorSess);
@@ -345,11 +359,33 @@ function doPost(e) {
     if (action === 'submit_writeoff') {
       return idempotentJsonOut_(ss, body, submitWriteoff_(ss, body, actorSess), actorSess);
     }
+    if (action === 'staff_checkin') {
+      var ciName = String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
+      return idempotentJsonOut_(ss, body, markStaffOnShift_(ss, ciName, body.tgId || '', body.source || 'Терминал'), actorSess);
+    }
+    if (action === 'staff_checkout') {
+      var coName = String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
+      return idempotentJsonOut_(ss, body, markStaffOffShift_(ss, coName), actorSess);
+    }
     if (action === 'report_standalone_incident') {
       var resInc = reportIncident_(ss, body);
+      var incPh = String(body.photoUrl || body.photo_url || body.photo || '').trim();
+      var prio = String(body.priority || 'Терпит').trim();
+      var prioIcon = prio.indexOf('Срочно') >= 0 ? '🔴' : (prio.indexOf('Важно') >= 0 ? '🟡' : '🟢');
+      var incLines = [
+        '🚨 <b>НОВЫЙ ИНЦИДЕНТ / ПОЛОМКА</b> ' + prioIcon + ' <b>' + escapeTgHtml_(prio) + '</b>',
+        '🔧 Участок: <b>' + escapeTgHtml_(body.step || body.zone || 'Оборудование') + '</b>',
+        '📝 Описание: ' + escapeTgHtml_(body.text || body.comment || 'Без описания'),
+        '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
+        '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
+      ];
+      if (incPh) incLines.push('📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>');
       pendingAlerts.push({
         type: 'incident',
-        text: '🚨 НОВАЯ ПОЛОМКА / ЭКШН-ПЛАН (24ч)\nУчасток: ' + escapeTgHtml_(body.step || '') + '\nОписание: ' + escapeTgHtml_(body.text || body.comment || '') + '\nИсполнитель: ' + (body.responsible || 'Техник') + '\nСообщил: ' + escapeTgHtml_(body.userName || 'Бариста')
+        force: true,
+        targetPage: 'owner.html',
+        buttonText: '🛠 Открыть инцидент в дашборде',
+        text: incLines.join('\n')
       });
       return idempotentJsonOut_(ss, body, resInc, actorSess);
     }
@@ -412,6 +448,9 @@ function doPost(e) {
     if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
     if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
     if (action === 'send_daily_digest') return idempotentJsonOut_(ss, body, sendDailyDigestNow_(ss, body), actorSess);
+    if (action === 'save_telegram_settings') return idempotentJsonOut_(ss, body, saveTelegramSettingsV93_(ss, body), actorSess);
+    if (action === 'test_telegram_alert') return idempotentJsonOut_(ss, body, testTelegramAlertV93_(ss, body), actorSess);
+    if (action === 'run_checklist_notifications_now') return idempotentJsonOut_(ss, body, checkAndNotifyChecklistWindows_(ss, body), actorSess);
     if (action === 'submit_adjustment') return idempotentJsonOut_(ss, body, submitAdjustment_(ss, body, actorSess), actorSess);
 
     return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action }, actorSess);
@@ -955,29 +994,70 @@ function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
   return true;
 }
 
+function normTgNumericId_(val) {
+  return String(val || '').replace(/^TG-/i, '').replace(/[^0-9-]/g, '').trim();
+}
+
+function findStaffByTelegramId_(ss, tgIdRaw) {
+  var num = normTgNumericId_(tgIdRaw);
+  if (!num) return null;
+  var list = getStaffList_(ss);
+  for (var i = 0; i < list.length; i++) {
+    var s = list[i];
+    if (!s || s.active === false || String(s.active || 'да').toLowerCase() === 'нет') continue;
+    if (normTgNumericId_(s.tgId) === num) return s;
+  }
+  var binds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+  var bKeys = Object.keys(binds || {});
+  for (var j = 0; j < bKeys.length; j++) {
+    if (normTgNumericId_(binds[bKeys[j]]) === num) {
+      for (var k = 0; k < list.length; k++) {
+        if (list[k] && String(list[k].name || '').trim().toLowerCase() === String(bKeys[j]).trim().toLowerCase()) {
+          return list[k];
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function handleAuthLogin_(ss, body) {
   var role = String(body.role || 'admin').trim();
-  var staffName = String(body.staffName || (role === 'admin' ? 'Администратор' : 'Бариста')).trim();
-  // Для админа ключ лимита фиксированный: иначе перебор обходится подстановкой разных staffName.
-  var actorKey = role === 'admin' ? 'admin' : (role + '_' + staffName);
-  var pinCandidate = body.pinHash || body.pin || '';
+  var staffName = String(body.staffName || body.name || (role === 'admin' ? 'Администратор' : '')).trim();
+  var tgCand = String(body.tgId || body.rawTgId || '').trim();
+  var autoLoggedIn = false;
+  var matchedTgId = tgCand;
 
   if (role === 'admin') {
-    verifyOwnerPinServer_(ss, pinCandidate, actorKey);
+    verifyOwnerPinServer_(ss, body.pinHash || body.pin || '', 'admin');
   } else {
-    checkRateLimit_(actorKey);
-    if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
-      throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + staffName + '» необходимо сменить временный PIN-код');
+    // v93.0: Автоматический вход сотрудника по Telegram ID без повторного ввода PIN
+    if ((body.autoLogin || (!body.pin && !body.pinHash)) && tgCand) {
+      var tgStaff = findStaffByTelegramId_(ss, tgCand);
+      if (!tgStaff) {
+        throw new Error('TG_STAFF_NOT_FOUND: Telegram ID ' + tgCand + ' не привязан к активному сотруднику');
+      }
+      staffName = tgStaff.name;
+      matchedTgId = tgStaff.tgId || tgCand;
+      autoLoggedIn = true;
+    } else {
+      if (!staffName) staffName = 'Бариста';
+      var actorKey = role + '_' + staffName;
+      var pinCandidate = body.pinHash || body.pin || '';
+      checkRateLimit_(actorKey);
+      if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
+        throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + staffName + '» необходимо сменить временный PIN-код');
+      }
+      var expectedStaffHash = getStaffPinHash_(ss, staffName);
+      if (!expectedStaffHash) {
+        throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден в штатном расписании или отключён');
+      }
+      if (!pinCandidate || !verifyPinStored_(expectedStaffHash, pinCandidate)) {
+        var left = recordFailedAttempt_(ss, actorKey);
+        throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника «' + staffName + '» (осталось попыток: ' + left + ')');
+      }
+      clearFailedAttempts_(actorKey);
     }
-    var expectedStaffHash = getStaffPinHash_(ss, staffName);
-    if (!expectedStaffHash) {
-      throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден в штатном расписании или отключён');
-    }
-    if (!pinCandidate || !verifyPinStored_(expectedStaffHash, pinCandidate)) {
-      var left = recordFailedAttempt_(ss, actorKey);
-      throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника «' + staffName + '» (осталось попыток: ' + left + ')');
-    }
-    clearFailedAttempts_(actorKey);
   }
 
   var token = 'st_' + Utilities.getUuid().replace(/-/g, '') + '_' + sha256Hex_(Utilities.getUuid()).slice(0, 16);
@@ -990,12 +1070,24 @@ function handleAuthLogin_(ss, body) {
     expiresAt: expiresAt
   };
   saveServerSession_(sessionObj);
-  appendAudit_(ss, staffName, 'Вход в систему по защищённой сессии', 'Роль: ' + role);
+  var presence = null;
+  if (role !== 'admin' && staffName) {
+    presence = markStaffOnShift_(ss, staffName, matchedTgId, autoLoggedIn ? 'Telegram Auto-Login' : 'PIN Login');
+  }
+  appendAudit_(ss, staffName, autoLoggedIn ? 'Авто-вход сотрудника (Telegram)' : 'Вход в систему по защищённой сессии', 'Роль: ' + role);
+  var checkedAt = (presence && presence.checkedInAt) || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
   return {
     ok: true,
+    autoLoggedIn: autoLoggedIn,
     sessionToken: token,
     role: role,
     staffName: staffName,
+    tgId: matchedTgId,
+    onShift: role !== 'admin',
+    checkedInAt: checkedAt,
+    welcomeMessage: role !== 'admin'
+      ? ('Добро пожаловать на смену, ' + staffName + '! Вы отмечены на работе с ' + checkedAt + '.')
+      : ('Добро пожаловать, ' + staffName + '!'),
     expiresAt: expiresAt
   };
 }
@@ -1174,14 +1266,25 @@ function sendTelegramServerAlert_(ss, payload) {
       } catch (_) {}
     }
 
-    // Автоматически добавляем inline-кнопку перехода в нужный чек-лист, если задан WEBAPP_URL
+    // Автоматически добавляем inline-кнопку перехода в нужный чек-лист или дашборд, если задан WEBAPP_URL (v93.0)
     var sendOpts = Object.assign({}, payload);
     var baseAppUrl = String(payload.webappUrl || map.WEBAPP_URL || '').trim();
     if (baseAppUrl && !sendOpts.reply_markup && !sendOpts.entityId) {
-      var blkParam = payload.block ? ('?block=' + encodeURIComponent(String(payload.block))) : '';
-      sendOpts.reply_markup = {
-        inline_keyboard: [[{ text: payload.buttonText || ('📋 Открыть ' + (payload.block || 'чек-лист')), url: baseAppUrl + blkParam }]]
-      };
+      var targetUrl = baseAppUrl;
+      if (payload.targetPage) {
+        targetUrl = baseAppUrl.replace(/\/(index|owner|admin|barista)\.html(\?.*)?$/i, '').replace(/\/+$/, '') + '/' + payload.targetPage;
+      } else if (payload.block && targetUrl.indexOf('block=') === -1) {
+        var cleanBase = baseAppUrl.replace(/\/+$/, '');
+        if (!/\.html(\?|$)/i.test(cleanBase)) cleanBase = cleanBase + '/index.html';
+        targetUrl = cleanBase + (cleanBase.indexOf('?') >= 0 ? '&' : '?') + 'block=' + encodeURIComponent(String(payload.block));
+      }
+      var btnObj = { text: payload.buttonText || ('📋 Открыть ' + (payload.block || 'чек-лист')) };
+      if (payload.buttonType === 'web_app' && /^https:\/\//i.test(targetUrl)) {
+        btnObj.web_app = { url: targetUrl };
+      } else {
+        btnObj.url = targetUrl;
+      }
+      sendOpts.reply_markup = { inline_keyboard: [[btnObj]] };
     }
 
     var sentCount = 0;
@@ -1373,6 +1476,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     userActiveState: filteredActive,
     personalTasksDone: filteredPersonal,
     deltas: getDeltasSince_(ss, Number(sinceTs) || 0, sess ? sess.role : 'staff', null, sess),
+    staffPresence: getStaffPresenceToday_(ss),
     serverTime: full.serverTime,
     serverDate: full.serverDate,
     serverTs: Date.now()
@@ -2165,12 +2269,15 @@ function getStaffList_(ss) {
       props.setProperty('STAFF_PIN_HASH_' + sName, pHash);
       try { shS.getRange(i + 1, 6).setValue('••'); } catch (_) {}
     }
+    var tgBinds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+    var tgVal = String(r[6] || (tgBinds && tgBinds[sName]) || '').trim();
     var stObj = {
       id: String(r[0] || ('st_' + i)),
       name: sName,
       role: String(r[2] || 'Бариста'),
       shop: String(r[3] || 'Кофейня №1'),
-      active: String(r[4] || 'да').toLowerCase()
+      active: String(r[4] || 'да').toLowerCase(),
+      tgId: tgVal
     };
     if (pHash) stObj.pinHash = pHash;
     list.push(stObj);
@@ -2290,6 +2397,7 @@ function getChecklists_(ss) {
     ttk: ttkList,
     goodDeeds: gdList,
     tasks: tasks,
+    staffPresence: getStaffPresenceToday_(ss),
     serverTime: serverTime,
     serverDate: serverDate
   };
@@ -2616,6 +2724,11 @@ function getAdmin_(ss) {
     inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
+    staffPresence: getStaffPresenceToday_(ss),
+    tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
+    webappUrl: map.WEBAPP_URL || '',
+    autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
+    serverTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm'),
     settings: getSettingsArray_(map)
   };
 }
@@ -4111,10 +4224,10 @@ function setupAutonomousTriggers_(ss) {
           ScriptApp.deleteTrigger(triggers[i]);
         }
       }
-      ScriptApp.newTrigger('cronCheckDeadlinesAndDigest').timeBased().everyMinutes(15).create();
+      ScriptApp.newTrigger('cronCheckDeadlinesAndDigest').timeBased().everyMinutes(5).create();
     }
     PropertiesService.getScriptProperties().setProperty('AUTOPILOT_ENABLED', '1');
-    appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Включён Автопилот триггеров 24/7', 'Контроль дедлайнов каждые 15 мин + вечерняя сводка в Telegram');
+    appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Включён Автопилот триггеров 24/7 (каждые 5 мин)', 'Уведомления сотрудникам об открытии чек-листов + контроль дедлайнов + сводка в Telegram');
     return { ok: true, autopilot: true };
   } catch (e) {
     return { ok: true, autopilot: true, note: String((e && e.message) || e) };
@@ -4163,6 +4276,8 @@ function sendDailyDigestNow_(ss, b) {
 function cronCheckDeadlinesAndDigest() {
   try {
     var ss = getTargetSpreadsheet_();
+    // v93.0: Сначала отправляем персональные уведомления сотрудникам об открывшихся чек-листах с кнопкой перехода
+    try { checkAndNotifyChecklistWindows_(ss, {}); } catch (_) {}
     var tz = Session.getScriptTimeZone() || 'GMT+2';
     var now = new Date();
     var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
@@ -4523,4 +4638,242 @@ function submitAdjustment_(ss, body, sess) {
   ]);
   appendAudit_(ss, actor, 'Корректировка подтверждённой записи', entityType + ':' + targetId + ' — ' + reason);
   return { ok: true, adjustmentId: aid, appendOnly: true };
+}
+
+
+/* =========================================================================
+   COFFEE ILLY v93.0 — АВТО-ОТМЕТКА «НА РАБОТЕ» + TELEGRAM-УВЕДОМЛЕНИЯ ЧЕК-ЛИСТОВ
+   ========================================================================= */
+
+function getStaffPresenceToday_(ss) {
+  var today = isoDate_();
+  var raw = getJsonProp_('COFFEE_STAFF_PRESENCE_JSON', {});
+  var out = {};
+  Object.keys(raw || {}).forEach(function(nm) {
+    var rec = raw[nm];
+    if (rec && String(rec.date || '') === today) {
+      out[nm] = rec;
+    }
+  });
+  return out;
+}
+
+function markStaffOnShift_(ss, staffName, tgId, source) {
+  var nm = String(staffName || '').trim();
+  if (!nm) return { ok: false, error: 'EMPTY_STAFF_NAME' };
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
+  var map = getJsonProp_('COFFEE_STAFF_PRESENCE_JSON', {});
+  var prev = map[nm];
+  var isFirstToday = !(prev && prev.date === today && prev.status === 'on_shift');
+  var checkedInAt = (prev && prev.date === today && prev.checkedInAt) ? prev.checkedInAt : hm;
+  map[nm] = {
+    staffName: nm,
+    date: today,
+    status: 'on_shift',
+    checkedInAt: checkedInAt,
+    lastSeen: now.toISOString(),
+    tgId: String(tgId || (prev && prev.tgId) || ''),
+    source: String(source || 'Терминал')
+  };
+  setJsonProp_('COFFEE_STAFF_PRESENCE_JSON', map);
+  if (isFirstToday && ss) {
+    try {
+      var shP = ss.getSheetByName('Посещаемость');
+      if (!shP) {
+        shP = ss.insertSheet('Посещаемость');
+        shP.appendRow(['Дата', 'Время входа', 'Сотрудник', 'Статус', 'Telegram ID', 'Источник']);
+      }
+      shP.appendRow([today, checkedInAt, nm, 'На работе', map[nm].tgId, map[nm].source]);
+    } catch (_) {}
+    try { appendAudit_(ss, nm, 'Отмечен на работе (смена открыта)', 'Время: ' + checkedInAt + ' · ' + map[nm].source); } catch (_) {}
+  }
+  bumpDataRev_();
+  return { ok: true, staffName: nm, status: 'on_shift', checkedInAt: checkedInAt, date: today, presence: map[nm] };
+}
+
+function markStaffOffShift_(ss, staffName) {
+  var nm = String(staffName || '').trim();
+  if (!nm) return { ok: false };
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
+  var map = getJsonProp_('COFFEE_STAFF_PRESENCE_JSON', {});
+  if (map[nm] && map[nm].date === today) {
+    map[nm].status = 'off_shift';
+    map[nm].checkedOutAt = hm;
+    map[nm].lastSeen = now.toISOString();
+    setJsonProp_('COFFEE_STAFF_PRESENCE_JSON', map);
+    try { appendAudit_(ss, nm, 'Выход со смены', 'Время: ' + hm); } catch (_) {}
+    bumpDataRev_();
+  }
+  return { ok: true, staffName: nm, status: 'off_shift', checkedOutAt: hm };
+}
+
+function saveTelegramSettingsV93_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  var tok = String(body.tgToken || '').trim();
+  var chat = String(body.tgChat || '').trim();
+  var webapp = String(body.webappUrl || '').trim();
+  if (tok && tok.indexOf('••') === -1) {
+    props.setProperty('TG_BOT_TOKEN_SECRET', tok);
+    saveSetting_(ss, { id: 'TG_TOKEN', value: '•••••••• (хранится на сервере)' });
+  }
+  if (chat) {
+    props.setProperty('TG_CHAT_ID_SECRET', chat);
+    saveSetting_(ss, { id: 'TG_CHAT', value: chat });
+  }
+  if (webapp) {
+    saveSetting_(ss, { id: 'WEBAPP_URL', value: webapp });
+  }
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', 'Обновлены настройки Telegram-бота', 'Chat: ' + (chat || 'без изм.') + (webapp ? (' · URL: ' + webapp) : ''));
+  return {
+    ok: true,
+    tgConfiguredOnServer: !!(props.getProperty('TG_BOT_TOKEN_SECRET')),
+    tgChat: props.getProperty('TG_CHAT_ID_SECRET') || chat,
+    webappUrl: webapp
+  };
+}
+
+function testTelegramAlertV93_(ss, body) {
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var text = '✅ <b>Тест связи Coffee Illy v93.0</b>\n📍 Точка: ' + escapeTgHtml_(loc) + '\n🔔 Уведомления об инцидентах и открытии чек-листов работают корректно.';
+  var res = sendTelegramServerAlert_(ss, {
+    type: 'test',
+    force: true,
+    skipDedup: true,
+    targetPage: 'owner.html',
+    buttonText: '📊 Открыть дашборд владельца',
+    text: text
+  });
+  return { ok: !!(res && res.ok), telegram: res };
+}
+
+function hhmmToMinV93_(hhmm) {
+  var m = String(hhmm || '').match(/(\d{1,2}):(\d{2})/);
+  return m ? (Number(m[1]) * 60 + Number(m[2])) : -1;
+}
+
+function getWeekdayRuV93_(dateObj, tz) {
+  var idx = Number(Utilities.formatDate(dateObj, tz, 'u')) || 1; // 1=Mon..7=Sun
+  var days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  return days[(idx - 1) % 7];
+}
+
+function checkAndNotifyChecklistWindows_(ss, opts) {
+  ss = ss || getTargetSpreadsheet_();
+  opts = opts || {};
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = String(opts.overrideDate || Utilities.formatDate(now, tz, 'yyyy-MM-dd'));
+  var hm = String(opts.overrideTime || Utilities.formatDate(now, tz, 'HH:mm'));
+  var nowMin = hhmmToMinV93_(hm);
+  var weekday = String(opts.overrideWeekday || getWeekdayRuV93_(now, tz));
+
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var blocks = getChecklistBlocksFromSheet_(ss, map) || [];
+  var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
+  var pr = getDailyPlansAndRosterFromSheet_(ss, map) || { dailyPlans: {}, shiftRoster: {} };
+  var staffList = (getStaffList_(ss) || []).filter(function(s) {
+    return s && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет' && normTgNumericId_(s.tgId);
+  });
+  var presence = getStaffPresenceToday_(ss);
+
+  // Определяем назначенного сотрудника(ов) на сегодняшнюю смену:
+  // 1) по графику shiftRoster[weekday] / dailyPlans[weekday].roster
+  // 2) иначе по тем, кто уже отметился «На работе» сегодня
+  // 3) иначе всем активным бариста с привязанным Telegram ID
+  var rosterNames = [];
+  var rRaw = (pr.shiftRoster && pr.shiftRoster[weekday]) || (pr.dailyPlans && pr.dailyPlans[weekday] && pr.dailyPlans[weekday].roster) || '';
+  if (Array.isArray(rRaw)) {
+    rosterNames = rRaw.map(function(x) { return String(x || '').trim().toLowerCase(); }).filter(Boolean);
+  } else if (typeof rRaw === 'string' && rRaw.trim()) {
+    rosterNames = rRaw.split(/[,;/+]+/).map(function(x) { return x.trim().toLowerCase(); }).filter(Boolean);
+  }
+
+  var targetStaff = [];
+  if (rosterNames.length) {
+    targetStaff = staffList.filter(function(s) {
+      var sn = String(s.name || '').trim().toLowerCase();
+      return rosterNames.some(function(rn) { return sn === rn || sn.indexOf(rn) >= 0 || rn.indexOf(sn) >= 0; });
+    });
+  }
+  if (!targetStaff.length) {
+    targetStaff = staffList.filter(function(s) { return presence[s.name] && presence[s.name].status === 'on_shift'; });
+  }
+  if (!targetStaff.length) {
+    targetStaff = staffList.slice();
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var notifKey = 'TG_NOTIFIED_BLOCKS_' + today;
+  var notified = {};
+  try { notified = JSON.parse(props.getProperty(notifKey) || '{}') || {}; } catch (_) { notified = {}; }
+
+  var baseAppUrl = String(map.WEBAPP_URL || '').trim();
+  var sent = [];
+  var skipped = [];
+
+  blocks.forEach(function(b) {
+    if (!b || b.active === false || b.isCash || String(b.name || '').toLowerCase() === 'касса') return;
+    var openMin = hhmmToMinV93_(b.openTime || '08:00');
+    var deadMin = hhmmToMinV93_(b.deadline || '22:00');
+    if (openMin < 0 || deadMin < 0) return;
+    if (nowMin < openMin || nowMin > deadMin) return;
+
+    var alreadyDone = chksToday.some(function(c) { return String(c.block || '').trim() === String(b.name || '').trim(); });
+    if (alreadyDone) {
+      skipped.push({ block: b.name, reason: 'already_done' });
+      return;
+    }
+
+    targetStaff.forEach(function(emp) {
+      var dedupId = b.name + '|' + emp.name;
+      if (!opts.force && notified[dedupId]) {
+        skipped.push({ block: b.name, staff: emp.name, reason: 'already_notified' });
+        return;
+      }
+      var chatId = normTgNumericId_(emp.tgId);
+      if (!chatId) return;
+      var msgText = [
+        '📋 <b>Открылся чек-лист: ' + escapeTgHtml_(b.name) + '</b>',
+        '👋 Привет, ' + escapeTgHtml_(emp.name) + '!',
+        '⏰ Окно выполнения: <b>' + escapeTgHtml_(b.openTime || '08:00') + ' – ' + escapeTgHtml_(b.deadline || '22:00') + '</b>',
+        '📍 ' + escapeTgHtml_(loc),
+        '',
+        'Нажмите кнопку ниже, чтобы сразу открыть и пройти чек-лист.'
+      ].join('\n');
+
+      var res = sendTelegramServerAlert_(ss, {
+        chatIds: [chatId],
+        type: 'checklist_open',
+        block: b.name,
+        webappUrl: baseAppUrl,
+        buttonText: '▶️ Пройти «' + b.name + '»',
+        buttonType: 'web_app',
+        skipDedup: true,
+        force: true,
+        text: msgText
+      });
+      if (res && res.ok) {
+        notified[dedupId] = hm;
+        sent.push({ block: b.name, staff: emp.name, chatId: chatId, time: hm });
+      } else {
+        skipped.push({ block: b.name, staff: emp.name, reason: (res && (res.reason || res.error)) || 'send_failed' });
+      }
+    });
+  });
+
+  if (sent.length) {
+    try { props.setProperty(notifKey, JSON.stringify(notified)); } catch (_) {}
+    try { appendAudit_(ss, 'Автопилот Telegram', 'Отправлены уведомления об открытии чек-листов (' + sent.length + ')', sent.map(function(x) { return x.block + ' → ' + x.staff; }).join(', ')); } catch (_) {}
+  }
+
+  return { ok: true, date: today, time: hm, weekday: weekday, sent: sent, skipped: skipped };
 }

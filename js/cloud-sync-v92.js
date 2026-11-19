@@ -1,9 +1,9 @@
-/* Coffee Illy v92.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v92_outbox';
-  const SESSION_KEY = 'coffee_illy_v92_session';
+  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
+  const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
     const d = new Date();
@@ -343,6 +343,30 @@
       });
       changed = true;
     }
+    if (data.staffPresence && typeof data.staffPresence === 'object') {
+      state.staffPresence = data.staffPresence;
+      changed = true;
+    }
+    if (data.tgConfiguredOnServer !== undefined) {
+      state.tgConfiguredOnServer = !!data.tgConfiguredOnServer;
+      changed = true;
+    }
+    if (data.tgChat !== undefined) {
+      state.tgChat = String(data.tgChat || '');
+      changed = true;
+    }
+    if (data.webappUrl !== undefined) {
+      state.webappUrl = String(data.webappUrl || '');
+      changed = true;
+    }
+    if (data.autopilotEnabled !== undefined) {
+      state.autopilotEnabled = !!data.autopilotEnabled;
+      changed = true;
+    }
+    if (data.serverTime) {
+      state.serverTime = String(data.serverTime);
+      changed = true;
+    }
     return changed;
   }
 
@@ -484,7 +508,10 @@
           const st = getState();
           const changed = mergeServerIntoState(st, data);
           if (srvRev) st.cloudRev = srvRev;
-          if (changed && onSynced) onSynced(st, srvRev, _lastRttMs);
+          st.lastSyncAt = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          st.lastRttMs = _lastRttMs;
+          st.liveConnected = true;
+          if ((changed || forceFull) && onSynced) onSynced(st, srvRev, _lastRttMs);
           return { changed: changed, rev: srvRev, rttMs: _lastRttMs };
         }
       } catch (_) {}
@@ -540,7 +567,122 @@
     return null;
   }
 
-  window.CoffeeCloudV92 = {
+  function getDeepLinkBlock() {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const sp = new URLSearchParams(window.location.search);
+        const b = sp.get('block') || sp.get('checklist') || '';
+        if (b) return b.trim();
+      }
+      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
+      const startParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+      if (startParam) {
+        const raw = String(startParam).trim();
+        if (raw.indexOf('block_') === 0) return decodeURIComponent(raw.slice(6));
+        return raw;
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function normTgNum(val) {
+    return String(val || '').replace(/^TG-/i, '').replace(/[^0-9-]/g, '').trim();
+  }
+
+  async function autoLoginEmployee(state) {
+    const tg = getTelegramUser();
+    const sess = getSession();
+    // 1. Telegram Mini App auto-login by Telegram User ID
+    if (tg && (tg.id || tg.rawId)) {
+      try {
+        const res = await gasPost('auth_login', {
+          role: 'staff',
+          autoLogin: true,
+          tgId: tg.id,
+          rawTgId: tg.rawId,
+          initData: tg.initData || ''
+        });
+        if (res && res.ok && res.sessionToken) {
+          setSession({ staffToken: res.sessionToken, staffName: res.staffName, tgId: res.tgId || tg.id, checkedInAt: res.checkedInAt || localHHMM(), checkedInDate: localISO() });
+          if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
+          return res;
+        }
+      } catch (_) {}
+      // Offline / fallback match against synced staff list
+      if (state && Array.isArray(state.staff)) {
+        const num = normTgNum(tg.rawId || tg.id);
+        const found = state.staff.find((s) => s && s.active !== false && normTgNum(s.tgId) === num);
+        if (found) {
+          const hm = localHHMM();
+          setSession({ staffName: found.name, tgId: found.tgId || tg.id, checkedInAt: hm, checkedInDate: localISO() });
+          return {
+            ok: true,
+            offline: true,
+            autoLoggedIn: true,
+            staffName: found.name,
+            tgId: found.tgId || tg.id,
+            onShift: true,
+            checkedInAt: hm,
+            welcomeMessage: 'Добро пожаловать на смену, ' + found.name + '! Вы отмечены на работе с ' + hm + '.'
+          };
+        }
+      }
+    }
+    // 2. Remembered staff session on this device
+    if (sess && sess.staffName) {
+      const hm = (sess.checkedInDate === localISO() && sess.checkedInAt) ? sess.checkedInAt : localHHMM();
+      if (sess.staffToken) {
+        try {
+          const ci = await gasPost('staff_checkin', { staffName: sess.staffName, tgId: sess.tgId || '', source: 'Авто-вход (устройство)' });
+          if (ci && ci.ok && ci.checkedInAt) {
+            setSession({ checkedInAt: ci.checkedInAt, checkedInDate: localISO() });
+            return {
+              ok: true,
+              autoLoggedIn: true,
+              staffName: sess.staffName,
+              tgId: sess.tgId || '',
+              onShift: true,
+              checkedInAt: ci.checkedInAt,
+              welcomeMessage: 'С возвращением на смену, ' + sess.staffName + '! Вы отмечены на работе с ' + ci.checkedInAt + '.'
+            };
+          }
+        } catch (_) {}
+      }
+      return {
+        ok: true,
+        autoLoggedIn: true,
+        staffName: sess.staffName,
+        tgId: sess.tgId || '',
+        onShift: true,
+        checkedInAt: hm,
+        welcomeMessage: 'С возвращением на смену, ' + sess.staffName + '! Вы отмечены на работе с ' + hm + '.'
+      };
+    }
+    return { ok: false };
+  }
+
+  async function checkOutStaff(staffName) {
+    try {
+      await gasPost('staff_checkout', { staffName: staffName });
+    } catch (_) {}
+    setSession({ staffToken: '', staffName: '', checkedInAt: '', checkedInDate: '' });
+    return { ok: true };
+  }
+
+  async function saveTelegramSettings(opts) {
+    return gasPost('save_telegram_settings', opts || {});
+  }
+  async function testTelegramAlert() {
+    return gasPost('test_telegram_alert', {});
+  }
+  async function setupTriggers() {
+    return gasPost('setup_autonomous_triggers', {});
+  }
+  async function runChecklistNotificationsNow(opts) {
+    return gasPost('run_checklist_notifications_now', opts || {});
+  }
+
+  const API_OBJ = {
     localISO: localISO,
     localHHMM: localHHMM,
     authLogin: authLogin,
@@ -553,6 +695,16 @@
     getTelegramUser: getTelegramUser,
     getPendingCount: function () { return readOutbox().length; },
     getLastRttMs: function () { return _lastRttMs; },
-    getLastRev: function () { return _lastServerRev; }
+    getLastRev: function () { return _lastServerRev; },
+    getSession: getSession,
+    getDeepLinkBlock: getDeepLinkBlock,
+    autoLoginEmployee: autoLoginEmployee,
+    checkOutStaff: checkOutStaff,
+    saveTelegramSettings: saveTelegramSettings,
+    testTelegramAlert: testTelegramAlert,
+    setupTriggers: setupTriggers,
+    runChecklistNotificationsNow: runChecklistNotificationsNow
   };
+  window.CoffeeCloudV93 = API_OBJ;
+  window.CoffeeCloudV92 = API_OBJ;
 })();
