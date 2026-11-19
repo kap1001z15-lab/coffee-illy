@@ -1,5 +1,5 @@
-const CACHE_NAME = 'coffee-illy-v91-m3soft-prod';
-const CORE = ['./', './index.html', './owner.html', './config.js', './js/cloud-sync-v91.js', './manifest.webmanifest'];
+const CACHE_NAME = 'coffee-illy-v92-m3soft-prod';
+const CORE = ['./', './index.html', './owner.html', './config.js', './js/cloud-sync-v92.js', './js/camera-v92.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -18,7 +18,7 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = req.url || '';
-  if (url.indexOf('script.google.com') >= 0 || url.indexOf('telegram.org') >= 0) return;
+  if (url.indexOf('script.google.com') >= 0 || url.indexOf('telegram.org') >= 0 || url.indexOf('drive.google.com') >= 0) return;
   e.respondWith(
     fetch(req).then((res) => {
       if (res && res.ok && res.type === 'basic') {
