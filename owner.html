@@ -2,115 +2,29 @@
 <html lang="ru" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coffee Illy v93.1 — Дашборд владельца (Тест с живой синхронизацией)</title>
-<style>
-
-:root {
-  --bg: #FCF8F4; --surface: #F4ECE4; --surface-2: #EAE0D5; --card: #FFFFFF;
-  --ink: #271C15; --muted: #6E5D51; --accent: #7D4E24; --accent-soft: rgba(125,78,36,0.12);
-  --accent-ink: #FFFFFF; --good: #266D45; --good-soft: rgba(38,109,69,0.12);
-  --warn: #A46200; --warn-soft: rgba(164,98,0,0.13); --bad: #B33A3A; --bad-soft: rgba(179,58,58,0.12);
-  --border: rgba(39,28,21,0.10); --shadow: 0 2px 10px rgba(39,28,21,0.05);
-  --radius-card: 24px; --radius-pill: 999px;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif;
-}
-html[data-theme="dark"] {
-  --bg: #171311; --surface: #221D1A; --surface-2: #2E2723; --card: #26201D;
-  --ink: #F2E7DF; --muted: #B8A79A; --accent: #E8B88A; --accent-soft: rgba(232,184,138,0.16);
-  --accent-ink: #2B1A0D; --good: #8AD6A7; --good-soft: rgba(138,214,167,0.15);
-  --warn: #F0BE6F; --warn-soft: rgba(240,190,111,0.15); --bad: #F2A2A2; --bad-soft: rgba(242,162,162,0.15);
-  --border: rgba(242,231,223,0.10); --shadow: 0 2px 14px rgba(0,0,0,0.28);
-}
-* { box-sizing: border-box; }
-html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased; transition:background .2s,color .2s; }
-button, input, select, textarea { font-family:inherit; color:inherit; }
-button { cursor:pointer; border:none; background:transparent; }
-.topbar { position:sticky; top:0; z-index:40; background:var(--bg); border-bottom:1px solid var(--border); padding:10px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.brand { display:flex; align-items:center; gap:10px; }
-.brand-dot { width:36px; height:36px; border-radius:14px; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; font-weight:800; font-size:15px; }
-.brand-title { font-weight:750; font-size:16px; }
-.brand-sub { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.live-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; background:var(--good-soft); color:var(--good); font-weight:650; font-size:11px; }
-.live-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
-.top-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.chip-btn { padding:7px 13px; border-radius:999px; background:var(--surface); border:1px solid var(--border); font-size:12.5px; font-weight:650; display:inline-flex; align-items:center; gap:6px; }
-.chip-btn:hover { background:var(--surface-2); }
-.chip-btn.accent { background:var(--accent); color:var(--accent-ink); border-color:transparent; }
-.chip-btn.good { background:var(--good-soft); color:var(--good); border-color:transparent; }
-.chip-btn.bad { background:var(--bad-soft); color:var(--bad); border-color:transparent; }
-.chip-btn.warn { background:var(--warn-soft); color:var(--warn); border-color:transparent; }
-.seg { display:inline-flex; background:var(--surface); padding:4px; border-radius:999px; border:1px solid var(--border); gap:2px; }
-.seg button { padding:6px 12px; border-radius:999px; font-size:12.5px; font-weight:650; color:var(--muted); }
-.seg button.active { background:var(--accent); color:var(--accent-ink); }
-.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius-card); padding:18px; box-shadow:var(--shadow); }
-.card-soft { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:12px 14px; }
-.card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.card-title { font-size:16px; font-weight:750; margin:0; }
-.card-sub { font-size:12px; color:var(--muted); }
-.badge { display:inline-flex; align-items:center; justify-content:center; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; background:var(--surface-2); color:var(--ink); }
-.badge.good { background:var(--good-soft); color:var(--good); }
-.badge.warn { background:var(--warn-soft); color:var(--warn); }
-.badge.bad { background:var(--bad-soft); color:var(--bad); }
-.badge.accent { background:var(--accent-soft); color:var(--accent); }
-.stack { display:flex; flex-direction:column; gap:10px; }
-.row-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-radius:18px; background:var(--surface); border:1px solid var(--border); flex-wrap:wrap; }
-.row-main { min-width:0; flex:1; }
-.row-title { font-weight:700; font-size:14px; }
-.row-sub { font-size:12px; color:var(--muted); margin-top:2px; }
-.pbar { height:7px; background:var(--surface-2); border-radius:99px; overflow:hidden; margin-top:6px; }
-.pbar > div { height:100%; background:var(--accent); border-radius:99px; transition:width .25s; }
-.pbar.good > div { background:var(--good); }
-.field { display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }
-.field label { font-size:12px; font-weight:700; color:var(--muted); }
-.field input, .field select, .field textarea { width:100%; padding:9px 12px; border-radius:14px; background:var(--surface); border:1px solid var(--border); font-size:14px; }
-.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
-@media (max-width:640px) { .grid-2, .grid-3 { grid-template-columns:1fr; } }
-.btn-lg { width:100%; padding:12px 16px; border-radius:999px; font-size:14px; font-weight:750; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
-.btn-lg.primary { background:var(--accent); color:var(--accent-ink); }
-.btn-lg.primary:disabled { opacity:0.45; cursor:not-allowed; }
-.btn-lg.danger { background:var(--bad-soft); color:var(--bad); }
-.btn-lg.soft { background:var(--surface-2); color:var(--ink); }
-.tbl-wrap { overflow-x:auto; }
-table { width:100%; border-collapse:collapse; font-size:13.5px; }
-th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
-th { font-size:11.5px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); font-weight:700; }
-tr:last-child td { border-bottom:none; }
-.modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.48); z-index:80; display:none; align-items:center; justify-content:center; padding:16px; }
-.modal-bg.open { display:flex; }
-.modal-card { background:var(--card); border:1px solid var(--border); border-radius:28px; max-width:480px; width:100%; padding:20px; box-shadow:0 20px 50px rgba(0,0,0,0.3); max-height:86vh; overflow-y:auto; }
-.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:999px; font-size:13.5px; font-weight:650; opacity:0; pointer-events:none; z-index:90; transition:opacity .2s,transform .2s; box-shadow:0 8px 24px rgba(0,0,0,0.22); }
-.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-.wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
-.admin-nav { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
-.admin-nav button { padding:9px 16px; border-radius:999px; background:var(--surface); border:1px solid var(--border); font-size:13.5px; font-weight:650; color:var(--muted); display:inline-flex; align-items:center; gap:6px; }
-.admin-nav button.active { background:var(--accent); color:var(--accent-ink); border-color:transparent; }
-.kpi-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
-@media (max-width:780px) { .kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-.kpi { background:var(--card); border:1px solid var(--border); border-radius:22px; padding:16px; box-shadow:var(--shadow); }
-.kpi-lbl { font-size:12px; color:var(--muted); font-weight:600; }
-.kpi-val { font-size:24px; font-weight:800; margin:4px 0 2px; }
-.kpi-meta { font-size:12px; color:var(--muted); }
-.chart-wrap { display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:8px; align-items:end; height:150px; padding-top:20px; position:relative; }
-.chart-plan-line { position:absolute; left:0; right:0; border-top:1.5px dashed var(--accent); opacity:.55; pointer-events:none; }
-.chart-plan-lbl { position:absolute; right:0; top:-18px; font-size:11px; font-weight:650; color:var(--accent); }
-.bar-col { display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; justify-content:flex-end; }
-.bar-val { font-size:10.5px; font-weight:700; color:var(--muted); }
-.bar-fill { width:100%; max-width:34px; border-radius:10px 10px 4px 4px; background:var(--accent); }
-.bar-fill.hit { background:var(--good); }
-.bar-dt { font-size:10.5px; color:var(--muted); font-weight:600; }
-</style>
-  <link rel="manifest" href="manifest.webmanifest" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=92"></script>
-  <script src="js/cloud-sync-v93.js?v=92"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Coffee Illy">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FCF8F4">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171311">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/m3-soft-v94.css?v=94">
+<title>Coffee Illy — Дашборд владельца</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js?v=94"></script>
+<script src="version.js?v=94"></script>
+<script src="js/icons-v94.js?v=94"></script>
+<script src="js/cloud-sync-v94.js?v=94"></script>
+<script src="js/pos-csv-parser-v93.js?v=94"></script>
 </head>
 <body>
 <header class="topbar">
   <div class="brand">
-    <div class="brand-dot">CI</div>
+    <div class="brand-dot"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg></div>
     <div>
       <div class="brand-title">Дашборд владельца · <span id="hdr-loc">Кофейня №1</span></div>
       <div class="brand-sub">
@@ -120,28 +34,29 @@ tr:last-child td { border-bottom:none; }
     </div>
   </div>
   <div class="top-actions">
-    <span class="chip-btn" id="hdr-clock" style="cursor:default;">🕒 --:--</span>
+    <span class="chip-btn" id="hdr-clock" style="cursor:default;"><svg class="ci-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>--:--</span></span>
     <button class="chip-btn good" id="btn-lock">🔓 Админ-сессия</button>
     <button class="chip-btn" id="btn-theme">🌓 Авто</button>
-    <button class="chip-btn" id="btn-reset">↻ Обновить</button>
+    <a class="chip-btn" href="index.html" title="Открыть терминал бариста"><svg class="ci-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg>Терминал</a>
+    <button class="chip-btn" id="btn-reset"><svg class="ci-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>Обновить</button>
   </div>
 </header>
 
 <main class="wrap">
   <nav class="admin-nav" id="admin-nav">
-    <button class="active" data-tab="overview">Обзор</button>
-    <button data-tab="checklists">Чек-листы <span class="badge" id="cnt-chk">0</span></button>
-    <button data-tab="finances">Финансы <span class="badge" id="cnt-fin">0</span></button>
-    <button data-tab="incidents">Поломки <span class="badge bad" id="cnt-inc">0</span></button>
-    <button data-tab="team">Команда и ТТК</button>
-    <button data-tab="settings">Настройки и Безопасность</button>
+    <button class="active" data-tab="overview"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>Обзор</button>
+    <button data-tab="checklists"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>Чек-листы <span class="badge" id="cnt-chk">0</span></button>
+    <button data-tab="finances"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>Финансы <span class="badge" id="cnt-fin">0</span></button>
+    <button data-tab="incidents"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Поломки <span class="badge bad" id="cnt-inc">0</span></button>
+    <button data-tab="team"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Команда и ТТК</button>
+    <button data-tab="settings"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>Настройки</button>
   </nav>
   <div id="content"></div>
 </main>
 
 <div class="modal-bg" id="modal-bg">
   <div class="modal-card">
-    <div class="card-head" style="margin-bottom:10px;"><h3 class="card-title" id="modal-title"></h3><button class="chip-btn" id="modal-close">✕</button></div>
+    <div class="card-head" style="margin-bottom:10px;"><h3 class="card-title" id="modal-title"></h3><button class="chip-btn" id="modal-close" aria-label="Закрыть"><svg class="ci-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
     <div id="modal-body"></div>
   </div>
 </div>
@@ -150,8 +65,8 @@ tr:last-child td { border-bottom:none; }
 <script>
 
 const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[]};
-const STORE_KEY = 'coffee_illy_v90_live_state';
-const THEME_KEY = 'coffee_illy_v90_theme';
+const STORE_KEY = 'coffee_illy_v94_state';
+const THEME_KEY = 'coffee_illy_v94_theme';
 const TODAY = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10));
 const TIME_OPTIONS = ['06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:23','10:30','10:34','11:00','11:30','12:00','12:30','13:00','14:00','15:00','16:00','17:00','18:00','18:30','19:00','20:00','21:00','21:30','22:00','22:30','23:00','23:30','23:59'];
 const PLAN_OPTS = [1500,1800,2000,2200,2500,3000,3500,4000,5000];
@@ -174,7 +89,7 @@ function freshState() {
     tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
   }));
   s.liveProgress = {}; s.staffPresence = {}; s.tgChat = ''; s.webappUrl = ''; s.tgConfiguredOnServer = false; s.autopilotEnabled = false; s.lastSyncAt = ''; s.lastRttMs = 0;
-  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.1 на реальных данных Coffee_illy.' }];
+  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v94.0 на реальных данных Coffee_illy.' }];
   return s;
 }
 function loadSharedState() {
@@ -186,7 +101,7 @@ function loadSharedState() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch(_) {}
   return s;
 }
-const syncCh = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('coffee_illy_v90_sync') : null;
+const syncCh = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('coffee_illy_v94_sync') : null;
 function saveSharedState(st, actor, desc) {
   st.rev = (Number(st.rev) || 0) + 1;
   if (desc) {
@@ -220,7 +135,7 @@ function initTheme(btnId) {
     const eff = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
     document.documentElement.setAttribute('data-theme', eff);
     const b = document.getElementById(btnId);
-    if (b) b.textContent = mode === 'auto' ? '🌓 Авто' : (mode === 'light' ? '☀️ Светлая' : '🌙 Тёмная');
+    if (b) b.innerHTML = (window.CoffeeIcons ? window.CoffeeIcons.svg(mode === 'auto' ? 'theme' : (mode === 'light' ? 'sun' : 'moon'), 15) : '') + '<span>' + (mode === 'auto' ? 'Авто' : (mode === 'light' ? 'Светлая' : 'Тёмная')) + '</span>';
   }
   mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
   window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
@@ -304,7 +219,7 @@ function initTheme(btnId) {
     document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'LIVE · ' : '') + 'rev #' + (state.cloudRev || state.rev) + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '') + (state.lastRttMs ? ' (' + state.lastRttMs + ' мс)' : '');
     const _clkEl = document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = '🕒 ' + (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
     const lb = document.getElementById('btn-lock');
-    lb.textContent = adminUnlocked ? '🔓 Админ-сессия' : '🔒 Защищено PIN';
+    lb.innerHTML = (window.CoffeeIcons ? window.CoffeeIcons.svg(adminUnlocked ? 'unlock' : 'lock', 14) : '') + (adminUnlocked ? ' Админ-сессия' : ' Защищено PIN');
     lb.className = 'chip-btn ' + (adminUnlocked ? 'good' : 'warn');
 
     const totalRev = state.cash.reduce((a,c)=>a+c.revenue,0);
@@ -364,7 +279,7 @@ function initTheme(btnId) {
               const openBlocksCnt = Math.max(1, state.blocks.filter(b => !b.isCash && b.active !== false).length);
               const pct = Math.min(100, Math.round((doneToday / openBlocksCnt) * 100));
               return `<div class="row-item"><div class="row-main">
-                <div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn ? `<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt || '')}</span>` : '<span class="badge">⚪ Не на смене</span>'} ${s.tgId ? `<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">Без TG ID</span>'}</div>
+                <div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn ? `<span class="badge good">${CoffeeIcons.svg('dot',10)} На работе с ${esc(pr.checkedInAt || '')}</span>` : '<span class="badge">Не на смене</span>'} ${s.tgId ? `<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">Без TG ID</span>'}</div>
                 <div class="row-sub">Сдано чек-листов сегодня: <b>${doneToday}/${openBlocksCnt}</b>${(state.liveProgress && state.liveProgress[s.name]) ? (' · Сейчас: «' + esc(state.liveProgress[s.name].block) + '» ' + state.liveProgress[s.name].done + '/' + state.liveProgress[s.name].total) : ''}${isOn && pr.source ? ' · Вход: ' + esc(pr.source) : ''}</div>
                 <div class="pbar ${pct===100?'good':''}"><div style="width:${pct}%"></div></div>
               </div></div>`;
@@ -388,9 +303,9 @@ function initTheme(btnId) {
                 <div class="row-title">${esc(b.name)} <span class="badge">${b.isCash?'Касса':blockTasks(b.name).length+' задач'}</span></div>
                 <div class="row-sub">Окно: <b>${b.openTime}–${b.deadline}</b> · <span class="badge ${st.cls}">${st.label}</span></div>
               </div><div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="chip-btn" data-eb="${esc(b.id)}">✏️ Окно</button>
+                <button class="chip-btn" data-eb="${esc(b.id)}">${CoffeeIcons.svg('edit',13)} Окно</button>
                 ${!b.isCash ? `<button class="chip-btn" data-vt="${esc(b.name)}">Задачи</button>`:''}
-                ${b.active!==false && !st.open ? `<button class="chip-btn good" data-un="${esc(b.name)}">🔓 Открыть</button>` : (isExt ? `<button class="chip-btn" data-lk="${esc(b.name)}">Вернуть окно</button>`:'')}
+                ${b.active!==false && !st.open ? `<button class="chip-btn good" data-un="${esc(b.name)}">${CoffeeIcons.svg('unlock',13)} Открыть</button>` : (isExt ? `<button class="chip-btn" data-lk="${esc(b.name)}">Вернуть окно</button>`:'')}
               </div></div>`;
             }).join('')}
           </div>
@@ -400,7 +315,7 @@ function initTheme(btnId) {
             <select id="cf" class="chip-btn"><option value="all">Все сотрудники</option>${[...new Set(state.checklists.map(c=>c.who))].map(w=>`<option value="${esc(w)}" ${chkFilter===w?'selected':''}>${esc(w)}</option>`).join('')}</select>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">${/export=download|\.(webm|mp4)/i.test(u)?'🎬':'📷'} ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">${CoffeeIcons.svg('camera',12)} ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
           </tbody></table></div>
         </div>`;
       document.getElementById('cf').onchange = e => { chkFilter = e.target.value; render(); };
@@ -483,7 +398,7 @@ function initTheme(btnId) {
           <div class="card">
             <div class="card-head"><div><h2 class="card-title">Индивидуальные планы по дням (Пн–Вс)</h2><div class="card-sub">Учитываются в дашборде, графике и сводках</div></div></div>
             <div class="tbl-wrap"><table><thead><tr><th>День</th><th>План выручки</th><th>Чеков</th><th>Мин. ср. чек</th><th>Смена</th><th></th></tr></thead><tbody>
-              ${state.plans.map((p,i)=>`<tr><td><b>${esc(p.day)}</b></td><td><b>${fmtRub(p.rev)}</b></td><td>${p.checks}</td><td><span class="badge accent">${p.avg || p.avgCheck || state.minAvgCheck || 35} ₽</span></td><td style="font-size:12px;color:var(--muted)">${esc(p.roster)}</td><td><button class="chip-btn" data-ep="${i}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
+              ${state.plans.map((p,i)=>`<tr><td><b>${esc(p.day)}</b></td><td><b>${fmtRub(p.rev)}</b></td><td>${p.checks}</td><td><span class="badge accent">${p.avg || p.avgCheck || state.minAvgCheck || 35} ₽</span></td><td style="font-size:12px;color:var(--muted)">${esc(p.roster)}</td><td><button class="chip-btn" data-ep="${i}" style="padding:4px 8px;">${CoffeeIcons.svg('edit',13)}</button></td></tr>`).join('')}
             </tbody></table></div>
           </div>
         </div>`;
@@ -598,7 +513,7 @@ function initTheme(btnId) {
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Техкарты ILLY (${state.ttk.length})</h2></div><button class="chip-btn accent" id="k-add">+ Техкарта</button></div>
           <div class="tbl-wrap"><table><thead><tr><th>Напиток</th><th>Объём</th><th>Цена</th><th>Себест.</th><th>Маржа</th><th></th></tr></thead><tbody>
-            ${state.ttk.map(k=>`<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td>${k.cost} ₽</td><td><span class="badge good">${k.price?Math.round(((k.price-k.cost)/k.price)*100):0}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
+            ${state.ttk.map(k=>`<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td>${k.cost} ₽</td><td><span class="badge good">${k.price?Math.round(((k.price-k.cost)/k.price)*100):0}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">${CoffeeIcons.svg('edit',13)}</button></td></tr>`).join('')}
           </tbody></table></div>
         </div>`;
       document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
@@ -628,17 +543,17 @@ function initTheme(btnId) {
           <button class="btn-lg primary" id="s-save">Сохранить и синхронизировать с терминалом</button>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Telegram-бот: инциденты и авто-уведомления чек-листов</h2><div class="card-sub">Мгновенные алерты администратору при поломках + личное уведомление сотруднику при открытии чек-листа с кнопкой перехода</div></div><span class="badge ${state.tgConfiguredOnServer?'good':'warn'}">${state.tgConfiguredOnServer?'🤖 Бот подключён':'⚠️ Нужен токен'}</span></div>
+          <div class="card-head"><div><h2 class="card-title">Telegram-бот: инциденты и авто-уведомления чек-листов</h2><div class="card-sub">Мгновенные алерты администратору при поломках + личное уведомление сотруднику при открытии чек-листа с кнопкой перехода</div></div><span class="badge ${state.tgConfiguredOnServer?'good':'warn'}">${state.tgConfiguredOnServer?(CoffeeIcons.svg('bot',13)+' Бот подключён'):(CoffeeIcons.svg('alert',13)+' Нужен токен')}</span></div>
           <div class="grid-2">
             <div class="field"><label>Токен Telegram-бота (BotFather)</label><input id="tg-tok" type="password" placeholder="${state.tgConfiguredOnServer?'•••••••• (сохранён на сервере)':'123456:ABC-DEF...'}"></div>
             <div class="field"><label>Chat ID администратора (для поломок)</label><input id="tg-chat" value="${esc(state.tgChat || '')}" placeholder="Например: 518294012"></div>
           </div>
           <div class="field"><label>URL веб-приложения (GitHub Pages — для кнопки перехода в чек-лист)</label><input id="tg-url" value="${esc(state.webappUrl || (location.origin + location.pathname.replace(/owner\.html$/i, '')))}" placeholder="https://username.github.io/coffee-illy/"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-            <button class="chip-btn accent" id="tg-save">💾 Сохранить Telegram</button>
-            <button class="chip-btn good" id="tg-auto">🔔 Включить авто-уведомления (каждые 5 мин)</button>
-            <button class="chip-btn" id="tg-test">📨 Тест админу</button>
-            <button class="chip-btn" id="tg-run">▶️ Проверить чек-листы сейчас</button>
+            <button class="chip-btn accent" id="tg-save">${CoffeeIcons.svg('save',14)} Сохранить Telegram</button>
+            <button class="chip-btn good" id="tg-auto">${CoffeeIcons.svg('bell',14)} Авто-уведомления (5 мин)</button>
+            <button class="chip-btn" id="tg-test">${CoffeeIcons.svg('send',14)} Тест админу</button>
+            <button class="chip-btn" id="tg-run">${CoffeeIcons.svg('play',14)} Проверить чек-листы</button>
           </div>
         </div>
         <div class="card">

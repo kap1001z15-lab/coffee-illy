@@ -319,7 +319,7 @@ function doPost(e) {
           '👤 Сотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100),
           '📝 Описание: ' + escapeTgHtml_(String(x.comment || 'Без описания').slice(0, 700))
         ];
-        if (phUrl) msgLines.push((/export=download|\.(webm|mp4)/i.test(phUrl) ? '🎬 <a href="' + escapeTgHtml_(phUrl) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>'));
+        if (phUrl) msgLines.push('📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>');
         pendingAlerts.push({
           type: 'incident',
           force: true,
@@ -379,7 +379,7 @@ function doPost(e) {
         '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
         '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
       ];
-      if (incPh) incLines.push((/export=download|\.(webm|mp4)/i.test(incPh) ? '🎬 <a href="' + escapeTgHtml_(incPh) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>'));
+      if (incPh) incLines.push('📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>');
       pendingAlerts.push({
         type: 'incident',
         force: true,
@@ -616,7 +616,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
   if (!dataUri) {
     return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
   }
-  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)*;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
     return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
   }
@@ -667,7 +667,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
         try { lockOpt.releaseLock(); } catch (_) {}
       }
     }
-    return { ok: true, mediaId: file.getId(), fileId: file.getId(), mediaType: /^video\//i.test(mimeType) ? 'video' : 'image', mimeType: mimeType, url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }

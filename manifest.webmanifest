@@ -1,9 +1,43 @@
 {
-  "name": "Coffee Illy — Система управления кофейней",
+  "name": "Coffee Illy — Управление кофейней",
   "short_name": "Coffee Illy",
+  "description": "Терминал бариста и дашборд владельца с живой синхронизацией Google Таблиц, Google Диска и Telegram-бота.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#FCF8F4",
+  "orientation": "any",
+  "background_color": "#171311",
   "theme_color": "#7D4E24",
-  "lang": "ru"
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Терминал бариста",
+      "short_name": "Терминал",
+      "url": "./index.html"
+    },
+    {
+      "name": "Дашборд владельца",
+      "short_name": "Дашборд",
+      "url": "./owner.html"
+    }
+  ]
 }

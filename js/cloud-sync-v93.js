@@ -1,9 +1,9 @@
-/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v94.0 Final — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
-  const SESSION_KEY = 'coffee_illy_v93_session';
+  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
+  const SESSION_KEY = 'coffee_illy_v94_session';
 
   function localISO() {
     const d = new Date();
@@ -570,6 +570,7 @@
       );
       const wake = () => { _lastActive = Date.now(); pullNow(false); };
       window.addEventListener('focus', wake);
+      window.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) wake(); });
       window.addEventListener('online', () => { flushOutbox().then(wake); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
@@ -749,6 +750,7 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
+  window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
 })();
