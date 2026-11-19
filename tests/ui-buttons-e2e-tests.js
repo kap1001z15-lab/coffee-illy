@@ -739,7 +739,7 @@ check('21. Аудит безопасности P0/P1 и полная систе�
   const cgs = fs.readFileSync(path.join(rootDir, 'Code.gs'), 'utf8');
 
   // 1) Проверка единой версии v82 и отсутствия дублирования M3 в sync.js (Документ 1)
-  assert(/^v8\d$/.test(window.COFFEE_APP_VERSION), 'Версия в version.js должна быть синхронизирована');
+  assert(/^v[89]\d$/.test(window.COFFEE_APP_VERSION), 'Версия в version.js должна быть синхронизирована');
   assert(!syncJs.includes('initMaterialDesign3System'), 'Движок Material Design 3 не должен дублироваться внутри js/sync.js');
   assert(/js\/material-design\.js\?v=[\w.]+/.test(idx) && /js\/material-design\.js\?v=[\w.]+/.test(own), 'js/material-design.js должен быть напрямую подключён в HTML-страницах');
 
@@ -752,7 +752,7 @@ check('21. Аудит безопасности P0/P1 и полная систе�
   assert(css.includes('#FFFBF8') && css.includes('#F1E8E1') && css.includes('#241B16') && css.includes('#286B4D') && css.includes('#805600') && css.includes('#BA1A1A'), 'В css/light.css должна быть рекомендованная палитра Material Design 3 (Раздел 2.1)');
   assert(css.includes('prefers-reduced-motion: reduce') && css.includes('border-radius: 28px 28px 0 0'), 'В css/light.css должны быть мобильные Bottom Sheets и поддержка prefers-reduced-motion');
   const m3 = window.CoffeeMaterialDesign3;
-  assert(m3 && /^M3-v8\d$/.test(m3.version), 'Модуль window.CoffeeMaterialDesign3 должен иметь актуальную версию');
+  assert(m3 && /^M3-v[89]\d$/.test(m3.version), 'Модуль window.CoffeeMaterialDesign3 должен иметь актуальную версию');
   assert(m3.SYNC_STATES && m3.SYNC_STATES.local_saved && m3.SYNC_STATES.sending && m3.SYNC_STATES.server_confirmed && m3.SYNC_STATES.send_error, 'Должны поддерживаться все 4 честных состояния синхронизации (Раздел 4 п. 9)');
   assert(m3.renderEmptyState('Нет задач').includes('md3-empty-state') && m3.renderSkeleton(2).includes('md3-skeleton-line'), 'Генераторы Empty State и Skeleton Loading должны работать корректно');
 });
@@ -772,7 +772,7 @@ check('22. Полная проверка релиза v83 (Единая верс
 
   // 1) Единый источник версии v83
   assert(rootVer.includes("COFFEE_VERSION = '" + window.COFFEE_VERSION + "'"), 'Корневой version.js должен содержать единую версию');
-  assert(window.COFFEE_VERSION === window.COFFEE_APP_VERSION && /^v8\d$/.test(window.COFFEE_VERSION), 'В глобальном объекте должна быть установлена версия v83');
+  assert(window.COFFEE_VERSION === window.COFFEE_APP_VERSION && /^v[89]\d$/.test(window.COFFEE_VERSION), 'В глобальном объекте должна быть установлена версия v83');
   assert(cgsCode.includes("serverVersion: '" + window.COFFEE_VERSION + "'"), 'Серверная версия в Code.gs должна быть синхронизирована на v83');
 
   // 2) Офлайн-кэш STATIC_ASSETS в sw.js содержит js/material-design.js и js/camera-permission.js

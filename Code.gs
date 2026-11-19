@@ -56,10 +56,10 @@ function RUN_ONE_CLICK_SETUP() {
   var trigRes = setupAutonomousTriggers_(ss);
   var rev = bumpDataRev_();
   try { onOpen(); } catch (_) {}
-  var msg = '✅ СИСТЕМА КОФЕЙНЯ v89 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v90 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
   try { Logger.log(msg); } catch (_) {}
   try { console.log(msg); } catch (_) {}
-  try { ss.toast(msg, '☕ Кофейня ERP v89', 8); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v90', 8); } catch (_) {}
   return { ok: true, message: msg, rev: rev, drive: folderStatus };
 }
 
@@ -155,11 +155,11 @@ function doGet(e) {
         ok: true,
         rev: curRev,
         serverTs: Date.now(),
-        serverVersion: 'v89', specVersion: '4.0',
+        serverVersion: 'v90', specVersion: '4.0',
         api: 2
       });
     }
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v89', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v90', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
     ss = getTargetSpreadsheet_();
     ensureSheets_(ss);
 
@@ -1215,13 +1215,27 @@ function saveSettingSecure_(ss, body) {
     }
     return { ok: true };
   }
-  // Валидация значений параметров по здоровой логике (v87.13)
+  // Валидация значений параметров по здоровой логике (v90.0)
+  var enumLimits = {
+    SYNC_MODE: ['realtime', 'balanced', 'economy'],
+    THEME_DEFAULT: ['auto', 'light', 'dark'],
+    CURRENCY: ['₽', 'MDL', '€', '$'],
+    PIN_POLICY: ['personal', 'pin_only', 'tg_strict'],
+    TG_ALERTS_MODE: ['all', 'critical', 'off']
+  };
+  if (enumLimits[nk] && val !== '') {
+    if (enumLimits[nk].indexOf(val) === -1) {
+      throw new Error('INVALID_SETTING_VALUE: Недопустимое значение для ' + nk + ' (' + val + ')');
+    }
+  }
   var numLimits = {
     PLAN: [0, 10000000],
     MIN_AVG_CHECK: [0, 100000],
     PLAN_CHECKS: [0, 100000],
     WO_NORM: [0, 100],
-    INIT_COUNTER: [0, 10000000]
+    INIT_COUNTER: [0, 10000000],
+    CASH_FLOAT: [0, 100000],
+    MEDIA_RETENTION_DAYS: [7, 365]
   };
   if (numLimits[nk] && val !== '') {
     var numVal = Number(val.replace(',', '.'));
@@ -1253,7 +1267,7 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
   return {
     ok: true,
     v: res.v || 55,
-    serverVersion: 'v89', specVersion: '4.0',
+    serverVersion: 'v90', specVersion: '4.0',
     location: res.location || 'Кофейня №1',
     staff: safeStaff,
     serverTime: res.serverTime,
@@ -1325,7 +1339,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     ok: true,
     v: full.v || 55,
     rev: getDataRev_(),
-    serverVersion: 'v89', specVersion: '4.0',
+    serverVersion: 'v90', specVersion: '4.0',
     profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
     location: full.location || 'Кофейня №1',
     photoAll: full.photoAll || 'нет',
@@ -4206,7 +4220,7 @@ function buildTelegramInteractiveButtonsV80_(entityId, webappUrl) {
 }
 
 // === V82 SECURITY & AUDIT FIXES (Document 1: P0 Telegram HMAC Auth, P0 Factory PIN Lock, P1 Private Drive Photos, P1 Verified Telegram Delivery) ===
-var COFFEE_SERVER_VERSION_V82 = 'v89';
+var COFFEE_SERVER_VERSION_V82 = 'v90';
 
 function applySecureDriveFileSharingV82_(file) {
   if (!file) return 'PRIVATE';

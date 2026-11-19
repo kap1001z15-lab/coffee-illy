@@ -2953,17 +2953,33 @@ async function coffeeLiveSyncTick(forceSync) {
   } finally { _liveBusy = false; }
 }
 let _liveFails = 0;
+function _getSyncModeV90() {
+  try {
+    const db = (typeof getUDB === 'function') ? getUDB() : null;
+    const list = (db && Array.isArray(db.settings)) ? db.settings : [];
+    const hit = list.find((s) => s && s.id === 'SYNC_MODE');
+    const v = String((hit && hit.value) || localStorage.getItem('coffee_sync_mode_v90') || 'realtime').toLowerCase();
+    return (v === 'balanced' || v === 'economy') ? v : 'realtime';
+  } catch (_) { return 'realtime'; }
+}
 function _liveNextDelay() {
-  /* Ступенчатое замедление в простое: меньше запросов к Apps Script (квоты) и меньше нагрузка на устройства. */
+  /* Адаптивная синхронизация v90: скорость управляется настройкой SYNC_MODE (realtime / balanced / economy). */
+  const mode = _getSyncModeV90();
   let d;
-  if (typeof document !== 'undefined' && document.hidden) d = 60000;
-  else {
+  if (typeof document !== 'undefined' && document.hidden) {
+    d = mode === 'economy' ? 90000 : 45000;
+  } else {
     const idle = Date.now() - _liveLastActive;
-    d = idle < 120000 ? 900 : (idle < 600000 ? 2200 : (idle < 3600000 ? 10000 : 25000));
+    if (mode === 'economy') {
+      d = idle < 120000 ? 6000 : (idle < 600000 ? 15000 : 30000);
+    } else if (mode === 'balanced') {
+      d = idle < 120000 ? 2000 : (idle < 600000 ? 5000 : 15000);
+    } else {
+      d = idle < 120000 ? 800 : (idle < 600000 ? 2000 : (idle < 3600000 ? 8000 : 20000));
+    }
   }
-  /* При ошибках сети/сервера — экспоненциальная пауза до 2 минут, чтобы не долбить недоступный сервер. */
   if (_liveFails > 0) d = Math.min(120000, Math.max(d, 4000 * Math.pow(2, Math.min(_liveFails, 5))));
-  return d + Math.floor(Math.random() * 250); /* небольшой разброс, чтобы устройства не стучались одновременно */
+  return d + Math.floor(Math.random() * 220);
 }
 function _liveSchedule() {
   clearTimeout(_liveTimer);
@@ -3879,5 +3895,86 @@ if (typeof window !== 'undefined' && window.addEventListener && typeof document 
       }
       return _origApplyLocalMutation.apply(this, arguments);
     };
+  }
+})();
+
+
+/* === V90 SEAMLESS MULTI-DEVICE SYNC BRIDGE & MINIMALIST LIVE PILL === */
+(function () {
+  if (typeof window === 'undefined') return;
+  let _bc = null;
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      _bc = new BroadcastChannel('coffee_illy_live_v90');
+      _bc.onmessage = (ev) => {
+        const msg = ev && ev.data;
+        if (!msg || msg.sender === _senderId) return;
+        if (window.coffeeBus && typeof window.coffeeBus.emit === 'function') {
+          window.coffeeBus.emit(msg.type || 'server_sync', Object.assign({ fromTab: true }, msg.payload || {}));
+        }
+        _paintSyncPill();
+      };
+    }
+  } catch (_) {}
+  const _senderId = 'tab_' + Math.random().toString(36).slice(2, 9);
+  if (window.coffeeBus && typeof window.coffeeBus.on === 'function') {
+    window.coffeeBus.on((msg) => {
+      if (!msg || msg.fromTab) return;
+      if (_bc && (msg.type === 'mutation' || msg.type === 'server_sync' || msg.type === 'outbox_synced')) {
+        try { _bc.postMessage({ sender: _senderId, type: msg.type, payload: msg }); } catch (_) {}
+      }
+      _paintSyncPill();
+    });
+  }
+  function _paintSyncPill() {
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('v90LiveSyncPill');
+    if (!el) return;
+    const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+    const pending = typeof window.coffeeGetTotalPendingCount === 'function' ? window.coffeeGetTotalPendingCount() : 0;
+    const st = window.coffeeLiveSyncState || {};
+    const mode = _getSyncModeV90();
+    let state = 'live';
+    let label = 'Live';
+    if (!online) {
+      state = 'offline';
+      label = pending ? ('Офлайн · ' + pending) : 'Офлайн';
+    } else if (pending > 0) {
+      state = 'pending';
+      label = 'Синхр · ' + pending;
+    } else if (st.lastLatencyMs > 0) {
+      label = 'Live · ' + (st.lastLatencyMs < 1000 ? (st.lastLatencyMs + 'мс') : ((st.lastLatencyMs / 1000).toFixed(1) + 'с'));
+    }
+    el.setAttribute('data-state', state);
+    el.title = 'Режим: ' + mode + ' · Нажмите для мгновенной синхронизации';
+    const txt = el.querySelector('.v90-sync-txt');
+    if (txt) txt.textContent = label;
+  }
+  function _mountSyncPill() {
+    if (typeof document === 'undefined' || document.getElementById('v90LiveSyncPill')) return;
+    const host = document.querySelector('.hdr-right, .top-actions, .owner-top-acts, header .acts, .topbar-right');
+    if (!host) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'v90LiveSyncPill';
+    btn.className = 'v90-sync-pill';
+    btn.setAttribute('data-state', 'live');
+    btn.innerHTML = '<span class="v90-sync-dot"></span><span class="v90-sync-txt">Live</span>';
+    btn.addEventListener('click', () => {
+      btn.setAttribute('data-state', 'syncing');
+      const txt = btn.querySelector('.v90-sync-txt');
+      if (txt) txt.textContent = 'Синхр…';
+      Promise.resolve(window.coffeeLiveSyncNow ? window.coffeeLiveSyncNow() : null).finally(() => setTimeout(_paintSyncPill, 250));
+    });
+    host.prepend(btn);
+    _paintSyncPill();
+  }
+  window.coffeeMountSyncPill = _mountSyncPill;
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(_mountSyncPill, 150), { once: true });
+    else setTimeout(_mountSyncPill, 150);
+    window.addEventListener('online', _paintSyncPill);
+    window.addEventListener('offline', _paintSyncPill);
+    setInterval(_paintSyncPill, 4000);
   }
 })();

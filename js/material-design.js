@@ -266,7 +266,7 @@
 
   window.CoffeeMaterialDesign3 = {
     syncThemeColorMeta,
-    version: 'M3-v89',
+    version: 'M3-v90',
     isEnabled: () => true,
     prefersReducedMotion,
     attachRipple,

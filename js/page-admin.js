@@ -547,13 +547,39 @@ function incForm(x){
     (o)=>call('update_incident',Object.assign(o,{id:x.id,responsible:o.responsible})))}
 
 function rSet(){
+  const v90ExtraDefs=[
+    {id:'SYNC_MODE',label:'Скорость синхронизации между устройствами',hint:'Как часто терминал и дашборд проверяют обновления с сервера (DATA_REV)',value:'realtime'},
+    {id:'THEME_DEFAULT',label:'Тема оформления по умолчанию',hint:'Автоматическое переключение по ОС/Telegram или фиксированная тема',value:'auto'},
+    {id:'CURRENCY',label:'Валюта расчётов',hint:'Отображается в кассе, расходах, дашборде и отчётах',value:'₽'},
+    {id:'CASH_FLOAT',label:'Разменная сумма на утро',hint:'Контрольная сумма размена мелкими купюрами при открытии/закрытии кассы',value:'250'},
+    {id:'PIN_POLICY',label:'Политика входа сотрудников',hint:'Проверка по личному PIN (старт 1234) и привязка к Telegram ID',value:'personal'},
+    {id:'TG_ALERTS_MODE',label:'Режим уведомлений в Telegram',hint:'Какие события отправляются управляющему в чат бота',value:'all'},
+    {id:'MEDIA_RETENTION_DAYS',label:'Хранение фото-отчётов (дней)',hint:'Срок хранения фото смен на Google Drive перед архивацией (7–365)',value:'90'}
+  ];
+  if(!Array.isArray(D.settings))D.settings=[];
+  v90ExtraDefs.forEach((def)=>{
+    if(!D.settings.some((x)=>x&&x.id===def.id))D.settings.push(Object.assign({},def));
+  });
+  const selectMap={
+    PHOTO_ALL:[['нет','нет — только для задач с пометкой «📷 фото»'],['да','да — обязательно на каждом шаге Открытия и Закрытия']],
+    SYNC_MODE:[['realtime','Мгновенно · 0.8 сек (максимальная скорость)'],['balanced','Сбалансированно · 2 сек (экономия квоты)'],['economy','Экономно · 6 сек (минимальный трафик)']],
+    THEME_DEFAULT:[['auto','Авто — по теме устройства и Telegram'],['light','Светлая (Material 3 Soft)'],['dark','Тёмная (Graphite)']],
+    CURRENCY:[['₽','₽ — Рубль'],['MDL','MDL — Молдавский лей'],['€','€ — Евро'],['$','$ — Доллар']],
+    PIN_POLICY:[['personal','Личный PIN (старт 1234) + привязка Telegram ID'],['pin_only','Только личный PIN-код'],['tg_strict','Строго: только привязанный Telegram ID + PIN']],
+    TG_ALERTS_MODE:[['all','Все: поломки с фото + просрочки + сводка дня'],['critical','Только критические поломки и просрочки'],['off','Уведомления временно выключены']]
+  };
+  const numBounds={
+    PLAN:[0,10000000],MIN_AVG_CHECK:[0,100000],PLAN_CHECKS:[0,100000],
+    WO_NORM:[0,100],INIT_COUNTER:[0,10000000],CASH_FLOAT:[0,100000],MEDIA_RETENTION_DAYS:[7,365]
+  };
   const inputFor=(s,i)=>{
-    if(s.id==='PHOTO_ALL'){
-      const v=String(s.value||'нет').toLowerCase()==='да'?'да':'нет';
-      return '<select id="s_'+i+'" style="flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)"><option value="нет"'+(v==='нет'?' selected':'')+'>нет — только для задач с пометкой «📷 фото»</option><option value="да"'+(v==='да'?' selected':'')+'>да — обязательно на каждом шаге Открытия и Закрытия</option></select>';
+    if(selectMap[s.id]){
+      const curV=String(s.value||selectMap[s.id][0][0]);
+      return '<select id="s_'+i+'" style="flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)">'+
+        selectMap[s.id].map(([val,lbl])=>'<option value="'+esc(val)+'"'+(curV.toLowerCase()===val.toLowerCase()?' selected':'')+'>'+esc(lbl)+'</option>').join('')+'</select>';
     }
-    if(/DEADLINE|OPEN_START|DAY_START|CLOSE_START/.test(s.id))return '<input id="s_'+i+'" type="time" value="'+esc(s.value||'08:30')+'">';
-    if(s.id==='PLAN'||s.id==='WO_NORM'||s.id==='INIT_COUNTER')return '<input id="s_'+i+'" type="number" min="0" step="any" inputmode="decimal" value="'+esc(s.value)+'">';
+    if(/DEADLINE|OPEN_START|DAY_START|CLOSE_START|LC1_|LC2_|CASH_START|CASH_DEADLINE/.test(s.id))return '<input id="s_'+i+'" type="time" value="'+esc(s.value||'08:30')+'">';
+    if(numBounds[s.id])return '<input id="s_'+i+'" type="number" min="'+numBounds[s.id][0]+'" max="'+numBounds[s.id][1]+'" step="any" inputmode="decimal" value="'+esc(s.value)+'">';
     return '<input id="s_'+i+'" type="'+(s.secret?'password':'text')+'" autocomplete="off" value="'+esc(s.value)+'" placeholder="'+(s.secret?(s.set?'••••••  задано — введите новый код, чтобы заменить':'не задано'):'')+'">';
   };
   const tgBox='<div style="background:color-mix(in srgb,var(--crema) 14%,var(--bg));border:1px solid var(--crema);border-radius:16px;padding:14px;margin-bottom:14px"><div class="top" style="margin-bottom:6px"><b>🤖 Telegram-уведомления администратору о поломках (с фото и видео)</b><div class="acts"><button class="b" type="button" data-a="tg-detect">🔍 Найти мой Chat ID</button><button class="b ok" type="button" data-a="enable-autopilot">🤖 Включить Автопилот 24/7</button><button class="b" type="button" data-a="send-daily-digest">📨 Сводка дня в TG</button><button class="p" type="button" data-a="tg-test">📲 Тест в Telegram</button></div></div><div class="mu">1. Создайте бота в <b>@BotFather</b> и вставьте его токен в поле <code>TG_TOKEN</code> ниже.<br>2. Напишите вашему боту <code>/start</code> в Telegram и нажмите <b>«🔍 Найти мой Chat ID»</b> — поле <code>TG_CHAT</code> заполнится автоматически.<br>3. Теперь как только бариста отметит «⚠️ Поломка» в терминале, бот мгновенно пришлёт вам в Telegram сообщение вместе с отснятым фото или видео!</div></div>';
@@ -613,7 +639,7 @@ function rSet(){
       '</div>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;font-size:12.5px">' +
-      '<div style="padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block;font-size:11px">1. Сервер GAS Backend</span><b style="color:var(--good)">🟢 Активен · v71</b></div>' +
+      '<div style="padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block;font-size:11px">1. Сервер GAS Backend</span><b style="color:var(--good)">🟢 Активен · ' + esc(window.COFFEE_APP_VERSION || 'v90') + '</b></div>' +
       '<div style="padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block;font-size:11px">2. Google Таблицы (16 листов)</span><b style="color:var(--good)">🟢 Схема совместима</b></div>' +
       '<div style="padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block;font-size:11px">3. Медиа Google Drive + IDB</span><b style="color:var(--good)">🟢 Кэш и папка готовы</b></div>' +
       '<div style="padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block;font-size:11px">4. Telegram Bot (P0/P1)</span><b style="color:' + (tgConfigured ? 'var(--good)' : 'var(--warn)') + '">' + (tgConfigured ? '🟢 Подключён' : '🟡 Ожидает токен') + '</b></div>' +
@@ -621,7 +647,27 @@ function rSet(){
       '<div style="padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--line)"><span class="mu" style="display:block;font-size:11px">6. Авто-бэкапы (' + backupsList.length + ' снимков)</span><b style="color:var(--good)">🟢 ' + esc(lastBkp.date) + ' ' + esc(lastBkp.time) + '</b></div>' +
     '</div>' +
   '</div>';
-  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+sysHealthCard+shopsBox+dailyPlansBox+staffPinsBox+vaultBox+tgBox+'<div class="settings-grid">'+D.settings.map((s,i)=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint)+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>').join('')+'</div>'}
+  const grpDefs=[
+    {title:'Синхронизация и интерфейс',sub:'Скорость обновления между устройствами, автотема и валюта',test:(id)=>/^(SYNC_MODE|THEME_DEFAULT|CURRENCY|SHOP|LOCATION|MEDIA_RETENTION_DAYS)$/.test(id)},
+    {title:'Финансы и нормативы',sub:'Плановые показатели, средний чек, размен и счётчик',test:(id)=>/^(PLAN|MIN_AVG_CHECK|PLAN_CHECKS|WO_NORM|INIT_COUNTER|CASH_FLOAT|CATEGORIES)$/.test(id)},
+    {title:'Расписание и окна смен',sub:'Время открытия и дедлайны чек-листов',test:(id)=>/DEADLINE|START/.test(id)},
+    {title:'Безопасность и Telegram',sub:'PIN-коды, политика доступа, фото-контроль и уведомления',test:(id)=>/^(ADMIN_PIN|PIN_POLICY|PHOTO_ALL|TG_|BOT_)/.test(id)}
+  ];
+  const indexed=D.settings.map((s,i)=>({s,i}));
+  const usedIdx=new Set();
+  const renderCard=({s,i})=>'<div class="set"><b>'+esc(s.label)+'</b> <span class="tag" style="font-family:monospace">'+esc(s.id)+'</span><div class="mu">'+esc(s.hint||'')+'</div><div class="line">'+inputFor(s,i)+'<button class="b" type="button" data-a="set-save" data-i="'+i+'">Сохранить</button></div></div>';
+  let groupedHtml='';
+  grpDefs.forEach((g)=>{
+    const items=indexed.filter((x)=>!usedIdx.has(x.i)&&g.test(x.s.id));
+    if(!items.length)return;
+    items.forEach((x)=>usedIdx.add(x.i));
+    groupedHtml+='<div class="v90-set-group"><div class="v90-set-group-head"><div class="v90-set-group-title">'+g.title+'</div><div class="v90-set-group-sub">'+g.sub+'</div></div><div class="settings-grid">'+items.map(renderCard).join('')+'</div></div>';
+  });
+  const rest=indexed.filter((x)=>!usedIdx.has(x.i));
+  if(rest.length){
+    groupedHtml+='<div class="v90-set-group"><div class="v90-set-group-head"><div class="v90-set-group-title">Дополнительные параметры</div><div class="v90-set-group-sub">Прочие ключи из листа «Настройки»</div></div><div class="settings-grid">'+rest.map(renderCard).join('')+'</div></div>';
+  }
+  return '<div class="top"><h2 style="font-size:18px">Настройки системы, планов Пн–Вс и кодов доступа</h2><button class="p" type="button" data-a="set-save-all">💾 Сохранить все настройки</button></div>'+sysHealthCard+shopsBox+dailyPlansBox+staffPinsBox+vaultBox+tgBox+groupedHtml}
 
 /* ----- действия ----- */
 $('panel').addEventListener('input',(e)=>{
@@ -962,7 +1008,13 @@ $('panel').addEventListener('click',(e)=>{
     return;
   }
   if(a==='set-save'){const s=D.settings[i],v=$('s_'+i).value.trim();
-    call('save_setting',{id:s.id,value:v}).then(()=>{if(s.id==='ADMIN_PIN')setPin(v);toast('Сохранено');return load()}).catch((x)=>toast('Ошибка: '+errText(x)))}
+    call('save_setting',{id:s.id,value:v}).then(()=>{
+      if(s.id==='ADMIN_PIN')setPin(v);
+      if(s.id==='SYNC_MODE'){try{localStorage.setItem('coffee_sync_mode_v90',v);}catch(_){} if(window.coffeeLiveSyncNow)window.coffeeLiveSyncNow();}
+      if(s.id==='THEME_DEFAULT'&&window.CoffeeTheme&&window.CoffeeTheme.setMode)window.CoffeeTheme.setMode(v);
+      toast('Сохранено и синхронизировано');
+      return load();
+    }).catch((x)=>toast('Ошибка: '+errText(x)))}
 });
 
 /* ----- тема ----- */
