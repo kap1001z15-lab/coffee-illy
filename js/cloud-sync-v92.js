@@ -1,9 +1,9 @@
-/* Coffee Illy v94.0 (Release 1.0.0) — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
-  const SESSION_KEY = 'coffee_illy_v94_session';
+  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
+  const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
     const d = new Date();
@@ -374,24 +374,6 @@
       state.autopilotEnabled = !!data.autopilotEnabled;
       changed = true;
     }
-    if (data.cashReviews && typeof data.cashReviews === 'object') {
-      state.cashReviews = data.cashReviews;
-      changed = true;
-    }
-    if (Array.isArray(data.inventory)) {
-      state.inventory = data.inventory;
-      changed = true;
-    }
-    if (Array.isArray(data.announcements)) {
-      state.announcements = data.announcements;
-      changed = true;
-    }
-    if (data.releaseInfo && typeof data.releaseInfo === 'object') {
-      state.serverRelease = data.releaseInfo;
-      const localRel = (typeof window !== 'undefined' && window.APP_RELEASE) || { api: '1.0', schema: '1.0' };
-      state.versionMismatch = (String(data.releaseInfo.api || '1.0') !== String(localRel.api) || String(data.releaseInfo.schema || '1.0') !== String(localRel.schema));
-      changed = true;
-    }
     if (data.serverTime) {
       state.serverTime = String(data.serverTime);
       changed = true;
@@ -427,11 +409,7 @@
         cash: Number(last.cash || 0),
         card: Number(last.card || 0),
         checks: Number(last.checks || 0),
-        writeoff: Number(last.writeoff || 0),
-        discrepancy: Number(last.discrepancy || 0),
-        counterStart: last.counterStart != null ? Number(last.counterStart) : null,
-        counterEnd: last.counterEnd != null ? Number(last.counterEnd) : null,
-        photoUrl: last.photoUrl || ''
+        writeoff: Number(last.writeoff || 0)
       });
     } else if (desc.indexOf('Проблема:') === 0 || desc.indexOf('Внеплановая поломка:') === 0) {
       const inc = st.incidents && st.incidents[0];
@@ -770,19 +748,7 @@
       if (!userName || !block) return;
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
-,
-    reviewCashReport: function (opts) { return gasPost('review_cash_report', opts || {}); },
-    revokeAllSessions: function () { return gasPost('revoke_all_sessions', {}); },
-    saveInventoryItem: function (item) { return gasPost('save_inventory', item || {}); },
-    getSyncBadge: function () {
-      const online = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
-      const pending = readOutbox().length;
-      if (!online) return { text: pending ? ('📡 Офлайн · в очереди: ' + pending) : '📡 Офлайн', cls: 'warn', pending, online };
-      if (pending > 0) return { text: '⏳ В очереди: ' + pending, cls: 'accent', pending, online };
-      return { text: '● Синхр.', cls: 'good', pending: 0, online: true };
-    }
   };
-  window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
 })();

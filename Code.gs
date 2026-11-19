@@ -155,7 +155,7 @@ function doGet(e) {
         ok: true,
         rev: curRev,
         serverTs: Date.now(),
-        serverVersion: 'v94.0', specVersion: '4.0', releaseInfo: getReleaseInfoV94_(), cashReviews: getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {}),
+        serverVersion: 'v90', specVersion: '4.0',
         api: 2
       });
     }
@@ -319,7 +319,7 @@ function doPost(e) {
           '👤 Сотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100),
           '📝 Описание: ' + escapeTgHtml_(String(x.comment || 'Без описания').slice(0, 700))
         ];
-        if (phUrl) msgLines.push('📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>');
+        if (phUrl) msgLines.push((/export=download|\.(webm|mp4)/i.test(phUrl) ? '🎬 <a href="' + escapeTgHtml_(phUrl) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>'));
         pendingAlerts.push({
           type: 'incident',
           force: true,
@@ -332,13 +332,7 @@ function doPost(e) {
     }
     if (action === 'submit_cash') {
       validateCashPayload_(ss, body);
-      var cashMeta = registerCashSubmissionV94_(ss, body, actorSess);
-      var resCash = submitCash_(ss, body);
-      resCash.cashReview = cashMeta.review;
-      if (cashMeta.alerts && cashMeta.alerts.length) {
-        cashMeta.alerts.forEach(function(a) { pendingAlerts.push(a); });
-      }
-      return idempotentJsonOut_(ss, body, resCash, actorSess);
+      return idempotentJsonOut_(ss, body, submitCash_(ss, body), actorSess);
     }
     if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body), actorSess);
     // Фото пока не загружаются в серверное хранилище. Не подтверждаем фиктивный успех.
@@ -385,7 +379,7 @@ function doPost(e) {
         '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
         '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
       ];
-      if (incPh) incLines.push('📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>');
+      if (incPh) incLines.push((/export=download|\.(webm|mp4)/i.test(incPh) ? '🎬 <a href="' + escapeTgHtml_(incPh) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>'));
       pendingAlerts.push({
         type: 'incident',
         force: true,
@@ -449,12 +443,7 @@ function doPost(e) {
     if (action === 'save_service_audit') return idempotentJsonOut_(ss, body, saveServiceAudit_(ss, body), actorSess);
     if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body), actorSess);
     if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body), actorSess);
-    if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') {
-      var invRes = saveInventory_(ss, body);
-      var lowAlerts = checkLowStockAlertsV94_(ss, body);
-      lowAlerts.forEach(function(a) { pendingAlerts.push(a); });
-      return idempotentJsonOut_(ss, body, invRes, actorSess);
-    }
+    if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body), actorSess);
     if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() }, actorSess);
     if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
     if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
@@ -462,12 +451,6 @@ function doPost(e) {
     if (action === 'save_telegram_settings') return idempotentJsonOut_(ss, body, saveTelegramSettingsV93_(ss, body), actorSess);
     if (action === 'test_telegram_alert') return idempotentJsonOut_(ss, body, testTelegramAlertV93_(ss, body), actorSess);
     if (action === 'run_checklist_notifications_now') return idempotentJsonOut_(ss, body, checkAndNotifyChecklistWindows_(ss, body), actorSess);
-    if (action === 'review_cash_report') {
-      var revOut = reviewCashReportV94_(ss, body, actorSess);
-      if (revOut && revOut.pendingAlert) pendingAlerts.push(revOut.pendingAlert);
-      return idempotentJsonOut_(ss, body, revOut, actorSess);
-    }
-    if (action === 'revoke_all_sessions') return idempotentJsonOut_(ss, body, revokeAllSessionsV94_(ss, actorSess), actorSess);
     if (action === 'submit_adjustment') return idempotentJsonOut_(ss, body, submitAdjustment_(ss, body, actorSess), actorSess);
 
     return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action }, actorSess);
@@ -633,7 +616,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
   if (!dataUri) {
     return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
   }
-  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)*;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
     return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
   }
@@ -684,7 +667,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
         try { lockOpt.releaseLock(); } catch (_) {}
       }
     }
-    return { ok: true, mediaId: file.getId(), fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), mediaType: /^video\//i.test(mimeType) ? 'video' : 'image', mimeType: mimeType, url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
@@ -1118,8 +1101,7 @@ function saveServerSession_(sessionObj) {
     staffName: sessionObj.staffName,
     issuedAt: sessionObj.issuedAt,
     expiresAt: sessionObj.expiresAt,
-    epoch: epoch,
-    globalEpoch: Number(props.getProperty('GLOBAL_SESSION_EPOCH') || '1') || 1
+    epoch: epoch
   };
   var tokHash = sha256Hex_(sessionObj.token);
   try {
@@ -1153,8 +1135,7 @@ function getServerSession_(token) {
   }
   if (!rec || rec.expiresAt <= Date.now()) return null;
   var curEpoch = Number(props.getProperty('EPOCH_' + (rec.staffName || '')) || '1') || 1;
-  var globalEpoch = Number(props.getProperty('GLOBAL_SESSION_EPOCH') || '1') || 1;
-  if ((rec.epoch && rec.epoch < curEpoch) || ((rec.globalEpoch || 1) < globalEpoch)) return null;
+  if (rec.epoch && rec.epoch < curEpoch) return null;
   return rec;
 }
 
@@ -2416,9 +2397,6 @@ function getChecklists_(ss) {
     ttk: ttkList,
     goodDeeds: gdList,
     tasks: tasks,
-    releaseInfo: getReleaseInfoV94_(),
-    cashReviews: getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {}),
-    inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
     staffPresence: getStaffPresenceToday_(ss),
     serverTime: serverTime,
     serverDate: serverDate
@@ -2746,8 +2724,6 @@ function getAdmin_(ss) {
     inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
-    releaseInfo: getReleaseInfoV94_(),
-    cashReviews: getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {}),
     staffPresence: getStaffPresenceToday_(ss),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
     webappUrl: map.WEBAPP_URL || '',
@@ -4200,10 +4176,8 @@ function saveInventory_(ss, b) {
     } else {
       if (b.name) list[idx].name = String(b.name);
       if (b.unit) list[idx].unit = String(b.unit);
-      var sVal = b.stock != null ? b.stock : b.qty;
-      var mVal = b.minStock != null ? b.minStock : b.minQty;
-      if (sVal != null) { list[idx].stock = Math.max(0, Math.round(Number(sVal) || 0)); list[idx].qty = list[idx].stock; }
-      if (mVal != null) { list[idx].minStock = Math.max(0, Math.round(Number(mVal) || 0)); list[idx].minQty = list[idx].minStock; }
+      if (b.stock != null) list[idx].stock = Math.max(0, Math.round(Number(b.stock) || 0));
+      if (b.minStock != null) list[idx].minStock = Math.max(0, Math.round(Number(b.minStock) || 0));
     }
   } else if (b && b.name) {
     list.push({
@@ -4211,10 +4185,8 @@ function saveInventory_(ss, b) {
       name: String(b.name),
       category: String(b.category || 'Сырьё'),
       unit: String(b.unit || 'г'),
-      stock: Math.max(0, Math.round(Number(b.stock != null ? b.stock : b.qty) || 0)),
-      qty: Math.max(0, Math.round(Number(b.stock != null ? b.stock : b.qty) || 0)),
-      minStock: Math.max(0, Math.round(Number(b.minStock != null ? b.minStock : b.minQty) || 0)),
-      minQty: Math.max(0, Math.round(Number(b.minStock != null ? b.minStock : b.minQty) || 0))
+      stock: Math.max(0, Math.round(Number(b.stock) || 0)),
+      minStock: Math.max(0, Math.round(Number(b.minStock) || 0))
     });
   }
   setJsonProp_('COFFEE_INVENTORY_JSON', list);
@@ -4964,184 +4936,4 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
   }
 
   return { ok: true, date: today, time: hm, weekday: weekday, sent: sent, skipped: skipped };
-}
-
-
-/* =========================================================================
-   COFFEE ILLY v94.0 (RELEASE 1.0.0) — ЕДИНЫЙ РЕЛИЗ, ПРОВЕРКА КАССЫ, СКЛАД, СЕССИИ
-   ========================================================================= */
-
-function getReleaseInfoV94_() {
-  return {
-    release: '1.0.0',
-    barista: '94.0',
-    dashboard: '94.0',
-    api: '1.0',
-    schema: '1.0'
-  };
-}
-
-function registerCashSubmissionV94_(ss, body, actorSess) {
-  var reviews = getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {});
-  var dt = String(body.date || isoDate_()).slice(0, 10);
-  var actor = String((actorSess && actorSess.staffName) || body.userName || body.barista || body.who || 'Бариста').trim();
-  var prev = reviews[dt];
-  if (prev && prev.status === 'Подтверждён' && actorSess && actorSess.role !== 'admin') {
-    throw new Error('CASH_LOCKED: Кассовый отчёт за ' + dt + ' уже подтверждён владельцем. Изменения возможны только после возврата на исправление.');
-  }
-  var cashVal = Number(body.cash || 0);
-  var cardVal = Number(body.card || 0);
-  var revVal = Number(body.revenue || body.total || (cashVal + cardVal));
-  var checksVal = Number(body.checks || 0);
-  var woVal = Number(body.writeoff || 0);
-  var discVal = Number(body.discrepancy || 0);
-  var photoUrl = String(body.photoUrl || body.photo_url || body.photo || '').trim();
-  var nowIso = new Date().toISOString();
-  var hist = (prev && Array.isArray(prev.history)) ? prev.history.slice() : [];
-  hist.push({
-    ts: nowIso,
-    actor: actor,
-    action: prev ? 'Повторная отправка отчёта' : 'Отправлен на проверку',
-    revenue: revVal,
-    cash: cashVal,
-    card: cardVal,
-    discrepancy: discVal
-  });
-  var rec = {
-    date: dt,
-    barista: actor,
-    status: 'На проверке',
-    revenue: revVal,
-    cash: cashVal,
-    card: cardVal,
-    checks: checksVal,
-    writeoff: woVal,
-    counterStart: body.counterStart != null ? Number(body.counterStart) : null,
-    counterEnd: body.counterEnd != null ? Number(body.counterEnd) : null,
-    discrepancy: discVal,
-    photoUrl: photoUrl,
-    note: '',
-    submittedAt: nowIso,
-    history: hist.slice(-20)
-  };
-  reviews[dt] = rec;
-  setJsonProp_('COFFEE_CASH_REVIEWS_JSON', reviews);
-
-  var alerts = [];
-  var lines = [
-    '💰 <b>КАССОВЫЙ ОТЧЁТ НА ПРОВЕРКЕ</b>',
-    '📅 Дата: <b>' + escapeTgHtml_(dt) + '</b>',
-    '👤 Бариста: ' + escapeTgHtml_(actor),
-    '💵 Выручка: <b>' + revVal + ' ₽</b> (Нал: ' + cashVal + ' ₽ · Безнал: ' + cardVal + ' ₽)',
-    '🧾 Чеков: ' + checksVal + (woVal ? (' · Списания: ' + woVal + ' ₽') : '')
-  ];
-  if (discVal) lines.push('⚠️ <b>Расхождение кассы: ' + discVal + ' ₽</b>');
-  if (photoUrl) lines.push('📷 <a href="' + escapeTgHtml_(photoUrl) + '">Открыть фото Z-отчёта на Google Диске</a>');
-  alerts.push({
-    type: 'cash_report',
-    force: true,
-    targetPage: 'owner.html',
-    buttonText: '📊 Проверить кассу в дашборде',
-    text: lines.join('\n')
-  });
-
-  // Автоматическое создание инцидента при расхождении кассы (Этап 7 модернизации)
-  if (Math.abs(discVal) > 0) {
-    try {
-      reportIncident_(ss, {
-        sessionToken: body.sessionToken || '',
-        staffSessionToken: body.staffSessionToken || '',
-        date: dt,
-        block: 'Касса',
-        step: 'Касса / Расхождение',
-        text: 'Обнаружено расхождение кассового отчёта: ' + discVal + ' ₽ (Выручка: ' + revVal + ' ₽, Нал: ' + cashVal + ' ₽, Безнал: ' + cardVal + ' ₽)',
-        priority: 'Срочно (стоп-работа)',
-        userName: actor,
-        responsible: 'Администратор',
-        photo: photoUrl
-      });
-    } catch (_) {}
-  }
-  return { review: rec, alerts: alerts };
-}
-
-function reviewCashReportV94_(ss, body, actorSess) {
-  var dt = String(body.date || '').slice(0, 10);
-  if (!dt) throw new Error('VALIDATION_FAILED: Не указана дата кассового отчёта');
-  var decision = String(body.decision || '').trim().toLowerCase();
-  var note = String(body.note || '').trim();
-  var actor = String((actorSess && actorSess.staffName) || 'Администратор').trim();
-  var reviews = getJsonProp_('COFFEE_CASH_REVIEWS_JSON', {});
-  var rec = reviews[dt] || { date: dt, barista: String(body.barista || 'Бариста'), history: [] };
-  var newStatus = (decision === 'approved' || decision === 'confirm' || decision === 'подтверждён') ? 'Подтверждён' : 'Возвращён';
-  rec.status = newStatus;
-  rec.note = note;
-  rec.reviewedBy = actor;
-  rec.reviewedAt = new Date().toISOString();
-  rec.history = Array.isArray(rec.history) ? rec.history : [];
-  rec.history.push({ ts: rec.reviewedAt, actor: actor, action: newStatus, note: note });
-  reviews[dt] = rec;
-  setJsonProp_('COFFEE_CASH_REVIEWS_JSON', reviews);
-  appendAudit_(ss, actor, 'Проверка кассы за ' + dt + ': ' + newStatus, note || 'Без комментария');
-  bumpDataRev_();
-
-  var pendingAlert = null;
-  if (newStatus === 'Возвращён' && rec.barista) {
-    var stList = getStaffList_(ss) || [];
-    var emp = stList.filter(function(s) { return s && String(s.name || '').trim().toLowerCase() === String(rec.barista).trim().toLowerCase(); })[0];
-    var chatId = emp ? normTgNumericId_(emp.tgId) : '';
-    if (chatId) {
-      pendingAlert = {
-        chatIds: [chatId],
-        type: 'cash_returned',
-        force: true,
-        skipDedup: true,
-        buttonText: '💰 Исправить кассовый отчёт',
-        buttonType: 'web_app',
-        text: '↩️ <b>Кассовый отчёт за ' + escapeTgHtml_(dt) + ' возвращён на исправление</b>\nКомментарий владельца: ' + escapeTgHtml_(note || 'Уточните суммы и прикрепите фото Z-отчёта')
-      };
-    }
-  }
-  return { ok: true, review: rec, pendingAlert: pendingAlert };
-}
-
-function revokeAllSessionsV94_(ss, actorSess) {
-  var props = PropertiesService.getScriptProperties();
-  var curGlobal = Number(props.getProperty('GLOBAL_SESSION_EPOCH') || '1') || 1;
-  var nextGlobal = curGlobal + 1;
-  props.setProperty('GLOBAL_SESSION_EPOCH', String(nextGlobal));
-  var stList = getStaffList_(ss) || [];
-  stList.forEach(function(s) {
-    if (s && s.name) {
-      var ep = Number(props.getProperty('EPOCH_' + s.name) || '1') || 1;
-      props.setProperty('EPOCH_' + s.name, String(ep + 1));
-    }
-  });
-  var actor = String((actorSess && actorSess.staffName) || 'Администратор');
-  appendAudit_(ss, actor, 'Завершены все активные сессии', 'Глобальная эпоха сессий: #' + nextGlobal);
-  bumpDataRev_();
-  return { ok: true, globalSessionEpoch: nextGlobal };
-}
-
-function checkLowStockAlertsV94_(ss, body) {
-  var alerts = [];
-  var inv = getJsonProp_('COFFEE_INVENTORY_JSON', []);
-  if (!Array.isArray(inv) || !inv.length) return alerts;
-  var targetName = String((body && (body.name || body.item)) || '').trim().toLowerCase();
-  inv.forEach(function(it) {
-    if (!it || !it.name) return;
-    if (targetName && String(it.name).trim().toLowerCase() !== targetName) return;
-    var qty = Number(it.qty != null ? it.qty : (it.stock != null ? it.stock : 0));
-    var minQty = Number(it.minStock != null ? it.minStock : (it.minQty != null ? it.minQty : (it.min != null ? it.min : 0)));
-    if (minQty > 0 && qty <= minQty) {
-      alerts.push({
-        type: 'low_stock',
-        block: it.name,
-        targetPage: 'owner.html',
-        buttonText: '📦 Открыть склад в дашборде',
-        text: '📦 <b>НИЗКИЙ ОСТАТОК НА СКЛАДЕ</b>\nПозиция: <b>' + escapeTgHtml_(it.name) + '</b>\nОстаток: <b>' + qty + ' ' + escapeTgHtml_(it.unit || 'шт') + '</b> (минимум: ' + minQty + ')'
-      });
-    }
-  });
-  return alerts;
 }
