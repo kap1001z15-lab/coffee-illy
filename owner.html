@@ -104,8 +104,8 @@ tr:last-child td { border-bottom:none; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=94"></script>
-  <script src="js/cloud-sync-v94.js?v=94"></script>
+  <script src="config.js?v=92"></script>
+  <script src="js/cloud-sync-v93.js?v=92"></script>
 </head>
 <body>
 <header class="topbar">
@@ -125,20 +125,20 @@ tr:last-child td { border-bottom:none; }
       <option value="13:25" selected>13:25 (День)</option>
       <option value="22:10">22:10 (Закрытие)</option>
     </select>
-    <button class="chip-btn" id="btn-notifs">🔔 <span id="cnt-ntf">0</span></button>
     <button class="chip-btn good" id="btn-lock">🔓 Админ-сессия</button>
     <button class="chip-btn" id="btn-theme">🌓 Авто</button>
-    <button class="chip-btn" id="btn-reset">↻ Обновить из таблицы</button>
+    <button class="chip-btn" id="btn-reset">↺ Сброс</button>
   </div>
 </header>
 
 <main class="wrap">
   <nav class="admin-nav" id="admin-nav">
-    <button class="active" data-tab="overview">Главная</button>
+    <button class="active" data-tab="overview">Обзор</button>
+    <button data-tab="checklists">Чек-листы <span class="badge" id="cnt-chk">0</span></button>
     <button data-tab="finances">Финансы <span class="badge" id="cnt-fin">0</span></button>
-    <button data-tab="sales">Продажи</button>
-    <button data-tab="goods">Товары и склад</button>
-    <button data-tab="manage">Управление <span class="badge bad" id="cnt-inc">0</span></button>
+    <button data-tab="incidents">Поломки <span class="badge bad" id="cnt-inc">0</span></button>
+    <button data-tab="team">Команда и ТТК</button>
+    <button data-tab="settings">Настройки и Безопасность</button>
   </nav>
   <div id="content"></div>
 </main>
@@ -243,9 +243,6 @@ function initTheme(btnId) {
   let adminUnlocked = true; if (window.CoffeeCloudV92) window.CoffeeCloudV92.authLogin('admin', { pin: state.adminPin || '1234' });
   let incFilter = 'open';
   let chkFilter = 'all';
-  let finSub = 'reports';
-  let goodsSub = 'ttk';
-  let mgmtSub = 'checklists';
 
   initTheme('btn-theme');
   function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); }
@@ -291,58 +288,6 @@ function initTheme(btnId) {
     return { label:'Открыт до ' + b.deadline, cls:'accent', open:true };
   }
 
-  function openNotificationsModal() {
-    const list = state.notifications || [];
-    openModal('Центр уведомлений (' + list.filter(n => !n.read).length + ' новых)', `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px;"><button class="chip-btn" id="ntf-all">✓ Отметить все прочитанными</button></div>
-      <div class="stack" style="max-height:360px;overflow-y:auto;">
-        ${list.length ? list.map(n => `<div class="card-soft" style="${n.read?'opacity:.65;':'border-left:3px solid var(--accent);'}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);"><b>${esc(n.title)}</b><span>${esc(n.date)} ${esc(n.time)}</span></div><div style="font-size:12.5px;margin-top:3px;">${esc(n.text)}</div></div>`).join('') : '<div style="text-align:center;color:var(--muted);padding:16px;">Новых уведомлений нет</div>'}
-      </div>
-    `);
-    document.getElementById('ntf-all').onclick = async () => {
-      list.forEach(n => n.read = true);
-      if (window.CoffeeCloudV94) await window.CoffeeCloudV94.markNotificationRead({ all: true });
-      closeModal(); render();
-    };
-  }
-
-  function openCashReviewModal(rep) {
-    const hist = Array.isArray(rep.history) ? rep.history : [];
-    openModal('Проверка кассового отчёта ' + (rep.reportId || rep.date), `
-      <div class="card-soft" style="margin-bottom:10px;display:flex;flex-direction:column;gap:4px;font-size:13px;">
-        <div>Дата: <b>${esc(rep.date)}</b> · Сотрудник: <b>${esc(rep.barista || rep.who || 'Бариста')}</b></div>
-        <div>Выручка: <b>${fmtRub(rep.revenue)}</b> (Нал: ${fmtRub(rep.cash)} · Безнал: ${fmtRub(rep.card)})</div>
-        <div>Чеков: <b>${rep.checks || 0}</b> · Списания: <b>${fmtRub(rep.writeoff || 0)}</b></div>
-        ${rep.counterStart != null && rep.counterEnd != null ? `<div>Счётчик: <b>${rep.counterStart} → ${rep.counterEnd}</b></div>` : ''}
-        ${rep.photoUrl ? `<div>Документ: <a href="${esc(rep.photoUrl)}" target="_blank" rel="noopener" class="badge accent">📷 Открыть фото Z-отчёта</a></div>` : ''}
-        <div>Текущий статус: <span class="badge ${rep.status==='Подтверждён'?'good':(rep.status==='Возвращён'||rep.status==='Отклонён'?'bad':'warn')}">${esc(rep.status || 'На проверке')}</span></div>
-      </div>
-      <div class="field"><label>Комментарий владельца (обязателен при возврате / отклонении)</label><textarea id="rv-com" rows="2" placeholder="Например: проверьте сумму безнала по терминалу">${esc(rep.reviewComment || '')}</textarea></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <button class="chip-btn good" id="rv-ok">✅ Подтвердить</button>
-        <button class="chip-btn warn" id="rv-ret">↩️ На уточнение</button>
-        <button class="chip-btn bad" id="rv-rej">❌ Отклонить</button>
-      </div>
-      ${hist.length ? `<div style="font-size:11.5px;color:var(--muted);"><b>История проверок:</b>${hist.map(h => `<div>• ${esc(String(h.ts||'').slice(0,16))} · ${esc(h.actor)} → <b>${esc(h.status)}</b> ${h.note?'('+esc(h.note)+')':''}</div>`).join('')}</div>` : ''}
-    `);
-    async function sendDecision(decision) {
-      const comment = document.getElementById('rv-com').value.trim();
-      if ((decision === 'Возвращён' || decision === 'Отклонён') && !comment) { showToast('Укажите причину в комментарии'); return; }
-      if (window.CoffeeCloudV94) {
-        const res = await window.CoffeeCloudV94.reviewCashReport({ reportId: rep.reportId || '', date: rep.date, barista: rep.barista || rep.who || '', revenue: rep.revenue, decision, comment });
-        if (res && res.ok) {
-          state.cashReviews = state.cashReviews || {};
-          state.cashReviews[res.reportId] = res.record;
-          showToast('✓ Статус отчёта: ' + decision + ' (уведомление отправлено бариста)');
-          closeModal(); render();
-        } else showToast('Ошибка: ' + ((res && res.error) || 'проверьте доступ'));
-      }
-    }
-    document.getElementById('rv-ok').onclick = () => sendDecision('Подтверждён');
-    document.getElementById('rv-ret').onclick = () => sendDecision('Возвращён');
-    document.getElementById('rv-rej').onclick = () => sendDecision('Отклонён');
-  }
-
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
     document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'LIVE · ' : '') + 'rev #' + (state.cloudRev || state.rev) + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '') + (state.lastRttMs ? ' (' + state.lastRttMs + ' мс)' : '');
@@ -354,9 +299,7 @@ function initTheme(btnId) {
     const totalRev = state.cash.reduce((a,c)=>a+c.revenue,0);
     const totalExp = state.expenses.reduce((a,e)=>a+e.amount,0);
     const openIncs = state.incidents.filter(i=>i.status!=='Решена').length;
-    const _cChk = document.getElementById('cnt-chk'); if (_cChk) _cChk.textContent = state.checklists.length;
-    const _uNtf = (state.notifications || []).filter(n => n && !n.read).length;
-    const _cNtf = document.getElementById('cnt-ntf'); if (_cNtf) _cNtf.textContent = _uNtf;
+    document.getElementById('cnt-chk').textContent = state.checklists.length;
     document.getElementById('cnt-fin').textContent = state.cash.length;
     document.getElementById('cnt-inc').textContent = openIncs;
     document.querySelectorAll('#admin-nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
@@ -378,8 +321,8 @@ function initTheme(btnId) {
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Выручка (${state.cash.length} смен)</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div>
           <div class="kpi"><div class="kpi-lbl">Чеки и средний чек</div><div class="kpi-val" style="color:${actualAvgCheck>=targetAvgCheck?'var(--good)':'var(--accent)'}">${actualAvgCheck} ₽</div><div class="kpi-meta">Чеков: <b>${totalChecks}</b> / ${totalPlanChecks} (${checksPlanPct}%) · Мин. ср. чек (${todayPlan.day}): ${todayPlan.avg} ₽</div></div>
-          <div class="kpi"><div class="kpi-lbl">Операционная прибыль</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${state.checklists.length}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">Всего: ${state.incidents.length} · Отчётов на пров.: ${(state.financialSummary && state.financialSummary.pendingReportsCount) || 0}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${state.checklists.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">Всего: ${state.incidents.length} · Задач: ${state.tasks.length}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Динамика выручки по индивидуальному плану дня</h2><div class="card-sub">Каждый столбец сравнивается с планом своего дня недели (Пн–Вс) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)} / ${todayPlan.checks} чек. / ≥${todayPlan.avg} ₽</div></div></div>
@@ -488,128 +431,15 @@ function initTheme(btnId) {
       return;
     }
 
-    if (tab === 'sales') {
-      const totalCash = state.cash.reduce((a,c)=>a+(Number(c.cash)||0), 0);
-      const totalCard = state.cash.reduce((a,c)=>a+(Number(c.card)||0), 0);
-      const tot = Math.max(1, totalCash + totalCard);
-      const cardPct = Math.round((totalCard / tot) * 100);
-      const totChecks = state.cash.reduce((a,c)=>a+(Number(c.checks)||0), 0);
-      const avgChk = totChecks > 0 ? Math.round((totalCash + totalCard) / totChecks) : 0;
-      const topMap = {};
-      state.cash.forEach(c => {
-        String(c.topItems || '').split(/[,;]+/).map(x => x.trim()).filter(Boolean).forEach(nm => { topMap[nm] = (topMap[nm] || 0) + 1; });
-      });
-      const topArr = Object.entries(topMap).sort((a,b)=>b[1]-a[1]).slice(0, 8);
-      root.innerHTML = `
-        <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-lbl">Наличные</div><div class="kpi-val">${fmtRub(totalCash)}</div><div class="kpi-meta">${100-cardPct}% от оборота</div></div>
-          <div class="kpi"><div class="kpi-lbl">Безнал (терминал)</div><div class="kpi-val">${fmtRub(totalCard)}</div><div class="kpi-meta">${cardPct}% от оборота</div></div>
-          <div class="kpi"><div class="kpi-lbl">Средний чек</div><div class="kpi-val">${fmtRub(avgChk)}</div><div class="kpi-meta">Норма: от ${fmtRub(state.minAvgCheck||35)}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Всего чеков</div><div class="kpi-val">${totChecks}</div><div class="kpi-meta">Смен в выборке: ${state.cash.length}</div></div>
-        </div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Продажи по сменам (деньги отдельно от количества чеков)</h2></div></div>
-          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Бариста</th><th>Выручка</th><th>Нал / Безнал</th><th>Чеков</th><th>Ср. чек</th></tr></thead><tbody>
-            ${state.cash.slice(0,15).map(c => `<tr><td><b>${esc(c.date)}</b></td><td>${esc(c.barista||c.who||'—')}</td><td><b>${fmtRub(c.revenue)}</b></td><td style="color:var(--muted)">${fmtRub(c.cash)} / ${fmtRub(c.card)}</td><td>${c.checks||0}</td><td>${c.checks?fmtRub(Math.round(c.revenue/c.checks)):'—'}</td></tr>`).join('')}
-          </tbody></table></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Популярные напитки из отчётов</h2></div></div>
-          <div class="stack">${topArr.length ? topArr.map(([nm, cnt]) => `<div class="row-item"><div class="row-main"><div class="row-title">${esc(nm)}</div></div><span class="badge accent">${cnt} смен в хитах</span></div>`).join('') : '<div style="color:var(--muted);font-size:13px;">Данные по хитам появятся после импорта продаж или сдачи кассы.</div>'}</div>
-        </div>`;
-      return;
-    }
-
-    if (tab === 'goods') {
-      const inv = state.inventory || [];
-      const lowCnt = inv.filter(x => Number(x.qty||0) <= Number(x.minQty||2)).length;
-      root.innerHTML = `
-        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-          <button class="chip-btn ${goodsSub==='ttk'?'accent':''}" id="g-ttk">☕ Меню и техкарты (${state.ttk.length})</button>
-          <button class="chip-btn ${goodsSub==='inv'?'accent':''}" id="g-inv">📦 Остатки и склад (${inv.length}${lowCnt?' · ⚠️ '+lowCnt:''})</button>
-        </div>
-        ${goodsSub === 'ttk' ? `
-          <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Техкарты ILLY (${state.ttk.length})</h2></div><button class="chip-btn accent" id="k-add">+ Техкарта</button></div>
-            <div class="tbl-wrap"><table><thead><tr><th>Напиток</th><th>Объём</th><th>Цена</th><th>Себест.</th><th>Маржа</th><th></th></tr></thead><tbody>
-              ${state.ttk.map(k=>`<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td>${k.cost} ₽</td><td><span class="badge good">${k.price?Math.round(((k.price-k.cost)/k.price)*100):0}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
-            </tbody></table></div>
-          </div>
-        ` : `
-          <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Складские остатки</h2><div class="card-sub">Контроль минимального запаса и быстрое пополнение / списание</div></div><button class="chip-btn accent" id="inv-add">+ Ингредиент</button></div>
-            <div class="stack">
-              ${inv.length ? inv.map((it, idx) => {
-                const isLow = Number(it.qty||0) <= Number(it.minQty||2);
-                return `<div class="row-item"><div class="row-main"><div class="row-title">${esc(it.name)} ${isLow?'<span class="badge bad">⚠️ Низкий остаток</span>':'<span class="badge good">В норме</span>'}</div><div class="row-sub">Остаток: <b>${it.qty} ${esc(it.unit||'шт')}</b> · Мин. порог: ${it.minQty||2} ${esc(it.unit||'шт')}</div></div><div style="display:flex;gap:6px;"><button class="chip-btn good" data-ip="${idx}">+1</button><button class="chip-btn bad" data-im="${idx}">−1</button></div></div>`;
-              }).join('') : '<div style="color:var(--muted);font-size:13px;padding:12px 0;">Добавьте ключевые ингредиенты (зерно Illy, молоко, стаканы, сиропы) для контроля остатков.</div>'}
-            </div>
-          </div>
-        `}`;
-      document.getElementById('g-ttk').onclick = () => { goodsSub = 'ttk'; render(); };
-      document.getElementById('g-inv').onclick = () => { goodsSub = 'inv'; render(); };
-      if (goodsSub === 'ttk') {
-        document.getElementById('k-add').onclick = () => guard('Новая ТТК', () => openTtkModal(null));
-        root.querySelectorAll('[data-ek]').forEach(b => b.onclick = () => guard('Изменить ТТК', () => openTtkModal(b.dataset.ek)));
-      } else {
-        const persistInv = async () => {
-          saveSharedState(state, 'Администратор', '');
-          if (window.CoffeeCloudV94) await window.CoffeeCloudV94.saveInventory(state.inventory);
-          render();
-        };
-        document.getElementById('inv-add').onclick = () => guard('Новый ингредиент', () => {
-          openModal('Добавить на склад', `
-            <div class="field"><label>Название</label><input id="in-n" placeholder="Зерно Illy 250г / Молоко 1л"></div>
-            <div class="grid-3">
-              <div class="field"><label>Остаток</label><input id="in-q" type="number" min="0" value="10"></div>
-              <div class="field"><label>Мин. порог</label><input id="in-m" type="number" min="0" value="3"></div>
-              <div class="field"><label>Ед. изм.</label><input id="in-u" value="шт"></div>
-            </div>
-            <button class="btn-lg primary" id="in-s">Сохранить на склад</button>
-          `);
-          document.getElementById('in-s').onclick = async () => {
-            const nm = document.getElementById('in-n').value.trim(); if (!nm) return;
-            state.inventory = state.inventory || [];
-            state.inventory.push({ id: 'inv_' + Date.now(), name: nm, qty: Number(document.getElementById('in-q').value)||0, minQty: Number(document.getElementById('in-m').value)||2, unit: document.getElementById('in-u').value.trim()||'шт' });
-            closeModal(); await persistInv(); showToast('✓ Добавлено на склад');
-          };
-        });
-        root.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => guard('Пополнение', async () => { state.inventory[Number(b.dataset.ip)].qty = Number(state.inventory[Number(b.dataset.ip)].qty||0) + 1; await persistInv(); }));
-        root.querySelectorAll('[data-im]').forEach(b => b.onclick = () => guard('Списание', async () => { state.inventory[Number(b.dataset.im)].qty = Math.max(0, Number(state.inventory[Number(b.dataset.im)].qty||0) - 1); await persistInv(); }));
-      }
-      return;
-    }
-
-    if (tab === 'manage') {
-      const mBar = `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-        <button class="chip-btn ${mgmtSub==='checklists'?'accent':''}" data-ms="checklists">📋 Чек-листы и смены (${state.checklists.length})</button>
-        <button class="chip-btn ${mgmtSub==='incidents'?'accent':''}" data-ms="incidents">⚠️ Поломки (${openIncs})</button>
-        <button class="chip-btn ${mgmtSub==='team'?'accent':''}" data-ms="team">👥 Сотрудники (${state.staff.length})</button>
-        <button class="chip-btn ${mgmtSub==='settings'?'accent':''}" data-ms="settings">⚙️ Настройки, Telegram и аудит</button>
-      </div>`;
-      const savedTab = tab;
-      tab = mgmtSub;
-      render();
-      tab = savedTab;
-      const barWrap = document.createElement('div');
-      barWrap.innerHTML = mBar;
-      root.insertBefore(barWrap.firstElementChild, root.firstChild);
-      root.querySelectorAll('[data-ms]').forEach(b => b.onclick = () => { mgmtSub = b.dataset.ms; render(); });
-      document.querySelectorAll('#admin-nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'manage'));
-      return;
-    }
-
     if (tab === 'finances') {
-      const revByDate = {};
-      Object.values(state.cashReviews || {}).forEach(r => { if (r && r.date) revByDate[r.date] = r; });
-      const repList = state.cash.slice(0, 12).map(c => Object.assign({ reportId: 'REP-' + String(c.date||'').replace(/-/g,''), status: 'На проверке' }, c, revByDate[c.date] || {}));
       root.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Кассовые отчёты и проверка владельцем (${repList.length})</h2><div class="card-sub">Подтверждение, возврат на уточнение или отклонение с мгновенным уведомлением бариста</div></div></div>
-          <div class="tbl-wrap"><table><thead><tr><th>№ / Дата</th><th>Бариста</th><th>Выручка</th><th>Статус проверки</th><th></th></tr></thead><tbody>
-            ${repList.map((r, i) => `<tr><td><b>${esc(r.reportId)}</b><div style="font-size:11px;color:var(--muted)">${esc(r.date)}</div></td><td>${esc(r.barista||r.who||'—')}</td><td><b>${fmtRub(r.revenue)}</b>${r.photoUrl?` <a href="${esc(r.photoUrl)}" target="_blank" class="badge accent">📷</a>`:''}</td><td><span class="badge ${r.status==='Подтверждён'?'good':(r.status==='Возвращён'||r.status==='Отклонён'?'bad':'warn')}">${esc(r.status)}</span></td><td><button class="chip-btn accent" data-rvc="${i}">Проверить</button></td></tr>`).join('')}
-          </tbody></table></div>
-        </div>` + `
+          <div class="card-head">
+            <div><h2 class="card-title">Импорт отчётов POS (CSV: Продажи и Транзакции)</h2><div class="card-sub">Выберите один или сразу несколько файлов за смены — система сама распознает номенклатуру, чеки, нал/безнал, бариста и запишет в Google Таблицу (Касса, Продажи, Транзакции) без дублей</div></div>
+            <label class="chip-btn accent" style="cursor:pointer;">📥 Выбрать CSV файлы<input id="csv-imp-in" type="file" accept=".csv,text/csv" multiple style="display:none;"></label>
+          </div>
+          <div id="csv-imp-preview" style="display:none;margin-top:10px;"></div>
+        </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Кассовые смены (${state.cash.length})</h2><div class="card-sub">Автоматическое сравнение каждой смены с планом её дня недели (выручка, чеки, мин. средний чек)</div></div></div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Выручка / План</th><th>Чеков / План</th><th>Ср. чек / Мин.</th><th>Нал / Безнал</th><th>Бариста</th></tr></thead><tbody>
@@ -640,7 +470,53 @@ function initTheme(btnId) {
             </tbody></table></div>
           </div>
         </div>`;
-      root.querySelectorAll('[data-rvc]').forEach(b => b.onclick = () => guard('Проверка кассового отчёта', () => openCashReviewModal(repList[Number(b.dataset.rvc)])));
+      const csvIn = document.getElementById('csv-imp-in');
+      if (csvIn) csvIn.onchange = async (ev) => {
+        const files = Array.from(ev.target.files || []);
+        if (!files.length || !window.CoffeePosCsvV93) return;
+        const loaded = await Promise.all(files.map(f => f.text().then(text => ({ name: f.name, text }))));
+        const staffNames = (state.staff || []).map(s => s.name).filter(Boolean);
+        const batch = window.CoffeePosCsvV93.parsePosBatch(loaded, staffNames);
+        const box = document.getElementById('csv-imp-preview');
+        if (!box) return;
+        box.style.display = 'block';
+        if (!batch.days.length) {
+          box.innerHTML = `<div class="card-soft" style="border:1px solid var(--bad);">Не удалось распознать CSV: ${esc((batch.errors[0] && batch.errors[0].error) || 'проверьте формат')}</div>`;
+          return;
+        }
+        box.innerHTML = `
+          <div class="card-soft" style="border:1px solid var(--accent);padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+              <div><b>Готово к записи в Google Таблицу:</b> ${batch.summary.daysCount} дн. · Выручка <b>${fmtRub(batch.summary.totalRevenue)}</b> (Нал ${fmtRub(batch.summary.totalCash)} / Безнал ${fmtRub(batch.summary.totalCard)}) · Чеков: <b>${batch.summary.totalChecks}</b> · Позиций продаж: <b>${batch.summary.totalProducts}</b></div>
+              <button class="chip-btn good" id="csv-imp-save">✓ Загрузить в Google Таблицу</button>
+            </div>
+            <div class="stack" style="gap:6px;">
+              ${batch.days.map(d => `<div style="font-size:12.5px;padding:6px 8px;border-radius:8px;background:var(--surface);">
+                <b>${d.date}</b> · ${esc(d.barista)} · <b>${fmtRub(d.revenue)}</b> (Нал ${fmtRub(d.cash)} / Безнал ${fmtRub(d.card)}) · Чеков: ${d.checks} · Позиций: ${d.products.length} · Кофе: ${d.coffeeQty} шт.
+                ${d.warnings.length ? `<div style="color:var(--warn);font-size:11.5px;margin-top:3px;">⚠️ ${d.warnings.map(esc).join(' · ')}</div>` : ''}
+              </div>`).join('')}
+            </div>
+          </div>`;
+        document.getElementById('csv-imp-save').onclick = () => guard('Импорт CSV в Google Таблицу', async () => {
+          const btn = document.getElementById('csv-imp-save');
+          if (btn) { btn.disabled = true; btn.textContent = '⏳ Загрузка...'; }
+          const res = window.CoffeeCloudV93 ? await window.CoffeeCloudV93.importPosBatch(batch.days, 'sum') : { ok: false };
+          if (res && res.ok) {
+            batch.days.forEach(d => {
+              const ex = state.cash.find(c => c.date === d.date);
+              if (ex) { ex.cash = d.cash; ex.card = d.card; ex.revenue = d.revenue; ex.checks = d.checks; ex.barista = d.barista; ex.topItems = d.topItems; ex.coffeeQty = d.coffeeQty; }
+              else state.cash.unshift({ date: d.date, cash: d.cash, card: d.card, revenue: d.revenue, checks: d.checks, writeoff: 0, topItems: d.topItems, barista: d.barista, coffeeQty: d.coffeeQty });
+            });
+            state.cash.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+            showToast('✓ Импортировано: ' + res.count + ' дн., чеков: ' + (res.txAdded || 0) + (res.txSkipped ? (' (дублей пропущено: ' + res.txSkipped + ')') : ''));
+            box.style.display = 'none';
+            render();
+          } else {
+            if (btn) { btn.disabled = false; btn.textContent = '✓ Загрузить в Google Таблицу'; }
+            showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи с сервером'));
+          }
+        });
+      };
       document.getElementById('e-add').onclick = () => guard('Добавить расход', () => {
         openModal('Новый расход', `
           <div class="field"><label>Категория</label><select id="ec">${optList(EXP_CATS, EXP_CATS[0])}</select></div>
@@ -860,7 +736,6 @@ function initTheme(btnId) {
   window.addEventListener('storage', (e) => { if (e.key === STORE_KEY) onRemoteSync(); });
 
   document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
-  const _bn = document.getElementById('btn-notifs'); if (_bn) _bn.onclick = openNotificationsModal;
   document.getElementById('btn-lock').onclick = () => { if (adminUnlocked) { adminUnlocked = false; render(); } else guard('Вход', () => {}); };
   document.getElementById('sim-time').onchange = (e) => { state.simTime = e.target.value; saveSharedState(state, 'Симулятор', 'Время смены: ' + state.simTime); render(); };
   let cloudLoop = null;

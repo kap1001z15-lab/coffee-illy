@@ -1,9 +1,9 @@
-/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v93.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
-  const SESSION_KEY = 'coffee_illy_v94_session';
+  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
+  const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
     const d = new Date();
@@ -363,30 +363,6 @@
       state.autopilotEnabled = !!data.autopilotEnabled;
       changed = true;
     }
-    if (data.cashReviews && typeof data.cashReviews === 'object') {
-      state.cashReviews = data.cashReviews;
-      changed = true;
-    }
-    if (data.activeShift && typeof data.activeShift === 'object') {
-      state.activeShift = data.activeShift;
-      changed = true;
-    }
-    if (data.financialSummary && typeof data.financialSummary === 'object') {
-      state.financialSummary = data.financialSummary;
-      changed = true;
-    }
-    if (Array.isArray(data.notifications)) {
-      state.notifications = data.notifications;
-      changed = true;
-    }
-    if (Array.isArray(data.inventory)) {
-      state.inventory = data.inventory;
-      changed = true;
-    }
-    if (Array.isArray(data.announcements)) {
-      state.announcements = data.announcements;
-      changed = true;
-    }
     if (data.serverTime) {
       state.serverTime = String(data.serverTime);
       changed = true;
@@ -714,6 +690,16 @@
   async function runChecklistNotificationsNow(opts) {
     return gasPost('run_checklist_notifications_now', opts || {});
   }
+  async function importPosBatch(days, mergeMode) {
+    const res = await gasPost('batch_submit_cash', {
+      days: days || [],
+      mergeMode: mergeMode || 'sum'
+    });
+    if (res && res.ok && _syncCallbacks && _syncCallbacks.pullNow) {
+      _syncCallbacks.pullNow(true);
+    }
+    return res;
+  }
 
   const API_OBJ = {
     localISO: localISO,
@@ -737,33 +723,8 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
-    reviewCashReport: async function (opts) { return gasPost('review_cash_report', opts || {}); },
-    markNotificationRead: async function (opts) { return gasPost('mark_notification_read', opts || {}); },
-    saveInventory: async function (items) { return gasPost('save_inventory', { items: items || [] }); },
-    ackAnnouncement: async function (id) { return gasPost('ack_announcement', { id: id }); },
-    submitCashReport: async function (payload) {
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        enqueueOp('submit_cash', payload);
-        return { ok: true, queued: true, reportStatus: 'Ожидает отправки' };
-      }
-      try {
-        const res = await gasPost('submit_cash', payload);
-        if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
-        return res;
-      } catch (err) {
-        enqueueOp('submit_cash', payload);
-        return { ok: true, queued: true, reportStatus: 'Ожидает отправки', error: String(err && err.message || err) };
-      }
-    },
-    getSyncStatusInfo: function () {
-      const pending = readOutbox().length;
-      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
-      if (offline) return { code: 'offline', label: pending ? ('Офлайн · в очереди ' + pending) : 'Нет интернета', cls: 'warn' };
-      if (pending > 0) return { code: 'pending', label: 'Ожидает отправки (' + pending + ')', cls: 'warn' };
-      return { code: 'synced', label: 'Синхронизировано', cls: 'good' };
-    }
+    importPosBatch: importPosBatch
   };
-  window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
 })();
