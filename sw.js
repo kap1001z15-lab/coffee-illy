@@ -1,19 +1,5 @@
-const CACHE_NAME = 'coffee-illy-v94-final-prod';
-const CORE = [
-  './',
-  './index.html',
-  './owner.html',
-  './config.js',
-  './version.js',
-  './css/m3-soft-v94.css',
-  './js/icons-v94.js',
-  './js/cloud-sync-v94.js',
-  './js/camera-v92.js',
-  './js/pos-csv-parser-v93.js',
-  './manifest.webmanifest',
-  './icons/icon.svg',
-  './icons/icon-192.png'
-];
+const CACHE_NAME = 'coffee-illy-v94-m3soft-prod';
+const CORE = ['./', './index.html', './owner.html', './version.js', './config.js', './js/pos-csv-parser-v93.js', './js/cloud-sync-v94.js', './js/camera-v92.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
