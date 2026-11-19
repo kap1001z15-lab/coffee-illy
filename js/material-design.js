@@ -4,7 +4,7 @@
    ========================================================================= */
 (function initCoffeeMaterialDesign3() {
   if (typeof window === 'undefined') return;
-  if (window.CoffeeMaterialDesign3 && window.CoffeeMaterialDesign3.version === 'M3-v84') return;
+  if (window.CoffeeMaterialDesign3 && window.CoffeeMaterialDesign3.version === 'M3-v89') return;
 
   const SVG_ICONS = {
     check: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>',
@@ -266,7 +266,7 @@
 
   window.CoffeeMaterialDesign3 = {
     syncThemeColorMeta,
-    version: 'M3-v86',
+    version: 'M3-v89',
     isEnabled: () => true,
     prefersReducedMotion,
     attachRipple,

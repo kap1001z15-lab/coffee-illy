@@ -661,7 +661,12 @@ $('panel').addEventListener('click',(e)=>{
       {k:'name',label:'Название чек-листа',ph:'Например: Лайн Чек 3 / Вечерний обход'},
       {k:'openTime',label:'Время открытия доступа (ЧЧ:ММ)',type:'time'},
       {k:'deadline',label:'Дедлайн закрытия доступа (ЧЧ:ММ)',type:'time'}
-    ],{name:'Лайн Чек 3',openTime:'17:00',deadline:'18:00'},(o)=>call('add_checklist_block',o));
+    ],{name:'Лайн Чек 3',openTime:'17:00',deadline:'18:00'},async(o)=>{
+      const res=await call('add_checklist_block',o);
+      if(typeof getUDB==='function'&&D) D.checklistBlocks=getUDB().checklistBlocks;
+      if($('panel')) $('panel')._lastHtml='';
+      return res;
+    });
     return;
   }
   if(a==='chkblk-del'){

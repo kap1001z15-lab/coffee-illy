@@ -622,3 +622,68 @@ html body #ownerAttentionCard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* =========================================================================
+   MATERIAL 3 SOFT (Вариант 3) — Мягкие тональные поверхности, 28px карточки,
+   pill-кнопки и чистая навигация без сдвига при смене темы
+   ========================================================================= */
+.card,
+.panel,
+.kpi,
+.box,
+.step-card,
+.lock-box,
+.m3-card,
+dialog {
+  border-radius: var(--md-sys-shape-corner-xl, 28px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+button.p,
+button.b,
+.btn,
+.btn-primary,
+.btn-tonal,
+.tag,
+.chip,
+.pill,
+.st-pill {
+  border-radius: var(--r-full, 999px);
+}
+
+button.p,
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+
+.bottom-nav,
+.term-bnav,
+nav.bnav {
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  min-height: var(--bottom-nav-h, 60px);
+}
+
+.bottom-nav button.active,
+.bottom-nav button[aria-selected="true"],
+.term-bnav button.active,
+.term-bnav button[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--r-full, 999px);
+}
+
+#tabs button,
+[role="tablist"] [role="tab"] {
+  border-radius: var(--r-full, 999px);
+}
+
+[role="tablist"] [role="tab"][aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}

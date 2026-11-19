@@ -56,10 +56,10 @@ function RUN_ONE_CLICK_SETUP() {
   var trigRes = setupAutonomousTriggers_(ss);
   var rev = bumpDataRev_();
   try { onOpen(); } catch (_) {}
-  var msg = '✅ СИСТЕМА КОФЕЙНЯ v87 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v89 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
   try { Logger.log(msg); } catch (_) {}
   try { console.log(msg); } catch (_) {}
-  try { ss.toast(msg, '☕ Кофейня ERP v87', 8); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v89', 8); } catch (_) {}
   return { ok: true, message: msg, rev: rev, drive: folderStatus };
 }
 
@@ -155,11 +155,11 @@ function doGet(e) {
         ok: true,
         rev: curRev,
         serverTs: Date.now(),
-        serverVersion: 'v87', specVersion: '4.0',
+        serverVersion: 'v89', specVersion: '4.0',
         api: 2
       });
     }
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v87', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v89', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
     ss = getTargetSpreadsheet_();
     ensureSheets_(ss);
 
@@ -1150,14 +1150,44 @@ function sendTelegramServerAlert_(ss, payload) {
     if (!token || !chatRaw) {
       return { ok: false, skipped: true, reason: 'Telegram не настроен на сервере' };
     }
-    var chats = String(chatRaw).split(/[,;\s]+/).map(function(x) { return x.trim(); }).filter(Boolean);
+    var chats = [];
+    if (Array.isArray(payload.chatIds) && payload.chatIds.length) {
+      chats = payload.chatIds.map(function(x) { return String(x || '').trim(); }).filter(Boolean);
+    } else {
+      chats = String(chatRaw).split(/[,;\s]+/).map(function(x) { return x.trim(); }).filter(Boolean);
+    }
     var text = String(payload.text || payload.message || '').trim();
     if (!text) return { ok: false, reason: 'Пустой текст уведомления' };
+
+    // Анти-спам дедупликация одинаковых уведомлений (30 мин) без зависимости от Utilities.base64EncodeWebSafe
+    if (!payload.force && !payload.skipDedup && payload.dedup !== false) {
+      try {
+        var rawSig = String(payload.type || 'alert') + '|' + String(payload.block || '') + '|' + text.slice(0, 80);
+        var h = 5381;
+        for (var hi = 0; hi < rawSig.length; hi++) { h = ((h << 5) + h + rawSig.charCodeAt(hi)) & 0x7fffffff; }
+        var dedupKey = 'tg_dedup_' + h.toString(36);
+        var cache = CacheService.getScriptCache();
+        if (cache && cache.get(dedupKey)) {
+          return { ok: true, deduplicated: true, sentTo: 0, totalChats: chats.length };
+        }
+        if (cache) cache.put(dedupKey, '1', 1800);
+      } catch (_) {}
+    }
+
+    // Автоматически добавляем inline-кнопку перехода в нужный чек-лист, если задан WEBAPP_URL
+    var sendOpts = Object.assign({}, payload);
+    var baseAppUrl = String(payload.webappUrl || map.WEBAPP_URL || '').trim();
+    if (baseAppUrl && !sendOpts.reply_markup && !sendOpts.entityId) {
+      var blkParam = payload.block ? ('?block=' + encodeURIComponent(String(payload.block))) : '';
+      sendOpts.reply_markup = {
+        inline_keyboard: [[{ text: payload.buttonText || ('📋 Открыть ' + (payload.block || 'чек-лист')), url: baseAppUrl + blkParam }]]
+      };
+    }
 
     var sentCount = 0;
     var deliveries = [];
     chats.forEach(function(chatId) {
-      var dRes = sendTelegramVerifiedV82_(chatId, text, payload);
+      var dRes = sendTelegramVerifiedV82_(chatId, text, sendOpts);
       deliveries.push(dRes);
       if (dRes && dRes.ok) sentCount++;
     });
@@ -1185,6 +1215,27 @@ function saveSettingSecure_(ss, body) {
     }
     return { ok: true };
   }
+  // Валидация значений параметров по здоровой логике (v87.13)
+  var numLimits = {
+    PLAN: [0, 10000000],
+    MIN_AVG_CHECK: [0, 100000],
+    PLAN_CHECKS: [0, 100000],
+    WO_NORM: [0, 100],
+    INIT_COUNTER: [0, 10000000]
+  };
+  if (numLimits[nk] && val !== '') {
+    var numVal = Number(val.replace(',', '.'));
+    if (!isFinite(numVal) || numVal < numLimits[nk][0] || numVal > numLimits[nk][1]) {
+      throw new Error('INVALID_SETTING_VALUE: Некорректное значение для ' + nk + ' (' + val + ')');
+    }
+    body = Object.assign({}, body, { id: nk, value: String(numVal) });
+  } else if (/^(OPEN_START|DEADLINE|LC1_START|LC1_DEADLINE|LC2_START|LC2_DEADLINE|DAY_START|DAY_DEADLINE|CLOSE_START|CLOSE_DEADLINE|CASH_START|CASH_DEADLINE)$/.test(nk) && val !== '') {
+    if (!/^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(val)) {
+      throw new Error('INVALID_TIME_FORMAT: Ожидается формат ЧЧ:ММ для ' + nk);
+    }
+  } else if (/^[=+\-@]/.test(val) && !/^https?:\/\//i.test(val)) {
+    body = Object.assign({}, body, { id: nk, value: "'" + val });
+  }
   return saveSetting_(ss, body);
 }
 
@@ -1202,7 +1253,7 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
   return {
     ok: true,
     v: res.v || 55,
-    serverVersion: 'v87', specVersion: '4.0',
+    serverVersion: 'v89', specVersion: '4.0',
     location: res.location || 'Кофейня №1',
     staff: safeStaff,
     serverTime: res.serverTime,
@@ -1274,7 +1325,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     ok: true,
     v: full.v || 55,
     rev: getDataRev_(),
-    serverVersion: 'v87', specVersion: '4.0',
+    serverVersion: 'v89', specVersion: '4.0',
     profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
     location: full.location || 'Кофейня №1',
     photoAll: full.photoAll || 'нет',
@@ -1286,6 +1337,18 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     closeDeadline: full.closeDeadline,
     checklistBlocks: full.checklistBlocks || [],
     deadlineExtensions: full.deadlineExtensions || {},
+    shiftCompletedBlocksToday: (function() {
+      var mapDone = {};
+      var todayStr = isoDate_();
+      (Array.isArray(full.checklists) ? full.checklists : []).forEach(function(c) {
+        if (!c || String(c.date || '').slice(0, 10) !== todayStr) return;
+        var bName = String(c.block || '').trim();
+        if (!bName) return;
+        if (bName.toLowerCase() === 'день') bName = 'Лайн Чек 1';
+        mapDone[bName] = { date: todayStr, time: String(c.time || ''), status: String(c.status || 'В срок') };
+      });
+      return mapDone;
+    })(),
     announcements: full.announcements || [],
     staff: safeStaff,
     ttk: safeTtk,
@@ -2773,9 +2836,27 @@ function syncChecklistBlocksSheet_(ss, blocks) {
 function saveChecklistBlocks_(ss, b) {
   var blocks = Array.isArray(b.blocks) ? b.blocks : [];
   syncChecklistBlocksSheet_(ss, blocks);
-  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: '{}' });
+  // Сохраняем активные сегодняшние разблокировки (forceOpen) для существующих блоков вместо обнуления
+  var map = getSettingsMap_(ss);
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (_) {}
+  var todayStr = isoDate_();
+  var validNames = {};
+  blocks.forEach(function(x) { if (x && x.name) validNames[String(x.name).trim()] = true; });
+  var keptExt = {};
+  Object.keys(extMap).forEach(function(k) {
+    var ext = extMap[k];
+    if (!ext || !ext.forceOpen) return;
+    var idxC = k.indexOf(':');
+    if (idxC < 0) return;
+    var dtPart = k.slice(0, idxC);
+    var blkPart = k.slice(idxC + 1);
+    if (dtPart >= todayStr && validNames[blkPart]) keptExt[k] = ext;
+  });
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(keptExt) });
+  bumpDataRev_();
   appendAudit_(ss, 'Администратор', 'Сохранение таймлайна чек-листов в таблицу', 'Блоков: ' + blocks.length);
-  return { ok: true, checklistBlocks: blocks };
+  return { ok: true, checklistBlocks: blocks, deadlineExtensions: keptExt, rev: getDataRev_() };
 }
 
 function addChecklistBlock_(ss, b) {
@@ -2798,8 +2879,9 @@ function addChecklistBlock_(ss, b) {
     if (cashIdx >= 0) blocks.splice(cashIdx, 0, newBlk);
     else blocks.push(newBlk);
     syncChecklistBlocksSheet_(ss, blocks);
+    bumpDataRev_();
   }
-  return { ok: true, checklistBlocks: blocks };
+  return { ok: true, checklistBlocks: blocks, rev: getDataRev_() };
 }
 
 function deleteChecklistBlock_(ss, b) {
@@ -2944,8 +3026,9 @@ function extendDeadline_(ss, b) {
     at: tm
   };
   saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+  bumpDataRev_();
   appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
-  return { ok: true, deadlineExtensions: extMap };
+  return { ok: true, deadlineExtensions: extMap, rev: getDataRev_() };
 }
 
 function saveBlockWindows_(ss, b) {
@@ -3592,17 +3675,23 @@ function getChecklistsLogFromSheet_(ss) {
   if (!sh) return [];
   var rows = sh.getDataRange().getValues();
   var list = [];
-  for (var i = Math.max(1, rows.length - 60); i < rows.length; i++) {
+  var seenLogKeys = {};
+  for (var i = Math.max(1, rows.length - 1000); i < rows.length; i++) {
     var r = rows[i];
     if (!r[0] || !r[2]) continue;
     var phs = [];
     try { phs = JSON.parse(String(r[5] || '[]')); } catch (_) {}
     var statusStr = String(r[7] || 'В срок');
+    var rDate = fmtIso_(r[0]);
+    var rTime = fmtTime_(r[1]);
+    var rBlk = String(r[2] || 'Открытие');
+    var rWho = String(r[3] || 'Бариста');
+    seenLogKeys[rDate + '|' + rTime + '|' + rBlk + '|' + rWho.toLowerCase()] = true;
     list.push({
-      date: fmtIso_(r[0]),
-      time: fmtTime_(r[1]),
-      block: String(r[2] || 'Открытие'),
-      who: String(r[3] || 'Бариста'),
+      date: rDate,
+      time: rTime,
+      block: rBlk,
+      who: rWho,
       problems: Number(r[4]) || 0,
       photos: Array.isArray(phs) ? phs : [],
       deadline: String(r[6] || '08:30'),
@@ -3617,8 +3706,12 @@ function getChecklistsLogFromSheet_(ss) {
       var lr = lRows[j];
       if (!lr[1] || !lr[5]) continue;
       var lDate = fmtIso_(lr[1]);
+      var lTime = fmtTime_(lr[2]);
       var lBlk = String(lr[5] || 'Открытие');
       var lWho = String(lr[4] || 'Бариста');
+      var legKey = lDate + '|' + lTime + '|' + lBlk + '|' + lWho.toLowerCase();
+      if (seenLogKeys[legKey]) continue;
+      seenLogKeys[legKey] = true;
       var lPhs = [];
       try { lPhs = JSON.parse(String(lr[8] || '[]')); } catch (_) {}
       list.push({
@@ -3778,8 +3871,24 @@ function submitChecklist_(ss, b) {
       saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
     }
   } catch (_) {}
+  try {
+    if (shI && shI.getLastRow() > 1) {
+      var iRows = shI.getDataRange().getValues();
+      var subBlkLow = String(b.block || 'Открытие').trim().toLowerCase();
+      for (var ri = 1; ri < iRows.length; ri++) {
+        var rId = String(iRows[ri][0] || '');
+        var rDt = String(iRows[ri][1] || '').slice(0, 10);
+        var rStep = String(iRows[ri][3] || '').toLowerCase();
+        var rSt = String(iRows[ri][6] || '');
+        if (rId.indexOf('INC-LATE-') === 0 && rDt === dt && rSt !== 'Решена' && rStep.indexOf(subBlkLow) >= 0) {
+          shI.getRange(ri + 1, 7).setValue('Решена');
+        }
+      }
+    }
+  } catch (_) {}
+  bumpDataRev_();
   appendAudit_(ss, b.userName || 'Бариста', 'Сдан чек-лист «' + (b.block || 'Открытие') + '»', 'Проблем: ' + probs.length + (b.isLate ? ' (ПРОСРОЧЕНО)' : ' (в срок)'));
-  return { ok: true };
+  return { ok: true, rev: getDataRev_() };
 }
 
 function reportIncident_(ss, b) {
@@ -4097,7 +4206,7 @@ function buildTelegramInteractiveButtonsV80_(entityId, webappUrl) {
 }
 
 // === V82 SECURITY & AUDIT FIXES (Document 1: P0 Telegram HMAC Auth, P0 Factory PIN Lock, P1 Private Drive Photos, P1 Verified Telegram Delivery) ===
-var COFFEE_SERVER_VERSION_V82 = 'v87';
+var COFFEE_SERVER_VERSION_V82 = 'v89';
 
 function applySecureDriveFileSharingV82_(file) {
   if (!file) return 'PRIVATE';
@@ -4282,7 +4391,9 @@ function sendTelegramVerifiedV82_(chatId, text, opts) {
     apiPayload.text = String(text || '');
     apiPayload.parse_mode = 'HTML';
   }
-  if (opts.entityId && typeof buildTelegramInteractiveButtonsV80_ === 'function') {
+  if (opts.reply_markup) {
+    apiPayload.reply_markup = opts.reply_markup;
+  } else if (opts.entityId && typeof buildTelegramInteractiveButtonsV80_ === 'function') {
     apiPayload.reply_markup = buildTelegramInteractiveButtonsV80_(opts.entityId, opts.webappUrl);
   }
   try {

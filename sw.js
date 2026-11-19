@@ -10,7 +10,6 @@ const STATIC_ASSETS = [
   './admin.html',
   './owner.html',
   './barista.html',
-  './diag.html',
   './owner_admin_app.html',
   './barista_terminal.html',
   './css/tokens.css',

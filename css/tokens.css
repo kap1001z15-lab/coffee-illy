@@ -10,25 +10,25 @@
 :root,
 [data-theme="light"] {
   /* §3.1 Палитра светлой темы (по умолчанию для обоих интерфейсов) */
-  --bg: #F5EDE3;
-  --surface: #FFFBF8;
-  --surface-2: #F1E8E1;
-  --line: #E6E1D8;
-  --ink: #241B16;
-  --ink-2: #65574F; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
-  --accent: #8B5022;
+  --bg: #FCF8F4;
+  --surface: #F4ECE4;
+  --surface-2: #EAE0D5;
+  --line: rgba(94, 65, 42, 0.12);
+  --ink: #271C15;
+  --ink-2: #6E5D51; /* Контраст >= 6.3:1 на #FFFFFF и >= 5.7:1 на #F7F5F0 (WCAG AA) */
+  --accent: #7D4E24;
   --sidebar-bg: #241B16;
   --sidebar-ink: #FFFBF8;
   --sidebar-active: #6E3F1C;
   --accent-ink: #FFFFFF;
-  --accent-soft: #EFE6E1;
+  --accent-soft: rgba(125, 78, 36, 0.14);
 
-  --good: #286B4D;
-  --good-soft: #E4F1EB;
+  --good: #266D45;
+  --good-soft: rgba(38, 109, 69, 0.13);
   --warn: #805600;
   --warn-soft: #FBF0DA;
-  --bad: #BA1A1A;
-  --bad-soft: #F8E6E3;
+  --bad: #B33A3A;
+  --bad-soft: rgba(179, 58, 58, 0.12);
   --info: #4B7AA6;
   --info-soft: #E5EEF6;
 
@@ -62,10 +62,10 @@
   --sp-7: 48px;
 
   /* §3.3 Радиусы (всего три + верх шторки) */
-  --r-sm: 8px;
-  --r-md: 14px;
+  --r-sm: 14px;
+  --r-md: 24px;
   --r-full: 999px;
-  --r-sheet: 24px;
+  --r-sheet: 28px;
 
   /* §3.3 Тени (всего две) */
   --shadow-1: 0 1px 2px rgb(38 37 34 / .05), 0 8px 24px -12px rgb(38 37 34 / .10);
@@ -75,9 +75,9 @@
   --touch-min: 48px;
   --touch-barista-lg: 56px;
   --touch-owner-sm: 36px;
-  --header-barista-h: 56px;
+  --header-barista-h: 52px;
   --header-owner-h: 64px;
-  --bottom-nav-h: 64px;
+  --bottom-nav-h: 60px;
   --owner-rail-w: 240px;
 
   /* Алиасы обратной совместимости для существующих JS-скриптов и тестов */
@@ -130,22 +130,22 @@
 
 [data-theme="dark"] {
   /* §3.1 Палитра тёмной темы */
-  --bg: #151619;
-  --surface: #202126;
-  --surface-2: #292B30;
-  --line: #363840;
-  --ink: #F3F1ED;
-  --ink-2: #C7BDB7; /* Контраст >= 6.8:1 на #1E1D1B (WCAG AA) */
-  --accent: #FFB689;
-  --accent-ink: #2E1500;
-  --accent-soft: rgb(196 154 133 / .16);
+  --bg: #171311;
+  --surface: #221D1A;
+  --surface-2: #2E2723;
+  --line: rgba(235, 214, 195, 0.12);
+  --ink: #F2E7DF;
+  --ink-2: #B8A79A; /* Контраст >= 6.8:1 на #1E1D1B (WCAG AA) */
+  --accent: #E8B88A;
+  --accent-ink: #2B1A0D;
+  --accent-soft: rgba(232, 184, 138, 0.18);
 
-  --good: #81D5A8;
-  --good-soft: rgb(82 183 136 / .16);
+  --good: #8AD6A7;
+  --good-soft: rgba(138, 214, 167, 0.16);
   --warn: #F4C66A;
   --warn-soft: rgb(224 164 88 / .16);
-  --bad: #FFB4AB;
-  --bad-soft: rgb(224 122 111 / .16);
+  --bad: #F2A2A2;
+  --bad-soft: rgba(242, 162, 162, 0.16);
   --info: #7BA7CC;
   --info-soft: rgb(123 167 204 / .16);
 

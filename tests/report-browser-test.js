@@ -40,7 +40,7 @@ if (playwrightChromium && process.env.USE_PLAYWRIGHT === '1') {
   const root = path.resolve(__dirname, '..');
 
   const vm = require('vm');
-  ['index.html', 'owner.html', 'dashboard.html', 'report.html', 'admin.html', 'diag.html'].forEach((hf) => {
+  ['index.html', 'owner.html', 'dashboard.html', 'report.html', 'admin.html'].forEach((hf) => {
     const html = fs.readFileSync(path.join(root, hf), 'utf8');
     const scripts = [...html.matchAll(/<script(?:\s+[^>]*src="([^"?]+)[^"]*"[^>]*)?>([\s\S]*?)<\/script>/gi)];
     let combined = '';

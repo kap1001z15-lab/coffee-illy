@@ -752,7 +752,7 @@ check('21. Аудит безопасности P0/P1 и полная систе�
   assert(css.includes('#FFFBF8') && css.includes('#F1E8E1') && css.includes('#241B16') && css.includes('#286B4D') && css.includes('#805600') && css.includes('#BA1A1A'), 'В css/light.css должна быть рекомендованная палитра Material Design 3 (Раздел 2.1)');
   assert(css.includes('prefers-reduced-motion: reduce') && css.includes('border-radius: 28px 28px 0 0'), 'В css/light.css должны быть мобильные Bottom Sheets и поддержка prefers-reduced-motion');
   const m3 = window.CoffeeMaterialDesign3;
-  assert(m3 && /^M3-v8[23456]$/.test(m3.version), 'Модуль window.CoffeeMaterialDesign3 должен иметь актуальную версию');
+  assert(m3 && /^M3-v8\d$/.test(m3.version), 'Модуль window.CoffeeMaterialDesign3 должен иметь актуальную версию');
   assert(m3.SYNC_STATES && m3.SYNC_STATES.local_saved && m3.SYNC_STATES.sending && m3.SYNC_STATES.server_confirmed && m3.SYNC_STATES.send_error, 'Должны поддерживаться все 4 честных состояния синхронизации (Раздел 4 п. 9)');
   assert(m3.renderEmptyState('Нет задач').includes('md3-empty-state') && m3.renderSkeleton(2).includes('md3-skeleton-line'), 'Генераторы Empty State и Skeleton Loading должны работать корректно');
 });

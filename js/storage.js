@@ -992,10 +992,32 @@ window.coffeeGetSamplePhotos = function (task) {
   ];
 };
 
+window.coffeeNormalizeBlockName = function (block) {
+  const s = String(block || '').trim().replace(/\s+/g, ' ');
+  const low = s.toLowerCase();
+  if (low === 'касса') return 'Касса';
+  if (low === 'день') return 'Лайн Чек 1';
+  if (low === 'открытие') return 'Открытие';
+  if (low === 'закрытие') return 'Закрытие';
+  if (low === 'лайн чек 1' || low === 'лайн-чек 1' || low === 'лайнчек 1') return 'Лайн Чек 1';
+  if (low === 'лайн чек 2' || low === 'лайн-чек 2' || low === 'лайнчек 2') return 'Лайн Чек 2';
+  return s;
+};
+
+function _sameIsoDate(dStr, todayIso) {
+  const s = String(dStr || '').trim();
+  if (!s) return false;
+  if (s === todayIso || s.slice(0, 10) === todayIso) return true;
+  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return (m[3] + '-' + m[2] + '-' + m[1]) === todayIso;
+  return false;
+}
+
 window.coffeeIsBlockCompletedToday = function (block, dbOpt, userNameOpt) {
   const db = dbOpt || (typeof getUDB === 'function' ? getUDB() : {});
   const today = _isoToday();
-  const normBlk = (block === 'КАССА' || block === 'Касса') ? 'Касса' : block;
+  const normBlk = window.coffeeNormalizeBlockName(block);
+  const normBlkLower = normBlk.toLowerCase();
   const who = String(userNameOpt || '').trim();
   const whoLower = who.toLowerCase();
 
@@ -1005,10 +1027,11 @@ window.coffeeIsBlockCompletedToday = function (block, dbOpt, userNameOpt) {
     if (!raw) return true;
     return raw === whoLower || raw.split(',').map((s) => s.trim()).includes(whoLower);
   };
+  const matchesBlock = (bStr) => window.coffeeNormalizeBlockName(bStr).toLowerCase() === normBlkLower;
 
   if (normBlk === 'Касса') {
-    const cashRec = (db.cash || []).find((c) => c && c.date === today && ((Number(c.cash) || 0) + (Number(c.card) || 0) > 0) && matchesUser(c.barista));
-    const chkCashRec = (db.checklists || []).find((c) => c && c.date === today && (c.block === 'Касса' || c.block === 'КАССА') && matchesUser(c.who));
+    const cashRec = (db.cash || []).find((c) => c && _sameIsoDate(c.date, today) && ((Number(c.cash) || 0) + (Number(c.card) || 0) > 0) && matchesUser(c.barista));
+    const chkCashRec = (db.checklists || []).find((c) => c && _sameIsoDate(c.date, today) && matchesBlock(c.block) && matchesUser(c.who));
     let lsCash = false;
     try {
       if (who) {
@@ -1025,19 +1048,26 @@ window.coffeeIsBlockCompletedToday = function (block, dbOpt, userNameOpt) {
     };
   }
 
-  // Ищем запись в db.checklists с привязкой к сотруднику (если передан userNameOpt)
-  const rec = (db.checklists || []).find((c) => c && c.date === today && c.block === normBlk && matchesUser(c.who));
+  // 1) Ищем запись в db.checklists (сначала по текущему сотруднику, затем по смене)
+  const recUser = (db.checklists || []).find((c) => c && _sameIsoDate(c.date, today) && matchesBlock(c.block) && matchesUser(c.who));
+  const recShift = recUser || (db.checklists || []).find((c) => c && _sameIsoDate(c.date, today) && matchesBlock(c.block));
+  const shiftMap = (db.shiftCompletedBlocksToday && typeof db.shiftCompletedBlocksToday === 'object') ? db.shiftCompletedBlocksToday : null;
+  const shiftEntry = shiftMap && (shiftMap[normBlk] || Object.keys(shiftMap).map((k) => matchesBlock(k) ? shiftMap[k] : null).find(Boolean));
+  const shiftEntryValid = !!(shiftEntry && (!shiftEntry.date || _sameIsoDate(shiftEntry.date, today)));
+
   let lsDone = false;
   try {
     if (who) {
-      lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + who + '_' + normBlk) === '1';
+      lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + who + '_' + normBlk) === '1' ||
+               localStorage.getItem('coffee_illy_done_' + today + '_' + normBlk) === '1';
     } else {
       lsDone = localStorage.getItem('coffee_illy_done_' + today + '_' + normBlk) === '1';
     }
   } catch (_) {}
+  const finalRec = recUser || recShift || (shiftEntryValid ? { date: today, block: normBlk, time: shiftEntry.time || '', status: shiftEntry.status || 'В срок' } : null);
   return {
-    completed: !!rec || lsDone,
-    record: rec || null
+    completed: !!finalRec || lsDone,
+    record: finalRec
   };
 };
 
@@ -1411,8 +1441,30 @@ window.coffeeEnforceOverdueChecklists = function (activeBaristaOpt) {
   const checkBlocks = window.coffeeGetChecklistBlocks(db).filter((b) => !b.isCash && b.name !== 'Касса');
   checkBlocks.forEach((bObj, bIdx) => {
     const blk = bObj.name;
+    const normBlk = window.coffeeNormalizeBlockName ? window.coffeeNormalizeBlockName(blk) : blk;
     const win = window.coffeeGetBlockWindow(blk, db);
     const key = today + ':' + blk;
+    // Если чек-лист уже выполнен — автоматически закрываем ошибочный/просроченный авто-инцидент INC-LATE-*
+    if (win.state === 'completed') {
+      if (db.overdueIncidentsCreated[key]) {
+        delete db.overdueIncidentsCreated[key];
+        changed = true;
+      }
+      (db.incidents || []).forEach((inc) => {
+        if (!inc || inc.status === 'Решена') return;
+        const incBlk = window.coffeeNormalizeBlockName ? window.coffeeNormalizeBlockName(inc.block) : inc.block;
+        const isLateInc = inc.isOverdueAuto || String(inc.id || '').indexOf('INC-LATE-') === 0;
+        if (isLateInc && _sameIsoDate(inc.date, today) && incBlk === normBlk) {
+          inc.status = 'Решена';
+          inc.history = Array.isArray(inc.history) ? inc.history : [];
+          inc.history.push({ time: today.split('-').reverse().join('.') + ' ' + win.currentTime, actor: 'Система автоконтроля', status: 'Решена', note: 'Чек-лист «' + blk + '» выполнен — просрочка снята автоматически' });
+          db.resolvedIncidents = db.resolvedIncidents || {};
+          db.resolvedIncidents[inc.id] = 'Решена';
+          changed = true;
+        }
+      });
+      return;
+    }
     if (win.state === 'overdue_closed' && !db.overdueIncidentsCreated[key]) {
       db.overdueIncidentsCreated[key] = { at: win.currentTime, deadline: win.deadline };
       const incId = 'INC-LATE-' + today.slice(8, 10) + today.slice(5, 7) + '-' + (bObj.id || ('B' + bIdx)).toUpperCase();

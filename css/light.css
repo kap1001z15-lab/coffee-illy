@@ -7,22 +7,22 @@
 /* 1. Светлая тема Modern Coffee Premium (Часть 2.2 ТЗ: #F5F2ED, #FFFFFF, #ECE8E1, #DED9D1, #252321, #77736D, #A96E3E) */
 :root:not([data-theme=dark]) {
   color-scheme: light;
-  --bg: #F5EDE3;
-  --surface: #FFFBF8;
-  --surface-2: #F1E8E1;
-  --surface-active: #E8DDD3;
-  --chip: #EFE6E1;
-  --ink: #241B16;
-  --muted: #65574F;
-  --line: #E6E1D8;
-  --brew: #8B5022;
+  --bg: #FCF8F4;
+  --surface: #F4ECE4;
+  --surface-2: #EAE0D5;
+  --surface-active: #E1D4C6;
+  --chip: #EAE0D5;
+  --ink: #271C15;
+  --muted: #6E5D51;
+  --line: rgba(94, 65, 42, 0.12);
+  --brew: #7D4E24;
   --crema: #C88D55;
-  --accent: #8B5022;
+  --accent: #7D4E24;
   --sidebar-bg: #241B16;
   --sidebar-ink: #FFFBF8;
   --sidebar-active: #6E3F1C;
-  --good: #286B4D;
-  --bad: #BA1A1A;
+  --good: #266D45;
+  --bad: #B33A3A;
   --warn: #805600;
   --info: #4B7AA6;
   --neutral: #65574F;
@@ -35,19 +35,19 @@
 /* 2. Основная тёмная тема Modern Coffee Premium (Часть 2.2 ТЗ: #151619, #202126, #292B30, #35373D, #F3F1ED, #A4A5AA, #C88D55) */
 :root[data-theme=dark] {
   color-scheme: dark;
-  --bg: #151619;
-  --surface: #202126;
-  --surface-2: #292B30;
-  --surface-active: #34363C;
-  --chip: #292B30;
-  --ink: #F3F1ED;
-  --muted: #A4A5AA;
-  --line: #35373D;
-  --brew: #C88D55;
-  --crema: #E3B987;
-  --accent: #C88D55;
-  --good: #398568;
-  --bad: #C65C50;
+  --bg: #171311;
+  --surface: #221D1A;
+  --surface-2: #2E2723;
+  --surface-active: #3A312B;
+  --chip: #2E2723;
+  --ink: #F2E7DF;
+  --muted: #B8A79A;
+  --line: rgba(235, 214, 195, 0.12);
+  --brew: #E8B88A;
+  --crema: #E8B88A;
+  --accent: #E8B88A;
+  --good: #8AD6A7;
+  --bad: #F2A2A2;
   --warn: #D69A43;
   --info: #668DB5;
   --neutral: #A4A5AA;

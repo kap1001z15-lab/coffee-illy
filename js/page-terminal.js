@@ -3174,9 +3174,14 @@ function reloadTerminalFromVault() {
       }
     } else {
       cur = tasks.filter((t) => t.block === block && t.active !== 'нет');
+      const wasLockedHidden = !!($("steps") && $("steps").hidden);
       if (!updateDeadlineUI()) {
         $("steps").hidden = true;
       } else if (cur.length) {
+        if (wasLockedHidden && $("steps")) {
+          $("steps").hidden = false;
+          renderStep();
+        }
         // Проверяем, не пришёл ли с другого устройства более свежий прогресс прохождения шагов для текущего сотрудника (userName)
         const dKey = getUserDraftKey(block, userName);
         const remDraft = db.userDrafts && db.userDrafts[dKey];

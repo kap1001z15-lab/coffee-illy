@@ -887,9 +887,16 @@ function absorbServerData(url, data, options) {
 
   if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
     if (_didSheetPartChange(db, 'sheet:deadlineExtensions', data.deadlineExtensions, forceFromSheet)) {
-      db.deadlineExtensions = Object.assign({}, db.deadlineExtensions || {}, data.deadlineExtensions);
+      db.deadlineExtensions = Object.assign({}, data.deadlineExtensions);
+      if (typeof window !== 'undefined' && window.META) {
+        window.META.deadlineExtensions = Object.assign({}, db.deadlineExtensions);
+      }
       changed = true;
     }
+  }
+  if (data.shiftCompletedBlocksToday && typeof data.shiftCompletedBlocksToday === 'object') {
+    db.shiftCompletedBlocksToday = Object.assign({}, db.shiftCompletedBlocksToday || {}, data.shiftCompletedBlocksToday);
+    changed = true;
   }
 
   /* 13. Синхронизация выполненных чек-листов, пошагового прогресса (userDrafts) и личных задач аккаунта */
@@ -1178,25 +1185,51 @@ function applyLocalMutation(payload) {
       active: b.active !== false
     }));
     db.blocks = db.checklistBlocks.filter((b) => b.active !== false && !b.isCash && b.name !== 'Касса').map((b) => b.name);
-    db.deadlineExtensions = {};
+    // Сохраняем активные сегодняшние разблокировки администратора (forceOpen) для существующих блоков
+    const _todaySave = _isoToday();
+    const _validNames = new Set(db.checklistBlocks.map((b) => b.name));
+    const _keptExt = {};
+    Object.keys(db.deadlineExtensions || {}).forEach((k) => {
+      const ext = db.deadlineExtensions[k];
+      if (!ext || !ext.forceOpen) return;
+      const idxColon = k.indexOf(':');
+      if (idxColon < 0) return;
+      const dtPart = k.slice(0, idxColon);
+      const blkPart = k.slice(idxColon + 1);
+      if (dtPart >= _todaySave && _validNames.has(blkPart)) _keptExt[k] = ext;
+    });
+    db.deadlineExtensions = _keptExt;
     db.overdueIncidentsCreated = {};
     appendAudit(db, 'Администратор', 'Обновление таймлайна и чек-листов', db.checklistBlocks.map((b) => b.name + ' (' + b.openTime + '–' + b.deadline + ')').join(', '));
   } else if (a === 'add_checklist_block') {
     window.coffeeEnsureV19Schema(db);
     const nm = String(payload.name || '').trim();
     if (nm) {
-      const cashIdx = db.checklistBlocks.findIndex((b) => b.isCash || b.name === 'Касса');
+      // Снимаем пометку удаления, если блок с таким же названием ранее удалялся
+      if (db.deletedChecklistBlocks) {
+        delete db.deletedChecklistBlocks[nm];
+        Object.keys(db.deletedChecklistBlocks).forEach((k) => {
+          if (k.toLowerCase() === nm.toLowerCase()) delete db.deletedChecklistBlocks[k];
+        });
+      }
+      const existingIdx = db.checklistBlocks.findIndex((b) => b && String(b.name || '').trim().toLowerCase() === nm.toLowerCase());
       const newBlk = {
-        id: 'blk_' + Date.now().toString(36),
+        id: payload.id || ('blk_' + Date.now().toString(36)),
         name: nm,
         openTime: String(payload.openTime || '10:00').trim(),
         deadline: String(payload.deadline || '12:00').trim(),
         isCash: false,
         active: true
       };
-      if (cashIdx >= 0) db.checklistBlocks.splice(cashIdx, 0, newBlk);
-      else db.checklistBlocks.push(newBlk);
+      if (existingIdx >= 0) {
+        db.checklistBlocks[existingIdx] = Object.assign({}, db.checklistBlocks[existingIdx], newBlk);
+      } else {
+        const cashIdx = db.checklistBlocks.findIndex((b) => b.isCash || b.name === 'Касса');
+        if (cashIdx >= 0) db.checklistBlocks.splice(cashIdx, 0, newBlk);
+        else db.checklistBlocks.push(newBlk);
+      }
       db.blocks = db.checklistBlocks.filter((b) => b.active !== false && !b.isCash && b.name !== 'Касса').map((b) => b.name);
+      if (typeof window !== 'undefined' && window.META) window.META.checklistBlocks = db.checklistBlocks.slice();
       appendAudit(db, 'Администратор', 'Добавлен новый чек-лист', nm + ' (' + newBlk.openTime + '–' + newBlk.deadline + ')');
     }
   } else if (a === 'delete_checklist_block') {
@@ -1524,6 +1557,23 @@ function applyLocalMutation(payload) {
     if (db.deadlineExtensions && db.deadlineExtensions[chkDate + ':' + blk]) {
       delete db.deadlineExtensions[chkDate + ':' + blk];
     }
+    const normSubBlk = window.coffeeNormalizeBlockName ? window.coffeeNormalizeBlockName(blk) : blk;
+    db.shiftCompletedBlocksToday = (db.shiftCompletedBlocksToday && typeof db.shiftCompletedBlocksToday === 'object') ? db.shiftCompletedBlocksToday : {};
+    db.shiftCompletedBlocksToday[normSubBlk] = { date: chkDate, time: tStr, status: isLate ? 'Просрочено' : 'В срок' };
+    if (db.overdueIncidentsCreated) {
+      delete db.overdueIncidentsCreated[chkDate + ':' + blk];
+      delete db.overdueIncidentsCreated[chkDate + ':' + normSubBlk];
+    }
+    (db.incidents || []).forEach((inc) => {
+      if (!inc || inc.status === 'Решена') return;
+      const incBlk = window.coffeeNormalizeBlockName ? window.coffeeNormalizeBlockName(inc.block) : inc.block;
+      const isLateInc = inc.isOverdueAuto || String(inc.id || '').indexOf('INC-LATE-') === 0;
+      if (isLateInc && inc.date === chkDate && incBlk === normSubBlk) {
+        inc.status = 'Решена';
+        db.resolvedIncidents = db.resolvedIncidents || {};
+        db.resolvedIncidents[inc.id] = 'Решена';
+      }
+    });
     db.userDrafts = (db.userDrafts && typeof db.userDrafts === 'object') ? db.userDrafts : {};
     db.userDrafts[chkDate + ':' + chkWho + ':' + blk] = {
       date: chkDate,
@@ -2818,10 +2868,11 @@ let _liveRev = null;
 let _liveBusy = false;
 let _liveLastActive = Date.now();
 let _liveTimer = null;
-window.coffeeLiveSyncState = { lastRev: null, lastCheckAt: 0, lastChangeAt: 0, ok: true };
+window.coffeeLiveSyncState = { lastRev: null, lastCheckAt: 0, lastChangeAt: 0, lastLatencyMs: 0, ok: true };
 let _legacyGetRevUnsupported = false;
 async function coffeeLiveSyncTick(forceSync) {
   if (_liveBusy) return;
+  const _tickT0 = Date.now();
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   const base = window.COFFEE && window.COFFEE.API_URL;
   if (!base) return;
@@ -2841,7 +2892,7 @@ async function coffeeLiveSyncTick(forceSync) {
     } else if (t) {
       clearTimeout(t);
     }
-    const st = window.coffeeLiveSyncState; st.lastCheckAt = Date.now();
+    const st = window.coffeeLiveSyncState; st.lastCheckAt = Date.now(); st.lastLatencyMs = Math.max(1, Date.now() - _tickT0);
     if (d && ((d.ok === false && /UNKNOWN[ _]ACTION|unknown action|Неизвестное действие/i.test(String(d.error || ''))) || String(d.rev || '') === '0')) {
       _legacyGetRevUnsupported = true;
     }
@@ -3347,13 +3398,54 @@ window.coffeeFetch = async function (url, opt, ms, tries) {
   if (act === 'get_checklists') {
     const db = getUDB();
     let srvRes = null;
+    // Извлекаем активный серверный токен (staff или admin), чтобы запросить полный staff_bootstrap вместо урезанного публичного get_checklists
+    let _bootTok = '';
     try {
-      const ac = new AbortController();
-      const t = setTimeout(() => ac.abort(), 8000);
-      const bustUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_t=' + Date.now();
-      const r = await fetch(bustUrl, { signal: ac.signal, cache: 'no-store' });
-      clearTimeout(t);
+      _bootTok = (window.coffeeAuth && typeof window.coffeeAuth.getSessionToken === 'function' ? window.coffeeAuth.getSessionToken() : '') ||
+                 (typeof window.coffeeGetSessionToken === 'function' ? window.coffeeGetSessionToken() : '') || '';
+      if (!_bootTok && typeof localStorage !== 'undefined') {
+        const _sRaw = localStorage.getItem('coffee_auth_session_v1');
+        if (_sRaw) {
+          const _sObj = JSON.parse(_sRaw);
+          if (_sObj && (_sObj.sessionToken || _sObj.token)) _bootTok = _sObj.sessionToken || _sObj.token;
+        }
+      }
+    } catch (_) {}
+    const _hasServerTok = !!(_bootTok && /^(st_|adm_)/.test(_bootTok) && _bootTok.indexOf('st_local_') !== 0 && _bootTok.indexOf('adm_local_') !== 0);
+    try {
+      const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const t = ac ? setTimeout(() => ac.abort(), 8000) : null;
+      let r;
+      if (_hasServerTok) {
+        const bootBase = String(url).split('?')[0];
+        r = await fetch(bootBase, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'staff_bootstrap', sessionToken: _bootTok, sinceTs: Number(db.lastServerDeltaTs || 0) || 0 }),
+          signal: ac ? ac.signal : undefined,
+          cache: 'no-store'
+        });
+      } else {
+        const bustUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_t=' + Date.now();
+        r = await fetch(bustUrl, { signal: ac ? ac.signal : undefined, cache: 'no-store' });
+      }
+      if (t) clearTimeout(t);
       srvRes = await r.json();
+      // Если серверная сессия истекла, пробуем автоматически обновить и повторить staff_bootstrap
+      if (_hasServerTok && srvRes && srvRes.ok === false && AUTH_ERR_RE.test(String(srvRes.error || ''))) {
+        if (await _reauthServerSession('staff')) {
+          const freshTok = (window.coffeeAuth && window.coffeeAuth.getSessionToken) ? window.coffeeAuth.getSessionToken('staff') : '';
+          if (freshTok && freshTok.indexOf('st_local_') !== 0) {
+            const rRetry = await fetch(String(url).split('?')[0], {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'staff_bootstrap', sessionToken: freshTok, sinceTs: Number(db.lastServerDeltaTs || 0) || 0 }),
+              cache: 'no-store'
+            });
+            srvRes = await rRetry.json();
+          }
+        }
+      }
     } catch (_) {}
 
     if (srvRes && srvRes.ok !== false) {

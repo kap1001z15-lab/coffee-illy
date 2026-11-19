@@ -25,6 +25,9 @@
 
   function getSystemDark() {
     try {
+      var tgScheme = g.Telegram && g.Telegram.WebApp && g.Telegram.WebApp.colorScheme;
+      if (tgScheme === 'dark') return true;
+      if (tgScheme === 'light') return false;
       return !!(g.matchMedia && g.matchMedia('(prefers-color-scheme: dark)').matches);
     } catch (_) {
       return false;
@@ -58,7 +61,11 @@
     }
     try {
       var meta = typeof document !== 'undefined' ? document.querySelector('meta[name="theme-color"]') : null;
-      if (meta) meta.setAttribute('content', effective === 'dark' ? '#141210' : '#F5EDE3');
+      var bgHex = effective === 'dark' ? '#171311' : '#FCF8F4';
+      if (meta) meta.setAttribute('content', bgHex);
+      var tgApp = g.Telegram && g.Telegram.WebApp;
+      if (tgApp && typeof tgApp.setHeaderColor === 'function') tgApp.setHeaderColor(bgHex);
+      if (tgApp && typeof tgApp.setBackgroundColor === 'function') tgApp.setBackgroundColor(bgHex);
     } catch (_) {}
     syncThemeButtons(mode);
     return effective;
@@ -105,6 +112,20 @@
       cycleMode();
     }, true);
   }
+
+  try {
+    var tgWa = g.Telegram && g.Telegram.WebApp;
+    if (tgWa && typeof tgWa.onEvent === 'function') {
+      tgWa.onEvent('themeChanged', function () {
+        if (getSavedMode() === 'auto') applyTheme('auto');
+      });
+    }
+    if (typeof g.addEventListener === 'function') {
+      g.addEventListener('storage', function (ev) {
+        if (ev && ev.key === STORAGE_KEY) applyTheme(getSavedMode());
+      });
+    }
+  } catch (_) {}
 
   g.CoffeeTheme = {
     getMode: getSavedMode,

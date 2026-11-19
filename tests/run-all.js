@@ -10,7 +10,8 @@ const suites = [
   'tests/integration-contract-tests.js',
   'tests/transport-runtime-tests.js',
   'tests/live-sync-tests.js',
-  'tests/report-browser-test.js'
+  'tests/report-browser-test.js',
+  'tests/two-device-sync-e2e-tests.js'
 ];
 
 let failed = 0;
