@@ -104,8 +104,10 @@ tr:last-child td { border-bottom:none; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=92"></script>
-  <script src="js/cloud-sync-v92.js?v=92"></script>
+  <script src="config.js?v=93"></script>
+  <script src="js/cloud-sync-v93.js?v=93"></script>
+  <script src="js/m3-controls-v93.js?v=93"></script>
+  <script src="js/finance-analytics-v93.js?v=93"></script>
 </head>
 <body>
 <header class="topbar">
@@ -115,16 +117,13 @@ tr:last-child td { border-bottom:none; }
       <div class="brand-title">Дашборд владельца · <span id="hdr-loc">Кофейня №1</span></div>
       <div class="brand-sub">
         <span class="live-pill"><span class="live-dot"></span><span id="hdr-rev">DATA_REV #1</span></span>
-        <span>Живая синхронизация · Google Таблица Coffee_illy + Drive</span>
+        <span id="hdr-sync-sub">Кросс-устройственная синхронизация · Google Таблица + Drive</span>
       </div>
     </div>
   </div>
   <div class="top-actions">
-    <select id="sim-time" class="chip-btn" aria-label="Время смены">
-      <option value="08:15">08:15 (Утро)</option>
-      <option value="13:25" selected>13:25 (День)</option>
-      <option value="22:10">22:10 (Закрытие)</option>
-    </select>
+    <button type="button" id="sim-time-btn" class="chip-btn" aria-label="Время смены">🕒 13:25 ▾</button>
+    <button type="button" class="chip-btn" id="btn-sync" title="Синхронизировать с облаком">↻ Синхр.</button>
     <button class="chip-btn good" id="btn-lock">🔓 Админ-сессия</button>
     <button class="chip-btn" id="btn-theme">🌓 Авто</button>
     <button class="chip-btn" id="btn-reset">↺ Сброс</button>
@@ -276,7 +275,7 @@ function initTheme(btnId) {
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
     document.getElementById('hdr-rev').textContent = 'DATA_REV #' + state.rev;
-    document.getElementById('sim-time').value = state.simTime || '13:25';
+    const stb = document.getElementById('sim-time-btn'); if (stb) stb.textContent = '🕒 ' + (state.simTime || '13:25') + ' ▾';
     const lb = document.getElementById('btn-lock');
     lb.textContent = adminUnlocked ? '🔓 Админ-сессия' : '🔒 Защищено PIN';
     lb.className = 'chip-btn ' + (adminUnlocked ? 'good' : 'warn');
@@ -302,7 +301,7 @@ function initTheme(btnId) {
           <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">Всего: ${state.incidents.length}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Динамика выручки</h2><div class="card-sub">Реальные смены Coffee_illy · Обновляется при закрытии кассы в терминале</div></div></div>
+          <div class="card-head"><div><h2 class="card-title">Динамика выручки</h2><div class="card-sub">Реальные смены Coffee_illy · Обновляется при закрытии кассы в терминале</div></div><button type="button" class="chip-btn" id="ov-go-fin">Умная аналитика →</button></div>
           <div class="chart-wrap">
             <div class="chart-plan-line" style="bottom:${Math.min(92,Math.max(16,planPct*0.78))}%"><span class="chart-plan-lbl">План ${fmtRub(state.plan)}</span></div>
             ${days.map(c => `<div class="bar-col"><div class="bar-val">${c.revenue}</div><div class="bar-fill ${c.revenue>=state.plan?'hit':''}" style="height:${Math.max(12,Math.round((c.revenue/maxRev)*100))}%"></div><div class="bar-dt">${c.date.slice(5)}</div></div>`).join('')}
@@ -322,6 +321,9 @@ function initTheme(btnId) {
             }).join('')}
           </div>
         </div>`;
+      const goFin = document.getElementById('ov-go-fin');
+      if (goFin) goFin.onclick = () => { tab = 'finances'; render(); };
+      if (window.M3Controls) window.M3Controls.enhanceAll(root);
       return;
     }
 
@@ -367,7 +369,7 @@ function initTheme(btnId) {
         const blk = state.blocks.find(x=>x.id===b.dataset.eb);
         openModal('Блок «' + blk.name + '»', `
           <div class="field"><label>Название</label><input id="en" value="${esc(blk.name)}"></div>
-          <div class="grid-2"><div class="field"><label>Открытие</label><select id="eo">${optList(TIME_OPTIONS, blk.openTime)}</select></div><div class="field"><label>Дедлайн</label><select id="ed">${optList(TIME_OPTIONS, blk.deadline)}</select></div></div>
+          <div class="grid-2"><div class="field"><label>Открытие</label><input id="eo" data-m3-time="1" data-m3-title="Время открытия" value="${esc(blk.openTime)}"></div><div class="field"><label>Дедлайн</label><input id="ed" data-m3-time="1" data-m3-title="Дедлайн блока" value="${esc(blk.deadline)}"></div></div>
           <div class="field"><label>Статус</label><select id="ea"><option value="1" ${blk.active!==false?'selected':''}>Активен</option><option value="0" ${blk.active===false?'selected':''}>Отключён</option></select></div>
           <button class="btn-lg primary" id="es">Сохранить</button>
         `);
@@ -383,7 +385,7 @@ function initTheme(btnId) {
       document.getElementById('b-add').onclick = () => guard('Новый блок', () => {
         openModal('Новый блок чек-листа', `
           <div class="field"><label>Название</label><input id="nn" placeholder="Например: Вечерняя ревизия"></div>
-          <div class="grid-2"><div class="field"><label>Открытие</label><select id="no">${optList(TIME_OPTIONS,'07:00')}</select></div><div class="field"><label>Дедлайн</label><select id="nd">${optList(TIME_OPTIONS,'23:59')}</select></div></div>
+          <div class="grid-2"><div class="field"><label>Открытие</label><input id="no" data-m3-time="1" data-m3-title="Время открытия" value="07:00"></div><div class="field"><label>Дедлайн</label><input id="nd" data-m3-time="1" data-m3-title="Дедлайн блока" value="23:59"></div></div>
           <div class="field"><label>Первая задача</label><input id="nt" placeholder="Проверить остатки молока"></div>
           <button class="btn-lg primary" id="ns">Создать и отправить в терминал</button>
         `);
@@ -395,60 +397,48 @@ function initTheme(btnId) {
           saveSharedState(state, 'Администратор', 'Создан блок «' + nm + '»'); closeModal(); showToast('Блок отправлен в терминал!'); render();
         };
       });
+      if (window.M3Controls) window.M3Controls.enhanceAll(root);
       return;
     }
 
     if (tab === 'finances') {
-      root.innerHTML = `
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Кассовые смены (${state.cash.length})</h2></div></div>
-          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Выручка</th><th>Нал / Безнал</th><th>Чеков</th><th>Ср. чек</th><th>Бариста</th></tr></thead><tbody>
-            ${state.cash.map(c=>`<tr><td><b>${c.date}</b></td><td><b>${fmtRub(c.revenue)}</b></td><td style="color:var(--muted)">${fmtRub(c.cash)} / ${fmtRub(c.card)}</td><td>${c.checks}</td><td>${c.checks?Math.round(c.revenue/c.checks):0} ₽</td><td>${esc(c.barista)}</td></tr>`).join('')}
-          </tbody></table></div>
-        </div>
-        <div class="grid-2" style="align-items:start;">
-          <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Расходы (${fmtRub(totalExp)})</h2></div><button class="chip-btn accent" id="e-add">+ Расход</button></div>
-            <div class="stack">${state.expenses.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('')}</div>
-          </div>
-          <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Планы и график (Пн–Вс)</h2></div></div>
-            <div class="tbl-wrap"><table><thead><tr><th>День</th><th>План</th><th>Чеков</th><th>Смена</th><th></th></tr></thead><tbody>
-              ${state.plans.map((p,i)=>`<tr><td><b>${esc(p.day)}</b></td><td>${fmtRub(p.rev)}</td><td>${p.checks}</td><td style="font-size:12px;color:var(--muted)">${esc(p.roster)}</td><td><button class="chip-btn" data-ep="${i}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
-            </tbody></table></div>
-          </div>
-        </div>`;
-      document.getElementById('e-add').onclick = () => guard('Добавить расход', () => {
-        openModal('Новый расход', `
-          <div class="field"><label>Категория</label><select id="ec">${optList(EXP_CATS, EXP_CATS[0])}</select></div>
-          <div class="field"><label>Сумма вручную (₽)</label><input id="ea" type="number" min="1" placeholder="350"></div>
-          <div class="field"><label>Комментарий</label><input id="em" placeholder="Молоко / стаканчики"></div>
-          <button class="btn-lg primary" id="esv">Сохранить</button>
-        `);
-        document.getElementById('esv').onclick = () => {
-          const a = Number(document.getElementById('ea').value)||0; if (a<=0) return;
-          state.expenses.unshift({ id:'#'+(state.expenses.length+1), date:TODAY, category:document.getElementById('ec').value, amount:a, comment:document.getElementById('em').value.trim() });
-          saveSharedState(state, 'Администратор', 'Добавлен расход ' + fmtRub(a)); closeModal(); render();
-        };
-      });
-      root.querySelectorAll('[data-de]').forEach(b => b.onclick = () => guard('Удалить расход', () => {
-        state.expenses = state.expenses.filter(x=>x.id!==b.dataset.de);
-        saveSharedState(state, 'Администратор', 'Удалён расход ' + b.dataset.de); render();
-      }));
-      root.querySelectorAll('[data-ep]').forEach(b => b.onclick = () => guard('План дня', () => {
-        const p = state.plans[Number(b.dataset.ep)];
-        const names = state.staff.filter(s=>s.active!==false).map(s=>s.name);
-        openModal('План на ' + p.day, `
-          <div class="grid-2"><div class="field"><label>План выручки</label><select id="pr">${optList(PLAN_OPTS, p.rev, v=>fmtRub(v))}</select></div><div class="field"><label>План чеков</label><select id="pc">${optList(CHECKS_OPTS, p.checks)}</select></div></div>
-          <div class="grid-2"><div class="field"><label>Сотрудник</label><select id="ps">${optList(names, names.find(n=>p.roster.includes(n))||names[0])}</select></div><div class="field"><label>Смена</label><select id="ph">${optList(SHIFT_HOURS, SHIFT_HOURS[0])}</select></div></div>
-          <button class="btn-lg primary" id="psv">Сохранить</button>
-        `);
-        document.getElementById('psv').onclick = () => {
-          p.rev = Number(document.getElementById('pr').value); p.checks = Number(document.getElementById('pc').value);
-          const hr = document.getElementById('ph').value; p.roster = hr==='Выходной'?'Выходной':document.getElementById('ps').value+' ('+hr+')';
-          saveSharedState(state, 'Администратор', 'Обновлён план ' + p.day); closeModal(); render();
-        };
-      }));
+      if (window.CoffeeFinanceV93) {
+        window.CoffeeFinanceV93.renderFinanceTab(root, state, finUiState, {
+          onRefresh: () => render(),
+          onAddExpense: () => guard('Добавить расход', () => {
+            openModal('Новый расход', `
+              <div class="field"><label>Категория</label><select id="ec">${optList(EXP_CATS, EXP_CATS[0])}</select></div>
+              <div class="field"><label>Сумма вручную (₽)</label><input id="ea" type="number" min="1" placeholder="350"></div>
+              <div class="field"><label>Комментарий</label><input id="em" placeholder="Молоко / стаканчики"></div>
+              <button class="btn-lg primary" id="esv">Сохранить</button>
+            `);
+            document.getElementById('esv').onclick = () => {
+              const a = Number(document.getElementById('ea').value)||0; if (a<=0) return;
+              state.expenses.unshift({ id:'#'+(state.expenses.length+1), date:TODAY, category:document.getElementById('ec').value, amount:a, comment:document.getElementById('em').value.trim() });
+              saveSharedState(state, 'Администратор', 'Добавлен расход ' + fmtRub(a)); closeModal(); render();
+            };
+          }),
+          onDeleteExpense: (id) => guard('Удалить расход', () => {
+            state.expenses = state.expenses.filter(x=>x.id!==id);
+            saveSharedState(state, 'Администратор', 'Удалён расход ' + id); render();
+          }),
+          onEditPlan: (idx) => guard('План дня', () => {
+            const p = state.plans[idx];
+            const names = state.staff.filter(s=>s.active!==false).map(s=>s.name);
+            openModal('План на ' + p.day, `
+              <div class="grid-2"><div class="field"><label>План выручки</label><select id="pr">${optList(PLAN_OPTS, p.rev, v=>fmtRub(v))}</select></div><div class="field"><label>План чеков</label><select id="pc">${optList(CHECKS_OPTS, p.checks)}</select></div></div>
+              <div class="grid-2"><div class="field"><label>Сотрудник</label><select id="ps">${optList(names, names.find(n=>p.roster.includes(n))||names[0])}</select></div><div class="field"><label>Смена</label><select id="ph">${optList(SHIFT_HOURS, SHIFT_HOURS[0])}</select></div></div>
+              <button class="btn-lg primary" id="psv">Сохранить</button>
+            `);
+            document.getElementById('psv').onclick = () => {
+              p.rev = Number(document.getElementById('pr').value); p.checks = Number(document.getElementById('pc').value);
+              const hr = document.getElementById('ph').value; p.roster = hr==='Выходной'?'Выходной':document.getElementById('ps').value+' ('+hr+')';
+              saveSharedState(state, 'Администратор', 'Обновлён план ' + p.day); closeModal(); render();
+            };
+          })
+        });
+      }
+      if (window.M3Controls) window.M3Controls.enhanceAll(root);
       return;
     }
 
@@ -503,6 +493,7 @@ function initTheme(btnId) {
           <div class="card-head"><div><h2 class="card-title">Журнал аудита и синхронизации</h2></div></div>
           <div class="stack" style="max-height:260px;overflow-y:auto;">${(state.auditLog||[]).map(a=>`<div class="card-soft" style="padding:8px 12px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);"><b>${esc(a.actor)} · ${a.time}</b><span class="badge accent">rev #${a.rev}</span></div><div style="font-size:12.5px;margin-top:2px;">${esc(a.text)}</div></div>`).join('')}</div>
         </div>`;
+      if (window.M3Controls) window.M3Controls.enhanceAll(root);
       document.getElementById('s-save').onclick = () => guard('Сохранить настройки', () => {
         state.location = document.getElementById('sl').value.trim() || state.location;
         state.plan = Number(document.getElementById('sp').value);
@@ -580,7 +571,37 @@ function initTheme(btnId) {
 
   document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
   document.getElementById('btn-lock').onclick = () => { if (adminUnlocked) { adminUnlocked = false; render(); } else guard('Вход', () => {}); };
-  document.getElementById('sim-time').onchange = (e) => { state.simTime = e.target.value; saveSharedState(state, 'Симулятор', 'Время смены: ' + state.simTime); render(); };
+  const simBtn = document.getElementById('sim-time-btn');
+  if (simBtn) simBtn.onclick = () => {
+    if (window.M3Controls) {
+      window.M3Controls.openTimePicker({
+        value: state.simTime || '13:25',
+        title: 'Время смены',
+        onChange: (val) => {
+          state.simTime = val;
+          saveSharedState(state, 'Симулятор', 'Время смены: ' + val);
+          render();
+        }
+      });
+    }
+  };
+  const syncBtn = document.getElementById('btn-sync');
+  if (syncBtn) syncBtn.onclick = async () => {
+    syncBtn.textContent = '⟳ ...';
+    if (window.CoffeeCloudV93) await window.CoffeeCloudV93.forceSyncNow();
+    syncBtn.textContent = '↻ Синхр.';
+    showToast('⚡ Облако синхронизировано');
+  };
+  if (window.CoffeeCloudV93) {
+    window.CoffeeCloudV93.onStatusChange((st) => {
+      const sub = document.getElementById('hdr-sync-sub');
+      if (!sub) return;
+      if (st.state === 'offline') sub.textContent = 'Офлайн · изменения в очереди (' + st.pending + ')';
+      else if (st.state === 'syncing') sub.textContent = 'Синхронизация с Google Таблицей...';
+      else if (st.pending > 0) sub.textContent = 'Отправка изменений (' + st.pending + ') · ' + st.device;
+      else sub.textContent = 'Облако активно · ' + st.device + (st.rttMs ? ' · ' + st.rttMs + ' мс' : '');
+    });
+  }
   document.getElementById('btn-reset').onclick = () => { state = freshState(); saveSharedState(state, 'Система', 'Сброс к реальному снимку Coffee_illy'); showToast('Сброшено к снимку'); render(); };
   render();
 
