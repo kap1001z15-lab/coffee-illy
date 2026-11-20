@@ -1,0 +1,258 @@
+/* ==========================================================================
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.0.0)
+   Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
+   Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
+   ========================================================================== */
+:root {
+  --m3-accent: #B85C38;
+  --m3-accent-hover: #9E4B2B;
+  --m3-accent-soft: rgba(184, 92, 56, 0.14);
+  --m3-surface: #FFFFFF;
+  --m3-surface-2: #F4EFEA;
+  --m3-bg: #FAF8F6;
+  --m3-text: #2D2424;
+  --m3-text-2: #6B5E5A;
+  --m3-border: rgba(45, 36, 36, 0.10);
+  --m3-ok: #2E7D32;
+  --m3-warn: #D97706;
+  --m3-err: #C62828;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+[data-theme="dark"] {
+  --m3-surface: #23201E;
+  --m3-surface-2: #2D2926;
+  --m3-bg: #171514;
+  --m3-text: #F5EFEA;
+  --m3-text-2: #B8ACA4;
+  --m3-border: rgba(255, 245, 238, 0.12);
+  --m3-accent: #D97B54;
+  --m3-accent-hover: #E68F6B;
+  --m3-accent-soft: rgba(217, 123, 84, 0.18);
+}
+
+/* Доступность и предотвращение iOS auto-zoom на инпутах */
+input, select, textarea {
+  font-size: max(16px, 1rem);
+}
+button, [role="button"], a {
+  min-height: 40px;
+  touch-action: manipulation;
+}
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 2px solid var(--m3-accent);
+  outline-offset: 2px;
+}
+
+/* Safe-area для выреза (notch / Dynamic Island / gesture bar) */
+body {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 1-tap Radio Cards для выборов из <=3 вариантов */
+.m3-radio-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+.m3-radio-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  border: 1.5px solid var(--m3-border);
+  background: var(--m3-surface);
+  color: var(--m3-text);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.m3-radio-card:active { transform: scale(0.98); }
+.m3-radio-card.active {
+  border-color: var(--m3-accent);
+  background: var(--m3-accent-soft);
+  color: var(--m3-accent);
+}
+
+/* Индикатор состояния синхронизации */
+.sync-pill-v97 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--m3-surface-2);
+  color: var(--m3-text-2);
+  border: 1px solid var(--m3-border);
+}
+.sync-pill-v97.syncing { color: var(--m3-warn); border-color: rgba(217, 119, 6, 0.35); }
+.sync-pill-v97.offline { color: var(--m3-err); border-color: rgba(198, 40, 40, 0.35); }
+.sync-pill-v97.synced { color: var(--m3-ok); border-color: rgba(46, 125, 50, 0.35); }
+
+/* Панель быстрого скрытия клавиатуры на мобильных («Готово ⌄») */
+.kb-dismiss-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
+  display: none;
+  justify-content: flex-end;
+  padding: 8px 14px;
+  background: var(--m3-surface);
+  border-top: 1px solid var(--m3-border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+}
+.kb-dismiss-bar.visible { display: flex; }
+.kb-dismiss-btn {
+  background: var(--m3-accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Google Pixel Material 3 Circular Time Picker */
+.m3-tp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  background: rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.m3-tp-dialog {
+  width: 100%;
+  max-width: 340px;
+  background: var(--m3-surface);
+  color: var(--m3-text);
+  border-radius: 28px;
+  padding: 22px 20px 18px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--m3-border);
+}
+.m3-tp-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--m3-text-2);
+  margin-bottom: 14px;
+}
+.m3-tp-readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.m3-tp-seg {
+  width: 88px;
+  height: 68px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  background: var(--m3-surface-2);
+  color: var(--m3-text);
+  font-size: 38px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.m3-tp-seg.active {
+  background: var(--m3-accent-soft);
+  color: var(--m3-accent);
+  border-color: var(--m3-accent);
+}
+.m3-tp-colon {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--m3-text-2);
+}
+.m3-tp-dial {
+  position: relative;
+  width: 244px;
+  height: 244px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: var(--m3-surface-2);
+  user-select: none;
+  touch-action: none;
+}
+.m3-tp-hand {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  background: var(--m3-accent);
+  transform-origin: bottom center;
+  pointer-events: none;
+}
+.m3-tp-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--m3-accent);
+  transform: translate(-50%, -50%);
+}
+.m3-tp-num {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--m3-text);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+.m3-tp-num.inner { font-size: 11.5px; color: var(--m3-text-2); }
+.m3-tp-num.selected {
+  background: var(--m3-accent);
+  color: #fff;
+}
+.m3-tp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.m3-tp-btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  color: var(--m3-accent);
+}
+.m3-tp-btn.primary {
+  background: var(--m3-accent);
+  color: #fff;
+}

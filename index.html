@@ -199,7 +199,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 }
 
 
-/* === Coffee Illy v94.0 Minimalist Single-Window & Mobile Keyboard Fixes === */
+/* === Coffee Illy v97.0.0 Minimalist Single-Window & Mobile Keyboard Fixes === */
 body.kb-open .bnav { display: none !important; }
 .kb-done-bar { display:none; position:fixed; bottom:10px; right:14px; z-index:95; }
 body.kb-open .kb-done-bar { display:block; }
@@ -220,10 +220,10 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=94.2"></script>
-  <script src="js/cloud-sync-v97.js?v=97.0"></script>
-  <script src="js/pos-csv-parser-v93.js?v=94.2"></script>
-<script src="js/camera-v94.js?v=94.2"></script>
+  <script src="config.js?v=97.0.0"></script>
+  <script src="js/cloud-sync.js?v=97.0.0"></script>
+  <script src="js/pos-csv-parser.js?v=97.0.0"></script>
+<script src="js/camera.js?v=97.0.0"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -606,10 +606,7 @@ function initTheme(btnId) {
           }
         }
       }
-      const annHtml = (Array.isArray(state.announcements) && state.announcements.length)
-        ? `<div class="card-soft" style="margin-bottom:10px;border-left:3px solid var(--accent);font-size:12.5px;"><b>📢 ${esc(state.announcements[0].title || 'Объявление')}:</b> ${esc(state.announcements[0].text || '')}</div>`
-        : '';
-      body.innerHTML = welcomeHtml + annHtml + h;
+      body.innerHTML = welcomeHtml + h;
       const wc = document.getElementById('w-close'); if (wc) wc.onclick = () => { welcomeBanner = ''; render(); };
       document.getElementById('tg-st').onclick = () => { stagesOpen = !stagesOpen; render(); };
       body.querySelectorAll('[data-pk]').forEach(b=>b.onclick=()=>{ activeBlock=b.dataset.pk; finishedBlock=''; confirmFinish=false; stepIdx=0; instOpen=true; stagesOpen=false; render(); });
@@ -657,7 +654,7 @@ function initTheme(btnId) {
         if (stepIdx < tasks.length-1) {
           stepIdx++; instOpen = true;
           state.liveProgress[authed] = { block:curBlk.name, done:stepIdx, total:tasks.length };
-          if (window.CoffeeCloudV96 && window.CoffeeCloudV96.pushLiveProgress) window.CoffeeCloudV96.pushLiveProgress(authed, curBlk.name, stepIdx, tasks.length);
+          if (window.CoffeeCloudV94 && window.CoffeeCloudV94.sendStepProgress) window.CoffeeCloudV94.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
           saveSharedState(state, authed, ''); render();
         } else {
           confirmFinish = true;
@@ -695,11 +692,8 @@ function initTheme(btnId) {
     }
 
     if (tab === 'cash') {
-      const wdNames = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-      const todayWd = wdNames[new Date().getDay()];
-      const dayPlan = (state.plans || []).find(p => p.day === todayWd) || { rev: state.plan || 2200, checks: state.planChecks || 75, avg: state.minAvgCheck || 35, roster: '' };
-      const planBanner = `<div class="card-soft" style="margin-bottom:10px;border-left:3px solid var(--accent);font-size:12.5px;"><b>🎯 План на ${todayWd}:</b> ${fmtRub(dayPlan.rev || state.plan || 2200)} · Чеков: <b>${dayPlan.checks || state.planChecks || 75}</b> · Ср. чек ≥ <b>${dayPlan.avg || state.minAvgCheck || 35} ₽</b>${dayPlan.roster ? ('<div style="margin-top:3px;color:var(--muted);">👥 В графике: ' + esc(dayPlan.roster) + '</div>') : ''}</div>`;
-      body.innerHTML = planBanner + `<div class="step-card">
+      // Screenshot 6 & 7: Centered CSV / XLS button, Сохранить button, clean enterkeyhint="done"
+      body.innerHTML = `<div class="step-card">
         <div class="step-counter"><span>Закрытие кассы</span><span>${TODAY}</span></div>
         <h3 class="step-title">Отчёт (${esc(authed)})</h3>
         <div class="grid-2"><div class="field"><label>Наличные (₽)</label><input id="cc" type="number" inputmode="decimal" enterkeyhint="done" min="0" value="1500"></div><div class="field"><label>Безнал (₽)</label><input id="cd" type="number" inputmode="decimal" enterkeyhint="done" min="0" value="950"></div></div>
@@ -802,10 +796,6 @@ function initTheme(btnId) {
     }
 
     if (tab === 'ttk') {
-      const lowInv = (state.inventory || []).filter(it => Number(it.minStock) > 0 && Number(it.stock) <= Number(it.minStock));
-      const invAlertHtml = lowInv.length
-        ? `<div class="card-soft" style="margin-bottom:10px;border:1px solid var(--warn);font-size:12.5px;"><b>📦 Заканчивается на складе (${lowInv.length}):</b> ${lowInv.slice(0, 5).map(i => esc(i.name) + ' (' + i.stock + ' ' + esc(i.unit || '') + ')').join(', ')}</div>`
-        : '';
       // Screenshot 8: 4 Categories instead of flat list + Search bar moved to BOTTOM
       const q = ttkQ.trim().toLowerCase();
       const shiftItems = state.blocks.filter(b => !b.isCash && b.active !== false && b.name !== 'Карта добрых дел');
@@ -873,45 +863,7 @@ function initTheme(btnId) {
     }
 
     if (tab === 'issues') {
-      const invList = Array.isArray(state.inventory) ? state.inventory : [];
-      const expList = (Array.isArray(state.expiryItems) ? state.expiryItems : []).filter(e => !e.disposed);
-      const gdList = Array.isArray(state.goodDeeds) ? state.goodDeeds : [];
-      const stockCard = `<div class="card-soft" style="margin-top:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>📦 Склад и сроки годности</b><button class="chip-btn accent" id="t-exp-add" style="padding:4px 10px;">+ Срок</button></div>
-        ${invList.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">${invList.slice(0,12).map(it => {
-          const isLow = Number(it.minStock) > 0 && Number(it.stock) <= Number(it.minStock);
-          return `<span class="badge ${isLow?'warn':''}">${esc(it.name)}: ${it.stock} ${esc(it.unit||'')}</span>`;
-        }).join('')}</div>` : '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Остатки синхронизируются с дашбордом</div>'}
-        ${expList.length ? `<div class="stack">${expList.slice(0,8).map(e => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-top:1px solid var(--line);"><div><b>${esc(e.title || e.name || 'Позиция')}</b> · до ${esc(e.expiresAtStr || e.expiresAt || e.date || '')}</div><button class="chip-btn" data-dexp="${esc(e.id)}" style="padding:2px 8px;">✓ Списать</button></div>`).join('')}</div>` : ''}
-      </div>`;
-      const deedsCard = gdList.length ? `<div class="card-soft" style="margin-top:10px;"><b style="display:block;margin-bottom:6px;">✨ Карта добрых дел (${gdList.length})</b><div style="font-size:12px;color:var(--muted);">${gdList.slice(0,6).map(g => '• ' + esc(g.title || g.name || '')).join('<br>')}</div></div>` : '';
-      body.innerHTML = `<button class="btn-lg primary" id="ni">+ Задача</button><div class="stack">${state.incidents.filter(i=>i.status!=='Решена').slice(0,12).map(i=>`<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div>`).join('')}</div>` + stockCard + deedsCard;
-      const expAddBtn = document.getElementById('t-exp-add');
-      if (expAddBtn) expAddBtn.onclick = () => {
-        openModal('Добавить срок годности', `
-          <div class="field"><label>Продукт / заготовка</label><input id="ex-n" placeholder="Например: Молоко открытое / Сироп"></div>
-          <div class="field"><label>Годен до (дата)</label><input id="ex-d" type="date" value="${TODAY}"></div>
-          <button class="btn-lg primary" id="ex-sv">✓ Сохранить в Google Таблицу</button>
-        `);
-        document.getElementById('ex-sv').onclick = async () => {
-          const nm = document.getElementById('ex-n').value.trim();
-          const dt = document.getElementById('ex-d').value || TODAY;
-          if (!nm) { showToast('Введите название продукта'); return; }
-          const rec = { id: 'exp_' + Date.now(), title: nm, name: nm, expiresAt: dt, expiresAtStr: dt, who: authed, date: TODAY };
-          state.expiryItems = state.expiryItems || [];
-          state.expiryItems.unshift(rec);
-          if (window.CoffeeCloudV97 && window.CoffeeCloudV97.addExpiryItem) await window.CoffeeCloudV97.addExpiryItem(rec);
-          saveSharedState(state, authed, '');
-          closeModal(); showToast('✓ Срок годности синхронизирован с дашбордом'); render();
-        };
-      };
-      body.querySelectorAll('[data-dexp]').forEach(b => b.onclick = async () => {
-        const eid = b.dataset.dexp;
-        state.expiryItems = (state.expiryItems || []).filter(e => String(e.id) !== String(eid));
-        if (window.CoffeeCloudV97 && window.CoffeeCloudV97.disposeExpiryItem) await window.CoffeeCloudV97.disposeExpiryItem(eid);
-        saveSharedState(state, authed, '');
-        showToast('✓ Списано и синхронизировано'); render();
-      });
+      body.innerHTML = `<button class="btn-lg primary" id="ni">+ Задача</button><div class="stack">${state.incidents.filter(i=>i.status!=='Решена').slice(0,12).map(i=>`<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div>`).join('')}</div>`;
       document.getElementById('ni').onclick = () => {
         openModal('Новая задача', `
           <div class="field"><label>Участок / зона</label><select id="nz">${optList(EQUIP_ZONES, EQUIP_ZONES[0])}</select></div>
@@ -1006,5 +958,35 @@ function initTheme(btnId) {
   }
 })();
 </script>
+  <script src="./js/time-picker.js?v=97.0.0"></script>
+
+  <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
+    <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
+  </div>
+  <script>
+    (function () {
+      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        navigator.serviceWorker.register('./sw.js?v=97.0.0').catch(function () {});
+      }
+      var kbBar = document.getElementById('kb-dismiss-bar');
+      var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      if (kbBar && isTouch) {
+        document.addEventListener('focusin', function (e) {
+          if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'checkbox' && e.target.type !== 'radio') {
+            kbBar.classList.add('visible');
+          }
+        });
+        document.addEventListener('focusout', function () {
+          setTimeout(function () {
+            var ae = document.activeElement;
+            if (!ae || !/^(INPUT|TEXTAREA)$/.test(ae.tagName)) kbBar.classList.remove('visible');
+          }, 120);
+        });
+      }
+    })();
+  </script>
+
 </body>
 </html>
+
+

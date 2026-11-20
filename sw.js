@@ -1,31 +1,74 @@
-const CACHE_NAME = 'coffee-illy-v97-m3soft-prod';
-const CORE = ['./', './index.html', './owner.html', './config.js', './js/pos-csv-parser-v93.js', './js/cloud-sync-v97.js', './js/camera-v94.js', './manifest.webmanifest'];
+/* Coffee Illy ERP & Checklist — Service Worker v97.0.0 */
+const CACHE_NAME = 'coffee-illy-v97-0-0';
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './owner.html',
+  './config.js',
+  './version.js',
+  './manifest.webmanifest',
+  './css/m3-soft.css',
+  './js/camera.js',
+  './js/cloud-sync.js',
+  './js/pos-csv-parser.js',
+  './js/time-picker.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
+];
 
-self.addEventListener('install', (e) => {
+self.addEventListener('install', (event) => {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(CORE)).catch(() => {}));
-});
-
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => {})
   );
 });
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
   if (req.method !== 'GET') return;
-  const url = req.url || '';
-  if (url.indexOf('script.google.com') >= 0 || url.indexOf('telegram.org') >= 0 || url.indexOf('drive.google.com') >= 0) return;
-  e.respondWith(
-    fetch(req).then((res) => {
-      if (res && res.ok && res.type === 'basic') {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then((c) => c.put(req, clone)).catch(() => {});
-      }
-      return res;
-    }).catch(() => caches.match(req))
+  const url = new URL(req.url);
+
+  // Никогда не кэшируем API-запросы Google Apps Script / Google APIs
+  if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com') || url.hostname.includes('telegram.org')) {
+    return;
+  }
+
+  // Network-first для HTML и config.js (чтобы обновления приходили мгновенно, но офлайн всё открывалось)
+  const isHtmlOrConfig = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/config.js');
+  if (isHtmlOrConfig) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(req, clone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate для JS/CSS/иконок
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      const fetchPromise = fetch(req).then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(req, clone)).catch(() => {});
+        }
+        return res;
+      }).catch(() => cached);
+      return cached || fetchPromise;
+    })
   );
 });

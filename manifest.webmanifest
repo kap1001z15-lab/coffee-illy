@@ -1,9 +1,47 @@
 {
-  "name": "Coffee Illy — Система управления кофейней",
+  "name": "Coffee Illy ERP & Чек-листы",
   "short_name": "Coffee Illy",
+  "description": "Кроссплатформенный терминал бариста и дашборд владельца кофейни Coffee Illy",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#FCF8F4",
-  "theme_color": "#7D4E24",
-  "lang": "ru"
+  "orientation": "portrait-primary",
+  "background_color": "#FAF8F6",
+  "theme_color": "#B85C38",
+  "lang": "ru",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Терминал бариста",
+      "short_name": "Бариста",
+      "url": "./index.html",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Дашборд владельца",
+      "short_name": "Владелец",
+      "url": "./owner.html",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }
