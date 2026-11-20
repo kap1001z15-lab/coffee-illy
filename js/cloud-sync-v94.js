@@ -256,8 +256,8 @@
           status: x.status || 'Новая проблема',
           who: x.who || '',
           owner: x.owner || x.responsible || 'Администратор',
-          photoUrl: String(x.photoUrl || x.photo || '').split(/\r?\n/)[0] || '',
-          photos: Array.isArray(x.photos) ? x.photos : String(x.photoUrl || x.photo || '').split(/\r?\n/).map((u) => u.trim()).filter(Boolean)
+          photoUrl: x.photoUrl || x.photo || '',
+          media: Array.isArray(x.media) ? x.media : (x.photoUrl || x.photo ? [{ type: 'photo', url: x.photoUrl || x.photo }] : [])
         };
       });
       changed = true;
@@ -319,11 +319,10 @@
         price: Number(k.price || 0),
         cost: Number(k.cost || 0),
         recipe: k.recipe || '',
-        serve: k.serve || k.serving || '',
+        serve: k.serve || '',
         isNew: !!k.isNew,
-        seasonTag: k.seasonTag || '',
-        addedAt: k.addedAt || '',
-        ackBy: Array.isArray(k.ackBy) ? k.ackBy : []
+        seasonal: !!k.seasonal,
+        addedAt: k.addedAt || ''
       }));
       changed = true;
     }
@@ -495,10 +494,11 @@
         who: inc.who || actor,
         userName: inc.who || actor,
         date: inc.date || localISO(),
-        photoUrl: inc.photoUrl || (Array.isArray(inc.photos) && inc.photos[0]) || '',
-        photo_url: inc.photoUrl || (Array.isArray(inc.photos) && inc.photos[0]) || '',
-        photo: Array.isArray(inc.photos) && inc.photos.length ? inc.photos.join('\n') : (inc.photoUrl || ''),
-        photos: Array.isArray(inc.photos) ? inc.photos : (inc.photoUrl ? [inc.photoUrl] : [])
+        photoUrl: inc.photoUrl || '',
+        photo_url: inc.photoUrl || '',
+        photo: inc.photoUrl || '',
+        photoUrls: Array.isArray(inc.media) ? inc.media.map((m) => m && m.url).filter(Boolean) : (inc.photoUrl ? [inc.photoUrl] : []),
+        media: Array.isArray(inc.media) ? inc.media : []
       });
     } else if (desc.indexOf('Решён инцидент') === 0) {
       enqueueOp('update_incident', { id: desc.replace('Решён инцидент ', '').trim(), status: 'Решена' });
@@ -642,7 +642,6 @@
       );
       const wake = () => { _lastActive = Date.now(); pullNow(false); };
       window.addEventListener('focus', wake);
-      window.addEventListener('pageshow', (e) => { if (e && e.persisted) { flushOutbox().then(wake); } });
       window.addEventListener('online', () => { flushOutbox().then(wake); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
@@ -667,30 +666,6 @@
       }
     } catch (_) {}
     return null;
-  }
-
-  function getDeepLinkTab() {
-    try {
-      if (typeof window !== 'undefined' && window.location && window.location.search) {
-        const sp = new URLSearchParams(window.location.search);
-        const t = sp.get('tab') || '';
-        if (t) return t.trim().toLowerCase();
-      }
-      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
-      const startParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
-      if (startParam && String(startParam).indexOf('tab_') === 0) {
-        return String(startParam).slice(4).trim().toLowerCase();
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  function sendStepProgress(staffName, block, done, total) {
-    enqueueOp('report_step_progress', { staffName: staffName, userName: staffName, block: block, done: done, total: total });
-  }
-
-  function ackTtkItem(ttkId, staffName) {
-    enqueueOp('ack_ttk_item', { id: ttkId, staffName: staffName, userName: staffName });
   }
 
   function getDeepLinkBlock() {
@@ -855,8 +830,6 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
-    getDeepLinkTab: getDeepLinkTab,
-    ackTtkItem: ackTtkItem,
     saveInventoryItem: saveInventoryItem,
     restockInventory: restockInventory,
     writeoffInventory: writeoffInventory,
@@ -868,8 +841,6 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
-  window.CoffeeCloudV94 = API_OBJ;
-  window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;

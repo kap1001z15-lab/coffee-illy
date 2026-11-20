@@ -215,9 +215,7 @@ var STAFF_OR_ADMIN_ACTIONS_ = {
   handover_shift: true,
   submit_writeoff: true,
   staff_checkin: true,
-  staff_checkout: true,
-  ack_ttk_item: true,
-  report_step_progress: true
+  staff_checkout: true
 };
 
 function doPost(e) {
@@ -369,41 +367,29 @@ function doPost(e) {
       var coName = String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
       return idempotentJsonOut_(ss, body, markStaffOffShift_(ss, coName), actorSess);
     }
-    if (action === 'ack_ttk_item') {
-      return idempotentJsonOut_(ss, body, ackTtkItemV94_(ss, body, actorSess), actorSess);
-    }
-    if (action === 'report_step_progress') {
-      return idempotentJsonOut_(ss, body, reportStepProgressV94_(ss, body, actorSess), actorSess);
-    }
     if (action === 'report_standalone_incident') {
-      var mediaArr = [];
-      if (Array.isArray(body.photos)) mediaArr = mediaArr.concat(body.photos);
-      if (Array.isArray(body.mediaUrls)) mediaArr = mediaArr.concat(body.mediaUrls);
-      var singlePh = String(body.photoUrl || body.photo_url || body.photo || '').trim();
-      if (singlePh) mediaArr.push(singlePh);
-      var uniqMedia = [];
-      mediaArr.forEach(function(u) {
-        var s = String(u || '').trim();
-        if (s && uniqMedia.indexOf(s) === -1) uniqMedia.push(s);
-      });
-      if (uniqMedia.length) {
-        body.photo = uniqMedia.join('\n');
-        body.photoUrl = uniqMedia[0];
-        body.photos = uniqMedia;
-      }
       var resInc = reportIncident_(ss, body);
+      var incUrls = [];
+      if (Array.isArray(body.media) && body.media.length) {
+        body.media.forEach(function(m) { var u = typeof m === 'string' ? m : (m && (m.url || m.photoUrl)); if (u) incUrls.push(String(u).trim()); });
+      }
+      if (Array.isArray(body.photoUrls) && body.photoUrls.length) {
+        body.photoUrls.forEach(function(u) { if (u && incUrls.indexOf(String(u).trim()) === -1) incUrls.push(String(u).trim()); });
+      }
+      var incPh = String(body.photoUrl || body.photo_url || body.photo || '').trim();
+      if (incPh && incUrls.indexOf(incPh) === -1) incUrls.unshift(incPh);
       var prio = String(body.priority || 'Терпит').trim();
-      var prioIcon = (prio.indexOf('Срочно') >= 0 || prio.indexOf('Критично') >= 0) ? '🔴' : (prio.indexOf('Важно') >= 0 ? '🟡' : '🟢');
+      var prioIcon = prio.indexOf('Срочно') >= 0 || prio.indexOf('Критично') >= 0 ? '🔴' : (prio.indexOf('Важно') >= 0 ? '🟡' : '🟢');
       var incLines = [
-        '🚨 <b>НОВЫЙ ИНЦИДЕНТ / ПОЛОМКА</b> ' + prioIcon + ' <b>' + escapeTgHtml_(prio) + '</b>',
+        '🚨 <b>НОВЫЙ ИНЦИДЕНТ / ЗАДАЧА</b> ' + prioIcon + ' <b>' + escapeTgHtml_(prio) + '</b>',
         '🔧 Участок: <b>' + escapeTgHtml_(body.step || body.zone || 'Оборудование') + '</b>',
         '📝 Описание: ' + escapeTgHtml_(body.text || body.comment || 'Без описания'),
         '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
         '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
       ];
-      uniqMedia.forEach(function(u, mIdx) {
-        var isVid = /export=download|\.mp4|\.webm|\.mov/i.test(u);
-        incLines.push((isVid ? '🎥' : '📷') + ' <a href="' + escapeTgHtml_(u) + '">' + (isVid ? 'Видео' : 'Фото') + ' ' + (mIdx + 1) + ' на Google Диске</a>');
+      incUrls.forEach(function(u, uIdx) {
+        var lbl = incUrls.length > 1 ? ('Медиа #' + (uIdx + 1) + ' (Google Диск)') : 'Открыть медиа на Google Диске';
+        incLines.push('📎 <a href="' + escapeTgHtml_(u) + '">' + lbl + '</a>');
       });
       pendingAlerts.push({
         type: 'incident',
@@ -641,14 +627,14 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
   if (!dataUri) {
     return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
   }
-  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm|quicktime))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
     return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
   }
   var mimeType = m[1];
   var b64Data = String(m[2] || '').replace(/\s+/g, '');
-  if (b64Data.length > 16 * 1024 * 1024) {
-    return { ok: false, error: 'VALIDATION_FAILED: Размер медиафайла превышает лимит 12 МБ' };
+  if (b64Data.length > 10 * 1024 * 1024) {
+    return { ok: false, error: 'VALIDATION_FAILED: Размер медиафайла превышает лимит 8 МБ' };
   }
   try {
     var props = PropertiesService.getScriptProperties();
@@ -663,7 +649,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
       folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Coffee_ERP_Photos');
       props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
     }
-    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('webp') >= 0 ? 'webp' : (mimeType.indexOf('mp4') >= 0 ? 'mp4' : (mimeType.indexOf('webm') >= 0 ? 'webm' : (mimeType.indexOf('quicktime') >= 0 ? 'mov' : 'jpg'))));
+    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('webp') >= 0 ? 'webp' : (mimeType.indexOf('mp4') >= 0 ? 'mp4' : (mimeType.indexOf('webm') >= 0 ? 'webm' : 'jpg')));
     var staff = String((body && body.userName) || 'Бариста').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
     var blk = String((body && body.block) || 'Смена').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
     var fname = isoDate_() + '_' + blk + '_' + staff + '_' + Date.now() + '.' + ext;
@@ -1454,14 +1440,8 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
       category: t.category,
       name: t.name,
       volume: t.volume,
-      price: t.price,
       ingredients: t.ingredients,
-      recipe: t.recipe,
-      serving: t.serving,
-      isNew: !!t.isNew,
-      seasonTag: t.seasonTag || '',
-      addedAt: t.addedAt || '',
-      ackBy: Array.isArray(t.ackBy) ? t.ackBy : []
+      recipe: t.recipe
     };
   }) : [];
 
@@ -2320,15 +2300,12 @@ function getTtkList_(ss) {
   var sh = ss.getSheetByName('Техкарты');
   if (!sh) return [];
   var rows = sh.getDataRange().getValues();
-  var metaMap = getJsonProp_('COFFEE_TTK_META_JSON', {});
   var list = [];
   for (var i = 1; i < rows.length; i++) {
     var r = rows[i];
     if (!r[1]) continue;
-    var tid = String(r[0] || ('ttk_' + i));
-    var meta = (metaMap && metaMap[tid]) || {};
     list.push({
-      id: tid,
+      id: String(r[0] || ('ttk_' + i)),
       name: String(r[1] || ''),
       volume: String(r[2] || '250 мл'),
       category: String(r[3] || 'Классика'),
@@ -2338,13 +2315,18 @@ function getTtkList_(ss) {
       costSyrup: Number(r[7]) || 0,
       costCup: Number(r[8]) || 0,
       recipe: String(r[9] || ''),
-      serving: String(r[10] || ''),
-      isNew: !!meta.isNew,
-      seasonTag: String(meta.seasonTag || ''),
-      addedAt: String(meta.addedAt || ''),
-      ackBy: Array.isArray(meta.ackBy) ? meta.ackBy : []
+      serving: String(r[10] || '')
     });
   }
+  var seasonalMeta = getJsonProp_('COFFEE_TTK_SEASONAL_JSON', {});
+  list.forEach(function(item) {
+    var sm = seasonalMeta[item.id] || seasonalMeta[item.name];
+    if (sm) {
+      item.isNew = !!sm.isNew;
+      item.seasonal = !!sm.seasonal;
+      item.addedAt = sm.addedAt || '';
+    }
+  });
   return list;
 }
 
@@ -3351,17 +3333,51 @@ function deleteStaff_(ss, b) {
   return { ok: true };
 }
 
+function syncTtkSeasonalMetaV94_(ss, id, b) {
+  if (!b || !b.name) return;
+  var smMap = getJsonProp_('COFFEE_TTK_SEASONAL_JSON', {});
+  var keyId = String(id || b.id || b.name).trim();
+  var nameKey = String(b.name).trim();
+  if (b.isNew || b.seasonal) {
+    var wasNew = !!(smMap[keyId] && smMap[keyId].isNew);
+    smMap[keyId] = { isNew: true, seasonal: !!b.seasonal, addedAt: isoDate_(), name: nameKey };
+    smMap[nameKey] = smMap[keyId];
+    setJsonProp_('COFFEE_TTK_SEASONAL_JSON', smMap);
+    if (!wasNew) {
+      try {
+        var stList = (getStaffList_(ss) || []).filter(function(s) {
+          return s && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет' && normTgNumericId_(s.tgId);
+        });
+        var staffChats = stList.map(function(s) { return normTgNumericId_(s.tgId); }).filter(Boolean);
+        if (staffChats.length) {
+          sendTelegramServerAlert_(ss, {
+            chatIds: staffChats,
+            type: 'ttk_new',
+            force: true,
+            skipDedup: true,
+            buttonText: '☕ Открыть Базу ТТК',
+            buttonType: 'web_app',
+            text: '✨ <b>Новая сезонная позиция в меню!</b>\n☕ <b>' + escapeTgHtml_(nameKey) + '</b>' + (b.vol || b.volume ? ' (' + escapeTgHtml_(String(b.vol || b.volume)) + ')' : '') + '\n📖 ' + escapeTgHtml_(String(b.recipe || 'Рецептура добавлена в Базу ТТК'))
+          });
+        }
+      } catch (_) {}
+    }
+  } else if (smMap[keyId] || smMap[nameKey]) {
+    delete smMap[keyId];
+    delete smMap[nameKey];
+    setJsonProp_('COFFEE_TTK_SEASONAL_JSON', smMap);
+  }
+}
+
 function saveTtk_(ss, b) {
   var sh = ss.getSheetByName('Техкарты');
   if (!sh) {
     sh = ss.insertSheet('Техкарты');
-    sh.appendRow(['ID', 'Название', 'Объём', 'Категория', 'Цена', 'Зерно', 'Молоко', 'Сироп', 'Стакан', 'Рецепт', 'Подача']);
+    sh.appendRow(['ID', 'Название', 'Объём', 'Категория', 'Цена', 'СебестЗерно', 'СебестМолоко', 'СебестСироп', 'СебестСтакан', 'Рецепт', 'Подача']);
   }
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
-  var vol = String(b.volume || b.vol || '250 мл');
-  var cat = String(b.category || b.cat || 'Классика');
-  var rowVals = [id, b.name || '', vol, cat, Number(b.price) || 0, Number(b.costBeans != null ? b.costBeans : b.cost) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || b.serve || ''];
+  var rowVals = [id, b.name || '', b.volume || b.vol || '', b.category || b.cat || '', Number(b.price) || 0, Number(b.costBeans || b.cost) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || b.serve || ''];
   var updated = false;
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
@@ -3370,54 +3386,13 @@ function saveTtk_(ss, b) {
       break;
     }
   }
-  if (!updated) sh.appendRow(rowVals);
-
-  // v94.0: Метаданные новой / сезонной позиции + уведомление бариста в Telegram
-  var metaMap = getJsonProp_('COFFEE_TTK_META_JSON', {});
-  var prevMeta = metaMap[id] || {};
-  var isNewFlag = !!(b.isNew || b.notifyStaff);
-  metaMap[id] = {
-    isNew: isNewFlag,
-    seasonTag: String(b.seasonTag || (isNewFlag ? 'Сезонная новинка' : '')).trim(),
-    addedAt: prevMeta.addedAt || isoDate_(),
-    ackBy: b.resetAck ? [] : (Array.isArray(prevMeta.ackBy) ? prevMeta.ackBy : [])
-  };
-  setJsonProp_('COFFEE_TTK_META_JSON', metaMap);
-  bumpDataRev_();
-
-  var notifiedCount = 0;
-  if (isNewFlag && b.notifyStaff !== false) {
-    var staffList = (getStaffList_(ss) || []).filter(function(s) {
-      return s && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет' && normTgNumericId_(s.tgId);
-    });
-    var chatIds = staffList.map(function(s) { return normTgNumericId_(s.tgId); }).filter(Boolean);
-    if (chatIds.length) {
-      var map = getSettingsMap_(ss);
-      var baseAppUrl = String(map.WEBAPP_URL || '').trim().replace(/\/+$/, '');
-      var ttkUrl = baseAppUrl ? ((/\.html(\?|$)/i.test(baseAppUrl) ? baseAppUrl : (baseAppUrl + '/index.html')) + '?tab=ttk') : '';
-      var tagTxt = metaMap[id].seasonTag ? (' (' + escapeTgHtml_(metaMap[id].seasonTag) + ')') : '';
-      var msg = [
-        '🌟 <b>Новая позиция в меню' + tagTxt + '</b>',
-        '☕ <b>' + escapeTgHtml_(b.name || '') + '</b> · ' + escapeTgHtml_(vol),
-        '🏷 Категория: ' + escapeTgHtml_(cat) + (Number(b.price) ? (' · ' + Number(b.price) + ' ₽') : ''),
-        b.recipe ? ('📝 Рецептура: ' + escapeTgHtml_(String(b.recipe).slice(0, 400))) : '',
-        '',
-        'Откройте «Базу ТТК», чтобы ознакомиться с техкартой и нажать «Ознакомился».'
-      ].filter(Boolean).join('\n');
-      var tgRes = sendTelegramServerAlert_(ss, {
-        chatIds: chatIds,
-        type: 'ttk_new',
-        webappUrl: ttkUrl,
-        buttonText: '☕ Открыть Базу ТТК',
-        buttonType: 'web_app',
-        skipDedup: true,
-        force: true,
-        text: msg
-      });
-      if (tgRes && tgRes.sentTo) notifiedCount = tgRes.sentTo;
-    }
+  if (!updated) {
+    sh.appendRow(rowVals);
   }
-  return { ok: true, id: id, isNew: isNewFlag, notifiedStaff: notifiedCount };
+  syncTtkSeasonalMetaV94_(ss, id, b);
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', (updated ? 'Обновлена ТТК' : 'Добавлена ТТК'), String(b.name || id));
+  return { ok: true, id: id, updated: updated };
 }
 
 function deleteTtk_(ss, b) {
@@ -5094,39 +5069,4 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
   }
 
   return { ok: true, date: today, time: hm, weekday: weekday, sent: sent, skipped: skipped };
-}
-
-
-/* =========================================================================
-   COFFEE ILLY v94.0 — ОЗНАКОМЛЕНИЕ С НОВЫМИ ТТК И ЖИВОЙ ПРОГРЕСС ШАГОВ
-   ========================================================================= */
-
-function ackTtkItemV94_(ss, body, actorSess) {
-  var id = String((body && body.id) || '').trim();
-  var staffName = String((actorSess && actorSess.staffName) || (body && (body.staffName || body.userName)) || '').trim();
-  if (!id || !staffName) return { ok: false, error: 'MISSING_ID_OR_STAFF' };
-  var metaMap = getJsonProp_('COFFEE_TTK_META_JSON', {});
-  var entry = metaMap[id] || { isNew: true, seasonTag: 'Новинка', addedAt: isoDate_(), ackBy: [] };
-  if (!Array.isArray(entry.ackBy)) entry.ackBy = [];
-  if (entry.ackBy.indexOf(staffName) === -1) entry.ackBy.push(staffName);
-  metaMap[id] = entry;
-  setJsonProp_('COFFEE_TTK_META_JSON', metaMap);
-  try { appendAudit_(ss, staffName, 'Ознакомился с новой ТТК', 'ID: ' + id); } catch (_) {}
-  bumpDataRev_();
-  return { ok: true, id: id, ackBy: entry.ackBy };
-}
-
-function reportStepProgressV94_(ss, body, actorSess) {
-  var staffName = String((actorSess && actorSess.staffName) || (body && (body.staffName || body.userName)) || '').trim();
-  if (!staffName) return { ok: false };
-  var actMap = getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {});
-  actMap[staffName] = {
-    block: String((body && body.block) || ''),
-    done: Number(body && body.done) || 0,
-    total: Number(body && body.total) || 0,
-    updatedAt: new Date().toISOString()
-  };
-  setJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', actMap);
-  bumpDataRev_();
-  return { ok: true };
 }
