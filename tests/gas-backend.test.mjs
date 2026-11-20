@@ -167,21 +167,21 @@ function createMockGasSandbox() {
   return { sandbox, mockSs, sheets, propsStore };
 }
 
-test('GAS doGet(get_rev) returns ok:true and v97.4.0 without ReferenceError', { skip: !hasGas }, () => {
+test('GAS doGet(get_rev) returns ok:true and v97.4.1 without ReferenceError', { skip: !hasGas }, () => {
   const { sandbox } = createMockGasSandbox();
   const out = sandbox.doGet({ parameter: { action: 'get_rev' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true, 'doGet(get_rev) must succeed');
-  assert.equal(json.serverVersion, 'v97.4.0');
+  assert.equal(json.serverVersion, 'v97.4.1');
   assert.equal(json.api, 2);
 });
 
-test('GAS doGet(version) returns v97.4.0 and specVersion 5.0', { skip: !hasGas }, () => {
+test('GAS doGet(version) returns v97.4.1 and specVersion 5.0', { skip: !hasGas }, () => {
   const { sandbox } = createMockGasSandbox();
   const out = sandbox.doGet({ parameter: { action: 'version' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true);
-  assert.equal(json.serverVersion, 'v97.4.0');
+  assert.equal(json.serverVersion, 'v97.4.1');
   assert.equal(json.specVersion, '5.0');
 });
 
@@ -301,4 +301,34 @@ test('GAS getAdmin_ computes cash.revenue, normalizes sales kinds, and merges le
   assert.equal(coffeeSale.kind, 'Кофе');
   assert.equal(nonCoffeeSale.kind, 'Не-кофе');
   assert.ok(legacySale && legacySale.qty === 5 && legacySale.kind === 'Кофе');
+});
+
+test('GAS doGet(get_checklists) executes sanitizePublicChecklists_ cleanly without ReferenceError', { skip: !hasGas }, () => {
+  const { sandbox } = createMockGasSandbox();
+  const out = sandbox.doGet({ parameter: { action: 'get_checklists', nocache: '1' } });
+  const json = JSON.parse(out.getContent());
+  assert.equal(json.ok, true, 'doGet(get_checklists) must succeed: ' + JSON.stringify(json));
+  assert.equal(json.serverVersion, 'v97.4.1');
+  assert.ok(Array.isArray(json.staff));
+});
+
+test('GAS doPost(admin) with valid 1234 sessionToken returns full admin payload without errors', { skip: !hasGas }, () => {
+  const { sandbox } = createMockGasSandbox();
+  sandbox.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ();
+  const login = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '1234' }) } }).getContent());
+  assert.equal(login.ok, true);
+  const adm = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'admin', sessionToken: login.sessionToken }) } }).getContent());
+  assert.equal(adm.ok, true, 'doPost(admin) must succeed: ' + JSON.stringify(adm));
+  assert.ok(Array.isArray(adm.cash));
+  assert.ok(Array.isArray(adm.salesLog));
+  assert.ok(Array.isArray(adm.inventory));
+});
+
+test('GAS doPost(staff_bootstrap) with valid admin sessionToken succeeds cleanly', { skip: !hasGas }, () => {
+  const { sandbox } = createMockGasSandbox();
+  sandbox.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ();
+  const login = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '1234' }) } }).getContent());
+  const boot = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'staff_bootstrap', sessionToken: login.sessionToken }) } }).getContent());
+  assert.equal(boot.ok, true, 'doPost(staff_bootstrap) must succeed: ' + JSON.stringify(boot));
+  assert.ok(Array.isArray(boot.tasks));
 });
