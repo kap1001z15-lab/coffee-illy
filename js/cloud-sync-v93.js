@@ -2,8 +2,8 @@
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
-  const SESSION_KEY = 'coffee_illy_v94_session';
+  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
+  const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
     const d = new Date();
@@ -197,7 +197,7 @@
     if (Array.isArray(data.tasks) && data.tasks.length) {
       const clean = data.tasks.filter((t) => t && t.title && !String(t.id || '').startsWith('__SYS'));
       if (clean.length) {
-        state.tasks = clean.map((t) => ({
+        const mapped = clean.map((t) => ({
           id: t.id || ('t_' + Math.random().toString(36).slice(2, 6)),
           block: t.block || 'Открытие',
           group: t.groupName || t.group || '',
@@ -207,6 +207,27 @@
           owner: t.responsible || t.owner || 'Бариста',
           active: String(t.active || 'да').toLowerCase() !== 'нет'
         }));
+        const seen = new Map();
+        const deduped = [];
+        mapped.forEach((t) => {
+          const normTitle = String(t.title || '')
+            .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, ' ')
+            .replace(/\bфото\b/gi, ' ')
+            .replace(/[+\-—·•:().,!?\d]+/g, ' ')
+            .replace(/\s+/g, ' ').trim().toLowerCase();
+          const key = String(t.block || '').trim().toLowerCase() + '|' + normTitle;
+          if (!normTitle || !seen.has(key)) {
+            seen.set(key, deduped.length);
+            deduped.push(t);
+          } else {
+            const idx0 = seen.get(key);
+            const prev = deduped[idx0];
+            if ((t.photo && !prev.photo) || (t.instruction.length > prev.instruction.length + 30 && t.photo === prev.photo)) {
+              deduped[idx0] = t;
+            }
+          }
+        });
+        state.tasks = deduped;
         changed = true;
       }
     }
@@ -356,25 +377,6 @@
     }
     if (data.staffPresence && typeof data.staffPresence === 'object') {
       state.staffPresence = data.staffPresence;
-      changed = true;
-    }
-    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
-      const todayKey = localISO();
-      const nextExt = {};
-      Object.keys(data.deadlineExtensions).forEach((k) => {
-        const val = data.deadlineExtensions[k];
-        if (!val || !val.forceOpen) return;
-        if (k.indexOf(todayKey + ':') === 0) {
-          nextExt[k.slice(todayKey.length + 1)] = val;
-        } else if (!/^\d{4}-\d{2}-\d{2}:/.test(k)) {
-          nextExt[k] = val;
-        }
-      });
-      state.extensions = nextExt;
-      changed = true;
-    }
-    if (Array.isArray(data.inventory)) {
-      state.inventory = data.inventory;
       changed = true;
     }
     if (data.tgConfiguredOnServer !== undefined) {
@@ -535,9 +537,6 @@
     } else if (desc.indexOf('Открыт блок') === 0) {
       const m = desc.match(/«([^»]+)»/);
       if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
-    } else if (desc.indexOf('Возвращено штатное окно') === 0) {
-      const m = desc.match(/«([^»]+)»/);
-      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
     } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
       const plansObj = {};
       const rosterObj = {};
@@ -571,13 +570,6 @@
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
-    } else if (desc.indexOf('Удалена задача ') === 0) {
-      const delId = desc.replace('Удалена задача ', '').trim();
-      if (delId) enqueueOp('delete_task', { id: delId });
-    } else if (desc.indexOf('Обновлён склад:') === 0 || desc.indexOf('Приход склада:') === 0 || desc.indexOf('Списание склада:') === 0) {
-      const nmPart = desc.split(':').slice(1).join(':').replace(/\([^)]*\)\s*$/, '').trim();
-      const invItem = (st.inventory || []).find((x) => x && x.name === nmPart);
-      if (invItem) enqueueOp('save_inventory', invItem);
     }
   }
 
@@ -805,9 +797,6 @@
   async function runChecklistNotificationsNow(opts) {
     return gasPost('run_checklist_notifications_now', opts || {});
   }
-  async function changeAdminPin(newPin) {
-    return gasPost('save_setting', { id: 'ADMIN_PIN', value: String(newPin || '').trim() });
-  }
   async function saveInventoryItem(opts) {
     return gasPost('save_inventory', opts || {});
   }
@@ -841,6 +830,7 @@
     enqueueOp: enqueueOp,
     flushOutbox: flushOutbox,
     uploadPhotoToDrive: uploadPhotoToDrive,
+    uploadMediaToDrive: uploadPhotoToDrive,
     mergeServerIntoState: mergeServerIntoState,
     dispatchStateChange: dispatchStateChange,
     startCloudLoop: startCloudLoop,

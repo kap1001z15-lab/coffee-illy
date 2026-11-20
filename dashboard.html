@@ -206,8 +206,8 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=93.1"></script>
-  <script src="js/cloud-sync-v94.js?v=93.1"></script>
+  <script src="config.js?v=94.0"></script>
+  <script src="js/cloud-sync-v94.js?v=94.0"></script>
 </head>
 <body>
 <header class="topbar">
@@ -609,7 +609,7 @@ function initTheme(btnId) {
             <select id="cf" class="chip-btn"><option value="all">Все сотрудники</option>${[...new Set(state.checklists.map(c=>c.who))].map(w=>`<option value="${esc(w)}" ${chkFilter===w?'selected':''}>${esc(w)}</option>`).join('')}</select>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">📷 ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">${String(u).includes('export=download')?'🎬':'📷'} ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
           </tbody></table></div>
         </div>`;
       document.getElementById('cf').onchange = e => { chkFilter = e.target.value; render(); };
@@ -1016,13 +1016,6 @@ function initTheme(btnId) {
             <button class="chip-btn" id="tg-run">▶️ Проверить чек-листы сейчас</button>
           </div>
         </div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Безопасность: смена PIN владельца</h2><div class="card-sub">Хранится в защищённом хранилище Google Apps Script (4–8 цифр)</div></div></div>
-          <div class="grid-2">
-            <div class="field"><label>Новый PIN владельца (4–8 цифр)</label><input id="adm-new-pin" type="password" inputmode="numeric" placeholder="Например: 492718"></div>
-            <div class="field" style="display:flex;align-items:flex-end;"><button class="chip-btn accent" id="adm-pin-save" style="width:100%;justify-content:center;padding:11px;">🔐 Обновить PIN владельца</button></div>
-          </div>
-        </div>
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Журнал аудита и управления (${fAudit.length})</h2></div></div>
           <div class="stack" style="max-height:300px;overflow-y:auto;">${fAudit.length ? fAudit.map(a=>`<div class="card-soft" style="padding:8px 12px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);"><b>${esc(a.actor)} · ${a.date ? esc(a.date) + ' ' : ''}${esc(a.time || '')}</b><span class="badge accent">rev #${a.rev || state.rev}</span></div><div style="font-size:12.5px;margin-top:2px;">${esc(a.text)}</div></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет записей управления за выбранный период (${esc(rng.label)})</div>`}</div>
@@ -1069,15 +1062,6 @@ function initTheme(btnId) {
         const res = await window.CoffeeCloudV93.runChecklistNotificationsNow({});
         const cnt = (res && Array.isArray(res.sent)) ? res.sent.length : 0;
         showToast(cnt ? ('📨 Отправлено уведомлений сотрудникам: ' + cnt) : 'Новых открытых чек-листов для отправки нет');
-      });
-      document.getElementById('adm-pin-save').onclick = () => guard('Сменить PIN владельца', async () => {
-        const np = (document.getElementById('adm-new-pin').value || '').trim();
-        if (!/^\d{4,8}$/.test(np)) { showToast('Введите 4–8 цифр'); return; }
-        if (window.CoffeeCloudV94) {
-          const res = await window.CoffeeCloudV94.changeAdminPin(np);
-          if (res && res.ok) { state.adminPin = np; document.getElementById('adm-new-pin').value = ''; showToast('🔐 PIN владельца обновлён на сервере!'); }
-          else showToast('Ошибка смены PIN: ' + ((res && res.error) || 'проверьте права'));
-        }
       });
     }
   }
@@ -1157,7 +1141,7 @@ function initTheme(btnId) {
       <div class="grid-2"><div class="field"><label>Ответственный</label><select id="nt-o">${optList(OWNERS,'Администратор')}</select></div><div class="field"><label>Фото</label><select id="nt-p"><option value="1">Да</option><option value="0">Нет</option></select></div></div>
       <button class="btn-lg primary" id="nt-s">+ Добавить</button>
     `);
-    document.querySelectorAll('[data-dt]').forEach(b=>b.onclick=()=>guard('Удалить задачу',()=>{ state.tasks=state.tasks.filter(x=>x.id!==b.dataset.dt); saveSharedState(state,'Администратор','Удалена задача ' + b.dataset.dt); openTasksModal(blk); render(); }));
+    document.querySelectorAll('[data-dt]').forEach(b=>b.onclick=()=>guard('Удалить задачу',()=>{ state.tasks=state.tasks.filter(x=>x.id!==b.dataset.dt); saveSharedState(state,'Администратор','Удалена задача'); openTasksModal(blk); render(); }));
     document.getElementById('nt-s').onclick = () => guard('Добавить задачу', () => {
       const t = document.getElementById('nt-t').value.trim(); if (!t) return;
       state.tasks.push({ id:'t_'+Date.now(), block:blk, group:blk, title:t, instruction:'По стандарту Coffee Illy.', photo:document.getElementById('nt-p').value==='1', owner:document.getElementById('nt-o').value });
