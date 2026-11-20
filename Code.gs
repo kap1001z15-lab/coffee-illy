@@ -279,14 +279,6 @@ function doPost(e) {
       return idempotentJsonOut_(ss, body, upOut, actorSess, actorSess);
     }
 
-    // 4.5. Молниеносные lock-free чтения с DATA_REV-кэшем (v94.2): чтение не ждёт блокировку записи!
-    if (action === 'admin') {
-      return jsonOut_(getAdminCachedV94_(ss));
-    }
-    if (action === 'staff_bootstrap') {
-      return jsonOut_(buildStaffBootstrapDto_(ss, actorSess, body.sinceTs));
-    }
-
     // 5. Короткая критическая секция для операций с Google Sheets
     lock.waitLock(15000);
     hasLock = true;
@@ -844,6 +836,7 @@ function changeStaffPin_(ss, body) {
     }
   }
   appendAudit_(ss, staffName, 'Смена персонального PIN-кода', 'Установлен новый индивидуальный PIN');
+  bumpDataRev_();
   return { ok: true, staffName: staffName, pinChanged: true };
 }
 
@@ -2377,8 +2370,7 @@ function getChecklists_(ss) {
 
   return {
     ok: true,
-    v: 94,
-    rev: getDataRev_(),
+    v: 55,
     checklists: chkLog,
     userDrafts: userDraftsMap,
     userActiveState: userActiveMap,
@@ -2694,8 +2686,7 @@ function getAdmin_(ss) {
 
   return {
     ok: true,
-    v: 94,
-    rev: getDataRev_(),
+    v: 28,
     today: isoDate_(),
     location: map.LOCATION,
     plan: Number(map.PLAN) || 2200,
@@ -2950,6 +2941,7 @@ function saveSetting_(ss, b) {
     }
   }
   sh.appendRow([k, b.value]);
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3108,6 +3100,7 @@ function saveStaffPins_(ss, b) {
       }
     }
   });
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3255,6 +3248,7 @@ function saveAnnouncement_(ss, b) {
   }
   sh.appendRow(rowVals);
   appendAudit_(ss, 'Администратор', 'Публикация объявления', b.title);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3268,6 +3262,7 @@ function deleteAnnouncement_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3321,7 +3316,8 @@ function saveStaff_(ss, b) {
   var resNew = { ok: true, id: id };
   if (generatedPin) resNew.generatedPin = generatedPin;
   return resNew;
-}
+}bumpDataRev_();
+  
 
 function deleteStaff_(ss, b) {
   var sh = ss.getSheetByName('Сотрудники');
@@ -4021,6 +4017,7 @@ function bindTelegramUser_(ss, b) {
       }
     }
   } catch (_) {}
+  bumpDataRev_();
   return { ok: true, tgId: tgId, staffName: staffName };
 }
 
@@ -4157,6 +4154,7 @@ function reportIncident_(ss, b) {
     JSON.stringify(hist)
   ]);
   appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -5075,73 +5073,4 @@ function dedupeTasksV94_(tasks) {
     }
   }
   return out;
-}
-
-
-/* =========================================================================
-   COFFEE ILLY v94.2 — DATA_REV-КЭШ ДЛЯ МОЛНИЕНОСНОЙ ЗАГРУЗКИ ДАШБОРДА
-   ========================================================================= */
-function readChunkedCacheV94_(keyBase) {
-  try {
-    var cache = CacheService.getScriptCache();
-    if (!cache) return null;
-    var metaRaw = cache.get(keyBase + '_m');
-    if (!metaRaw) return null;
-    var meta = JSON.parse(metaRaw);
-    if (!meta || !meta.n) return null;
-    var parts = [];
-    for (var i = 0; i < meta.n; i++) {
-      var p = cache.get(keyBase + '_' + i);
-      if (p == null) return null;
-      parts.push(p);
-    }
-    return JSON.parse(parts.join(''));
-  } catch (_) {
-    return null;
-  }
-}
-
-function writeChunkedCacheV94_(keyBase, obj, ttlSec) {
-  try {
-    var cache = CacheService.getScriptCache();
-    if (!cache) return;
-    var raw = JSON.stringify(obj);
-    var CHUNK = 90000;
-    if (raw.length > CHUNK * 4) return; // safety cap (~360KB)
-    var n = Math.ceil(raw.length / CHUNK);
-    for (var i = 0; i < n; i++) {
-      cache.put(keyBase + '_' + i, raw.slice(i * CHUNK, (i + 1) * CHUNK), ttlSec || 300);
-    }
-    cache.put(keyBase + '_m', JSON.stringify({ n: n }), ttlSec || 300);
-  } catch (_) {}
-}
-
-function getAdminCachedV94_(ss) {
-  var rev = getDataRev_();
-  var cKey = 'adm_v94_' + rev;
-  var hit = readChunkedCacheV94_(cKey);
-  if (hit && hit.ok) {
-    hit.cacheHit = true;
-    return hit;
-  }
-  var fresh = maskSensitiveSettingsInResponse_(getAdmin_(ss), ss);
-  fresh.rev = rev;
-  fresh.cacheHit = false;
-  writeChunkedCacheV94_(cKey, fresh, 300);
-  return fresh;
-}
-
-function getChecklistsCachedV94_(ss) {
-  var rev = getDataRev_();
-  var cKey = 'chk_v94_' + rev;
-  var hit = readChunkedCacheV94_(cKey);
-  if (hit && hit.ok) {
-    hit.cacheHit = true;
-    return hit;
-  }
-  var fresh = maskSensitiveSettingsInResponse_(getChecklists_(ss), ss);
-  fresh.rev = rev;
-  fresh.cacheHit = false;
-  writeChunkedCacheV94_(cKey, fresh, 300);
-  return fresh;
 }

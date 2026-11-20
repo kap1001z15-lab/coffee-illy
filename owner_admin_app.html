@@ -203,6 +203,47 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .tbl-wrap table { min-width: 0; }
 }
 
+
+/* === v94.2 Adaptive Multi-Device Polish (320px Phones, Tablets, Desktops, Telegram WebApp) === */
+html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
+body { min-height: 100vh; min-height: 100dvh; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
+button, a, select, input, textarea, label { touch-action: manipulation; }
+.btn-lg { min-height: 46px; }
+.chip-btn { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.tbl-wrap table { min-width: 480px; width: 100%; }
+.nav-pills, #admin-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.nav-pills::-webkit-scrollbar, #admin-nav::-webkit-scrollbar { display: none; }
+
+@media (max-width: 600px) {
+  .modal-bg { align-items: flex-end !important; padding: 0 !important; }
+  .modal { width: 100% !important; max-width: 100% !important; border-radius: 24px 24px 0 0 !important; max-height: 90dvh !important; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important; }
+  .bnav { padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important; }
+  .bnav button { min-height: 46px; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr !important; }
+  .card, .step-card { padding: 14px !important; border-radius: 20px !important; }
+  .row-item { flex-direction: column; align-items: flex-start !important; gap: 8px; }
+}
+
+@media (max-width: 390px) {
+  .hdr { padding: 8px 10px !important; gap: 6px !important; }
+  .hdr-title { font-size: 14px !important; }
+  .kpi-val { font-size: 19px !important; }
+  .chip-btn { font-size: 11.5px !important; padding: 5px 8px !important; }
+  .pin-key { min-height: 48px !important; font-size: 18px !important; }
+}
+
+@media (min-width: 601px) and (max-width: 1024px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .modal { max-width: 600px !important; }
+}
+
+@media (min-width: 1025px) {
+  .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .modal { max-width: 640px !important; }
+}
+
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -373,21 +414,19 @@ function initTheme(btnId) {
   function saveDateRangePref() {
     try { localStorage.setItem(DATE_STORE_KEY, JSON.stringify({ preset: datePreset, from: customFrom, to: customTo })); } catch (_) {}
   }
-  function todayIso() { return window.CoffeeCloudV94 ? window.CoffeeCloudV94.localISO() : TODAY; }
   function getActiveDateRange() {
-    const curToday = todayIso();
-    if (datePreset === 'today') return { from: curToday, to: curToday, label: 'Сегодня (' + fmtDateRu(curToday) + ')' };
+    if (datePreset === 'today') return { from: TODAY, to: TODAY, label: 'Сегодня (' + fmtDateRu(TODAY) + ')' };
     if (datePreset === 'yesterday') {
-      const y = shiftIsoDate(curToday, -1);
+      const y = shiftIsoDate(TODAY, -1);
       return { from: y, to: y, label: 'Вчера (' + fmtDateRu(y) + ')' };
     }
     if (datePreset === '7d') {
-      const f = shiftIsoDate(curToday, -6);
-      return { from: f, to: curToday, label: '7 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+      const f = shiftIsoDate(TODAY, -6);
+      return { from: f, to: TODAY, label: '7 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
     }
     if (datePreset === '30d') {
-      const f = shiftIsoDate(curToday, -29);
-      return { from: f, to: curToday, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+      const f = shiftIsoDate(TODAY, -29);
+      return { from: f, to: TODAY, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
     }
     if (datePreset === 'all') {
       return { from: '2000-01-01', to: '2099-12-31', isAll: true, label: 'Всё время' };
@@ -608,7 +647,7 @@ function initTheme(btnId) {
 
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
-    document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'Онлайн' : 'Подключение...') + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '') + (state.lastRttMs ? ' · ' + state.lastRttMs + ' мс' : '');
+    document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'Онлайн' : 'Ожидание') + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '');
     const _clkEl = document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = '🕒 ' + (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
     const lb = document.getElementById('btn-lock');
     lb.textContent = adminUnlocked ? '🔓 Админ-сессия' : '🔒 Защищено PIN';
@@ -627,8 +666,8 @@ function initTheme(btnId) {
     const invAll = state.inventory || [];
     const lowStockCount = invAll.filter(it => Number(it.stock || 0) <= Number(it.minStock || 0)).length;
 
-    const totalRev = fCash.reduce((a,c)=>a+(Number(c.revenue)||0),0);
-    const totalExp = fExpenses.reduce((a,e)=>a+(Number(e.amount)||0),0);
+    const totalRev = fCash.reduce((a,c)=>a+c.revenue,0);
+    const totalExp = fExpenses.reduce((a,e)=>a+e.amount,0);
     const openIncs = fIncidents.filter(i=>i.status!=='Решена').length;
     const salesQtyTotal = fSales.reduce((a, s) => a + (Number(s.qty) || 0), 0);
     document.getElementById('cnt-chk').textContent = fChecklists.length;
@@ -674,7 +713,7 @@ function initTheme(btnId) {
               const pct = dp.rev > 0 ? Math.round((c.revenue / dp.rev) * 100) : 0;
               const tip = `${dp.day} ${c.date} · Выручка: ${c.revenue} / ${dp.rev} ₽ (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} / ≥${dp.avg} ₽`;
               return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val">${c.revenue}</div><div class="bar-fill ${hit?'hit':''}" style="height:${Math.max(12,Math.round((c.revenue/maxRev)*100))}%"></div><div class="bar-dt">${dp.day} ${c.date.slice(8)}</div></div>`;
-            }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:24px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})${(state.cash && state.cash.length) ? '<div style="margin-top:10px;"><button class="chip-btn accent" id="ov-show-all">Показать всё время (' + state.cash.length + ' смен)</button></div>' : ''}</div>`}
+            }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:36px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
           </div>
         </div>
         <div class="card">
@@ -695,7 +734,6 @@ function initTheme(btnId) {
           </div>
         </div>`;
       const _ovU = document.getElementById('ov-unlock'); if (_ovU) _ovU.onclick = () => guard('Живые данные дашборда', () => {});
-      const _ovA = document.getElementById('ov-show-all'); if (_ovA) _ovA.onclick = () => { datePreset = 'all'; saveDateRangePref(); render(); };
       return;
     }
 
