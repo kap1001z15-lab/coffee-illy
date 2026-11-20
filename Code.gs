@@ -842,6 +842,7 @@ function changeStaffPin_(ss, body) {
     }
   }
   appendAudit_(ss, staffName, 'Смена персонального PIN-кода', 'Установлен новый индивидуальный PIN');
+  bumpDataRev_();
   return { ok: true, staffName: staffName, pinChanged: true };
 }
 
@@ -1361,6 +1362,7 @@ function saveSettingSecure_(ss, body) {
   } else if (/^[=+\-@]/.test(val) && !/^https?:\/\//i.test(val)) {
     body = Object.assign({}, body, { id: nk, value: "'" + val });
   }
+  bumpDataRev_();
   return saveSetting_(ss, body);
 }
 
@@ -1500,7 +1502,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     ok: true,
     v: 96,
     rev: getDataRev_(),
-    serverVersion: 'v96.1', specVersion: '4.1',
+    serverVersion: 'v97.0', specVersion: '4.1',
     profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
     location: full.location || 'Кофейня №1',
     plan: Number(full.plan) || 2200,
@@ -1542,6 +1544,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
     inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
+    auditLog: full.auditLog || [],
     userDrafts: filteredDrafts,
     userActiveState: full.userActiveState || {},
     personalTasksDone: full.personalTasksDone || {},
@@ -2246,6 +2249,12 @@ function getDailyPlansAndRosterFromSheet_(ss, map) {
       if (r[4] != null && String(r[4]).trim() !== '') roster[d] = String(r[4]).trim();
     }
   }
+  if (map && map.DAILY_PLANS_JSON) {
+    try { Object.assign(plans, JSON.parse(map.DAILY_PLANS_JSON)); } catch (_) {}
+  }
+  if (map && map.SHIFT_ROSTER_JSON) {
+    try { Object.assign(roster, JSON.parse(map.SHIFT_ROSTER_JSON)); } catch (_) {}
+  }
   return { dailyPlans: plans, shiftRoster: roster };
 }
 
@@ -2471,7 +2480,10 @@ function getChecklists_(ss) {
     cash: getRecentCashAndIncidentsForSync_(ss).cash,
     incidents: getRecentCashAndIncidentsForSync_(ss).incidents,
     inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
+    inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
+    serviceAudits: getServiceAuditsFromSheet_(ss),
+    auditLog: getAuditLogFromSheet_(ss, 40),
     staffPresence: getStaffPresenceToday_(ss),
     serverTime: serverTime,
     serverDate: serverDate
@@ -3013,6 +3025,7 @@ function saveSetting_(ss, b) {
     }
   }
   sh.appendRow([k, b.value]);
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3112,6 +3125,7 @@ function deleteChecklistBlock_(ss, b) {
     return x.name !== target && x.id !== b.id;
   });
   syncChecklistBlocksSheet_(ss, blocks);
+  bumpDataRev_();
   return { ok: true, checklistBlocks: blocks };
 }
 
@@ -3171,6 +3185,7 @@ function saveStaffPins_(ss, b) {
       }
     }
   });
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3980,6 +3995,7 @@ function updateExpense_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -4128,6 +4144,7 @@ function bindTelegramUser_(ss, b) {
       }
     }
   } catch (_) {}
+  bumpDataRev_();
   return { ok: true, tgId: tgId, staffName: staffName };
 }
 
@@ -4264,6 +4281,7 @@ function reportIncident_(ss, b) {
     JSON.stringify(hist)
   ]);
   appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -4296,6 +4314,7 @@ function deleteIncident_(ss, b) {
   for (var i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][0]).trim() === String(b.id).trim()) sh.deleteRow(i + 1);
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -4413,7 +4432,9 @@ function addExpiryItem_(ss, b) {
   var tz = Session.getScriptTimeZone() || 'GMT+2';
   var item = {
     id: String((b && b.id) || ('EXPIR-' + Date.now().toString(36))),
-    title: String((b && b.title) || 'Вскрытая позиция'),
+    title: String((b && (b.title || b.name)) || 'Вскрытая позиция'),
+    name: String((b && (b.name || b.title)) || 'Вскрытая позиция'),
+    expiresAt: String((b && b.expiresAt) || Utilities.formatDate(new Date(expMs), tz, 'yyyy-MM-dd')),
     category: String((b && b.category) || 'Бар'),
     shelfLifeHours: hours,
     openedAtMs: nowMs,
@@ -5461,4 +5482,26 @@ function bulkSeedTtkV95_(ss, b) {
   });
   bumpDataRev_();
   return { ok: true, added: added, total: getTtkList_(ss).length, ttk: getTtkList_(ss) };
+}
+
+function getAuditLogFromSheet_(ss, limit) {
+  var out = [];
+  try {
+    var shA = ss && ss.getSheetByName('Аудит');
+    if (!shA || shA.getLastRow() < 2) return out;
+    var rows = shA.getDataRange().getValues();
+    var maxN = Number(limit) || 40;
+    for (var i = rows.length - 1; i >= 1 && out.length < maxN; i--) {
+      var r = rows[i];
+      if (!r[0] && !r[2] && !r[3]) continue;
+      out.push({
+        date: fmtIso_(r[0]),
+        time: fmtTime_(r[1]),
+        actor: String(r[2] || 'Система'),
+        action: String(r[3] || ''),
+        text: String(r[3] || '') + (r[4] ? (' · ' + String(r[4])) : '')
+      });
+    }
+  } catch (_) {}
+  return out;
 }

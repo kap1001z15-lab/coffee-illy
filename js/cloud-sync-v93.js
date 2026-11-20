@@ -1,4 +1,4 @@
-/* Coffee Illy v96.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v97.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
@@ -61,6 +61,9 @@
   let _lastRttMs = 0;
   let _lastServerRev = '';
   let _syncCallbacks = null;
+  let _mutationEpoch = 0;
+  let _pullInFlight = null;
+  function bumpLocalEpoch() { _mutationEpoch++; return _mutationEpoch; }
 
   async function flushOutbox() {
     if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { flushed: 0, pending: readOutbox().length };
@@ -104,6 +107,7 @@
 
   function enqueueOp(action, payload) {
     if (!action) return;
+    bumpLocalEpoch();
     const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const q = readOutbox();
     q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now() });
@@ -727,15 +731,17 @@
 
     async function pullNow(forceFull) {
       if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
+      if (_pullInFlight && !forceFull) return _pullInFlight;
+      const runPull = (async () => {
       try {
         const fl = await flushOutbox();
         if (fl && fl.pending > 0 && !forceFull) return { changed: false, pending: fl.pending };
+        const reqEpoch = _mutationEpoch;
         const t0 = Date.now();
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
         _lastRttMs = Math.max(1, Date.now() - t0);
         const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
         if (!forceFull && srvRev && srvRev === _lastServerRev) return { changed: false, rev: srvRev };
-        if (srvRev) _lastServerRev = srvRev;
 
         let data = null;
         const sess = getSession();
@@ -754,6 +760,10 @@
         } else {
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
+        if (_mutationEpoch !== reqEpoch || readOutbox().length > 0) {
+          return { changed: false, skippedStale: true };
+        }
+        if (srvRev) _lastServerRev = srvRev;
         if (data && getState) {
           const st = getState();
           const changed = mergeServerIntoState(st, data);
@@ -766,6 +776,10 @@
         }
       } catch (_) {}
       return null;
+      })();
+      const wrapped = runPull.finally(() => { if (_pullInFlight === wrapped) _pullInFlight = null; });
+      _pullInFlight = wrapped;
+      return wrapped;
     }
 
     function nextDelay() {
@@ -990,6 +1004,19 @@
     }, 350);
   }
 
+  async function saveAnnouncement(opts) {
+    bumpLocalEpoch();
+    const res = await gasPost('save_announcement', { title: (opts && opts.title) || 'Объявление', text: (opts && opts.text) || '', pinned: true });
+    if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
+    return res;
+  }
+  async function deleteAnnouncement(id) {
+    bumpLocalEpoch();
+    const res = await gasPost('delete_announcement', { id: id });
+    if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
+    return res;
+  }
+
   const API_OBJ = {
     localISO: localISO,
     localHHMM: localHHMM,
@@ -1025,12 +1052,15 @@
     writeoffInventory: writeoffInventory,
     addExpiryItem: addExpiryItem,
     disposeExpiryItem: disposeExpiryItem,
+    saveAnnouncement: saveAnnouncement,
+    deleteAnnouncement: deleteAnnouncement,
     importPosBatch: importPosBatch,
     sendStepProgress: function (userName, block, done, total) {
       if (!userName || !block) return;
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
+  window.CoffeeCloudV97 = API_OBJ;
   window.CoffeeCloudV96 = API_OBJ;
   window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;

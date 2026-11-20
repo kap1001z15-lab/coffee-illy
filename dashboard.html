@@ -210,7 +210,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=94.2"></script>
-  <script src="js/cloud-sync-v96.js?v=96.1"></script>
+  <script src="js/cloud-sync-v97.js?v=97.0"></script>
 <script src="js/pos-csv-parser-v93.js?v=94.2"></script>
 </head>
 <body>
@@ -1360,7 +1360,12 @@ function initTheme(btnId) {
     }
 
     if (tab === 'team') {
+      const annList = Array.isArray(state.announcements) ? state.announcements : [];
       root.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-head"><div><h2 class="card-title">📢 Объявления для терминала (${annList.length})</h2><div class="card-sub">Мгновенно отображаются в терминале у всех бариста</div></div><button class="chip-btn accent" id="ann-add">+ Объявление</button></div>
+          <div class="stack">${annList.length ? annList.map(a => `<div class="row-item"><div class="row-main"><div class="row-title">${esc(a.title || 'Важно')}</div><div class="row-sub">${esc(a.text || a.body || '')}</div></div><button class="chip-btn bad" data-dann="${esc(a.id || a.title)}" style="padding:4px 8px;">✕</button></div>`).join('') : '<div style="font-size:12.5px;color:var(--muted);">Активных объявлений нет. Нажмите «+ Объявление», чтобы отправить важное сообщение на смену.</div>'}</div>
+        </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Сотрудники, личные PIN и Telegram ID</h2></div><button class="chip-btn accent" id="s-add">+ Сотрудник</button></div>
           <div class="stack">${state.staff.map(s => {
@@ -1431,6 +1436,30 @@ function initTheme(btnId) {
             </tbody></table></div>
           </div>`;
         })()}`;
+      document.getElementById('ann-add').onclick = () => guard('Новое объявление', () => {
+        openModal('Новое объявление для смены', `
+          <div class="field"><label>Заголовок</label><input id="an-t" placeholder="Например: Акция дня / Поставка молока"></div>
+          <div class="field"><label>Текст сообщения</label><textarea id="an-b" rows="3" placeholder="Что должны увидеть бариста в терминале"></textarea></div>
+          <button class="btn-lg primary" id="an-sv">📢 Опубликовать в терминал</button>
+        `);
+        document.getElementById('an-sv').onclick = async () => {
+          const title = document.getElementById('an-t').value.trim() || 'Важно';
+          const text = document.getElementById('an-b').value.trim();
+          if (!text) { showToast('Введите текст объявления'); return; }
+          state.announcements = state.announcements || [];
+          state.announcements.unshift({ id: 'ann_' + Date.now(), title, text, date: TODAY });
+          if (window.CoffeeCloudV97) await window.CoffeeCloudV97.saveAnnouncement({ title, text });
+          saveSharedState(state, 'Администратор', '');
+          closeModal(); showToast('📢 Объявление отправлено в терминал'); render();
+        };
+      });
+      root.querySelectorAll('[data-dann]').forEach(b => b.onclick = () => guard('Удалить объявление', async () => {
+        const aid = b.dataset.dann;
+        state.announcements = (state.announcements || []).filter(a => String(a.id || a.title) !== String(aid));
+        if (window.CoffeeCloudV97) await window.CoffeeCloudV97.deleteAnnouncement(aid);
+        saveSharedState(state, 'Администратор', '');
+        showToast('Объявление удалено'); render();
+      }));
       document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
       root.querySelectorAll('[data-es]').forEach(b => b.onclick = () => guard('Изменить сотрудника', () => openStaffModal(b.dataset.es)));
       document.getElementById('k-add').onclick = () => guard('Новая ТТК', () => openTtkModal(null));
