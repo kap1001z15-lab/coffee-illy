@@ -243,11 +243,11 @@ test('CoffeeCameraV94.open invokes onCaptured(dataUri, meta) when shutter fires 
       removeEventListener: () => {},
       querySelector: (sel) => {
         if (sel === 'video') return makeEl('video');
-        if (sel === '[data-cam="shot"]') return el._shotBtn || (el._shotBtn = makeEl('button'));
+        if (sel === '[data-cam="shutter"]') return el._shotBtn || (el._shotBtn = makeEl('button'));
         if (sel === '[data-cam="done"]') return el._doneBtn || (el._doneBtn = makeEl('button'));
         if (sel === '[data-cam="close"]') return el._closeBtn || (el._closeBtn = makeEl('button'));
         if (sel === '[data-cam="flip"]') return el._flipBtn || (el._flipBtn = makeEl('button'));
-        if (sel === '[data-cam="rec"]') return el._recBtn || (el._recBtn = makeEl('button'));
+        if (sel === '[data-cam="video"]') return el._recBtn || (el._recBtn = makeEl('button'));
         if (sel === '[data-cam="err"]') return el._errEl || (el._errEl = makeEl('div'));
         if (sel === '[data-cam="devices"]') return el._devSel || (el._devSel = makeEl('select'));
         if (sel === '[data-cam="devwrap"]') return el._devWrap || (el._devWrap = makeEl('div'));
@@ -295,11 +295,86 @@ test('CoffeeCameraV94.open invokes onCaptured(dataUri, meta) when shutter fires 
   await new Promise((r) => setTimeout(r, 20));
   const overlay = fakeDoc.body.children[0];
   assert.ok(overlay, 'Camera overlay should mount');
-  const shotBtn = overlay.querySelector('[data-cam="shot"]');
+  const shotBtn = overlay.querySelector('[data-cam="shutter"]');
   assert.equal(typeof shotBtn.onclick, 'function');
   shotBtn.onclick();
   const out = await p;
   assert.equal(capturedUri, 'data:image/jpeg;base64,TEST_PHOTO_DATA');
   assert.equal(capturedMeta.mediaType, 'image');
   assert.ok(out && out.dataUrl === 'data:image/jpeg;base64,TEST_PHOTO_DATA');
+});
+
+test('CloudSync mergeServerIntoState syncs deadlineExtensions (unlock and clear) for today', async () => {
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8');
+  const ctx = {
+    window: { COFFEE_CONFIG: {} },
+    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    navigator: { onLine: true },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Set, Map, Promise, setTimeout, clearTimeout, encodeURIComponent,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const cloud = ctx.window.CoffeeCloudV94;
+  const today = cloud.localISO();
+  const st = { extensions: {} };
+
+  cloud.mergeServerIntoState(st, {
+    deadlineExtensions: {
+      [today + ':Лайн Чек 1']: { forceOpen: true, openFrom: '00:00', until: '23:59' },
+      '2020-01-01:Старый блок': { forceOpen: true }
+    }
+  });
+  assert.ok(st.extensions['Лайн Чек 1'] && st.extensions['Лайн Чек 1'].forceOpen === true, 'Today unlock must be synced');
+  assert.equal(st.extensions['Старый блок'], undefined, 'Past-date extension must not leak');
+
+  cloud.mergeServerIntoState(st, { deadlineExtensions: {} });
+  assert.equal(st.extensions['Лайн Чек 1'], undefined, 'Clearing extension on owner dashboard must re-lock on barista phone');
+});
+
+test('CloudSync mergeServerIntoState syncs announcements array', async () => {
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8');
+  const ctx = {
+    window: { COFFEE_CONFIG: {} },
+    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    navigator: { onLine: true },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Set, Map, Promise, setTimeout, clearTimeout, encodeURIComponent,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const cloud = ctx.window.CoffeeCloudV94;
+  const st = {};
+  cloud.mergeServerIntoState(st, { announcements: [{ id: 'a1', title: 'Собрание', text: 'В 19:00' }] });
+  assert.equal(st.announcements.length, 1);
+  assert.equal(st.announcements[0].title, 'Собрание');
+});
+
+test('CloudSync saveInventoryItem queues to outbox when offline instead of dropping', async () => {
+  const store = new Map();
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8');
+  const ctx = {
+    window: { COFFEE_CONFIG: { API_URL: 'https://script.google.com/macros/s/test/exec' } },
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => { store.set(k, String(v)); },
+      removeItem: (k) => { store.delete(k); }
+    },
+    navigator: { onLine: false },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Set, Map, Promise, setTimeout, clearTimeout, encodeURIComponent,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const cloud = ctx.window.CoffeeCloudV94;
+  const res = await cloud.saveInventoryItem({ id: 'inv_1', name: 'Молоко', stock: 12 });
+  assert.equal(res.ok, true);
+  assert.equal(res.queued, true);
+  assert.equal(cloud.getPendingCount(), 1);
 });

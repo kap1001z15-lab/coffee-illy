@@ -240,6 +240,24 @@
       })).filter((b) => b.name);
       changed = true;
     }
+    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
+      const todayKey = localISO();
+      const nextExt = {};
+      Object.keys(data.deadlineExtensions).forEach((k) => {
+        const val = data.deadlineExtensions[k];
+        if (!val || typeof val !== 'object') return;
+        const colonIdx = k.indexOf(':');
+        if (colonIdx === 10 && /^\d{4}-\d{2}-\d{2}$/.test(k.slice(0, 10))) {
+          const dtPart = k.slice(0, 10);
+          const blkName = k.slice(11);
+          if (dtPart === todayKey && blkName) nextExt[blkName] = Object.assign({}, val);
+        } else if (k) {
+          nextExt[k] = Object.assign({}, val);
+        }
+      });
+      state.extensions = nextExt;
+      changed = true;
+    }
     if (Array.isArray(data.tasks) && data.tasks.length) {
       const clean = data.tasks.filter((t) => t && t.title && !String(t.id || '').startsWith('__SYS'));
       if (clean.length) {
@@ -513,6 +531,10 @@
       }));
       changed = true;
     }
+    if (Array.isArray(data.announcements)) {
+      state.announcements = data.announcements;
+      changed = true;
+    }
     if (data.serverTime) {
       state.serverTime = String(data.serverTime);
       changed = true;
@@ -588,7 +610,7 @@
       enqueueOp('save_checklist_blocks', { blocks: st.blocks || [] });
     } else if (desc.indexOf('Открыт блок') === 0) {
       const m = desc.match(/«([^»]+)»/);
-      if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
+      if (m) enqueueOp('extend_deadline', { date: localISO(), block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
     } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
       const plansObj = {};
       const rosterObj = {};
@@ -636,7 +658,7 @@
       if (tid) enqueueOp('delete_task', { id: tid });
     } else if (desc.indexOf('Возвращено окно «') === 0) {
       const m = desc.match(/«([^»]+)»/);
-      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
+      if (m) enqueueOp('extend_deadline', { date: localISO(), block: m[1], clear: true });
     } else if (desc.indexOf('Удалён сотрудник ') === 0) {
       const nm = desc.replace('Удалён сотрудник ', '').trim();
       if (nm) enqueueOp('delete_staff', { name: nm });
@@ -760,9 +782,9 @@
     function nextDelay() {
       if (typeof document !== 'undefined' && document.hidden) return 25000;
       const idle = Date.now() - _lastActive;
-      const a = Number(CFG.SYNC_ACTIVE_MS) || 900;
-      const w = Number(CFG.SYNC_WARM_MS) || 2500;
-      const idl = Number(CFG.SYNC_IDLE_MS) || 10000;
+      const a = Number(CFG.SYNC_ACTIVE_MS) || 700;
+      const w = Number(CFG.SYNC_WARM_MS) || 2000;
+      const idl = Number(CFG.SYNC_IDLE_MS) || 6000;
       return idle < 120000 ? a : (idle < 600000 ? w : idl);
     }
 
@@ -924,18 +946,35 @@
   async function sendDailyDigest(dateStr) {
     return gasPost('send_daily_digest', dateStr ? { date: dateStr } : {});
   }
+  async function safeMutateWithOutbox(action, payload) {
+    markLocalMutation();
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      enqueueOp(action, payload);
+      return { ok: true, queued: true };
+    }
+    try {
+      const res = await gasPost(action, payload);
+      if (res && res.ok === false && isRetryableServerError(res.error)) {
+        enqueueOp(action, payload);
+        return { ok: true, queued: true };
+      }
+      return res;
+    } catch (_) {
+      enqueueOp(action, payload);
+      return { ok: true, queued: true };
+    }
+  }
   async function saveInventoryItem(opts) {
-    return gasPost('save_inventory', opts || {});
+    return safeMutateWithOutbox('save_inventory', opts || {});
   }
   async function restockInventory(id, delta, note) {
-    return gasPost('restock_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
+    return safeMutateWithOutbox('restock_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
   }
   async function deleteInventory(id) {
-    markLocalMutation();
-    return gasPost('delete_inventory', { id: id });
+    return safeMutateWithOutbox('delete_inventory', { id: id });
   }
   async function writeoffInventory(id, delta, note) {
-    return gasPost('writeoff_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
+    return safeMutateWithOutbox('writeoff_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
   }
   async function addExpiryItem(opts) {
     return gasPost('add_expiry_item', opts || {});

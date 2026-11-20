@@ -215,9 +215,9 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.7.0"></script>
-  <script src="js/cloud-sync.js?v=97.7.0"></script>
-<script src="js/pos-csv-parser.js?v=97.7.0"></script>
+  <script src="config.js?v=97.9.0"></script>
+  <script src="js/cloud-sync.js?v=97.9.0"></script>
+<script src="js/pos-csv-parser.js?v=97.9.0"></script>
 </head>
 <body>
 <header class="topbar">
@@ -267,7 +267,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[],"salesLog":[],"inventory":[],"inventoryMoves":[],"expiryItems":[]};
 const STORE_KEY = 'coffee_illy_v90_live_state';
 const THEME_KEY = 'coffee_illy_v90_theme';
-const TODAY = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10));
+function getTodayISO() { return (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10)); }
 const TIME_OPTIONS = ['06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:23','10:30','10:34','11:00','11:30','12:00','12:30','13:00','14:00','15:00','16:00','17:00','18:00','18:30','19:00','20:00','21:00','21:30','22:00','22:30','23:00','23:30','23:59'];
 const PLAN_OPTS = [1500,1800,2000,2200,2500,3000,3500,4000,5000];
 const CHECKS_OPTS = [30,40,50,60,70,75,80,90,100,120];
@@ -306,7 +306,7 @@ function saveSharedState(st, actor, desc) {
   st.rev = (Number(st.rev) || 0) + 1;
   if (desc) {
     st.auditLog = st.auditLog || [];
-    st.auditLog.unshift({ date: TODAY, time: (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (st.simTime || '13:25')), actor: actor || 'Система', rev: st.rev, text: desc });
+    st.auditLog.unshift({ date: getTodayISO(), time: (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (st.simTime || '13:25')), actor: actor || 'Система', rev: st.rev, text: desc });
     if (st.auditLog.length > 50) st.auditLog.pop();
   }
   try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
@@ -360,7 +360,7 @@ function initTheme(btnId) {
   let whCatFilter = 'all';
   const DATE_STORE_KEY = 'coffee_illy_v93_date_range';
   function shiftIsoDate(baseIso, deltaDays) {
-    const m = String(baseIso || TODAY).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const m = String(baseIso || getTodayISO()).match(/^(\d{4})-(\d{2})-(\d{2})/);
     const dt = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + deltaDays, 12, 0, 0) : new Date(Date.now() + deltaDays * 86400000);
     return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
   }
@@ -370,8 +370,8 @@ function initTheme(btnId) {
   }
   let datePreset = '30d';
   let chartGranularity = 'auto';
-  let customFrom = shiftIsoDate(TODAY, -6);
-  let customTo = TODAY;
+  let customFrom = shiftIsoDate(getTodayISO(), -6);
+  let customTo = getTodayISO();
   try {
     const savedRange = JSON.parse(localStorage.getItem(DATE_STORE_KEY) || 'null');
     if (savedRange && savedRange.preset) {
@@ -384,28 +384,28 @@ function initTheme(btnId) {
     try { localStorage.setItem(DATE_STORE_KEY, JSON.stringify({ preset: datePreset, from: customFrom, to: customTo })); } catch (_) {}
   }
   function getActiveDateRange() {
-    if (datePreset === 'today') return { from: TODAY, to: TODAY, label: 'Сегодня (' + fmtDateRu(TODAY) + ')' };
+    if (datePreset === 'today') return { from: getTodayISO(), to: getTodayISO(), label: 'Сегодня (' + fmtDateRu(getTodayISO()) + ')' };
     if (datePreset === 'yesterday') {
-      const y = shiftIsoDate(TODAY, -1);
+      const y = shiftIsoDate(getTodayISO(), -1);
       return { from: y, to: y, label: 'Вчера (' + fmtDateRu(y) + ')' };
     }
     if (datePreset === '7d') {
-      const f = shiftIsoDate(TODAY, -6);
-      return { from: f, to: TODAY, label: '7 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+      const f = shiftIsoDate(getTodayISO(), -6);
+      return { from: f, to: getTodayISO(), label: '7 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(getTodayISO()) + ')' };
     }
     if (datePreset === '30d') {
-      const f = shiftIsoDate(TODAY, -29);
-      return { from: f, to: TODAY, spanDays: 30, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+      const f = shiftIsoDate(getTodayISO(), -29);
+      return { from: f, to: getTodayISO(), spanDays: 30, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(getTodayISO()) + ')' };
     }
     if (datePreset === '90d') {
-      const f = shiftIsoDate(TODAY, -89);
-      return { from: f, to: TODAY, spanDays: 90, label: '90 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+      const f = shiftIsoDate(getTodayISO(), -89);
+      return { from: f, to: getTodayISO(), spanDays: 90, label: '90 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(getTodayISO()) + ')' };
     }
     if (datePreset === 'all') {
       return { from: '2000-01-01', to: '2099-12-31', isAll: true, spanDays: 365, label: 'Всё время' };
     }
-    let f = customFrom || shiftIsoDate(TODAY, -6);
-    let t = customTo || TODAY;
+    let f = customFrom || shiftIsoDate(getTodayISO(), -6);
+    let t = customTo || getTodayISO();
     if (f > t) { const tmp = f; f = t; t = tmp; }
     const d1 = new Date(f + 'T12:00:00');
     const d2 = new Date(t + 'T12:00:00');
@@ -557,14 +557,14 @@ function initTheme(btnId) {
       const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'coffee_illy_report_' + TODAY + '.csv';
+      a.download = 'coffee_illy_report_' + getTodayISO() + '.csv';
       a.click();
       showToast('✓ CSV-отчёт скачан');
     };
     document.getElementById('rep-print').onclick = () => { window.print(); };
     document.getElementById('rep-tg').onclick = () => guard('Отправить сводку в Telegram', async () => {
       const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
-      const res = api && api.sendDailyDigest ? await api.sendDailyDigest(TODAY) : { ok: false };
+      const res = api && api.sendDailyDigest ? await api.sendDailyDigest(getTodayISO()) : { ok: false };
       if (res && res.ok) showToast('📨 Сводка отправлена в Telegram!');
       else showToast('Не удалось отправить сводку: проверьте настройки Telegram');
     });
@@ -666,7 +666,7 @@ function initTheme(btnId) {
         : (adminAuthNeeded
           ? `<div class="card-soft" style="margin-bottom:14px;border:1px solid var(--warn);display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>🔒 Войдите по PIN владельца, чтобы подтянуть живую кассу, расходы и поломки из Google Таблицы.</span><button class="chip-btn accent" id="ov-unlock">Войти по PIN</button></div>`
           : '');
-      const todayPlan = getDayPlan(TODAY);
+      const todayPlan = getDayPlan(getTodayISO());
       const totalPlanRev = fCash.reduce((a, c) => a + getDayPlan(c.date).rev, 0);
       const totalChecks = fCash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
       const totalPlanChecks = fCash.reduce((a, c) => a + getDayPlan(c.date).checks, 0);
@@ -815,7 +815,7 @@ function initTheme(btnId) {
             ${state.staff.filter(s=>s.active!==false).map(s => {
               const pr = (state.staffPresence || {})[s.name];
               const isOn = !!(pr && pr.status === 'on_shift');
-              const doneToday = state.checklists.filter(c => c.date === TODAY && c.who === s.name).length;
+              const doneToday = state.checklists.filter(c => c.date === getTodayISO() && c.who === s.name).length;
               const openBlocksCnt = Math.max(1, state.blocks.filter(b => !b.isCash && b.active !== false).length);
               const pct = Math.min(100, Math.round((doneToday / openBlocksCnt) * 100));
               return `<div class="row-item"><div class="row-main">
@@ -1211,7 +1211,7 @@ function initTheme(btnId) {
         `);
         document.getElementById('esv').onclick = () => {
           const a = Number(document.getElementById('ea').value)||0; if (a<=0) return;
-          state.expenses.unshift({ id:'#'+(state.expenses.length+1), date:TODAY, category:document.getElementById('ec').value, amount:a, comment:document.getElementById('em').value.trim() });
+          state.expenses.unshift({ id:'#'+(state.expenses.length+1), date:getTodayISO(), category:document.getElementById('ec').value, amount:a, comment:document.getElementById('em').value.trim() });
           saveSharedState(state, 'Администратор', 'Добавлен расход ' + fmtRub(a)); closeModal(); render();
         };
       });
@@ -1411,8 +1411,8 @@ function initTheme(btnId) {
       }
       if (!state.inventory) state.inventory = [];
       const ex = state.inventory.find(x => x.id === payload.id);
-      if (ex) Object.assign(ex, payload, { updatedAt: TODAY });
-      else state.inventory.push(Object.assign({}, payload, { updatedAt: TODAY }));
+      if (ex) Object.assign(ex, payload, { updatedAt: getTodayISO() });
+      else state.inventory.push(Object.assign({}, payload, { updatedAt: getTodayISO() }));
       saveSharedState(state, 'Администратор', 'Обновлён склад: ' + payload.name + ' (' + payload.stock + ' ' + payload.unit + ')');
       closeModal(); showToast('✓ Остаток сохранён в Google Таблице'); render();
     };
@@ -1453,7 +1453,7 @@ function initTheme(btnId) {
         }
       }
       it.stock = Math.max(0, Number(it.stock || 0) + (isRestock ? qty : -qty));
-      it.updatedAt = TODAY;
+      it.updatedAt = getTodayISO();
       saveSharedState(state, 'Администратор', (isRestock ? 'Приход склада: ' : 'Списание склада: ') + it.name + ' (' + (isRestock ? '+' : '-') + qty + ' ' + it.unit + ')');
       closeModal(); showToast(isRestock ? '✓ Приход записан' : '✓ Списание записано'); render();
     };
@@ -1609,7 +1609,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.7.0"></script>
+  <script src="./js/time-picker.js?v=97.9.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1617,7 +1617,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.7.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.9.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
