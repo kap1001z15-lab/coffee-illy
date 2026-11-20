@@ -1,1010 +1,954 @@
-<!doctype html>
-<html lang="ru" data-theme="light">
+<!DOCTYPE html>
+<html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Coffee Illy — Терминал</title>
-<style>
-
-:root {
-  --bg: #FCF8F4; --surface: #F4ECE4; --surface-2: #EAE0D5; --card: #FFFFFF;
-  --ink: #271C15; --muted: #6E5D51; --accent: #7D4E24; --accent-soft: rgba(125,78,36,0.12);
-  --accent-ink: #FFFFFF; --good: #266D45; --good-soft: rgba(38,109,69,0.12);
-  --warn: #A46200; --warn-soft: rgba(164,98,0,0.13); --bad: #B33A3A; --bad-soft: rgba(179,58,58,0.12);
-  --border: rgba(39,28,21,0.10); --shadow: 0 2px 10px rgba(39,28,21,0.05);
-  --radius-card: 24px; --radius-pill: 999px;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif;
-}
-html[data-theme="dark"] {
-  --bg: #171311; --surface: #221D1A; --surface-2: #2E2723; --card: #26201D;
-  --ink: #F2E7DF; --muted: #B8A79A; --accent: #E8B88A; --accent-soft: rgba(232,184,138,0.16);
-  --accent-ink: #2B1A0D; --good: #8AD6A7; --good-soft: rgba(138,214,167,0.15);
-  --warn: #F0BE6F; --warn-soft: rgba(240,190,111,0.15); --bad: #F2A2A2; --bad-soft: rgba(242,162,162,0.15);
-  --border: rgba(242,231,223,0.10); --shadow: 0 2px 14px rgba(0,0,0,0.28);
-}
-* { box-sizing: border-box; }
-html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased; transition:background .2s,color .2s; }
-button, input, select, textarea { font-family:inherit; color:inherit; }
-button { cursor:pointer; border:none; background:transparent; }
-.topbar { position:sticky; top:0; z-index:40; background:var(--bg); border-bottom:1px solid var(--border); padding:10px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.brand { display:flex; align-items:center; gap:10px; }
-.brand-dot { width:36px; height:36px; border-radius:14px; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; font-weight:800; font-size:15px; }
-.brand-title { font-weight:750; font-size:16px; }
-.brand-sub { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.live-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; background:var(--good-soft); color:var(--good); font-weight:650; font-size:11px; }
-.live-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
-.top-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.chip-btn { padding:7px 13px; border-radius:999px; background:var(--surface); border:1px solid var(--border); font-size:12.5px; font-weight:650; display:inline-flex; align-items:center; gap:6px; }
-.chip-btn:hover { background:var(--surface-2); }
-.chip-btn.accent { background:var(--accent); color:var(--accent-ink); border-color:transparent; }
-.chip-btn.good { background:var(--good-soft); color:var(--good); border-color:transparent; }
-.chip-btn.bad { background:var(--bad-soft); color:var(--bad); border-color:transparent; }
-.chip-btn.warn { background:var(--warn-soft); color:var(--warn); border-color:transparent; }
-.seg { display:inline-flex; background:var(--surface); padding:4px; border-radius:999px; border:1px solid var(--border); gap:2px; }
-.seg button { padding:6px 12px; border-radius:999px; font-size:12.5px; font-weight:650; color:var(--muted); }
-.seg button.active { background:var(--accent); color:var(--accent-ink); }
-.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius-card); padding:18px; box-shadow:var(--shadow); }
-.card-soft { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:12px 14px; }
-.card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.card-title { font-size:16px; font-weight:750; margin:0; }
-.card-sub { font-size:12px; color:var(--muted); }
-.badge { display:inline-flex; align-items:center; justify-content:center; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; background:var(--surface-2); color:var(--ink); }
-.badge.good { background:var(--good-soft); color:var(--good); }
-.badge.warn { background:var(--warn-soft); color:var(--warn); }
-.badge.bad { background:var(--bad-soft); color:var(--bad); }
-.badge.accent { background:var(--accent-soft); color:var(--accent); }
-.stack { display:flex; flex-direction:column; gap:10px; }
-.row-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-radius:18px; background:var(--surface); border:1px solid var(--border); flex-wrap:wrap; }
-.row-main { min-width:0; flex:1; }
-.row-title { font-weight:700; font-size:14px; }
-.row-sub { font-size:12px; color:var(--muted); margin-top:2px; }
-.pbar { height:7px; background:var(--surface-2); border-radius:99px; overflow:hidden; margin-top:6px; }
-.pbar > div { height:100%; background:var(--accent); border-radius:99px; transition:width .25s; }
-.pbar.good > div { background:var(--good); }
-.field { display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }
-.field label { font-size:12px; font-weight:700; color:var(--muted); }
-.field input, .field select, .field textarea { width:100%; padding:9px 12px; border-radius:14px; background:var(--surface); border:1px solid var(--border); font-size:14px; }
-.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
-@media (max-width:640px) { .grid-2, .grid-3 { grid-template-columns:1fr; } }
-.btn-lg { width:100%; padding:12px 16px; border-radius:999px; font-size:14px; font-weight:750; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
-.btn-lg.primary { background:var(--accent); color:var(--accent-ink); }
-.btn-lg.primary:disabled { opacity:0.45; cursor:not-allowed; }
-.btn-lg.danger { background:var(--bad-soft); color:var(--bad); }
-.btn-lg.soft { background:var(--surface-2); color:var(--ink); }
-.tbl-wrap { overflow-x:auto; }
-table { width:100%; border-collapse:collapse; font-size:13.5px; }
-th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
-th { font-size:11.5px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); font-weight:700; }
-tr:last-child td { border-bottom:none; }
-.modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.48); z-index:80; display:none; align-items:center; justify-content:center; padding:16px; }
-.modal-bg.open { display:flex; }
-.modal-card { background:var(--card); border:1px solid var(--border); border-radius:28px; max-width:480px; width:100%; padding:20px; box-shadow:0 20px 50px rgba(0,0,0,0.3); max-height:86vh; overflow-y:auto; }
-.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:999px; font-size:13.5px; font-weight:650; opacity:0; pointer-events:none; z-index:90; transition:opacity .2s,transform .2s; box-shadow:0 8px 24px rgba(0,0,0,0.22); }
-.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-body { display:flex; flex-direction:column; min-height:100vh; }
-.shell { max-width:460px; width:100%; margin:0 auto; flex:1; display:flex; flex-direction:column; padding:14px 14px 86px; gap:12px; }
-.step-card { background:var(--card); border:1px solid var(--border); border-radius:26px; padding:18px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:12px; }
-.step-counter { font-size:12px; font-weight:700; color:var(--accent); display:flex; justify-content:space-between; }
-.step-title { font-size:19px; font-weight:800; margin:0; line-height:1.25; }
-.step-inst { background:var(--surface); border-radius:16px; padding:12px; font-size:13px; color:var(--muted); white-space:pre-line; }
-.photo-box { border:1.5px dashed var(--border); border-radius:18px; padding:14px; text-align:center; background:var(--surface); }
-.photo-box.done { border-style:solid; border-color:var(--good); background:var(--good-soft); color:var(--good); }
-.pin-dots { display:flex; justify-content:center; gap:12px; margin:8px 0 4px; }
-.pin-dot { width:14px; height:14px; border-radius:50%; border:2px solid var(--accent); }
-.pin-dot.filled { background:var(--accent); }
-.pin-pad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:6px; }
-.pin-key { height:52px; border-radius:16px; background:var(--surface); border:1px solid var(--border); font-size:18px; font-weight:750; display:grid; place-items:center; }
-.pin-key:hover { background:var(--surface-2); }
-.bnav { position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--border); display:grid; grid-template-columns:repeat(4,1fr); max-width:460px; margin:0 auto; padding:8px 10px 10px; gap:4px; z-index:40; }
-.bnav button { display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 4px; border-radius:16px; font-size:11px; font-weight:650; color:var(--muted); }
-.bnav button .ico { padding:4px 14px; border-radius:999px; font-size:15px; }
-.bnav button.active { color:var(--ink); }
-.bnav button.active .ico { background:var(--accent-soft); color:var(--accent); }
-
-/* === Coffee Illy v93.1 Responsive System (Phones · Tablets · Desktop) === */
-html { -webkit-text-size-adjust: 100%; }
-body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-.kpi-val, .bar-val, td, .badge { font-variant-numeric: tabular-nums; }
-.chip-btn, .admin-nav button, .date-pill, .btn-lg, .pin-key, .bnav button {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  transition: background .16s ease, transform .1s ease, border-color .16s ease, box-shadow .16s ease;
-}
-.chip-btn:active, .btn-lg:active, .pin-key:active { transform: scale(0.98); }
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; }
-.tbl-wrap table { min-width: 520px; }
-
-/* Terminal: Responsive Shell (Phone -> Tablet -> PC) */
-.topbar {
-  max-width: 100% !important;
-  width: 100%;
-  margin: 0 auto;
-  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
-}
-.shell {
-  width: 100%;
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 14px 14px calc(88px + env(safe-area-inset-bottom));
-}
-.bnav {
-  max-width: 520px;
-  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
-}
-#user-ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-
-/* Phones (<= 600px) */
-@media (max-width: 600px) {
-  .topbar { padding: max(8px, env(safe-area-inset-top)) 12px 8px; gap: 8px; }
-  .brand-dot { width: 34px; height: 34px; border-radius: 12px; font-size: 14px; }
-  .brand-title { font-size: 15px; }
-  .top-actions { width: 100%; justify-content: space-between; gap: 6px; }
-  .chip-btn { min-height: 36px; padding: 6px 11px; font-size: 12px; }
-  .shell { max-width: 100%; padding: 12px 12px calc(86px + env(safe-area-inset-bottom)); }
-  .step-card, .card { border-radius: 22px; padding: 15px; }
-  .step-title { font-size: 18px; }
-  .field input, .field select, .field textarea { font-size: 16px; min-height: 44px; padding: 10px 12px; }
-  .btn-lg { min-height: 48px; font-size: 14.5px; }
-  .pin-key { height: 54px; font-size: 19px; }
-  .bnav { max-width: 100%; left: 0; right: 0; border-radius: 0; }
-  .bnav button { min-height: 48px; }
-  .modal-bg { align-items: flex-end; padding: 0; }
-  .modal-card {
-    max-width: 100%;
-    border-radius: 26px 26px 0 0;
-    padding: 18px 16px calc(22px + env(safe-area-inset-bottom));
-    max-height: 88vh;
-  }
-  .toast { bottom: calc(78px + env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); text-align: center; }
-}
-
-/* Tablets (601px - 1024px) */
-@media (min-width: 601px) and (max-width: 1024px) {
-  .topbar { padding: 12px 24px; }
-  .shell { max-width: 720px; padding: 20px 20px 104px; gap: 14px; }
-  .step-card, .card { padding: 22px; }
-  .step-title { font-size: 21px; }
-  .pin-pad { max-width: 340px; margin: 10px auto 0; gap: 10px; }
-  .pin-key { height: 56px; }
-  .bnav {
-    max-width: 540px;
-    bottom: 14px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-    padding: 6px 10px;
-  }
-}
-
-/* Desktop / PC (>= 1025px) */
-@media (min-width: 1025px) {
-  .topbar { padding: 12px 32px; }
-  .shell { max-width: 820px; padding: 24px 24px 112px; gap: 16px; }
-  .step-card, .card { padding: 24px 26px; }
-  .step-title { font-size: 22px; }
-  .pin-pad { max-width: 340px; margin: 12px auto 0; gap: 10px; }
-  .pin-key { height: 56px; }
-  .bnav {
-    max-width: 560px;
-    bottom: 18px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
-    padding: 6px 12px;
-  }
-  .bnav button { flex-direction: row; justify-content: center; gap: 6px; padding: 8px 12px; font-size: 13px; }
-  .bnav button .ico { padding: 3px 8px; }
-}
-
-
-/* === Coffee Illy v94.0 UX & Responsive Enhancements === */
-.inst-toggle-wrap { display:flex; justify-content:center; width:100%; }
-.inst-toggle-btn {
-  min-width:56px; height:36px; border-radius:999px;
-  background:var(--surface); border:1px solid var(--border);
-  display:inline-flex; align-items:center; justify-content:center;
-  font-size:16px; padding:0 18px;
-}
-.inst-toggle-btn:hover { background:var(--surface-2); }
-.media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; width:100%; }
-.media-thumb { position:relative; border-radius:14px; overflow:hidden; background:#14110f; aspect-ratio:1/1; border:1px solid var(--border); }
-.media-thumb img, .media-thumb video { width:100%; height:100%; object-fit:cover; display:block; }
-.media-thumb .rm-m { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,0.68); color:#fff; font-size:12px; font-weight:700; display:grid; place-items:center; }
-.media-thumb .st-m { position:absolute; left:4px; bottom:4px; padding:2px 6px; border-radius:999px; background:rgba(0,0,0,0.72); color:#fff; font-size:10px; font-weight:700; }
-.fab-break {
-  position:fixed; right:16px; bottom:calc(78px + env(safe-area-inset-bottom)); z-index:45;
-  padding:11px 16px; border-radius:999px;
-  background:var(--bad); color:#fff; font-weight:750; font-size:13.5px;
-  display:inline-flex; align-items:center; gap:6px;
-  box-shadow:0 8px 24px rgba(179,58,58,0.35);
-}
-.fab-break:active { transform:scale(0.96); }
-.ttk-bottom-search {
-  position:sticky; bottom:calc(72px + env(safe-area-inset-bottom)); z-index:30;
-  background:var(--bg); padding:10px 0 4px; margin-top:auto;
-}
-.ttk-cat-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.ttk-cat-card {
-  background:var(--card); border:1px solid var(--border); border-radius:20px;
-  padding:16px 14px; text-align:left; display:flex; flex-direction:column; gap:6px;
-  box-shadow:var(--shadow);
-}
-.ttk-cat-card.active { border-color:var(--accent); background:var(--accent-soft); }
-.ttk-cat-ico { font-size:22px; }
-.ttk-cat-name { font-weight:750; font-size:14px; }
-.ttk-cat-cnt { font-size:12px; color:var(--muted); }
-@media (min-width: 768px) {
-  .shell { max-width: 720px; }
-  .bnav { max-width: 720px; border-radius: 24px 24px 0 0; }
-  .fab-break { right: max(20px, calc(50% - 350px)); }
-  .ttk-cat-grid { grid-template-columns: repeat(4, 1fr); }
-}
-@media (min-width: 1120px) {
-  .shell { max-width: 820px; }
-  .bnav { max-width: 820px; }
-  .fab-break { right: max(24px, calc(50% - 400px)); }
-}
-
-</style>
-  <link rel="manifest" href="manifest.webmanifest" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=94.0"></script>
-  <script src="js/cloud-sync-v94.js?v=94.0"></script>
-  <script src="js/camera-v94.js?v=94.0"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Coffee Illy — Терминал бариста</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#F7F4EF">
+<link rel="stylesheet" href="./css/coffee-illy-v94.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="./version.js"></script>
+<script src="./config.js"></script>
+<script src="./js/cloud-sync-v94.js"></script>
 </head>
 <body>
-<header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
+<header class="topbar">
   <div class="brand">
-    <div class="brand-dot">CI</div>
-    <div>
-      <div class="brand-title" id="hdr-loc">Кофейня №1</div>
-      <div class="brand-sub"><span class="live-pill"><span class="live-dot"></span><span id="hdr-rev">rev #1</span></span><span id="hdr-clock">13:25</span></div>
+    <div class="brand-mark">CI</div>
+    <div style="min-width:0;">
+      <div class="brand-title">Coffee Illy · <span id="hdr-loc">Кофейня №1</span></div>
+      <div class="brand-sub">
+        <span id="sync-pill" class="sync-pill syncing"><span class="dot"></span><span id="sync-txt">Синхронизация...</span></span>
+      </div>
     </div>
   </div>
-  <div class="top-actions">
-    <div id="user-ctl"></div>
-    <button class="chip-btn" id="btn-theme">🌓 Авто</button>
-  </div>
+  <div id="hdr-right" class="row" style="gap:6px;"></div>
 </header>
 
-<main class="shell" id="body"></main>
+<main class="barista-main" id="app-body"></main>
 
-<nav class="bnav" id="bnav">
-  <button class="active" data-t="checklists"><span class="ico">✓</span>Чек-листы</button>
-  <button data-t="cash"><span class="ico">₽</span>Касса</button>
-  <button data-t="ttk"><span class="ico">☕</span>База ТТК</button>
-  <button data-t="issues"><span class="ico">✓</span>Задачи</button>
+<nav class="bottom-nav" id="bnav" style="display:none;" aria-label="Основная навигация">
+  <button data-t="home" class="active"><span class="nav-ico">🏠</span><span>Главная</span></button>
+  <button data-t="tasks"><span class="nav-ico">☑️</span><span>Задачи</span></button>
+  <button data-t="cash"><span class="nav-ico">💳</span><span>Касса</span></button>
+  <button data-t="incidents"><span class="nav-ico">🛠</span><span>Поломки</span></button>
+  <button data-t="ttk"><span class="nav-ico">☕</span><span>ТТК</span></button>
 </nav>
-<button class="fab-break" id="fab-break" style="display:none;">⚠ Поломка</button>
 
-<div class="modal-bg" id="modal-bg"><div class="modal-card"><div class="card-head" style="margin-bottom:10px;"><h3 class="card-title" id="modal-title"></h3><button class="chip-btn" id="modal-close">✕</button></div><div id="modal-body"></div></div></div>
-<div class="toast" id="toast"></div>
+<div class="modal-bg" id="modal-bg">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 class="modal-title" id="modal-title"></h3>
+      <button class="icon-btn" id="modal-close" aria-label="Закрыть">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
+(function () {
+  const C = window.CoffeeCloudV94;
+  const STORE_KEY = 'coffee_illy_v94_barista_state';
+  const DRAFT_CHK_KEY = 'coffee_illy_v94_chk_drafts';
+  const DRAFT_CASH_KEY = 'coffee_illy_v94_cash_draft';
+  const THEME_KEY = 'coffee_illy_v94_theme';
+  const TODAY = C ? C.localISO() : new Date().toISOString().slice(0, 10);
 
-const LIVE_SNAPSHOT = {"location": "Кофейня №1", "plan": 2200, "minAvgCheck": 35, "planChecks": 75, "staff": [{"id": "st1", "name": "Соня", "role": "Бариста", "shop": "Кофейня №1", "active": true}, {"id": "st2", "name": "Алина", "role": "Бариста", "shop": "Кофейня №1", "active": true}, {"id": "st3", "name": "Настя", "role": "Бариста", "shop": "Кофейня №1", "active": true}, {"id": "st_mwe6cp12", "name": "Макс", "role": "Администратор", "shop": "Кофейня №1", "active": true}, {"id": "st_mwnboii9", "name": "Лаура", "role": "Бариста", "shop": "Кофейня №1", "active": true}], "blocks": [{"id": "blk_open", "name": "Открытие", "openTime": "06:00", "deadline": "10:34", "isCash": false, "active": true}, {"id": "blk_lc1", "name": "Лайн Чек 1", "openTime": "06:00", "deadline": "10:34", "isCash": false, "active": true}, {"id": "blk_lc2", "name": "Лайн Чек 2", "openTime": "06:00", "deadline": "10:23", "isCash": false, "active": true}, {"id": "blk_close", "name": "Закрытие", "openTime": "21:30", "deadline": "22:30", "isCash": false, "active": true}, {"id": "blk_mwnb34lr", "name": "Лайн Чек Демо", "openTime": "07:00", "deadline": "23:59", "isCash": false, "active": true}, {"id": "blk_cash", "name": "Касса", "openTime": "22:00", "deadline": "23:59", "isCash": true, "active": true}, {"id": "blk_good_deeds", "name": "Карта добрых дел", "openTime": "11:00", "deadline": "22:00", "isCash": false, "active": true}], "tasks": [{"id": "o01", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "📸 Фото-селфи", "instruction": "Фото перед началом смены.\n• Волосы аккуратно убраны в хвост или пучок.\n• Опрятный внешний вид, чистая рабочая форма и фартук.\n• Минимальный аккуратный макияж, отсутствие лишних украшений на руках.\n• Сделать селфи при хорошем освещении за баром.", "photo": true, "owner": "Администратор"}, {"id": "o02", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "🪑 Зал и посадочные места", "instruction": "Подготовка гостевого зала к открытию:\n• Столы насухо протёрты от пыли и крошек дезинфицирующим средством.\n• Диваны и кресла устойчивы, обивка без пятен и мусора.\n• Декор на столах и полках выровнен по центру, свечи установлены.\n• Сделать обзорное фото чистого зала.", "photo": true, "owner": "Администратор"}, {"id": "o03", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "☕ Кофемашина", "instruction": "Подготовка кофемашины к смене:\n• Кофемашина включена, бойлер вышел на рабочее давление и температуру.\n• Холдеры (портафильтры) чистые и прогретые, старый жмых полностью отсутствует.\n• Группы пролиты горячей водой и прогреты.\n• Хромированные детали и корпус натёрты микрофиброй до блеска, подтёки и накипь отсутствуют.", "photo": true, "owner": "Техник"}, {"id": "o04", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "⚙️ Гриндеры и Проверка помола", "instruction": "Настройка кофемолок (гриндеров) и эспрессо:\n• Гриндеры включены, бункеры заполнены свежим зерном.\n• Проверен и настроен помол: контрольный пролив эспрессо по весам и таймеру (проверка граммовки, времени экстракции и вкуса).\n• Зона вокруг дозатора и стол под гриндером очищены, остатки молотого кофе отсутствуют.\n• Зафиксировать утренние показания счётчика кофемашины.", "photo": true, "owner": "Шеф-бариста"}, {"id": "o05", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "🔥 Термопот", "instruction": "Проверка водонагревателя (термопота):\n• Включён в сеть, заполнен очищенной питьевой водой до отметки максимума.\n• Температура воды вышла на рабочий режим (92–95 °C).\n• Корпус и каплесборник чистые, без подтёков и накипи.", "photo": false, "owner": "Техник"}, {"id": "o06", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "💡 Оборудование и подсветка", "instruction": "Включение света, звука и медиа:\n• Проектор, аудиоколонки (фоновая музыка на комфортной громкости) и декоративная подсветка включены.\n• Световая инсталляция и освещение у зеркала работают без мерцаний.", "photo": false, "owner": "Техник"}, {"id": "o07", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "🌿 Летняя терраса Фото", "instruction": "Подготовка уличной зоны / летней террасы:\n• Уличные столы и стулья аккуратно расставлены по местам и насухо протёрты.\n• Пледы чистые, без пятен, аккуратно сложены.\n• Прилегающая территория и входная группа чистые, без мусора и листьев.\n• Сделать контрольное фото летней террасы.", "photo": true, "owner": "Администратор"}, {"id": "o08", "block": "Открытие", "group": "Открытие · Стандарт (o01–o08)", "title": "🧼 Санузел для гостей 📸 2", "instruction": "Важно !!! Полная утренняя проверка гостевого санузла (сделать 2 фото):\n• 🪞 Зеркало: протёрто средством для стёкол без разводов и следов пальцев, поверхность блестящая.\n• 🧻 Расходники: жидкое мыло в дозаторе в наличии, туалетная бумага и бумажные полотенца пополнены.\n• 🚽 Унитаз и бачок: чистые, обработаны, кнопка слива работает исправно, протечек нет, посторонний запах отсутствует.\n• 🗑 Мусорное ведро 📸: пустое, чистое, заправлен новый мусорный пакет.", "photo": true, "owner": "Администратор"}, {"id": "d01", "block": "Лайн Чек 1", "group": "День · Обход смены (d01–d06)", "title": "🌬️ Помещение проветрено и свежесть воздуха", "instruction": "Контроль микроклимата в зале:\n• Помещение проветрено, работает вентиляция или кондиционер по сезону.\n• Нет затхлого запаха, запаха гари или кухни, воздух в зале свежий и комфортный для гостей.", "photo": false, "owner": "Администратор"}, {"id": "d02", "block": "Лайн Чек 1", "group": "День · Обход смены (d01–d06)", "title": "☕ Оборудование проверено", "instruction": "Контроль работы барного оборудования в течение смены:\n• Кофемашина, кофемолка, чайник/термопот, холодильник и десертная витрина включены.\n• Все приборы держат рабочую температуру и работают штатно без аварийных сигналов и посторонних шумов.", "photo": false, "owner": "Техник"}, {"id": "d03", "block": "Лайн Чек 1", "group": "", "title": "🥛 Заготовки для напитков и молочные продукты", "instruction": "Молоко ≥5л, альтернативное молоко ≥2л, сливки ≥2 упаковок, сиропы и топпинги на своих местах, лёд готовы\n \n 📸 Фото холодильника в \"подсобке\"\n 📸 фото холодильника за стойкой", "photo": true, "owner": "Администратор"}, {"id": "d04", "block": "Лайн Чек 1", "group": "День · Обход смены (d01–d06)", "title": "🍰 Десерты и закуски", "instruction": "Контроль витрины с десертами:\n• Закуски и десерты пополнены и представлены в ДОСТАТОЧНОМ количестве.\n• Срок годности и маркировки актуальны, заветренных позиций нет.\n• Витрина чистая внутри и снаружи, фронтальное стекло без разводов и отпечатков.\n• Десерты и ценники выложены ровно и аккуратно 📸 (сделать фото витрины).", "photo": true, "owner": "Закупщик"}, {"id": "d05", "block": "Лайн Чек 1", "group": "День · Обход смены (d01–d06)", "title": "🧼 Зона гостя и стойка на виду", "instruction": "Поддержание чистоты зоны выдачи и гостевой стойки:\n• Стойка и прилавок со стороны гостя идеально чистые: нет крошек, капель кофе, пятен и липких следов.\n• Грязная посуда со столов и стойки своевременно убрана в мойку.\n• Диспенсер с салфетками, крышками, трубочками и сахаром пополнен.", "photo": true, "owner": "Администратор"}, {"id": "d06", "block": "Лайн Чек 1", "group": "День · Обход смены (d01–d06)", "title": "🚽 Санузел проверен (2-3 сек видео) 📹", "instruction": "Дневная проверка санузла для гостей:\n• Санузел чистый, пол сухой, раковина и зеркало без брызг воды.\n• Туалетная бумага, мыло и бумажные полотенца в наличии.\n• Мусорное ведро не переполнено, запах свежий.\n• 📹 Сделать короткий обзорный видео-отчёт (2–3 секунды).", "photo": true, "owner": "Администратор"}, {"id": "c01", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🧴 Диспенсер с расходниками заполнен", "instruction": "Подготовка органайзера и расходников на утро:\n• Диспенсер полностью заполнен салфетками, порционным сахаром, трубочками и размешивателями (палочками).\n• Все открытые складские упаковки с расходниками плотно закрыты от пыли и влаги.", "photo": true, "owner": "Закупщик"}, {"id": "c02", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🪑 Зал и посадочные места", "instruction": "Уборка гостевого зала перед закрытием:\n• Все столы тщательно протёрты от крошек и пятен.\n• Диваны и стулья устойчивы, очищены щёткой/пылесосом от крошек.\n• Декор выровнен, пыль на полках и подоконниках отсутствует.\n• Все свечи в зале обязательно погашены.", "photo": true, "owner": "Администратор"}, {"id": "c03", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "☕ Кофемашина", "instruction": "Замывка и выключение кофемашины:\n• Проведена промывка групп со слепым фильтром и профессиональным средством (Cafiza), затем промывка чистой водой.\n• Холдеры и сита вымыты, кофейный жмых и масла полностью удалены, съёмные детали и решётка поддона промыты и установлены на место.\n• Стимеры (паровые трубки) очищены от молока и продуты.\n• Подтёков воды и накипи нет, хромированные детали натёрты насухо. Кофемашина выключена.", "photo": true, "owner": "Техник"}, {"id": "c04", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "⚙️ Гриндеры", "instruction": "Очистка кофемолок и фиксация счётчиков:\n• Гриндеры протёрты снаружи и в зоне выдачи, остатки молотого кофе сметены кистью, устройства выключены.\n• Показания счётчиков порций кофемашины/гриндеров сняты и внесены в кассовый отчёт смены.", "photo": true, "owner": "Шеф-бариста"}, {"id": "c05", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🧽 Рабочая зона", "instruction": "Замывка барной станции:\n• Рабочая столешница и фартук вымыты с моющим средством и протёрты насухо.\n• Липких пятен от сиропов, молока и кофе нет.\n• Весь мелкий инвентарь (питчеры, темпер, коврик, весы) чистый и расставлен по местам.", "photo": true, "owner": "Администратор"}, {"id": "c06", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🔥 Термопот", "instruction": "Отключение термопота:\n• Заполнен очищенной водой для утренней смены.\n• Питание выключено, корпус и каплесборник протёрты насухо, без подтёков.", "photo": false, "owner": "Техник"}, {"id": "c07", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "💰 Касса и терминалы Фото", "instruction": "Закрытие кассовой смены:\n• Наличные в кассе пересчитаны и сверены с отчётом.\n• Разменная сумма на утро оставлена в кассе в полном объёме (250 руб мелкими купюрами).\n• Фотоотчёт кассы сделан после подсчёта.\n• Банковский терминал и чековый принтер выключены, рабочий телефон поставлен на зарядку.", "photo": true, "owner": "Администратор"}, {"id": "c08", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🍰 Холодильник и витрина", "instruction": "Уход за витриной и хранением десертов:\n• Подсветка витрины выключена (холодильный контур работает по регламенту), стёкла и полки протёрты.\n• Отпечатков пальцев и разводов на стекле нет.\n• Все десерты проверены по срокам, закрыты крышками/плёнкой от заветривания.", "photo": true, "owner": "Закупщик"}, {"id": "c09", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🪞 Зеркала и остекление", "instruction": "Натирка зеркал и входного остекления:\n• Зеркала в зале и стеклянные поверхности входной группы протёрты со средством для стёкол.\n• Разводов, брызг и следов пальцев нет, поверхности сухие.", "photo": false, "owner": "Администратор"}, {"id": "c10", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "💡 Оборудование и подсветка", "instruction": "Отключение иллюминации и медиа:\n• Проектор, неоновая/декоративная подсветка, аудиоколонки и дополнительное освещение выключены.\n• Световая инсталляция у зеркал и подсветка стола — выключены.", "photo": false, "owner": "Техник"}, {"id": "c11", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🌿 Летняя терраса", "instruction": "Уборка летней террасы на ночь:\n• Уличные столы и стулья протёрты и занесены внутрь помещения (или зафиксированы по регламенту).\n• Пледы проверены (чистые, без пятен и прожогов) и аккуратно сложены на хранение.", "photo": true, "owner": "Администратор"}, {"id": "c12", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🧼 Санузел для гостей", "instruction": "Полная вечерняя уборка санузла по чек-листу:\n• 🚻 Входная дверь — проверена исправность замка и доводчика; полотно двери и ручка протёрты, без следов рук.\n• 🧴 Раковина и смеситель — вымыты и вытерты насухо; смеситель натёрт без налёта и подтёков, вода не капает.\n• 🪞 Зеркало — протёрто без разводов и следов пальцев, поверхность блестящая.\n• 🧻 Расходники — проверен и пополнен запас жидкого мыла, туалетной бумаги и бумажных полотенец на утро.\n• 🚽 Унитаз и бачок — обработаны дезсредством, крышка опущена, бачок не протекает, запах отсутствует.\n• 🧹 Пол и стены — пол вымыт с дезсредством и высушен, плитка без пятен и налёта.\n• 🗑 Мусорное ведро — освобождено, вымыто, установлен новый пакет.\n• 💡 Освещение и вентиляция — свет и вытяжка выключены, проверена исправность выключателя.", "photo": true, "owner": "Администратор"}, {"id": "c13", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🚪 Закрытие помещения", "instruction": "Финальная проверка перед выходом:\n• Все декоративные подсветки, сплит-система и барное оборудование (кроме холодильников) выключены.\n• Жалюзи / роллеты опущены, окна закрыты.", "photo": false, "owner": "Администратор"}, {"id": "c14", "block": "Закрытие", "group": "Закрытие · Стандарт (c01–c14)", "title": "🗑 Мусор выброшен, баки на улице пустые 📸💬", "instruction": "Вынос всего мусора из кофейни и уличных урн:\n• Все мусорные пакеты из-под бара, подсобки и санузла завязаны и вынесены в контейнер.\n• Уличные баки у входа очищены, внутрь вставлены чистые пакеты.\n• 📸 Сделать фото пустых баков и закрытой входной двери.", "photo": true, "owner": "Администратор"}, {"id": "pa01", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "📸 Фото-селфи 📸", "instruction": "Фото перед началом смены.\nВолосы убраны в хвост, аккуратный внешний вид, чистая форма, минимальный макияж.", "photo": true, "owner": "Администратор"}, {"id": "pa02", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🌿 Летняя терраса Фото📸", "instruction": "Столы и стулья расставлены, протёрты. Пледы чистые, сложены аккуратно, территория без мусора. Сделать фото.", "photo": true, "owner": "Администратор"}, {"id": "pa03", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🪑 Зал и посадочные места", "instruction": "Столы чистые, без крошек и пятен, диваны устойчивые, декор выровнен, пыль отсутствует, посадка полностью готова к приёму гостей.", "photo": false, "owner": "Администратор"}, {"id": "pa04", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "☕ Кофемашина + ☝️холдеры", "instruction": "Кофемашина включена и прогрета.\nСъёмные детали и чистые холдеры на месте.\nПодтёков воды и накипи нет, хромированные детали натёрты до блеска.", "photo": true, "owner": "Техник"}, {"id": "pa05", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "⚙️ Гриндеры", "instruction": "Гриндеры протёрты, старые остатки кофе отсутствуют, помол проверен.\nУтренние показания счётчиков сверены и внесены в отчёт.", "photo": false, "owner": "Шеф-бариста"}, {"id": "pa06", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🧽 Рабочая зона и Мойка за стойкой", "instruction": "Рабочая поверхность вымыта и протёрта насухо, пятен от сиропов и кофе нет, порядок соблюдён.\nМойка за стойкой чистая, грязная посуда отсутствует.", "photo": false, "owner": "Администратор"}, {"id": "pa07", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🔥 Термопот", "instruction": "Заполнен очищенной водой, включён на прогрев, корпус сухой, без подтёков.", "photo": false, "owner": "Техник"}, {"id": "pa08", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "💰 Касса и терминалы", "instruction": "Разменная сумма в наличии (250 руб мелкими купюрами).\nТерминал и чековый принтер включены, рабочий телефон и планшет заряжены.\nВсё работает штатно, не зависает и блестит.", "photo": false, "owner": "Администратор"}, {"id": "pa09", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🧾 Кассовая лента Запас - 2шт.", "instruction": "Чековая лента установлена в принтер и терминал, в кассовой зоне в наличии минимум 2 запасных рулона.", "photo": false, "owner": "Закупщик"}, {"id": "pa10", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🍰 Холодильник и витрина", "instruction": "Холодильники и витрина чистые, продукты свежие, просрочки нет, открытое молоко закрыто крышками, товарное соседство и порядок соблюдены.", "photo": false, "owner": "Закупщик"}, {"id": "pa11", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "📦 Расходники барной зоны", "instruction": "Одноразовые стаканы всех объёмов, крышки, сахар, салфетки, трубочки и размешиватели заполнены до полной нормы.", "photo": false, "owner": "Закупщик"}, {"id": "pa12", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🍃 Заготовки", "instruction": "Ягодные/фруктовые заготовки, лимонады и основы свежие, промаркированы, без заветривания, полностью готовы к использованию.", "photo": false, "owner": "Шеф-бариста"}, {"id": "pa13", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🥛 Молоко", "instruction": "Молоко (обычное, безлактозное, альтернативное) с актуальным сроком годности, охлаждённое, закрытое, достаточный объём для смены.", "photo": false, "owner": "Закупщик"}, {"id": "pa14", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🍽 Посуда и инвентарь", "instruction": "Керамические чашки, стаканы, ложки, питчеры и барный инвентарь чистые, сухие, без сколов, в достаточном количестве.", "photo": false, "owner": "Администратор"}, {"id": "pa15", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🪞 Зеркала и остекление", "instruction": "Зеркала и витринные окна протёрты, разводов и следов пальцев нет, поверхности сухие и чистые.", "photo": false, "owner": "Администратор"}, {"id": "pa16", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "💡 Оборудование и подсветка", "instruction": "Освещение зала, проектор, колонки и неоновая подсветка исправны, включаются и работают корректно.", "photo": false, "owner": "Техник"}, {"id": "pa17", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🧼 Санузел", "instruction": "Гостевой санузел чистый, дезинфекция проведена, мыло, бумага и полотенца в наличии, полностью готов к использованию.", "photo": false, "owner": "Администратор"}, {"id": "pa18", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🛠 Декор и мебель", "instruction": "Столы, диваны, стулья и элементы декора целые, устойчивые, видимые повреждения отсутствуют.", "photo": false, "owner": "Техник"}, {"id": "pa19", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "⚙️ Оборудование и инвентарь", "instruction": "Всё барное и холодильное оборудование, блендер и льдогенератор исправны, в ремонте не нуждаются.", "photo": false, "owner": "Техник"}, {"id": "pa20", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "📦 Заявка", "instruction": "Складской запас и заявка поставщикам проверены, дефицита по ключевым позициям (зерно, молоко, стаканы, вода) нет.", "photo": false, "owner": "Закупщик"}, {"id": "pa21", "block": "Открытие", "group": "Открытие · Приёмка смены (pa01–pa21)", "title": "🎯 Готовность точки", "instruction": "Кофейня полностью готова к открытию и приёму первых гостей без дополнительных действий.", "photo": false, "owner": "Администратор"}, {"id": "pe01", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🪑 Зал и посадочные места", "instruction": "Столы чистые, без крошек и пятен, диваны устойчивые, декор выровнен, пыль отсутствует, свечи погашены, посадка готова к приёму гостей.", "photo": false, "owner": "Администратор"}, {"id": "pe02", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "☕ Кофемашина", "instruction": "Холдеры вымыты, жмых удалён, съёмные элементы на месте, подтёков и накипи нет, оборудование выключено, зона вокруг чистая.", "photo": true, "owner": "Техник"}, {"id": "pe03", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "⚙️ Гриндеры", "instruction": "Гриндеры чистые снаружи и в зоне дозатора, остатки кофе и пыль отсутствуют, выключены, показания счётчиков внесены.", "photo": false, "owner": "Шеф-бариста"}, {"id": "pe04", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧽 Рабочая зона", "instruction": "Поверхности вымыты и вытерты насухо, пятна кофе, сиропов и молока отсутствуют, полки чистые, лишние предметы отсутствуют.", "photo": false, "owner": "Администратор"}, {"id": "pe05", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🔥 Термопот", "instruction": "Заполнен очищенной водой, выключен, корпус сухой, без подтёков.", "photo": false, "owner": "Техник"}, {"id": "pe06", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "💰 Касса и терминалы", "instruction": "Касса пересчитана, размен (250 руб мелкими купюрами) в наличии, фото сделано, терминал и принтер выключены, телефон на зарядке.", "photo": true, "owner": "Администратор"}, {"id": "pe07", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧾 Кассовая лента", "instruction": "Запасная чековая лента (не менее 2 шт.) в наличии возле кассы.", "photo": false, "owner": "Закупщик"}, {"id": "pe08", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🍰 Холодильник и витрина", "instruction": "Чистые внутри и снаружи, остатки еды отсутствуют, продукты разложены аккуратно, открытое молоко закрыто, просрочки нет, заветренные продукты списаны.", "photo": false, "owner": "Закупщик"}, {"id": "pe09", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🌡 Температурный режим", "instruction": "Температура холодильника и витрины проверена по дисплею и соответствует норме (+2…+6 °C).", "photo": false, "owner": "Техник"}, {"id": "pe10", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧴 Сиропы и ингредиенты", "instruction": "Бутылки с сиропами, топпинги и помпы протёрты от липкости, закрыты, стоят по местам в достаточном количестве.", "photo": false, "owner": "Закупщик"}, {"id": "pe11", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🪞 Зеркала и остекление", "instruction": "Все зеркала и витринные стёкла чистые, без разводов и следов пальцев.", "photo": false, "owner": "Администратор"}, {"id": "pe12", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "💡 Оборудование и подсветка", "instruction": "Всё освещение зала, проектор, декоративная подсветка и колонки выключены.", "photo": false, "owner": "Техник"}, {"id": "pe13", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🌿 Летняя терраса", "instruction": "Уличная мебель чистая и занесена внутрь, пледы аккуратно сложены.", "photo": false, "owner": "Администратор"}, {"id": "pe14", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🚪 Помещение", "instruction": "Жалюзи опущены, окна закрыты, климатическое и неиспользуемое ночью оборудование выключено.", "photo": false, "owner": "Администратор"}, {"id": "pe15", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧼 Санузел", "instruction": "Санузел чистый, полотенца заменены, расходники пополнены, посторонний запах отсутствует.", "photo": false, "owner": "Администратор"}, {"id": "pe16", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "📦 Расходники барной зоны", "instruction": "Стаканы, крышки, сахар, салфетки, трубочки и мешалки пополнены до полной утренней нормы.", "photo": false, "owner": "Закупщик"}, {"id": "pe17", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🍃 Заготовки", "instruction": "Заготовки свежие, без заветривания и порчи, испорченные позиции списаны и внесены в отчёт, всё подготовлено к следующей смене.", "photo": false, "owner": "Шеф-бариста"}, {"id": "pe18", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🥛 Молоко 📸", "instruction": "Все открытые пачки молока плотно закрыты крышками, хранятся в холодильнике корректно, просрочки нет. Сделать фото запаса молока.", "photo": true, "owner": "Закупщик"}, {"id": "pe19", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧴 Полотенца", "instruction": "Чистые рабочие полотенца и микрофибры подготовлены на утро, использованные убраны в стирку.", "photo": false, "owner": "Администратор"}, {"id": "pe20", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🍽 Посуда и инвентарь", "instruction": "Вся посуда чистая, питчеры и кувшины вымыты насухо, достаточный запас чашек, блюдец и ложек подготовлен к утренней смене.", "photo": false, "owner": "Администратор"}, {"id": "pe21", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🧹 Чистота инвентаря и хранения", "instruction": "Грязная посуда в мойке отсутствует, полки и складские зоны хранения чистые и приведены в порядок.", "photo": false, "owner": "Администратор"}, {"id": "pe22", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "📦 Заявка", "instruction": "Заявка на пополнение продуктов и хозтоваров сформирована по остаткам и отправлена закупщику/руководителю.", "photo": false, "owner": "Закупщик"}, {"id": "pe23", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🛠 Декор и мебель", "instruction": "Декор и мебель в зале целые, расставлены ровно, повреждения отсутствуют.", "photo": false, "owner": "Техник"}, {"id": "pe24", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "⚙️ Оборудование и инвентарь", "instruction": "Всё оборудование и барный инвентарь исправны, в ремонте не нуждаются (обо всех поломках сообщено через кнопку «Поломка»).", "photo": false, "owner": "Техник"}, {"id": "pe25", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🗑 Мусор выброшен, баки на улице пустые 📸💬", "instruction": "Весь мусор из кофейни и уличных урн вынесен в контейнеры, баки чистые, заправлены новые мешки. Сделать фото.", "photo": true, "owner": "Администратор"}, {"id": "pe26", "block": "Закрытие", "group": "Закрытие · Полная сдача (pe01–pe26)", "title": "🎯 Готовность точки", "instruction": "Бар и зал полностью готовы к утреннему открытию и работе без дополнительных действий.", "photo": false, "owner": "Администратор"}, {"id": "u01", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🗑️ Уличная мусорка очищена, мусор вынесен", "instruction": "Очистка уличной урны у входа:\n• Весь мусор из уличной мусорки полностью вынесен в общий контейнер.\n• Внутренняя ёмкость чистая, новый плотный мусорный пакет аккуратно вставлен и закреплён.", "photo": true, "owner": "Администратор"}, {"id": "u02", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🚪🧼 Крыльцо очищено и вымыто 📸", "instruction": "Уборка входной группы и крыльца:\n• Ступени и площадка крыльца подметены от песка, пыли и листьев.\n• Выполнена влажная мойка крыльца и придверного коврика, следов грязи и пятен нет.\n• 📸 Сделать фото чистого крыльца.", "photo": true, "owner": "Администратор"}, {"id": "u03", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🚪 Входная дверь натёрта, без следов и пятен", "instruction": "Чистка входной двери:\n• Стекло входной двери с обеих сторон натёрто средством для стёкол без разводов и отпечатков рук.\n• Дверная ручка, профиль и порог протёрты влажной, затем сухой салфеткой.", "photo": false, "owner": "Администратор"}, {"id": "u04", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🪟 Зеркала и Стёкла натёрты, без разводов и загрязнений 📸", "instruction": "Мойка зеркал и витринных стёкол:\n• Все зеркала в зале, у фотозоны и в санузле натёрты микрофиброй со средством для стёкол.\n• Подтёков, разводов и следов пальцев нет.\n• 📸 Сделать контрольное фото.", "photo": true, "owner": "Администратор"}, {"id": "u05", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🛋️ Диваны отодвинуты, выполнена влажная уборка полов под диванами 📸", "instruction": "Важно!!! ☝️ ☝️ ☝️\n• Аккуратно отодвинуть диваны от стен, подмести крошки и пыль, тщательно вымыть пол и плинтусы под диванами, затем ровно вернуть диваны на место.\n• Регулярно менять грязную воду в ведре на чистую.\n• Выливать грязную воду ТОЛЬКО на улице в отведённое место (категорически запрещено выливать в мойку в подсобке — слив забивается песком!).\n• 📸 Сделать фото чистого пола под диванами.", "photo": true, "owner": "Администратор"}, {"id": "u06", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🧹 Влажная уборка полов в зале", "instruction": "Финальная мойка полов:\n• Пол во всём гостевом зале, за барной стойкой и в проходах подметён и тщательно вымыт с моющим средством.\n• Углы и плинтусы чистые, без разводов и липких следов.\n• Грязная вода после уборки вылита на улице, моп/тряпка промыты и поставлены на просушку.", "photo": true, "owner": "Администратор"}, {"id": "u07", "block": "Закрытие", "group": "Закрытие · Уборка помещения (u01–u07)", "title": "🚽 Туалет вымыт и продезинфицирован 📸 (видео 5-7 сек)", "instruction": "Финальная дезинфекция санузла:\n• Унитаз, раковина, смеситель, дверные ручки и пол вымыты и обработаны дезинфицирующим средством.\n• Мусор выброшен, вставлен чистый пакет, расходники пополнены на утро.\n• 📹 Снять обзорное видео чистого санузла (5–7 секунд).", "photo": true, "owner": "Администратор"}, {"id": "q01", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "☕ Кофемашина (фото до и после)", "instruction": "• Корпус протёрт, без пятен, подтёков и кофейных следов.\n• Группы промыты, остатки кофе отсутствуют.\n• Портафильтры вымыты, без кофейных масел и налёта.\n• Паровые трубки очищены и продуты.\n• Поддон и решётка вымыты, без остатков воды и кофе.\n• Поверхности вокруг чистые, без кофейной гущи.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Техник"}, {"id": "q02", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "🌪 Блендер (фото до и после)", "instruction": "• Чаша блендера вымыта, без остатков продуктов, налёта и запахов.\n• Ножи чистые, промыты со всех сторон.\n• Крышка и уплотнитель вымыты, без загрязнений в пазах.\n• Корпус и панель кнопок протёрты насухо, без капель и липкости.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Техник"}, {"id": "q03", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "❄️ Холодильник под стойкой (фото до и после)", "instruction": "• Полки и стенки чистые, без крошек, пятен молока и подтёков.\n• Продукты и молоко размещены аккуратно по срокам годности.\n• Посторонние запахи отсутствуют.\n• Резиновые уплотнители дверцы вымыты в складках.\n• Дверца закрывается плотно.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Закупщик"}, {"id": "q04", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "📦 Холодильник склад (фото до и после)", "instruction": "• Полки чистые, без загрязнений и подтёков.\n• Продукты разложены строго по категориям и промаркированы.\n• Посторонние запахи отсутствуют.\n• Уплотнители чистые, дверца закрывается плотно.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Закупщик"}, {"id": "q05", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "🧊 Морозилка верхняя (фото до и после)", "instruction": "• Внутренняя камера очищена, без снежной наледи, крошек и загрязнений.\n• Замороженные заготовки и продукты упакованы, подписаны и размещены аккуратно.\n• Уплотнитель чистый, дверца закрывается плотно.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Закупщик"}, {"id": "q06", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "🧊 Морозилка нижняя (фото до и после)", "instruction": "• Внутри чисто, ящики/полки вымыты без крошек и остатков продуктов.\n• Продукты расфасованы и размещены аккуратно.\n• Посторонние запахи отсутствуют.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Закупщик"}, {"id": "q07", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "🧊 Льдогенератор (фото до и после)", "instruction": "• Внутренняя камера чистая, без слизи, плесени и известкового налёта.\n• Лёд прозрачный, без постороннего запаха, совок для льда чистый.\n• Лоток и дренаж чистые, без застоя воды.\n• Корпус снаружи и вентиляционная решётка протёрты.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Техник"}, {"id": "q08", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "🚰 Мойка склад (фото до и после)", "instruction": "• Раковина на складе вымыта с дезсредством, без жира, налёта и остатков пищи.\n• Сливная сеточка и сифон чистые, без засоров и запаха (песок с полов в мойку не сливать!).\n• Смеситель натёрт без водного камня.\n• Поверхности и фартук вокруг мойки чистые и сухие.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Администратор"}, {"id": "q09", "block": "Лайн Чек 2", "group": "День · Чистка До/После (q01–q09)", "title": "🚰 Мойка стойка (фото до и после)", "instruction": "• Барная раковина и ринзер чистые, без остатков молока и кофейной гущи.\n• Слив чистый, вода уходит быстро, запах отсутствует.\n• Смеситель натёрт до блеска без налёта.\n• Рабочая зона вокруг мойки сухая и чистая.\n• 📸 Сделать фото ДО и ПОСЛЕ чистки.", "photo": true, "owner": "Администратор"}, {"id": "gd1", "block": "Карта добрых дел", "group": "Карта добрых дел (периодические задачи)", "title": "🧊 Разморозка и генеральная мойка холодильника", "instruction": "📅 Периодичность: Раз в 2 недели (Вторник 14:00–18:00 — тихий день)\n⏰ Окно выполнения: 14:00 – 18:00\nВыполняется в самый тихий день (вторник с 14:00 до 18:00): отключить холодильник, полностью разморозить, промыть полки и уплотнители, навести идеальный порядок и сделать фото с камеры.", "photo": true, "owner": "Бариста"}, {"id": "gd2", "block": "Карта добрых дел", "group": "", "title": "🧂 Регенерация водоумягчителя (фильтра воды) — 2 пачки соли", "instruction": "📅 Периодичность: Раз в 4 недели (При закрытии — регенерация водоумягчителя)\n⏰ Окно выполнения: 21:30 – 22:30 (при закрытии)\nСтрого при закрытии смены (когда кофе больше не варим): скрутить крышку водоумягчителя, засыпать 2 пачки мелкой таблетированной соли, запустить цикл промывки пока моются полы.", "photo": true, "owner": "Бариста"}, {"id": "gd3", "block": "Карта добрых дел", "group": "Карта добрых дел (периодические задачи)", "title": "🪑 Подготовка второго зала к открытию (Пт–Сб)", "instruction": "📅 Периодичность: Только Пт и Сб (2-й зал / пик)\n⏰ Окно выполнения: 07:30 – 08:30\nВ пятницу и субботу открывается 2-й зал: включить освещение, проверить посадку, протереть столы и подготовить станцию.", "photo": true, "owner": "Бариста"}, {"id": "gd4", "block": "Карта добрых дел", "group": "Карта добрых дел (периодические задачи)", "title": "🧽 Глубокая замочка холдеров, сеток и питчеров в химии", "instruction": "📅 Периодичность: 2 раза в неделю (Чт, Вс)\n⏰ Окно выполнения: 21:30 – 22:30\nСнять рассекатели и корзины холдеров, замочить в растворе Cafiza на 20 минут, промыть чистой водой и сфотографировать.", "photo": true, "owner": "Бариста"}, {"id": "t_mwj4buog", "block": "Открытие", "group": "", "title": "Проверить Витрину И сделать 📷", "instruction": "", "photo": false, "owner": "Администратор"}, {"id": "t_mwj4ft1y", "block": "Открытие", "group": "", "title": "Термопод Проверен", "instruction": "Включен, работает", "photo": false, "owner": "Администратор"}, {"id": "T-MWJ4N9XX", "block": "Лайн Чек 1", "group": "", "title": "Витрина 📷", "instruction": "Десерты в Достаточном количестве", "photo": true, "owner": "Администратор"}, {"id": "tmwnb7ekl", "block": "Лайн Чек Демо", "group": "", "title": "Провеить шерстку кошке", "instruction": "Все что угодно", "photo": true, "owner": "Администратор"}], "cash": [{"date": "2026-11-18", "cash": 1555, "card": 405, "revenue": 1960, "checks": 71, "writeoff": 0, "topItems": "", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 0}, {"date": "2026-11-13", "cash": 1000, "card": 0, "revenue": 1000, "checks": 980, "writeoff": 0, "topItems": "", "barista": "Соня", "counterStart": 600, "counterEnd": 580, "coffeeQty": 0}, {"date": "2026-11-12", "cash": 1299, "card": 0, "revenue": 1299, "checks": 37, "writeoff": 0, "topItems": "", "barista": "Соня", "counterStart": null, "counterEnd": null, "coffeeQty": 0}, {"date": "2026-11-04", "cash": 1450, "card": 237, "revenue": 1687, "checks": 47, "writeoff": 0, "topItems": "Американо шт ×21, Капучино шт ×14, Чизкейк шт ×7", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 42}, {"date": "2026-11-03", "cash": 644, "card": 201, "revenue": 845, "checks": 31, "writeoff": 0, "topItems": "Американо шт ×13, Капучино шт ×6, Латте (мал) шт ×4", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 26}, {"date": "2026-11-02", "cash": 1814, "card": 421, "revenue": 2235, "checks": 79, "writeoff": 6, "topItems": "Американо шт ×45, Капучино шт ×20, Латте (бол) шт ×6", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 80}, {"date": "2026-11-01", "cash": 1475, "card": 459, "revenue": 1934, "checks": 60, "writeoff": 0, "topItems": "Американо шт ×28, Капучино шт ×16, Латте (мал) шт ×8", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 63}, {"date": "2026-10-31", "cash": 1313, "card": 710, "revenue": 2023, "checks": 53, "writeoff": 0, "topItems": "Американо шт ×22, Капучино шт ×16, Латте (мал) шт ×11", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 58}, {"date": "2026-10-30", "cash": 1717, "card": 585, "revenue": 2302, "checks": 82, "writeoff": 0, "topItems": "Американо ×38, Капучино ×23, Латте (мал) ×12", "barista": "Бариста", "counterStart": null, "counterEnd": null, "coffeeQty": 90}, {"date": "2026-10-17", "cash": 1622, "card": 896, "revenue": 2518, "checks": 73, "writeoff": 0, "topItems": "", "barista": "Daniil", "counterStart": null, "counterEnd": null, "coffeeQty": 0}], "expenses": [{"id": "#3", "date": "2026-11-11", "category": "Закупка продуктов", "amount": 200, "comment": ""}, {"id": "#2", "date": "2026-11-07", "category": "Зарплата", "amount": 200, "comment": "Соня"}, {"id": "#1", "date": "2026-11-06", "category": "Закупка продуктов", "amount": 150, "comment": "молоко в магазине"}], "checklists": [{"date": "2026-11-17", "time": "14:54", "block": "Карта добрых дел", "who": "Соня", "problems": 0, "deadline": "22:00", "status": "Выполнено", "isLate": false}, {"date": "2026-11-17", "time": "14:52", "block": "Лайн Чек 2", "who": "Соня", "problems": 0, "deadline": "18:00", "status": "Выполнено", "isLate": false}, {"date": "2026-11-16", "time": "13:09", "block": "Открытие", "who": "Алина", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-16", "time": "12:34", "block": "Открытие", "who": "Соня", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-14", "time": "18:17", "block": "Карта добрых дел", "who": "Алина", "problems": 0, "deadline": "22:00", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "22:27", "block": "Закрытие", "who": "Алина", "problems": 2, "deadline": "22:30", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "22:23", "block": "Касса", "who": "Соня", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "14:32", "block": "Открытие", "who": "Соня", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "14:31", "block": "Открытие", "who": "Соня", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "14:31", "block": "Открытие", "who": "Соня", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "14:28", "block": "Открытие", "who": "Соня", "problems": 0, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "14:05", "block": "Открытие", "who": "Соня", "problems": 1, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "14:05", "block": "Открытие", "who": "Соня", "problems": 1, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "12:20", "block": "Открытие", "who": "Алина", "problems": 1, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "12:20", "block": "Открытие", "who": "Алина", "problems": 1, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "12:20", "block": "Открытие", "who": "Алина", "problems": 1, "deadline": "23:59", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "11:49", "block": "Лайн Чек 1", "who": "Алина", "problems": 2, "deadline": "12:00", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "11:49", "block": "Лайн Чек 1", "who": "Алина", "problems": 2, "deadline": "12:00", "status": "Выполнено", "isLate": false}, {"date": "2026-11-13", "time": "11:23", "block": "Лайн Чек 1", "who": "Администратор", "problems": 0, "deadline": "12:00", "status": "Выполнено", "isLate": false}, {"date": "2026-11-12", "time": "22:17", "block": "Закрытие", "who": "Соня", "problems": 0, "deadline": "08:30", "status": "Выполнено", "isLate": false}, {"date": "2026-11-03", "time": "09:50", "block": "Открытие", "who": "Daniil", "problems": 1, "deadline": "08:30", "status": "Выполнено", "isLate": false}, {"date": "2026-11-02", "time": "13:56", "block": "Открытие", "who": "Daniil", "problems": 0, "deadline": "08:30", "status": "Выполнено", "isLate": false}], "incidents": [{"id": "INC-433", "date": "2026-11-14", "time": "23:34", "step": "Поломка оборудования", "text": "Тест", "priority": "Критично", "status": "Новая проблема", "who": "Соня", "owner": "Техник"}, {"id": "INC-888", "date": "2026-11-13", "time": "22:27", "step": "🧽 Рабочая зона", "text": "Тест", "priority": "Терпит", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-290", "date": "2026-11-13", "time": "22:27", "step": "🪞 Зеркала и остекление", "text": "Тест", "priority": "Терпит", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-245", "date": "2026-11-13", "time": "16:21", "step": "Поломка оборудования", "text": "Тест", "priority": "Критично", "status": "Новая проблема", "who": "Алина", "owner": "Техник"}, {"id": "INC-148", "date": "2026-11-13", "time": "14:26", "step": "Тестирование", "text": "Тестирование", "priority": "Терпит", "status": "Новая проблема", "who": "Соня", "owner": "Техник"}, {"id": "INC-441", "date": "2026-11-13", "time": "14:05", "step": "🧼 Санузел для гостей 📸 2", "text": "У тестирование", "priority": "Терпит", "status": "Новая проблема", "who": "Соня", "owner": "Администратор"}, {"id": "INC-621", "date": "2026-11-13", "time": "14:05", "step": "🧼 Санузел для гостей 📸 2", "text": "У тестирование", "priority": "Терпит", "status": "Новая проблема", "who": "Соня", "owner": "Администратор"}, {"id": "INC-828", "date": "2026-11-13", "time": "12:58", "step": "Поломка оборудования", "text": "Тест", "priority": "Критично", "status": "Новая проблема", "who": "Соня", "owner": "Техник"}, {"id": "INC-950", "date": "2026-11-13", "time": "12:20", "step": "🪑 Зал и посадочные места", "text": "Пример инцидента", "priority": "Терпит", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-794", "date": "2026-11-13", "time": "12:20", "step": "🪑 Зал и посадочные места", "text": "Пример инцидента", "priority": "Терпит", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-388", "date": "2026-11-13", "time": "12:20", "step": "🪑 Зал и посадочные места", "text": "Пример инцидента", "priority": "Терпит", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-855", "date": "2026-11-13", "time": "11:49", "step": "🥛 Заготовки для напитков и молочные продукты", "text": "Поломка", "priority": "Терпит", "status": "Решена", "who": "Алина", "owner": "Администратор"}, {"id": "INC-423", "date": "2026-11-13", "time": "11:49", "step": "🧼 Зона гостя и стойка на виду", "text": "Тест", "priority": "Критично", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-976", "date": "2026-11-13", "time": "11:49", "step": "🥛 Заготовки для напитков и молочные продукты", "text": "Поломка", "priority": "Терпит", "status": "Решена", "who": "Алина", "owner": "Администратор"}, {"id": "INC-191", "date": "2026-11-13", "time": "11:49", "step": "🧼 Зона гостя и стойка на виду", "text": "Тест", "priority": "Критично", "status": "Принята в работу", "who": "Алина", "owner": "Администратор"}, {"id": "INC-LEG-4", "date": "2026-11-12", "time": "13:32", "step": "📸 Фото-селфи", "text": "Нету никакой неисправности, просто фиксируем что терминал и дашборд не связаны онлайн", "priority": "Критично", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-LEG-2", "date": "2026-11-12", "time": "13:31", "step": "📸 Фото-селфи", "text": "Нету никакой неисправности, просто фиксируем что терминал и дашборд не связаны онлайн", "priority": "Критично", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-LEG-3", "date": "2026-11-12", "time": "13:31", "step": "📸 Фото-селфи", "text": "Нету никакой неисправности, просто фиксируем что терминал и дашборд не связаны онлайн", "priority": "Критично", "status": "Новая проблема", "who": "Алина", "owner": "Администратор"}, {"id": "INC-LEG-1", "date": "2026-11-03", "time": "09:50", "step": "🔥 Термопот", "text": "Все плохо", "priority": "Критично", "status": "Решена", "who": "Daniil", "owner": "Администратор"}], "plans": [{"day": "Пн", "rev": 2200, "avg": 32, "checks": 70, "roster": "Соня (07:30–22:30)"}, {"day": "Вт", "rev": 2200, "avg": 32, "checks": 70, "roster": "Алина (07:30–22:30)"}, {"day": "Ср", "rev": 2300, "avg": 33, "checks": 72, "roster": "Алина + Соня (2 смены)"}, {"day": "Чт", "rev": 2400, "avg": 34, "checks": 75, "roster": "Настя (07:30–22:30)"}, {"day": "Пт", "rev": 2800, "avg": 36, "checks": 85, "roster": "Алина + Соня (2 смены, пик)"}, {"day": "Сб", "rev": 3000, "avg": 38, "checks": 90, "roster": "Настя + Соня (2 смены, пик)"}, {"day": "Вс", "rev": 2500, "avg": 35, "checks": 75, "roster": "Соня (07:30–22:30)"}], "goodDeeds": [{"id": "gd1", "title": "🧊 Разморозка и генеральная мойка холодильника", "freq": "Раз в 2 недели (Вторник 14:00–18:00 — тихий день)", "window": "14:00 – 18:00", "role": "Бариста", "instruction": "Выполняется в самый тихий день (вторник с 14:00 до 18:00): отключить холодильник, полностью разморозить, промыть полки и уплотнители, навести идеальный порядок и сделать фото с камеры."}, {"id": "gd2", "title": "🧂 Регенерация водоумягчителя (фильтра воды) — 2 пачки соли", "freq": "Раз в 4 недели (При закрытии — регенерация водоумягчителя)", "window": "21:30 – 22:30 (при закрытии)", "role": "Бариста", "instruction": "Строго при закрытии смены (когда кофе больше не варим): скрутить крышку водоумягчителя, засыпать 2 пачки мелкой таблетированной соли, запустить цикл промывки пока моются полы."}, {"id": "gd3", "title": "🪑 Подготовка второго зала к открытию (Пт–Сб)", "freq": "Только Пт и Сб (2-й зал / пик)", "window": "07:30 – 08:30", "role": "Бариста", "instruction": "В пятницу и субботу открывается 2-й зал: включить освещение, проверить посадку, протереть столы и подготовить станцию."}, {"id": "gd4", "title": "🧽 Глубокая замочка холдеров, сеток и питчеров в химии", "freq": "2 раза в неделю (Чт, Вс)", "window": "21:30 – 22:30", "role": "Бариста", "instruction": "Снять рассекатели и корзины холдеров, замочить в растворе Cafiza на 20 минут, промыть чистой водой и сфотографировать."}], "ttk": [{"id": "ttk1", "name": "☕ Капучино ILLY", "vol": "250 мл (M)", "cat": "Классика", "price": 19, "cost": 8.0, "recipe": "Эспрессо ILLY 18 г зерна → выход 36 г за 25–27 сек. Молоко 3.2% (ТМК) — 180 мл, взбивание до 62 °C (глянцевая микропена 1 см).", "serve": "Керамическая чашка 250 мл или крафт-стакан навынос. Доп. сироп 15 мл (+5 руб.)."}, {"id": "ttk2", "name": "🖤 Американо ILLY", "vol": "250 мл (M)", "cat": "Классика", "price": 12, "cost": 5.5, "recipe": "Горячая вода 92 °C (160 мл) в стакан, сверху аккуратно влить эспрессо ILLY (36 г) с сохранением крема.", "serve": "Предложить гостю молоко 50 мл (+5 руб.), доп. шот эспрессо ILLY (+7 руб.) или чизкейк (40 руб.)."}, {"id": "ttk3", "name": "🥛 Латте (малый)", "vol": "250 мл (M)", "cat": "Классика", "price": 20, "cost": 8.0, "recipe": "Эспрессо ILLY (1 шот 30 мл) + молоко 200 мл, температура 63 °C, тонкая шелковистая пена 0.5 см.", "serve": "Стакан 250 мл. На безлактозном молоке (+5 руб.), на альтернативном молоке (+10 руб.)."}, {"id": "ttk4", "name": "🥛 Латте (большой)", "vol": "350 мл (L)", "cat": "Классика", "price": 25, "cost": 9.5, "recipe": "Эспрессо ILLY (36 г) + молоко 270 мл, температура 63 °C, нежная молочная шапка.", "serve": "Высокий бокал или стакан 350 мл. Подача с салфеткой."}, {"id": "ttk5", "name": "⚡ Flat White (Флэт Уайт)", "vol": "200 мл (S)", "cat": "Классика", "price": 25, "cost": 11.0, "recipe": "Двойной ристретто ILLY (36 г) + 130 мл молока с минимальной микропеной (58–60 °C).", "serve": "Стакан 200 мл, обязателен чёткий латте-арт (сердце / тюльпан)."}, {"id": "ttk6", "name": "🍊 Ванильно-апельсиновый Латте / Раф", "vol": "350 мл (L)", "cat": "Авторский / Хит", "price": 30, "cost": 12.2, "recipe": "Эспрессо ILLY 36 г + молоко со сливками 10% (220 мл) + ванильно-апельсиновый сироп 15 мл. Взбить вместе стимером до 65 °C до кремовой текстуры.", "serve": "Высокая маржинальность (Upsell №1 в ПМР — 30 руб.)."}, {"id": "ttk7", "name": "🍫 Какао «Баунти» / Горячий шоколад", "vol": "300 мл (M)", "cat": "Авторский / Десертный", "price": 30, "cost": 11.7, "recipe": "Натуральное какао 22 г + молоко 230 мл + кокосовый сироп 15 мл. Взбить стимером до 65 °C без комочков.", "serve": "По желанию гостя добавить маршмеллоу (+8 руб.)."}, {"id": "ttk8", "name": "🍰 Чизкейк классический", "vol": "120 г (порция)", "cat": "Десерты / Витрина", "price": 40, "cost": 23.5, "recipe": "Проверить срок маркировки на витрине (температура витрины +2…+6 °C). Подавать охлаждённым.", "serve": "Керамическая тарелка с десертной вилкой или крафт-бокс навынос."}], "audits": [{"id": "AUD-257", "date": "2026-11-13", "barista": "Соня", "auditor": "Шеф-бариста Максим", "score": 98}, {"id": "AUD-824", "date": "2026-11-13", "barista": "Алина", "auditor": "Шеф-бариста Максим", "score": 98}]};
-const STORE_KEY = 'coffee_illy_v90_live_state';
-const THEME_KEY = 'coffee_illy_v90_theme';
-const TODAY = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10));
-const TIME_OPTIONS = ['06:00','06:30','07:00','07:30','08:00','08:30','09:00','09:30','10:00','10:23','10:30','10:34','11:00','11:30','12:00','12:30','13:00','14:00','15:00','16:00','17:00','18:00','18:30','19:00','20:00','21:00','21:30','22:00','22:30','23:00','23:30','23:59'];
-const PLAN_OPTS = [1500,1800,2000,2200,2500,3000,3500,4000,5000];
-const CHECKS_OPTS = [30,40,50,60,70,75,80,90,100,120];
-const AVG_OPTS = [25,28,30,32,35,38,40,45,50];
-const WO_OPTS = [5,10,15,20,25,30];
-const SHIFT_HOURS = ['07:30–22:30','08:00–20:00','08:00–16:00','14:00–22:30','Выходной'];
-const VOL_OPTS = ['60 мл (S)','150 мл (S)','200 мл (M)','250 мл (M)','350 мл (L)','400 мл (XL)'];
-const CAT_OPTS = ['Классика','Авторские','Холодные','Чай и не-кофе','Выпечка'];
-const EXP_CATS = ['Закупка продуктов','Зарплата','Аренда','Коммунальные','Реклама','Ремонт и оборудование','Прочее'];
-const OWNERS = ['Администратор','Бариста','Техник','Управляющий'];
-const EQUIP_ZONES = ['Кофемашина','Кофемолка','Холодильник','Термопот','Витрина','Зона гостя','Санузел','Касса / Терминал','Другое'];
+  const EQUIP_LIST = ['Кофемашина', 'Кофемолка', 'Холодильник', 'Термопот', 'Витрина', 'Зона гостя', 'Санузел', 'Касса / Терминал', 'Другое'];
+  const INC_TYPES = ['Срочно (стоп-работа)', 'Важно (в течение дня)', 'Терпит (планово)'];
 
-function freshState() {
-  const s = JSON.parse(JSON.stringify(LIVE_SNAPSHOT));
-  s.rev = 1; s.woNorm = 15; s.initCounter = 600; s.photoAll = false; s.simTime = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '13:25');
-  s.adminPin = '1234'; s.extensions = {};
-  s.staff = s.staff.map(st => Object.assign({}, st, {
-    pin: '1234', pinIsDefault: true,
-    tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
-  }));
-  s.liveProgress = {}; s.staffPresence = {};
-  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v94.0 на реальных данных Coffee_illy.' }];
-  return s;
-}
-function loadSharedState() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) { const parsed = JSON.parse(raw); if (parsed && parsed.blocks) return parsed; }
-  } catch(_) {}
-  const s = freshState();
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch(_) {}
-  return s;
-}
-const syncCh = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('coffee_illy_v90_sync') : null;
-function saveSharedState(st, actor, desc) {
-  st.rev = (Number(st.rev) || 0) + 1;
-  if (desc) {
-    st.auditLog = st.auditLog || [];
-    st.auditLog.unshift({ time: st.simTime || '13:25', actor: actor || 'Система', rev: st.rev, text: desc });
-    if (st.auditLog.length > 50) st.auditLog.pop();
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
-  if (syncCh) try { syncCh.postMessage({ type: 'state', rev: st.rev, ts: Date.now() }); } catch(_) {}
-  if (window.CoffeeCloudV93 && desc) window.CoffeeCloudV93.dispatchStateChange(st, actor, desc);
-}
-function fmtRub(n) { return (Number(n) || 0).toLocaleString('ru-RU') + ' ₽'; }
-function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function toMin(hhmm) { const m = String(hhmm || '00:00').match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1])*60 + Number(m[2]) : 0; }
-function optList(arr, sel, fn) {
-  const v = arr.slice();
-  if (sel != null && sel !== '' && !v.some(x => String(x) === String(sel))) v.unshift(sel);
-  return v.map(x => `<option value="${esc(x)}" ${String(x)===String(sel)?'selected':''}>${esc(fn ? fn(x) : x)}</option>`).join('');
-}
-let _tTimer = null;
-function showToast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(_tTimer); _tTimer = setTimeout(() => el.classList.remove('show'), 2600);
-}
-function initTheme(btnId) {
-  const mql = window.matchMedia('(prefers-color-scheme: dark)');
-  let mode = 'auto';
-  try { mode = localStorage.getItem(THEME_KEY) || 'auto'; } catch(_) {}
-  function apply() {
-    const eff = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
-    document.documentElement.setAttribute('data-theme', eff);
-    const b = document.getElementById(btnId);
-    if (b) b.textContent = mode === 'auto' ? '🌓 Авто' : (mode === 'light' ? '☀️ Светлая' : '🌙 Тёмная');
+  function fmtRub(n) {
+    if (n === null || n === undefined || Number.isNaN(Number(n))) return '—';
+    return Number(n).toLocaleString('ru-RU') + ' ₽';
   }
-  mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
-  window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
-  const b = document.getElementById(btnId);
-  if (b) b.onclick = () => {
-    mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto');
-    try { localStorage.setItem(THEME_KEY, mode); } catch(_) {}
-    apply();
-  };
-  apply();
-}
+  function toMin(hhmm) {
+    const m = String(hhmm || '00:00').match(/(\d{1,2}):(\d{2})/);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+  }
+  function nowHHMM() { return C ? C.localHHMM() : '12:00'; }
 
-(function() {
-  let state = loadSharedState();
-  let tab = 'checklists';
-  let authed = null;
-  let checkedInAt = '';
-  let welcomeBanner = '';
-  let autoLoginTried = false;
-  let deepLinkApplied = false;
-  let pickStaff = '';
-  let pinBuf = '';
-  let stagesOpen = false;
-  let activeBlock = null;
-  let stepIdx = 0;
-  let stepMedia = {};
-  let instOpen = true;
-  let confirmFinish = false;
-  let justFinishedBlock = '';
-  let ttkQ = '';
-  let ttkCat = '';
-  const TTK_ACK_KEY = 'coffee_illy_v94_ttk_ack';
-  function getAckTtk() { try { return JSON.parse(localStorage.getItem(TTK_ACK_KEY) || '[]'); } catch(_) { return []; } }
-  function ackTtkId(id) {
-    const a = getAckTtk();
-    if (!a.includes(id)) { a.push(id); try { localStorage.setItem(TTK_ACK_KEY, JSON.stringify(a)); } catch(_) {} }
+  let _toastTimer = null;
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
   }
 
-  initTheme('btn-theme');
-  function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); }
+  function openModal(title, html) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('modal-bg').classList.add('open');
+  }
   function closeModal() { document.getElementById('modal-bg').classList.remove('open'); }
   document.getElementById('modal-close').onclick = closeModal;
   document.getElementById('modal-bg').onclick = (e) => { if (e.target.id === 'modal-bg') closeModal(); };
 
-  // Закрытие мобильной клавиатуры при тапе в любое свободное место
-  document.addEventListener('pointerdown', (e) => {
-    const ae = document.activeElement;
-    if (!ae || !/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
-    if (e.target && e.target.closest && e.target.closest('input, textarea, select, label')) return;
-    try { ae.blur(); } catch(_) {}
-  }, { passive: true });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && document.activeElement && document.activeElement.tagName === 'INPUT') {
-      try { document.activeElement.blur(); } catch(_) {}
-    }
-  });
+  // Theme (Light Warm Milk default / Dark / Auto)
+  let themeMode = 'auto';
+  try { themeMode = localStorage.getItem(THEME_KEY) || 'light'; } catch (_) { themeMode = 'light'; }
+  function applyTheme() {
+    const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const eff = themeMode === 'auto' ? (dark ? 'dark' : 'light') : themeMode;
+    document.documentElement.setAttribute('data-theme', eff);
+  }
+  applyTheme();
 
-  function normTaskKey(title) {
-    return String(title || '')
-      .toLowerCase()
-      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
-      .replace(/фото|видео|2-3 сек|2\s*фото/gi, '')
-      .replace(/[^a-zа-яё0-9]+/gi, ' ')
-      .trim();
+  function defaultState() {
+    return {
+      location: 'Кофейня №1', plan: 2200, photoAll: false,
+      blocks: [
+        { id: 'b_open', name: 'Открытие', openTime: '07:30', deadline: '09:30', isCash: false, active: true },
+        { id: 'b_day', name: 'Лайн Чек 1', openTime: '11:00', deadline: '16:00', isCash: false, active: true },
+        { id: 'b_close', name: 'Закрытие', openTime: '20:30', deadline: '22:30', isCash: false, active: true }
+      ],
+      tasks: [], checklists: [], cash: [], incidents: [], staff: [], ttk: [], announcements: [],
+      staffPresence: {}, cashReviews: {}, dataLoaded: false, loadError: '', lastSyncAt: ''
+    };
   }
-  function activeStaff() { return state.staff.filter(s=>s.active!==false); }
-  function getSt(nm) { return state.staff.find(s=>s.name===nm); }
-  function blockTasks(nm) {
-    const raw = state.tasks.filter(t => t && t.block === nm && t.active !== false);
-    const seen = new Map();
-    const out = [];
-    raw.forEach(t => {
-      const k = normTaskKey(t.title) || t.id;
-      if (seen.has(k)) {
-        const prev = seen.get(k);
-        if ((t.instruction || '').length > (prev.instruction || '').length) prev.instruction = t.instruction;
-        if (t.photo) prev.photo = true;
-      } else {
-        const copy = Object.assign({}, t);
-        seen.set(k, copy);
-        out.push(copy);
-      }
-    });
-    return out;
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return Object.assign(defaultState(), JSON.parse(raw));
+    } catch (_) {}
+    return defaultState();
   }
-  function isDoneToday(blk, who) { return state.checklists.some(c=>c.date===TODAY && c.block===blk && c.who===who); }
-  function getBlkSt(b) {
-    if (b.active===false) return { code:'off', label:'Отключён', cls:'', open:false };
-    if (authed && isDoneToday(b.name, authed)) return { code:'done', label:'Выполнено', cls:'good', open:false };
-    if (state.extensions[b.name] && state.extensions[b.name].forceOpen) return { code:'open', label:'Открыт админом', cls:'good', open:true };
-    const now = toMin(state.simTime||'13:25');
-    if (now < toMin(b.openTime)) return { code:'soon', label:'С ' + b.openTime, cls:'', open:false };
-    if (now > toMin(b.deadline)) return { code:'closed', label:'Закрыт', cls:'bad', open:false };
-    return { code:'open', label:'До ' + b.deadline, cls:'accent', open:true };
+  function saveStateLocal() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) {}
   }
-  function ensureBlk() {
-    const nc = state.blocks.filter(b=>!b.isCash && b.active!==false);
-    if (activeBlock) { const c = nc.find(b=>b.name===activeBlock); if (c && getBlkSt(c).open) return c; }
-    const f = nc.find(b=>getBlkSt(b).open); activeBlock = f ? f.name : null; stepIdx = 0; return f || null;
+
+  function loadChkDrafts() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_CHK_KEY) || '{}') || {}; } catch (_) { return {}; }
+  }
+  function saveChkDrafts(d) {
+    try { localStorage.setItem(DRAFT_CHK_KEY, JSON.stringify(d)); } catch (_) {}
+  }
+  function loadCashDraft() {
+    const def = { step: 1, date: TODAY, staff1: '', counter1: '', staff2: '', counter2: '', cash: '', card: '', checks: '', writeoff: '0', expenses: '0', photoUrl: '', comment: '' };
+    try { return Object.assign(def, JSON.parse(localStorage.getItem(DRAFT_CASH_KEY) || '{}')); } catch (_) { return def; }
+  }
+  function saveCashDraft(d) {
+    try { localStorage.setItem(DRAFT_CASH_KEY, JSON.stringify(d)); } catch (_) {}
+  }
+
+  // Real Camera Capture -> JPEG compression -> Google Drive upload
+  function compressAndUploadPhoto(file, meta, onDone) {
+    if (!file) return;
+    showToast('Загрузка фотографии...');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = async () => {
+        const maxSide = 1280;
+        let w = img.width, h = img.height;
+        if (w > maxSide || h > maxSide) {
+          if (w > h) { h = Math.round((h * maxSide) / w); w = maxSide; }
+          else { w = Math.round((w * maxSide) / h); h = maxSide; }
+        }
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUri = cv.toDataURL('image/jpeg', 0.78);
+        if (C) {
+          const res = await C.uploadPhotoToDrive(Object.assign({ dataUri: dataUri, userName: authed || 'Бариста' }, meta || {}));
+          if (res && res.ok) {
+            showToast(res.queued ? 'Фото сохранено на устройстве — отправится при появлении сети' : 'Фотография загружена');
+            onDone(res.url || dataUri, !!res.queued);
+            return;
+          }
+        }
+        showToast('Фотография сохранена');
+        onDone(dataUri, true);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  let state = loadState();
+  let tab = 'home';
+  let authed = null;
+  let checkedInAt = '';
+  let welcomeBanner = '';
+  let pickStaff = '';
+  let pinBuf = '';
+  let activeBlock = null;
+  let chkDrafts = loadChkDrafts();
+  let cashDraft = loadCashDraft();
+  let incForm = { equip: EQUIP_LIST[0], priority: INC_TYPES[1], text: '', photoUrl: '' };
+  let ttkQuery = '';
+  let ttkCat = 'Все';
+  let deepLinkApplied = false;
+  let cloudLoop = null;
+
+  function activeStaff() { return (state.staff || []).filter((s) => s && s.active !== false); }
+  function getSt(nm) { return (state.staff || []).find((s) => s.name === nm); }
+  function blockTasks(blk) { return (state.tasks || []).filter((t) => t.block === blk && t.active !== false); }
+  function getDoneRecord(blk) {
+    return (state.checklists || []).find((c) => c.date === TODAY && c.block === blk);
+  }
+  function classifyStage(b) {
+    const nm = String(b.name || '').toLowerCase();
+    if (nm.includes('открыт')) return 'Открытие';
+    if (nm.includes('закрыт')) return 'Закрытие';
+    const m = toMin(b.openTime || '12:00');
+    if (m < 600) return 'Открытие';
+    if (m >= 1140) return 'Закрытие';
+    return 'В течение дня';
+  }
+  function getBlockStatus(b) {
+    const done = getDoneRecord(b.name);
+    if (done) return { code: 'done', label: 'Готово (' + (done.time || 'сегодня') + ')', cls: 'good', canOpen: true, locked: true, record: done };
+    const nowM = toMin(nowHHMM());
+    if (nowM < toMin(b.openTime || '00:00')) return { code: 'later', label: 'Позже · с ' + b.openTime, cls: '', canOpen: true, locked: false };
+    if (nowM > toMin(b.deadline || '23:59')) return { code: 'overdue', label: 'Просрочен · до ' + b.deadline, cls: 'bad', canOpen: true, locked: false };
+    return { code: 'open', label: 'Ожидает · до ' + b.deadline, cls: 'warn', canOpen: true, locked: false };
+  }
+
+  function updateSyncPill(st) {
+    const pill = document.getElementById('sync-pill');
+    const txt = document.getElementById('sync-txt');
+    if (!pill || !txt) return;
+    pill.className = 'sync-pill ' + (st.state || 'syncing');
+    if (st.state === 'synced') {
+      txt.textContent = 'Синхронизировано' + (st.lastSyncAt ? ' · ' + st.lastSyncAt : '');
+      pill.onclick = null;
+    } else if (st.state === 'offline') {
+      txt.textContent = 'Нет соединения — данные сохраняются на устройстве';
+      pill.onclick = null;
+    } else if (st.state === 'error') {
+      txt.textContent = 'Ошибка загрузки · Повторить';
+      pill.onclick = () => { if (cloudLoop) cloudLoop.pullNow(true); };
+    } else {
+      txt.textContent = st.pending ? ('Отправка изменений (' + st.pending + ')...') : 'Синхронизация...';
+      pill.onclick = null;
+    }
   }
 
   function applyDeepLinkIfNeeded() {
-    if (deepLinkApplied || !window.CoffeeCloudV93) return;
-    const dlBlock = window.CoffeeCloudV93.getDeepLinkBlock();
-    if (!dlBlock) { deepLinkApplied = true; return; }
-    const found = state.blocks.find(b => b.name.toLowerCase() === dlBlock.toLowerCase() || b.name.toLowerCase().includes(dlBlock.toLowerCase()));
+    if (deepLinkApplied || !C) return;
+    const dl = C.getDeepLinkBlock();
+    if (!dl) { deepLinkApplied = true; return; }
+    const found = (state.blocks || []).find((b) => !b.isCash && b.name.toLowerCase().includes(dl.toLowerCase()));
     if (found) {
-      tab = 'checklists';
+      tab = 'tasks';
       activeBlock = found.name;
-      stepIdx = 0;
       deepLinkApplied = true;
-      showToast('📋 Открыт чек-лист «' + found.name + '»');
+      showToast('Открыт чек-лист «' + found.name + '»');
     }
   }
 
-  function completeStaffSignIn(staffName, checkTime, greetingText, tgIdVal) {
+  function completeSignIn(staffName, checkTime, greetingText) {
     authed = staffName;
-    checkedInAt = checkTime || (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '08:00');
-    welcomeBanner = 'Добро пожаловать, ' + staffName + ' · на работе с ' + checkedInAt;
+    checkedInAt = checkTime || nowHHMM();
+    welcomeBanner = greetingText || ('Добро пожаловать на смену, ' + staffName + '! Вы отмечены на работе с ' + checkedInAt + '.');
+    if (!cashDraft.staff1) { cashDraft.staff1 = staffName; saveCashDraft(cashDraft); }
     state.staffPresence = state.staffPresence || {};
-    state.staffPresence[staffName] = { staffName: staffName, status: 'on_shift', checkedInAt: checkedInAt, date: TODAY, tgId: tgIdVal || '' };
+    state.staffPresence[staffName] = { staffName, status: 'on_shift', checkedInAt, date: TODAY };
     applyDeepLinkIfNeeded();
-    saveSharedState(state, staffName, 'Отмечен на работе (' + checkedInAt + ')');
-    showToast('🟢 ' + welcomeBanner);
+    saveStateLocal();
+    showToast(welcomeBanner);
     render();
   }
 
   async function runAutoLogin() {
-    if (authed || !window.CoffeeCloudV93) return;
-    autoLoginTried = true;
-    const res = await window.CoffeeCloudV93.autoLoginEmployee(state);
+    if (authed || !C) return;
+    const res = await C.autoLoginEmployee(state);
     if (res && res.ok && res.staffName) {
-      completeStaffSignIn(res.staffName, res.checkedInAt, res.welcomeMessage, res.tgId);
+      completeSignIn(res.staffName, res.checkedInAt, res.welcomeMessage);
     }
   }
 
-  async function tryLogin() {
+  async function tryPinLogin() {
     const st = getSt(pickStaff);
-    if (!st || st.active===false) { showToast('Сотрудник отключён'); pinBuf=''; render(); return; }
-    const _tgu = window.CoffeeCloudV93 ? window.CoffeeCloudV93.getTelegramUser() : null;
-    const liveTg = _tgu ? _tgu.id : '';
-    if (liveTg && st.tgId && st.tgId.replace(/^TG-/i,'') !== liveTg.replace(/^TG-/i,'')) {
-      showToast('⛔ Профиль привязан к другому Telegram ID'); pinBuf=''; render(); return;
+    if (!st || st.active === false) { showToast('Сотрудник не найден или отключён'); pinBuf = ''; render(); return; }
+    if (!pinBuf) return;
+    const entered = pinBuf;
+    pinBuf = '';
+    if (C) {
+      const tgu = C.getTelegramUser();
+      const res = await C.authLogin('staff', { name: st.name, pin: entered, tgId: (tgu && tgu.id) || st.tgId || '', initData: (tgu && tgu.initData) || '' });
+      if (res && res.ok) {
+        completeSignIn(res.staffName || st.name, res.checkedInAt, res.welcomeMessage);
+        return;
+      }
+      if (res && !res.offline) {
+        showToast(res.error || 'Неверный PIN-код');
+        render();
+        return;
+      }
     }
-    if (pinBuf === st.pin) {
-      const enteredPin = pinBuf;
-      pinBuf = '';
-      let srvTime = window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '08:00';
-      let srvMsg = '';
-      if (window.CoffeeCloudV93) {
-        const res = await window.CoffeeCloudV93.authLogin('staff', {
-          name: st.name, pin: enteredPin, tgId: liveTg || st.tgId || '', initData: (_tgu && _tgu.initData) || ''
-        });
-        if (res && res.checkedInAt) srvTime = res.checkedInAt;
-        if (res && res.welcomeMessage) srvMsg = res.welcomeMessage;
+    if (entered === (st.pin || '1234')) completeSignIn(st.name, nowHHMM(), '');
+    else { showToast('Неверный PIN-код'); render(); }
+  }
+
+  function openProfileModal() {
+    const st = getSt(authed) || { name: authed, role: 'Бариста', tgId: '' };
+    openModal('Профиль сотрудника', `
+      <div class="stack">
+        <div class="card-soft">
+          <div class="row-between">
+            <div><div style="font-weight:700;font-size:16px;">${esc(st.name)}</div><div class="card-sub">${esc(st.role || 'Бариста')}</div></div>
+            <span class="badge good">На работе с ${esc(checkedInAt || nowHHMM())}</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Тема оформления</label>
+          <select id="prof-theme">
+            <option value="light" ${themeMode === 'light' ? 'selected' : ''}>Светлая (тёплый молочный)</option>
+            <option value="dark" ${themeMode === 'dark' ? 'selected' : ''}>Тёмная</option>
+            <option value="auto" ${themeMode === 'auto' ? 'selected' : ''}>Авто (как в системе)</option>
+          </select>
+        </div>
+        <div class="card-soft">
+          <div style="font-weight:600;margin-bottom:8px;">Смена личного PIN-кода</div>
+          <div class="field"><label>Текущий PIN</label><input id="pin-old" type="password" inputmode="numeric" placeholder="••••"></div>
+          <div class="field"><label>Новый PIN (4–6 цифр)</label><input id="pin-new" type="password" inputmode="numeric" placeholder="Новый PIN"></div>
+          <button class="btn btn-primary btn-full" id="btn-save-pin">Сохранить новый PIN</button>
+        </div>
+        <button class="btn btn-bad btn-full" id="btn-logout">Завершить смену и выйти</button>
+      </div>
+    `);
+    document.getElementById('prof-theme').onchange = (e) => {
+      themeMode = e.target.value;
+      try { localStorage.setItem(THEME_KEY, themeMode); } catch (_) {}
+      applyTheme();
+      showToast('Тема обновлена');
+    };
+    document.getElementById('btn-save-pin').onclick = async () => {
+      const oldP = document.getElementById('pin-old').value.trim();
+      const newP = document.getElementById('pin-new').value.trim();
+      if (!/^\d{4,6}$/.test(newP)) { showToast('Новый PIN должен содержать от 4 до 6 цифр'); return; }
+      if (C) {
+        const res = await C.gasPost('change_staff_pin', { name: authed, oldPin: oldP, newPin: newP });
+        if (res && res.ok) { showToast('PIN-код обновлён'); closeModal(); return; }
+        showToast((res && res.error) || 'Не удалось обновить PIN');
       }
-      if (liveTg && !st.tgId) {
-        st.tgId = liveTg;
-        saveSharedState(state, st.name, 'Привязан Telegram ID ' + liveTg + ' при входе');
-      }
-      completeStaffSignIn(st.name, srvTime, srvMsg, liveTg || st.tgId || '');
-    } else { pinBuf = ''; showToast('Неверный PIN'); render(); }
+    };
+    document.getElementById('btn-logout').onclick = async () => {
+      const nm = authed;
+      closeModal();
+      if (C) await C.checkOutStaff(nm);
+      authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = '';
+      showToast('Вы вышли со смены');
+      render();
+    };
   }
 
   function render() {
-    document.getElementById('hdr-loc').textContent = state.location;
-    document.getElementById('hdr-rev').textContent = (navigator.onLine === false ? 'Офлайн' : 'Онлайн');
-    document.getElementById('hdr-clock').textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (state.simTime || '13:25'));
-    const body = document.getElementById('body'), nav = document.getElementById('bnav'), uc = document.getElementById('user-ctl');
+    document.getElementById('hdr-loc').textContent = state.location || 'Кофейня №1';
+    const body = document.getElementById('app-body');
+    const nav = document.getElementById('bnav');
+    const hdrR = document.getElementById('hdr-right');
 
     if (!authed) {
-      nav.style.display = 'none'; uc.innerHTML = ''; const fb0 = document.getElementById('fab-break'); if (fb0) fb0.style.display = 'none';
-      const tgu = window.CoffeeCloudV93 ? window.CoffeeCloudV93.getTelegramUser() : null;
-      const liveTg = tgu ? tgu.id : '';
-      const bound = liveTg ? activeStaff().find(s=>s.tgId && s.tgId.replace(/^TG-/i,'')===liveTg.replace(/^TG-/i,'')) : null;
-      const names = activeStaff().map(s=>s.name);
-      if (bound) pickStaff = bound.name;
-      else if (!names.includes(pickStaff)) pickStaff = names[0]||'Соня';
-      const cur = getSt(pickStaff);
+      nav.style.display = 'none';
+      hdrR.innerHTML = '';
+      const staff = activeStaff();
+      const names = staff.length ? staff.map((s) => s.name) : ['Соня', 'Алина'];
+      if (!names.includes(pickStaff)) pickStaff = names[0];
       body.innerHTML = `
-        <div class="step-card">
-          <div class="step-counter"><span>Вход</span><span>${liveTg?'Telegram':''}</span></div>
-          <h2 class="step-title">${bound?'Привет, '+esc(bound.name):'Вход в смену'}</h2>
-          <div class="field"><label>Сотрудник</label><select id="st-sel" ${bound?'disabled':''}>${optList(names, pickStaff)}</select></div>
-          <div class="pin-dots">${[0,1,2,3].map(i=>`<span class="pin-dot ${pinBuf.length>i?'filled':''}"></span>`).join('')}</div>
-          <div class="pin-pad">${['1','2','3','4','5','6','7','8','9','⌫','0','✓'].map(k=>`<button class="pin-key" data-k="${k}">${k}</button>`).join('')}</div>
+        <div class="card" style="max-width:420px;margin:16px auto;">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Вход сотрудника</h2>
+              <div class="card-sub">После входа система отметит вас на работе и запомнит устройство</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Сотрудник</label>
+            <select id="login-staff">${names.map((n) => `<option value="${esc(n)}" ${n === pickStaff ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+          </div>
+          <div class="pin-dots">${[0, 1, 2, 3].map((i) => `<span class="pin-dot ${pinBuf.length > i ? 'filled' : ''}"></span>`).join('')}</div>
+          <div class="pin-pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '✓'].map((k) => `<button class="pin-key" data-k="${k}">${k}</button>`).join('')}</div>
         </div>`;
-      const ss = document.getElementById('st-sel'); if (ss) ss.onchange = e => { pickStaff = e.target.value; pinBuf=''; render(); };
-      body.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
-        const k = b.dataset.k;
-        if (k==='⌫') { pinBuf = pinBuf.slice(0,-1); render(); return; }
-        if (k==='✓') { tryLogin(); return; }
-        if (pinBuf.length < 6) { pinBuf += k; if (cur && pinBuf.length === cur.pin.length) tryLogin(); else render(); }
+      document.getElementById('login-staff').onchange = (e) => { pickStaff = e.target.value; pinBuf = ''; render(); };
+      body.querySelectorAll('[data-k]').forEach((b) => {
+        b.onclick = () => {
+          const k = b.dataset.k;
+          if (k === '⌫') { pinBuf = pinBuf.slice(0, -1); render(); return; }
+          if (k === '✓') { tryPinLogin(); return; }
+          if (pinBuf.length < 6) {
+            pinBuf += k;
+            if (pinBuf.length === 4) tryPinLogin();
+            else render();
+          }
+        };
       });
       return;
     }
 
-    nav.style.display = 'grid'; const fb1 = document.getElementById('fab-break'); if (fb1) fb1.style.display = 'inline-flex';
-    document.querySelectorAll('#bnav button').forEach(b=>b.classList.toggle('active', b.dataset.t===tab));
-    uc.innerHTML = `<span class="badge good" style="padding:5px 9px;">🟢 На работе · ${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn" id="b-pin" style="padding:5px 9px;">🔑 ${esc(authed)}</button><button class="chip-btn" id="b-out" style="padding:5px 9px;">Выйти</button>`;
-    document.getElementById('b-out').onclick = async () => {
-      const prevName = authed;
-      if (window.CoffeeCloudV93) await window.CoffeeCloudV93.checkOutStaff(prevName);
-      if (state.staffPresence && state.staffPresence[prevName]) state.staffPresence[prevName].status = 'off_shift';
-      authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; render();
-    };
-    document.getElementById('b-pin').onclick = () => {
-      const s = getSt(authed);
-      openModal('Сменить мой PIN (' + s.name + ')', `
-        <div class="card-soft" style="margin-bottom:10px;font-size:12.5px;">Telegram ID: <b>${s.tgId||'Не привязан'}</b></div>
-        <div class="field"><label>Текущий PIN</label><input id="po" type="password" inputmode="numeric"></div>
-        <div class="field"><label>Новый PIN (4–6 цифр)</label><input id="pn" type="password" inputmode="numeric"></div>
-        <button class="btn-lg primary" id="ps">Сохранить PIN</button>
-      `);
-      document.getElementById('ps').onclick = () => {
-        const o = document.getElementById('po').value.trim(), n = document.getElementById('pn').value.trim();
-        if (o !== s.pin || !/^\d{4,6}$/.test(n)) { showToast('Проверьте текущий и новый PIN'); return; }
-        s.pin = n; s.pinIsDefault = false;
-        saveSharedState(state, s.name, 'Сменил личный PIN'); closeModal(); showToast('Личный PIN обновлён!'); render();
-      };
-    };
+    nav.style.display = 'grid';
+    nav.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.t === tab));
+    const initials = String(authed).slice(0, 2).toUpperCase();
+    hdrR.innerHTML = `<button class="icon-btn" id="btn-profile" title="Профиль">${esc(initials)} <span style="font-size:12px;">${esc(authed)}</span></button>`;
+    document.getElementById('btn-profile').onclick = openProfileModal;
 
-    function openQuickReportModal(modeKind) {
-      const isBreak = modeKind === 'breakdown';
-      openModal(isBreak ? 'Поломка' : 'Новая задача', `
-        ${isBreak
-          ? `<div class="field"><label>Оборудование / зона</label><select id="nz">${optList(EQUIP_ZONES, EQUIP_ZONES[0])}</select></div>`
-          : `<div class="field"><label>Задача</label><input id="nz" placeholder="Что нужно сделать"></div>`}
-        <div class="field"><label>Срочность</label><select id="np"><option>Критично</option><option>Терпит</option></select></div>
-        <div class="field"><label>Описание</label><textarea id="nt" rows="3"></textarea></div>
-        <div id="n-media-strip" class="media-grid" style="margin-bottom:8px;"></div>
-        <div style="margin-bottom:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-          <button type="button" class="chip-btn accent" id="n-cam-ph">📷 Фото</button>
-          <button type="button" class="chip-btn" id="n-cam-vd">🎥 Видео</button>
-        </div>
-        <button class="btn-lg primary" id="ns">Сохранить</button>
-      `);
-      const modalMedia = [];
-      function renderModalMedia() {
-        const box = document.getElementById('n-media-strip');
-        if (!box) return;
-        box.innerHTML = modalMedia.map((m, i) => `
-          <div class="media-thumb">
-            ${m.type === 'video' ? `<video src="${m.preview}" muted playsinline></video>` : `<img src="${m.preview}" alt="">`}
-            <button type="button" class="rm-m" data-rm="${i}">✕</button>
-            <span class="st-m">${m.uploading ? '☁' : (m.type === 'video' ? '🎥' : '✓')}</span>
-          </div>`).join('');
-        box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { modalMedia.splice(Number(b.dataset.rm), 1); renderModalMedia(); });
-      }
-      function captureModal(cMode) {
-        if (!window.CoffeeCameraV94) return;
-        window.CoffeeCameraV94.open({
-          title: isBreak ? 'Поломка' : 'Задача',
-          mode: cMode,
-          allowVideo: true,
-          onCaptured: async (dataUri, kindType) => {
-            const item = { type: kindType || cMode, preview: dataUri, url: '', uploading: true };
-            modalMedia.push(item);
-            renderModalMedia();
-            if (window.CoffeeCloudV94) {
-              const up = await window.CoffeeCloudV94.uploadPhotoToDrive({
-                dataUri, userName: authed || 'Бариста', block: isBreak ? 'Поломка' : 'Задача', kind: 'incident'
-              });
-              item.uploading = false;
-              item.url = (up && up.url) || '';
-            } else {
-              item.uploading = false;
-            }
-            renderModalMedia();
-          }
-        });
-      }
-      document.getElementById('n-cam-ph').onclick = () => captureModal('photo');
-      document.getElementById('n-cam-vd').onclick = () => captureModal('video');
-      document.getElementById('ns').onclick = () => {
-        const z = document.getElementById('nz').value.trim() || (isBreak ? EQUIP_ZONES[0] : 'Задача');
-        const urls = modalMedia.map(m => m.url).filter(Boolean);
-        state.incidents.unshift({
-          id: 'INC-' + Math.floor(100 + Math.random() * 899),
-          date: TODAY,
-          time: (window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : '13:25'),
-          step: z,
-          text: document.getElementById('nt').value.trim() || '—',
-          priority: document.getElementById('np').value,
-          status: 'Новая проблема',
-          who: authed,
-          owner: 'Администратор',
-          photoUrl: urls[0] || '',
-          media: modalMedia.map(m => ({ type: m.type, url: m.url }))
-        });
-        saveSharedState(state, authed, 'Внеплановая поломка: ' + z);
-        closeModal();
-        showToast('✓ Сохранено');
-        render();
-      };
+    const workBlocks = (state.blocks || []).filter((b) => !b.isCash && b.active !== false);
+    const doneBlocksCount = workBlocks.filter((b) => !!getDoneRecord(b.name)).length;
+    const totalBlocksCount = workBlocks.length;
+    const progressPct = totalBlocksCount ? Math.round((doneBlocksCount / totalBlocksCount) * 100) : 0;
+
+    // 1. ГЛАВНАЯ
+    if (tab === 'home') {
+      const myCashToday = (state.cash || []).find((c) => c.date === TODAY && (c.who === authed || c.barista === authed));
+      const cashKey = TODAY + '|' + authed;
+      const cashRev = (state.cashReviews || {})[cashKey];
+      const nextOpen = workBlocks.find((b) => !getDoneRecord(b.name));
+      body.innerHTML = `
+        <div class="stack">
+          ${welcomeBanner ? `<div class="card-soft" style="border-color:var(--good);"><div class="row-between"><div style="font-size:14px;font-weight:600;">👋 ${esc(welcomeBanner)}</div><button class="btn btn-sm" id="dismiss-welcome">Понятно</button></div></div>` : ''}
+
+          <div class="card">
+            <div class="row-between">
+              <div>
+                <div class="card-sub">Моя смена</div>
+                <div style="font-size:18px;font-weight:800;margin-top:2px;">Сегодня · ${esc(TODAY)}</div>
+                <div class="card-sub">Вы отмечены на работе с ${esc(checkedInAt || nowHHMM())}</div>
+              </div>
+              <span class="badge good">Активна</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2 class="card-title">Что нужно сделать сегодня</h2>
+                <div class="card-sub">Выполнено ${doneBlocksCount} из ${totalBlocksCount} чек-листов</div>
+              </div>
+              <span class="badge ${progressPct === 100 ? 'good' : 'accent'}">${progressPct}%</span>
+            </div>
+            <div class="pbar ${progressPct === 100 ? 'good' : ''}" style="margin-bottom:12px;"><div style="width:${progressPct}%"></div></div>
+            <div class="stack-sm">
+              ${workBlocks.length ? workBlocks.map((b) => {
+                const st = getBlockStatus(b);
+                return `<div class="card-soft row-between" style="cursor:pointer;" data-open-blk="${esc(b.name)}">
+                  <div>
+                    <div style="font-weight:700;">${esc(b.name)}</div>
+                    <div class="card-sub">${esc(classifyStage(b))} · ${esc(b.openTime)}–${esc(b.deadline)}</div>
+                  </div>
+                  <span class="badge ${st.cls}">${esc(st.label)}</span>
+                </div>`;
+              }).join('') : `<div class="empty-state"><div class="empty-title">Нет назначенных чек-листов</div><div class="empty-sub">Данные появятся после загрузки расписания</div></div>`}
+              <div class="card-soft row-between" style="cursor:pointer;" id="home-go-cash">
+                <div>
+                  <div style="font-weight:700;">Кассовый отчёт</div>
+                  <div class="card-sub">${myCashToday ? ('Выручка: ' + fmtRub(myCashToday.revenue)) : 'Сдать в конце смены'}</div>
+                </div>
+                <span class="badge ${cashRev && cashRev.status === 'Подтверждён' ? 'good' : (cashRev && cashRev.status === 'Нужно исправить' ? 'bad' : (myCashToday ? 'warn' : ''))}">${esc(cashRev ? cashRev.status : (myCashToday ? 'На проверке' : 'Позже'))}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title" style="margin-bottom:10px;">Быстрые действия</h2>
+            <div class="grid-2">
+              <button class="btn btn-primary" id="qa-chk">☑️ Открыть чек-лист</button>
+              <button class="btn" id="qa-cash">💳 Сдать кассовый отчёт</button>
+              <button class="btn" id="qa-inc">🛠 Сообщить о поломке</button>
+              <button class="btn" id="qa-ttk">☕ Найти ТТК</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title" style="margin-bottom:10px;">Последние уведомления</h2>
+            <div class="stack-sm">
+              ${cashRev && cashRev.status === 'Нужно исправить' ? `<div class="card-soft" style="border-color:var(--bad);"><div style="font-weight:700;color:var(--bad);">Кассовый отчёт возвращён на исправление</div><div class="card-sub">${esc(cashRev.reviewNote || 'Проверьте суммы и отправьте повторно')}</div></div>` : ''}
+              ${(state.announcements || []).length ? state.announcements.slice(0, 3).map((a) => `<div class="card-soft"><div style="font-weight:600;">${esc(a.title || a.text || 'Объявление')}</div>${a.text && a.title ? `<div class="card-sub">${esc(a.text)}</div>` : ''}</div>`).join('') : `<div class="empty-state"><div class="empty-title">Новых уведомлений нет</div><div class="empty-sub">Важные сообщения от владельца появятся здесь</div></div>`}
+            </div>
+          </div>
+        </div>`;
+      const dw = document.getElementById('dismiss-welcome');
+      if (dw) dw.onclick = () => { welcomeBanner = ''; render(); };
+      body.querySelectorAll('[data-open-blk]').forEach((el) => {
+        el.onclick = () => { activeBlock = el.dataset.openBlk; tab = 'tasks'; render(); };
+      });
+      document.getElementById('home-go-cash').onclick = () => { tab = 'cash'; render(); };
+      document.getElementById('qa-chk').onclick = () => { activeBlock = nextOpen ? nextOpen.name : (workBlocks[0] && workBlocks[0].name) || null; tab = 'tasks'; render(); };
+      document.getElementById('qa-cash').onclick = () => { tab = 'cash'; render(); };
+      document.getElementById('qa-inc').onclick = () => { tab = 'incidents'; render(); };
+      document.getElementById('qa-ttk').onclick = () => { tab = 'ttk'; render(); };
+      return;
     }
 
-    const fabEl = document.getElementById('fab-break');
-    if (fabEl) fabEl.onclick = () => openQuickReportModal('breakdown');
+    // 2. ЗАДАЧИ (ЧЕК-ЛИСТЫ)
+    if (tab === 'tasks') {
+      if (activeBlock) {
+        const blkObj = workBlocks.find((b) => b.name === activeBlock) || { name: activeBlock, openTime: '08:00', deadline: '22:00' };
+        const st = getBlockStatus(blkObj);
+        const tasks = blockTasks(activeBlock);
+        const dKey = TODAY + '|' + activeBlock;
+        const draft = chkDrafts[dKey] || { items: {} };
+        const doneCnt = tasks.filter((t) => draft.items[t.id] && draft.items[t.id].checked).length;
+        const pct = tasks.length ? Math.round((doneCnt / tasks.length) * 100) : 0;
 
-    if (tab === 'checklists') {
-      const welcomeHtml = welcomeBanner ? `<div class="card-soft" id="welcome-card" style="margin-bottom:4px;border:1px solid var(--good);display:flex;justify-content:space-between;align-items:center;gap:10px;"><div style="font-size:13px;"><b>👋 ${esc(welcomeBanner)}</b></div><button class="chip-btn" id="w-close" style="padding:3px 8px;">✕</button></div>` : '';
-      const nc = state.blocks.filter(b=>!b.isCash && b.active!==false);
-      const doneCnt = nc.filter(b=>isDoneToday(b.name, authed)).length;
-      const curBlk = justFinishedBlock ? null : ensureBlk();
-
-      let h = `<button class="chip-btn" id="tg-st" style="width:100%;justify-content:space-between;padding:11px 16px;"><span>Таймлайн (${doneCnt}/${nc.length})</span><span style="font-size:15px;">${stagesOpen?'🔼':'🔽'}</span></button>`;
-      if (stagesOpen) {
-        h += `<div class="stack">` + nc.map(b => {
-          const st = getBlkSt(b);
-          return `<div class="card-soft" style="display:flex;justify-content:space-between;align-items:center;"><div><b>${esc(b.name)}</b> <span style="font-size:12px;color:var(--muted);">(${blockTasks(b.name).length})</span><div style="font-size:11.5px;color:var(--muted);">${b.openTime}–${b.deadline} · ${st.label}</div></div>${st.open?`<button class="chip-btn accent" data-pk="${esc(b.name)}">Открыть</button>`:`<span class="badge ${st.cls}">${st.code==='done'?'✓':'🔒'}</span>`}</div>`;
-        }).join('') + `</div>`;
-      }
-
-      if (justFinishedBlock) {
-        h += `<div class="step-card" style="text-align:center;padding:28px 18px;gap:14px;">
-          <div style="font-size:36px;">✅</div>
-          <h3 class="step-title">Чек-лист «${esc(justFinishedBlock)}» завершён</h3>
-          <button class="btn-lg primary" id="b-open-tl">Открыть таймлайн</button>
-        </div>`;
-      } else if (!curBlk) {
-        h += `<div class="step-card" style="text-align:center;padding:28px 18px;"><div style="font-size:30px;">☕</div><div class="step-title">Нет активных чек-листов</div></div>`;
-      } else {
-        const tasks = blockTasks(curBlk.name);
-        if (confirmFinish) {
-          h += `<div class="step-card" style="text-align:center;padding:26px 18px;gap:14px;">
-            <div class="step-counter"><span>${esc(curBlk.name)}</span><span>Финал</span></div>
-            <div class="pbar good"><div style="width:100%"></div></div>
-            <h3 class="step-title">Вы уверены, что хотите завершить чек-лист?</h3>
-            <button class="btn-lg primary" id="b-cfm-yes">✓ Завершить чек-лист</button>
-            <button class="btn-lg soft" id="b-cfm-no">← Назад</button>
-          </div>`;
-        } else {
-          const idx = Math.min(stepIdx, Math.max(0, tasks.length - 1));
-          const task = tasks[idx];
-          if (!task) {
-            h += `<div class="step-card"><div class="step-title">${esc(curBlk.name)}</div><div>Нет задач</div></div>`;
-          } else {
-            const needPh = !!(task.photo || state.photoAll);
-            const pk = curBlk.name + ':' + task.id;
-            const mList = Array.isArray(stepMedia[pk]) ? stepMedia[pk] : [];
-            const hasMedia = mList.length > 0;
-            const anyUploading = mList.some(m => m.uploading);
-            h += `<div class="step-card">
-              <div class="step-counter"><span>${esc(curBlk.name)}</span><span>Шаг ${idx+1} из ${tasks.length}</span></div>
-              <div class="pbar"><div style="width:${Math.round(((idx+1)/tasks.length)*100)}%"></div></div>
-              <h3 class="step-title">${esc(task.title)}</h3>
-              ${instOpen ? `<div class="step-inst">${esc(task.instruction||'Выполнить по стандарту Coffee Illy.')}</div>` : ''}
-              <div class="inst-toggle-wrap"><button class="inst-toggle-btn" id="b-inst" aria-label="Описание">${instOpen?'🔼':'🔽'}</button></div>
-              <div class="photo-box ${hasMedia?'done':''}" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
-                ${hasMedia ? `<div class="media-grid">${mList.map((m, mi) => `
-                  <div class="media-thumb">
-                    ${m.type==='video' ? `<video src="${m.preview}" muted playsinline></video>` : `<img src="${m.preview}" alt="">`}
-                    <button type="button" class="rm-m" data-rmm="${mi}">✕</button>
-                    <span class="st-m">${m.uploading ? '☁' : (m.type==='video' ? '🎥' : '✓')}</span>
-                  </div>`).join('')}</div>` : ''}
-                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-                  <button type="button" class="chip-btn accent" id="b-ph">📷 ${hasMedia?'Ещё фото':'Фото'}</button>
-                  <button type="button" class="chip-btn" id="b-vd">🎥 ${hasMedia?'Ещё видео':'Видео'}</button>
+        body.innerHTML = `
+          <div class="stack">
+            <div class="row-between">
+              <button class="btn btn-sm" id="chk-back">← Все этапы</button>
+              <span class="badge ${st.cls}">${esc(st.label)}</span>
+            </div>
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h2 class="card-title">${esc(blkObj.name)}</h2>
+                  <div class="card-sub">Окно: ${esc(blkObj.openTime)}–${esc(blkObj.deadline)} · Выполнено ${st.locked ? tasks.length : doneCnt} из ${tasks.length}</div>
                 </div>
               </div>
-              <button class="btn-lg primary" id="b-nx" ${(needPh && !hasMedia) || anyUploading ? 'disabled' : ''}>${idx===tasks.length-1 ? '✓ Завершить' : '✓ Далее'}</button>
-              <button class="btn-lg danger" id="b-is">⚠ Проблема</button>
-            </div>`;
-          }
-        }
-      }
+              <div class="pbar ${st.locked || pct === 100 ? 'good' : ''}"><div style="width:${st.locked ? 100 : pct}%"></div></div>
+              ${st.locked ? `<div class="card-soft" style="margin-top:12px;border-color:var(--good);"><b>Чек-лист отправлен на проверку</b><div class="card-sub">Выполнил: ${esc(st.record.who || authed)} · Время: ${esc(st.record.time || 'сегодня')}. Редактирование после отправки заблокировано.</div></div>` : ''}
+            </div>
 
-      body.innerHTML = welcomeHtml + h;
-      const wc = document.getElementById('w-close'); if (wc) wc.onclick = () => { welcomeBanner = ''; render(); };
-      document.getElementById('tg-st').onclick = () => { stagesOpen = !stagesOpen; render(); };
-      body.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => {
-        activeBlock = b.dataset.pk; stepIdx = 0; instOpen = true; confirmFinish = false; justFinishedBlock = ''; stagesOpen = false; render();
-      });
-      const btl = document.getElementById('b-open-tl');
-      if (btl) btl.onclick = () => { justFinishedBlock = ''; stagesOpen = true; activeBlock = null; render(); };
+            ${tasks.length ? tasks.map((t, idx) => {
+              const it = draft.items[t.id] || {};
+              const needPhoto = !!(t.photo || state.photoAll);
+              return `<div class="card" style="${it.checked ? 'border-color:var(--good);' : ''}">
+                <div class="row-between" style="align-items:flex-start;">
+                  <label style="display:flex;gap:10px;align-items:flex-start;cursor:${st.locked ? 'default' : 'pointer'};flex:1;">
+                    <input type="checkbox" data-chk-id="${esc(t.id)}" ${it.checked || st.locked ? 'checked' : ''} ${st.locked ? 'disabled' : ''} style="width:22px;height:22px;margin-top:2px;accent-color:var(--good);">
+                    <div>
+                      <div style="font-weight:700;">${idx + 1}. ${esc(t.title)}</div>
+                      ${t.instruction ? `<div class="card-sub">${esc(t.instruction)}</div>` : ''}
+                      ${it.checkedAt ? `<div class="card-sub" style="color:var(--good);">Отметил ${esc(it.checkedBy || authed)} в ${esc(it.checkedAt)}</div>` : ''}
+                    </div>
+                  </label>
+                  ${needPhoto ? `<span class="badge ${it.photoUrl ? 'good' : 'warn'}">${it.photoUrl ? '📷 Фото есть' : '📷 Нужно фото'}</span>` : ''}
+                </div>
+                ${!st.locked ? `
+                  <div class="row" style="margin-top:10px;">
+                    <label class="btn btn-sm" style="cursor:pointer;">📷 ${it.photoUrl ? 'Переснять фото' : 'Сделать фото'}<input type="file" accept="image/*" capture="environment" data-photo-id="${esc(t.id)}" style="display:none;"></label>
+                    <button class="btn btn-sm ${it.isIncident ? 'btn-bad' : ''}" data-inc-id="${esc(t.id)}">${it.isIncident ? '⚠️ Проблема отмечена' : 'Отметить проблему'}</button>
+                  </div>
+                  <div class="field" style="margin-top:8px;margin-bottom:0;">
+                    <input data-cmt-id="${esc(t.id)}" value="${esc(it.comment || '')}" placeholder="Комментарий к пункту (при необходимости)">
+                  </div>
+                ` : ''}
+                ${it.photoUrl ? `<div style="margin-top:8px;"><a href="${esc(it.photoUrl)}" target="_blank" rel="noopener" class="badge accent">Открыть загруженное фото</a></div>` : ''}
+              </div>`;
+            }).join('') : `<div class="empty-state"><div class="empty-title">В этом чек-листе пока нет пунктов</div><div class="empty-sub">Добавьте задачи в панели владельца</div></div>`}
 
-      const bi = document.getElementById('b-inst'); if (bi) bi.onclick = () => { instOpen = !instOpen; render(); };
+            ${!st.locked && tasks.length ? `<button class="btn btn-primary btn-full" id="btn-submit-chk">Отправить чек-лист (${doneCnt}/${tasks.length})</button>` : ''}
+          </div>`;
 
-      if (curBlk && !confirmFinish) {
-        const tasks = blockTasks(curBlk.name);
-        const t = tasks[Math.min(stepIdx, Math.max(0, tasks.length - 1))];
-        if (t) {
-          const key = curBlk.name + ':' + t.id;
-          body.querySelectorAll('[data-rmm]').forEach(rb => rb.onclick = () => {
-            if (Array.isArray(stepMedia[key])) { stepMedia[key].splice(Number(rb.dataset.rmm), 1); render(); }
-          });
-          function openStepCamera(cMode) {
-            const isSelfie = /селфи|selfie/i.test(String(t.title || ''));
-            if (!window.CoffeeCameraV94) return;
-            window.CoffeeCameraV94.open({
-              title: t.title || 'Камера',
-              preferFront: isSelfie && cMode === 'photo',
-              mode: cMode,
-              allowVideo: true,
-              onCaptured: async (dataUri, kindType) => {
-                stepMedia[key] = stepMedia[key] || [];
-                const item = { type: kindType || cMode, preview: dataUri, uploading: true, url: '' };
-                stepMedia[key].push(item);
-                showToast('☁ Загрузка…');
-                render();
-                if (window.CoffeeCloudV94) {
-                  const up = await window.CoffeeCloudV94.uploadPhotoToDrive({
-                    dataUri, userName: authed || 'Бариста', block: curBlk.name, taskId: t.id, kind: 'checklist'
-                  });
-                  item.uploading = false;
-                  item.url = (up && up.url) || '';
-                  item.fileId = (up && up.fileId) || '';
-                  showToast('✓ Сохранено');
-                } else {
-                  item.uploading = false;
-                }
-                render();
-              }
-            });
-          }
-          const bp = document.getElementById('b-ph'); if (bp) bp.onclick = () => openStepCamera('photo');
-          const bv = document.getElementById('b-vd'); if (bv) bv.onclick = () => openStepCamera('video');
-          const bn = document.getElementById('b-nx');
-          if (bn) bn.onclick = () => {
-            if (stepIdx < tasks.length - 1) {
-              stepIdx++; instOpen = true;
-              state.liveProgress[authed] = { block: curBlk.name, done: stepIdx, total: tasks.length };
-              if (window.CoffeeCloudV94 && window.CoffeeCloudV94.sendStepProgress) window.CoffeeCloudV94.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
-              saveSharedState(state, authed, '');
-              render();
-            } else {
-              confirmFinish = true;
-              render();
-            }
+        document.getElementById('chk-back').onclick = () => { activeBlock = null; render(); };
+        body.querySelectorAll('[data-chk-id]').forEach((cb) => {
+          cb.onchange = () => {
+            const tid = cb.dataset.chkId;
+            draft.items[tid] = Object.assign(draft.items[tid] || {}, { checked: cb.checked, checkedAt: cb.checked ? nowHHMM() : '', checkedBy: authed });
+            chkDrafts[dKey] = draft;
+            saveChkDrafts(chkDrafts);
+            render();
           };
-          const bis = document.getElementById('b-is');
-          if (bis) bis.onclick = () => {
-            openModal('Проблема: ' + t.title, `
-              <div class="field"><label>Срочность</label><select id="ip"><option>Критично</option><option>Терпит</option></select></div>
-              <div class="field"><label>Описание</label><textarea id="it" rows="3"></textarea></div>
-              <button class="btn-lg primary" id="is">Сохранить</button>
+        });
+        body.querySelectorAll('[data-cmt-id]').forEach((inp) => {
+          inp.oninput = () => {
+            const tid = inp.dataset.cmtId;
+            draft.items[tid] = Object.assign(draft.items[tid] || {}, { comment: inp.value });
+            chkDrafts[dKey] = draft;
+            saveChkDrafts(chkDrafts);
+          };
+        });
+        body.querySelectorAll('[data-inc-id]').forEach((btn) => {
+          btn.onclick = () => {
+            const tid = btn.dataset.incId;
+            const cur = draft.items[tid] || {};
+            draft.items[tid] = Object.assign(cur, { isIncident: !cur.isIncident });
+            chkDrafts[dKey] = draft;
+            saveChkDrafts(chkDrafts);
+            render();
+          };
+        });
+        body.querySelectorAll('[data-photo-id]').forEach((fi) => {
+          fi.onchange = () => {
+            const tid = fi.dataset.photoId;
+            const file = fi.files && fi.files[0];
+            if (!file) return;
+            compressAndUploadPhoto(file, { block: activeBlock, taskId: tid, kind: 'checklist' }, (url) => {
+              draft.items[tid] = Object.assign(draft.items[tid] || {}, { photoUrl: url, checked: true, checkedAt: nowHHMM(), checkedBy: authed });
+              chkDrafts[dKey] = draft;
+              saveChkDrafts(chkDrafts);
+              render();
+            });
+          };
+        });
+        const subBtn = document.getElementById('btn-submit-chk');
+        if (subBtn) {
+          subBtn.onclick = () => {
+            const unchecked = tasks.filter((t) => !(draft.items[t.id] && draft.items[t.id].checked));
+            if (unchecked.length) {
+              showToast('Выполните все пункты чек-листа (осталось: ' + unchecked.length + ')');
+              return;
+            }
+            const missingPhoto = tasks.filter((t) => (t.photo || state.photoAll) && !(draft.items[t.id] && draft.items[t.id].photoUrl));
+            if (missingPhoto.length) {
+              showToast('Добавьте обязательное фото для пункта «' + missingPhoto[0].title + '»');
+              return;
+            }
+            openModal('Подтвердить отправку чек-листа', `
+              <div class="stack">
+                <div>Отправить чек-лист <b>«${esc(activeBlock)}»</b> (${tasks.length} из ${tasks.length} пунктов)? После отправки изменить содержимое будет нельзя.</div>
+                <div class="row">
+                  <button class="btn" style="flex:1;" id="cfm-cancel">Отмена</button>
+                  <button class="btn btn-primary" style="flex:1;" id="cfm-send">Отправить</button>
+                </div>
+              </div>
             `);
-            document.getElementById('is').onclick = () => {
-              const mArr = Array.isArray(stepMedia[key]) ? stepMedia[key] : [];
-              const urls = mArr.map(m => m.url).filter(Boolean);
-              state.incidents.unshift({
-                id: 'INC-' + Math.floor(100 + Math.random() * 899),
-                date: TODAY, time: (window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : '13:25'),
-                block: curBlk.name, step: t.title, text: document.getElementById('it').value.trim() || 'Проблема',
-                priority: document.getElementById('ip').value, status: 'Новая проблема', who: authed, owner: 'Администратор',
-                photoUrl: urls[0] || '', media: mArr.map(m => ({ type: m.type, url: m.url }))
+            document.getElementById('cfm-cancel').onclick = closeModal;
+            document.getElementById('cfm-send').onclick = async () => {
+              closeModal();
+              const itemsPayload = tasks.map((t) => {
+                const it = draft.items[t.id] || {};
+                return { id: t.id, title: t.title, photo_url: it.photoUrl || '', isIncident: !!it.isIncident, comment: it.comment || '' };
               });
-              saveSharedState(state, authed, 'Проблема: ' + t.title); closeModal(); showToast('✓ Отправлено'); render();
+              const isLate = toMin(nowHHMM()) > toMin(blkObj.deadline || '23:59');
+              const photos = itemsPayload.map((x) => x.photo_url).filter(Boolean);
+              state.checklists.unshift({ date: TODAY, time: nowHHMM(), block: activeBlock, who: authed, problems: itemsPayload.filter((x) => x.isIncident).length, status: isLate ? 'С опозданием' : 'Выполнено', isLate, done: tasks.length, total: tasks.length, photos });
+              saveStateLocal();
+              if (C) {
+                C.enqueueOp('submit_checklist', { block: activeBlock, who: authed, userName: authed, date: TODAY, deadline: blkObj.deadline || '22:00', isLate, items: itemsPayload });
+              }
+              showToast('Чек-лист сохранён и отправлен');
+              render();
             };
           };
         }
+        return;
       }
 
-      if (curBlk && confirmFinish) {
-        const tasks = blockTasks(curBlk.name);
-        document.getElementById('b-cfm-no').onclick = () => { confirmFinish = false; render(); };
-        document.getElementById('b-cfm-yes').onclick = () => {
-          const _blkItems = tasks.map(tk => {
-            const arr = Array.isArray(stepMedia[curBlk.name + ':' + tk.id]) ? stepMedia[curBlk.name + ':' + tk.id] : [];
-            const urls = arr.map(m => m.url).filter(Boolean);
-            return { id: tk.id, title: tk.title, photo_url: urls[0] || '', photo_urls: urls, isIncident: false };
-          });
-          const _blkPhotos = [];
-          _blkItems.forEach(x => (x.photo_urls || []).forEach(u => { if (u) _blkPhotos.push(u); }));
-          state.checklists.unshift({
-            items: _blkItems, photos: _blkPhotos, date: TODAY,
-            time: (window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : '13:25'),
-            block: curBlk.name, who: authed, problems: 0, deadline: curBlk.deadline, status: 'Выполнено', isLate: false
-          });
-          state.liveProgress[authed] = { block: curBlk.name, done: tasks.length, total: tasks.length };
-          justFinishedBlock = curBlk.name;
-          confirmFinish = false;
-          stepIdx = 0;
-          activeBlock = null;
-          saveSharedState(state, authed, 'Сдан чек-лист «' + justFinishedBlock + '»');
-          showToast('✓ Чек-лист завершён');
-          render();
-        };
-      }
+      // Grouped checklist stages: Открытие / В течение дня / Закрытие
+      const stages = ['Открытие', 'В течение дня', 'Закрытие'];
+      body.innerHTML = `
+        <div class="stack">
+          <div class="card">
+            <h2 class="card-title">Чек-листы смены</h2>
+            <div class="card-sub">Выполнено ${doneBlocksCount} из ${totalBlocksCount} · Промежуточные отметки сохраняются автоматически</div>
+          </div>
+          ${stages.map((stg) => {
+            const list = workBlocks.filter((b) => classifyStage(b) === stg);
+            if (!list.length) return '';
+            return `<div class="card">
+              <h3 class="card-title" style="margin-bottom:10px;">${esc(stg)}</h3>
+              <div class="stack-sm">
+                ${list.map((b) => {
+                  const st = getBlockStatus(b);
+                  const cnt = blockTasks(b.name).length;
+                  return `<div class="card-soft row-between" style="cursor:pointer;" data-blk="${esc(b.name)}">
+                    <div>
+                      <div style="font-weight:700;">${esc(b.name)}</div>
+                      <div class="card-sub">${cnt} пунктов · ${esc(b.openTime)}–${esc(b.deadline)}</div>
+                    </div>
+                    <span class="badge ${st.cls}">${esc(st.label)}</span>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+      body.querySelectorAll('[data-blk]').forEach((el) => {
+        el.onclick = () => { activeBlock = el.dataset.blk; render(); };
+      });
       return;
     }
 
+    // 3. КАССА (4-шаговая пошаговая форма «Кассовый отчёт»)
     if (tab === 'cash') {
-      body.innerHTML = `<div class="step-card">
-        <div class="step-counter"><span>Касса</span><span>${TODAY}</span></div>
-        <div class="grid-2"><div class="field"><label>Наличные (₽)</label><input id="cc" type="number" inputmode="decimal" min="0" value="1500"></div><div class="field"><label>Безнал (₽)</label><input id="cd" type="number" inputmode="decimal" min="0" value="950"></div></div>
-        <div class="grid-2"><div class="field"><label>Чеков</label><input id="ck" type="number" inputmode="numeric" min="0" value="72"></div><div class="field"><label>Списания (₽)</label><input id="cw" type="number" inputmode="decimal" min="0" value="0"></div></div>
-        <div style="margin:6px 0 8px;display:flex;flex-direction:column;align-items:center;">
-          <label class="chip-btn accent" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 20px;">CSV / XLS<input id="t-csv-in" type="file" accept=".csv,.xls,.xlsx,text/csv" multiple style="display:none;"></label>
-          <div id="t-csv-info" style="font-size:12px;color:var(--muted);margin-top:6px;text-align:center;"></div>
-        </div>
-        <button class="btn-lg primary" id="cs">Сохранить</button>
-      </div>`;
-      let parsedCashBatch = null;
-      const tCsvIn = document.getElementById('t-csv-in');
-      if (tCsvIn) tCsvIn.onchange = async (ev) => {
-        const files = Array.from(ev.target.files || []);
-        if (!files.length) return;
-        const info = document.getElementById('t-csv-info');
-        if (!window.CoffeePosCsvV93) { if (info) info.textContent = 'Файл выбран: ' + files[0].name; return; }
-        const loaded = await Promise.all(files.map(f => f.text().then(text => ({ name: f.name, text }))));
-        const staffNames = (state.staff || []).map(s => s.name).filter(Boolean);
-        parsedCashBatch = window.CoffeePosCsvV93.parsePosBatch(loaded, staffNames);
-        if (parsedCashBatch.days.length) {
-          const d0 = parsedCashBatch.days[parsedCashBatch.days.length - 1];
-          document.getElementById('cc').value = d0.cash;
-          document.getElementById('cd').value = d0.card;
-          document.getElementById('ck').value = d0.checks;
-          if (info) info.textContent = '✓ ' + parsedCashBatch.summary.daysCount + ' дн. · ' + fmtRub(parsedCashBatch.summary.totalRevenue);
-        } else if (info) {
-          info.textContent = 'Выберите выгрузку CSV';
-        }
-      };
-      document.getElementById('cs').onclick = async () => {
-        if (parsedCashBatch && parsedCashBatch.days.length && window.CoffeeCloudV94 && window.CoffeeCloudV94.importPosBatch) {
-          const res = await window.CoffeeCloudV94.importPosBatch(parsedCashBatch.days, 'sum');
-          if (res && res.ok) {
-            parsedCashBatch.days.forEach(d => {
-              const ex = state.cash.find(x => x.date === d.date);
-              if (ex) { ex.cash = d.cash; ex.card = d.card; ex.revenue = d.revenue; ex.checks = d.checks; ex.barista = d.barista; }
-              else state.cash.unshift({ date: d.date, cash: d.cash, card: d.card, revenue: d.revenue, checks: d.checks, writeoff: 0, topItems: d.topItems, barista: d.barista });
-            });
-            showToast('✓ Сохранено');
-            parsedCashBatch = null;
-            render();
-            return;
-          }
-        }
-        const c=Number(document.getElementById('cc').value)||0, d=Number(document.getElementById('cd').value)||0, k=Number(document.getElementById('ck').value)||0, w=Number(document.getElementById('cw').value)||0;
-        const ex = state.cash.find(x=>x.date===TODAY);
-        if (ex) { ex.cash=c; ex.card=d; ex.revenue=c+d; ex.checks=k; ex.writeoff=w; ex.barista=authed; }
-        else state.cash.unshift({ date:TODAY, cash:c, card:d, revenue:c+d, checks:k, writeoff:w, topItems:'', barista:authed });
-        saveSharedState(state, authed, 'Закрыта касса: ' + fmtRub(c+d)); showToast('✓ Сохранено'); render();
-      };
-      return;
-    }
+      const existingToday = (state.cash || []).find((c) => c.date === TODAY && (c.who === authed || c.barista === authed));
+      const revInfo = (state.cashReviews || {})[TODAY + '|' + authed];
+      const canEdit = !existingToday || (revInfo && revInfo.status === 'Нужно исправить');
+      const staffNames = activeStaff().map((s) => s.name);
+      const cashNum = Math.max(0, Number(cashDraft.cash) || 0);
+      const cardNum = Math.max(0, Number(cashDraft.card) || 0);
+      const totalRev = cashNum + cardNum;
+      const checksNum = Math.max(0, Number(cashDraft.checks) || 0);
+      const avgChk = checksNum > 0 ? Math.round(totalRev / checksNum) : 0;
+      const woNum = Math.max(0, Number(cashDraft.writeoff) || 0);
+      const expNum = Math.max(0, Number(cashDraft.expenses) || 0);
 
-    if (tab === 'ttk') {
-      const ackIds = getAckTtk();
-      const newSeasonal = (state.ttk || []).filter(k => (k.isNew || k.seasonal) && !ackIds.includes(k.id || k.name));
-      const q = ttkQ.trim().toLowerCase();
-      const cats = [
-        { id: 'shift', ico: '📋', name: 'Сделать на смене', cnt: state.incidents.filter(i=>i.status!=='Решена').length },
-        { id: 'good', ico: '💛', name: 'Карта добрых дел', cnt: blockTasks('Карта добрых дел').length },
-        { id: 'recipe', ico: '☕', name: 'Рецептура', cnt: (state.ttk || []).length },
-        { id: 'other', ico: '📦', name: 'Прочее', cnt: (state.ttk || []).filter(k => /сезон|проч|десерт|чай/i.test(String(k.cat||''))).length }
-      ];
-
-      let listHtml = '';
-      if (q) {
-        const found = (state.ttk || []).filter(k =>
-          String(k.name||'').toLowerCase().includes(q) ||
-          String(k.recipe||'').toLowerCase().includes(q) ||
-          String(k.cat||'').toLowerCase().includes(q)
-        );
-        listHtml = found.length
-          ? `<div class="stack">${found.map(k => `<div class="card-soft"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><b>${esc(k.name)}</b><div style="display:flex;gap:5px;">${(k.isNew||k.seasonal)?'<span class="badge good">✨ Новинка</span>':''}<span class="badge accent">${k.price} ₽</span></div></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(k.vol)} · ${esc(k.cat)}</div><div style="font-size:13px;">${esc(k.recipe)}</div></div>`).join('')}</div>`
-          : `<div class="card-soft" style="text-align:center;color:var(--muted);">Ничего не найдено</div>`;
-      } else if (!ttkCat) {
-        listHtml = `<div class="ttk-cat-grid">${cats.map(c => `
-          <button class="ttk-cat-card" data-tcat="${c.id}">
-            <span class="ttk-cat-ico">${c.ico}</span>
-            <span class="ttk-cat-name">${c.name}</span>
-            <span class="ttk-cat-cnt">${c.cnt}</span>
-          </button>`).join('')}</div>`;
-      } else {
-        const backBtn = `<button class="chip-btn" id="ttk-back" style="align-self:flex-start;">← Категории</button>`;
-        if (ttkCat === 'recipe') {
-          listHtml = backBtn + `<div class="stack">${(state.ttk || []).map(k => `<div class="card-soft"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><b>${esc(k.name)}</b><div style="display:flex;gap:5px;">${(k.isNew||k.seasonal)?'<span class="badge good">✨ Новинка</span>':''}<span class="badge accent">${k.price} ₽</span></div></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(k.vol)} · ${esc(k.cat)}</div><div style="font-size:13px;">${esc(k.recipe)}</div></div>`).join('')}</div>`;
-        } else if (ttkCat === 'good') {
-          const gd = blockTasks('Карта добрых дел');
-          listHtml = backBtn + `<div class="stack">${gd.length ? gd.map(t => `<div class="card-soft"><b>${esc(t.title)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;white-space:pre-line;">${esc(t.instruction||'')}</div></div>`).join('') : '<div class="card-soft">Нет записей</div>'}</div>`;
-        } else if (ttkCat === 'shift') {
-          const openTasks = state.incidents.filter(i => i.status !== 'Решена');
-          listHtml = backBtn + `<div class="stack">${openTasks.length ? openTasks.map(i => `<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:3px;">${esc(i.text||'—')}</div></div>`).join('') : '<div class="card-soft">Нет активных задач на смену</div>'}</div>`;
-        } else {
-          const oth = (state.ttk || []).filter(k => /сезон|проч|десерт|чай/i.test(String(k.cat||'')));
-          listHtml = backBtn + `<div class="stack">${oth.length ? oth.map(k => `<div class="card-soft"><div style="display:flex;justify-content:space-between;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:12.5px;margin-top:4px;">${esc(k.recipe)}</div></div>`).join('') : '<div class="card-soft">Используйте поиск ниже для меню</div>'}</div>`;
-        }
+      if (!canEdit) {
+        const stLabel = (revInfo && revInfo.status) || 'На проверке';
+        const stCls = stLabel === 'Подтверждён' ? 'good' : 'warn';
+        body.innerHTML = `
+          <div class="stack">
+            <div class="card">
+              <div class="card-head">
+                <div><h2 class="card-title">Кассовый отчёт за ${esc(TODAY)}</h2><div class="card-sub">Повторная отправка одного отчёта заблокирована</div></div>
+                <span class="badge ${stCls}">${esc(stLabel)}</span>
+              </div>
+              <div class="grid-2">
+                <div class="card-soft"><div class="card-sub">Выручка</div><div style="font-size:20px;font-weight:800;">${fmtRub(existingToday.revenue)}</div></div>
+                <div class="card-soft"><div class="card-sub">Средний чек</div><div style="font-size:20px;font-weight:800;">${fmtRub(existingToday.avgCheck)}</div></div>
+                <div class="card-soft"><div class="card-sub">Наличные</div><div style="font-weight:700;">${fmtRub(existingToday.cash)}</div></div>
+                <div class="card-soft"><div class="card-sub">Безналичные</div><div style="font-weight:700;">${fmtRub(existingToday.card)}</div></div>
+              </div>
+              ${revInfo && revInfo.reviewNote ? `<div class="card-soft" style="margin-top:12px;"><b>Комментарий владельца:</b> ${esc(revInfo.reviewNote)}</div>` : ''}
+            </div>
+          </div>`;
+        return;
       }
 
-      const seasonalHtml = newSeasonal.length ? `
-        <div class="card-soft" style="border:1px solid var(--accent);display:flex;flex-direction:column;gap:8px;">
-          <div style="font-weight:750;font-size:13.5px;">✨ Новые позиции в меню (${newSeasonal.length})</div>
-          ${newSeasonal.map(k => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;">
-            <div><b>${esc(k.name)}</b> · ${esc(k.vol)}<div style="font-size:12px;color:var(--muted);">${esc(k.recipe)}</div></div>
-            <button class="chip-btn good" data-ack="${esc(k.id||k.name)}">✓</button>
-          </div>`).join('')}
-        </div>` : '';
+      const step = cashDraft.step || 1;
+      let stepHtml = '';
+      if (step === 1) {
+        stepHtml = `
+          <h3 class="card-title">Шаг 1 из 4. Показания счётчиков</h3>
+          <div class="card-sub" style="margin-bottom:12px;">Введите данные за текущую смену (${esc(TODAY)})</div>
+          <div class="field"><label>Сотрудник 1</label><select id="c-s1">${(staffNames.length ? staffNames : [authed]).map((n) => `<option value="${esc(n)}" ${n === (cashDraft.staff1 || authed) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+          <div class="field"><label>Показание счётчика (Сотрудник 1)</label><input id="c-cnt1" type="number" min="0" inputmode="numeric" value="${esc(cashDraft.counter1)}" placeholder="Например: 642"><span class="field-hint">Число на счётчике кофемашины на конец смены</span></div>
+          <div class="field"><label>Сотрудник 2 (если работали вдвоём)</label><select id="c-s2"><option value="">Нет второго сотрудника</option>${staffNames.map((n) => `<option value="${esc(n)}" ${n === cashDraft.staff2 ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+          <div class="field"><label>Показание счётчика (Сотрудник 2, если есть)</label><input id="c-cnt2" type="number" min="0" inputmode="numeric" value="${esc(cashDraft.counter2)}" placeholder="Необязательно"></div>
+          <button class="btn btn-primary btn-full" id="c-next">Далее: Денежные операции →</button>`;
+      } else if (step === 2) {
+        stepHtml = `
+          <h3 class="card-title">Шаг 2 из 4. Денежные операции</h3>
+          <div class="card-sub" style="margin-bottom:12px;">Наличные, безналичные, списания и расходы</div>
+          <div class="grid-2">
+            <div class="field"><label>Наличные (₽)</label><input id="c-cash" type="number" min="0" inputmode="decimal" value="${esc(cashDraft.cash)}" placeholder="0"></div>
+            <div class="field"><label>Безналичные (₽)</label><input id="c-card" type="number" min="0" inputmode="decimal" value="${esc(cashDraft.card)}" placeholder="0"></div>
+          </div>
+          <div class="grid-3">
+            <div class="field"><label>Количество чеков</label><input id="c-chks" type="number" min="0" inputmode="numeric" value="${esc(cashDraft.checks)}" placeholder="0"></div>
+            <div class="field"><label>Списания (₽)</label><input id="c-wo" type="number" min="0" inputmode="decimal" value="${esc(cashDraft.writeoff)}" placeholder="0"></div>
+            <div class="field"><label>Расходы из кассы (₽)</label><input id="c-exp" type="number" min="0" inputmode="decimal" value="${esc(cashDraft.expenses)}" placeholder="0"></div>
+          </div>
+          <div class="card-soft" style="margin-bottom:12px;">
+            <div class="row-between"><span>Итого выручка:</span><b>${fmtRub(totalRev)}</b></div>
+            <div class="row-between" style="margin-top:4px;"><span>Средний чек:</span><b>${checksNum > 0 ? fmtRub(avgChk) : '—'}</b></div>
+          </div>
+          <div class="row"><button class="btn" style="flex:1;" id="c-prev">← Назад</button><button class="btn btn-primary" style="flex:2;" id="c-next">Далее: Подтверждение →</button></div>`;
+      } else if (step === 3) {
+        stepHtml = `
+          <h3 class="card-title">Шаг 3 из 4. Подтверждение</h3>
+          <div class="card-sub" style="margin-bottom:12px;">Прикрепите фото Z-отчёта и добавьте комментарий при необходимости</div>
+          <div class="field">
+            <label>Фото Z-отчёта / кассы</label>
+            <label class="btn btn-full" style="cursor:pointer;">📷 ${cashDraft.photoUrl ? 'Переснять фото Z-отчёта' : 'Сделать фото Z-отчёта'}<input type="file" accept="image/*" capture="environment" id="c-photo" style="display:none;"></label>
+            ${cashDraft.photoUrl ? `<div style="margin-top:6px;"><span class="badge good">Фото прикреплено</span></div>` : ''}
+          </div>
+          <div class="field"><label>Комментарий к смене</label><textarea id="c-cmt" placeholder="Например: размен оставлен, расхождений нет">${esc(cashDraft.comment)}</textarea></div>
+          <div class="row"><button class="btn" style="flex:1;" id="c-prev">← Назад</button><button class="btn btn-primary" style="flex:2;" id="c-next">Далее: Проверка и отправка →</button></div>`;
+      } else {
+        stepHtml = `
+          <h3 class="card-title">Шаг 4 из 4. Итоговый просмотр</h3>
+          <div class="card-sub" style="margin-bottom:12px;">Проверьте все цифры перед отправкой владельцу</div>
+          <div class="card-soft stack-sm" style="margin-bottom:14px;">
+            <div class="row-between"><span>Дата и сотрудник:</span><b>${esc(TODAY)} · ${esc(cashDraft.staff1 || authed)}</b></div>
+            <div class="row-between"><span>Счётчик:</span><b>${esc(cashDraft.counter1 || '—')}${cashDraft.counter2 ? (' / ' + esc(cashDraft.counter2)) : ''}</b></div>
+            <div class="row-between"><span>Наличные:</span><b>${fmtRub(cashNum)}</b></div>
+            <div class="row-between"><span>Безналичные:</span><b>${fmtRub(cardNum)}</b></div>
+            <div class="row-between"><span>Выручка итого:</span><b style="font-size:17px;">${fmtRub(totalRev)}</b></div>
+            <div class="row-between"><span>Чеков / Средний чек:</span><b>${checksNum} / ${checksNum > 0 ? fmtRub(avgChk) : '—'}</b></div>
+            <div class="row-between"><span>Списания / Расходы:</span><b>${fmtRub(woNum)} / ${fmtRub(expNum)}</b></div>
+            ${cashDraft.comment ? `<div class="row-between"><span>Комментарий:</span><b>${esc(cashDraft.comment)}</b></div>` : ''}
+          </div>
+          <div class="row"><button class="btn" style="flex:1;" id="c-prev">← Исправить</button><button class="btn btn-primary" style="flex:2;" id="c-submit">Отправить отчёт владельцу</button></div>`;
+      }
 
       body.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:12px;min-height:calc(100vh - 170px);">
-          ${seasonalHtml}
-          ${listHtml}
-          <div class="ttk-bottom-search">
-            <input id="tq" type="search" enterkeyhint="search" value="${esc(ttkQ)}" placeholder="🔍 Поиск по меню и ТТК…" style="width:100%;padding:12px 16px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-size:15px;">
+        <div class="stack">
+          ${revInfo && revInfo.status === 'Нужно исправить' ? `<div class="card-soft" style="border-color:var(--bad);"><b>Отчёт возвращён на исправление:</b> ${esc(revInfo.reviewNote || 'Проверьте введённые суммы')}</div>` : ''}
+          <div class="card">
+            <div class="stepper">${[1, 2, 3, 4].map((n) => `<div class="step-dot ${n < step ? 'done' : (n === step ? 'active' : '')}"></div>`).join('')}</div>
+            ${stepHtml}
           </div>
         </div>`;
 
-      body.querySelectorAll('[data-tcat]').forEach(b => b.onclick = () => { ttkCat = b.dataset.tcat; render(); });
-      body.querySelectorAll('[data-ack]').forEach(b => b.onclick = () => { ackTtkId(b.dataset.ack); showToast('✓ Ознакомлено'); render(); });
-      const tb = document.getElementById('ttk-back'); if (tb) tb.onclick = () => { ttkCat = ''; render(); };
-      const tq = document.getElementById('tq');
-      if (tq) {
-        tq.oninput = e => {
-          const pos = e.target.selectionStart;
-          ttkQ = e.target.value;
+      const bindStep1 = () => {
+        cashDraft.staff1 = document.getElementById('c-s1').value;
+        cashDraft.counter1 = document.getElementById('c-cnt1').value.trim();
+        cashDraft.staff2 = document.getElementById('c-s2').value;
+        cashDraft.counter2 = document.getElementById('c-cnt2').value.trim();
+        saveCashDraft(cashDraft);
+      };
+      const bindStep2 = () => {
+        cashDraft.cash = document.getElementById('c-cash').value;
+        cashDraft.card = document.getElementById('c-card').value;
+        cashDraft.checks = document.getElementById('c-chks').value;
+        cashDraft.writeoff = document.getElementById('c-wo').value;
+        cashDraft.expenses = document.getElementById('c-exp').value;
+        saveCashDraft(cashDraft);
+      };
+      if (step === 1) {
+        document.getElementById('c-next').onclick = () => {
+          bindStep1();
+          if (cashDraft.counter1 !== '' && Number(cashDraft.counter1) < 0) { showToast('Показание счётчика не может быть отрицательным'); return; }
+          cashDraft.step = 2; saveCashDraft(cashDraft); render();
+        };
+      } else if (step === 2) {
+        ['c-cash', 'c-card', 'c-chks', 'c-wo', 'c-exp'].forEach((id) => {
+          document.getElementById(id).oninput = () => { bindStep2(); };
+        });
+        document.getElementById('c-prev').onclick = () => { bindStep2(); cashDraft.step = 1; saveCashDraft(cashDraft); render(); };
+        document.getElementById('c-next').onclick = () => {
+          bindStep2();
+          if ([cashDraft.cash, cashDraft.card, cashDraft.checks, cashDraft.writeoff, cashDraft.expenses].some((v) => Number(v) < 0)) {
+            showToast('Суммы и количество чеков не могут быть отрицательными'); return;
+          }
+          if ((Number(cashDraft.cash) || 0) + (Number(cashDraft.card) || 0) <= 0) {
+            showToast('Укажите выручку за смену (наличные или безналичные)'); return;
+          }
+          cashDraft.step = 3; saveCashDraft(cashDraft); render();
+        };
+      } else if (step === 3) {
+        document.getElementById('c-photo').onchange = (e) => {
+          const f = e.target.files && e.target.files[0];
+          if (!f) return;
+          compressAndUploadPhoto(f, { block: 'Касса', kind: 'cash' }, (url) => {
+            cashDraft.photoUrl = url; saveCashDraft(cashDraft); render();
+          });
+        };
+        document.getElementById('c-cmt').oninput = (e) => { cashDraft.comment = e.target.value; saveCashDraft(cashDraft); };
+        document.getElementById('c-prev').onclick = () => { cashDraft.step = 2; saveCashDraft(cashDraft); render(); };
+        document.getElementById('c-next').onclick = () => { cashDraft.step = 4; saveCashDraft(cashDraft); render(); };
+      } else {
+        document.getElementById('c-prev').onclick = () => { cashDraft.step = 2; saveCashDraft(cashDraft); render(); };
+        document.getElementById('c-submit').onclick = () => {
+          const rec = {
+            date: TODAY, who: cashDraft.staff1 || authed, barista: cashDraft.staff1 || authed,
+            cash: cashNum, card: cardNum, revenue: totalRev, total: totalRev,
+            checks: checksNum, writeoff: woNum, avgCheck: avgChk
+          };
+          state.cash = [rec].concat((state.cash || []).filter((x) => !(x.date === TODAY && x.who === rec.who)));
+          state.cashReviews = state.cashReviews || {};
+          state.cashReviews[TODAY + '|' + rec.who] = { date: TODAY, barista: rec.who, status: 'На проверке', reviewNote: '' };
+          saveStateLocal();
+          if (C) {
+            C.enqueueOp('submit_cash', Object.assign({}, rec, { userName: rec.who, counterEnd: cashDraft.counter1, comment: cashDraft.comment, photoUrl: cashDraft.photoUrl }));
+            if (expNum > 0) C.enqueueOp('add_expense', { id: 'EXP-' + Date.now(), date: TODAY, category: 'Из кассы', amount: expNum, comment: cashDraft.comment || 'Расход за смену', who: rec.who });
+          }
+          cashDraft = { step: 1, date: TODAY, staff1: authed, counter1: '', staff2: '', counter2: '', cash: '', card: '', checks: '', writeoff: '0', expenses: '0', photoUrl: '', comment: '' };
+          saveCashDraft(cashDraft);
+          showToast('Отчёт отправлен на проверку');
           render();
-          const el2 = document.getElementById('tq');
-          if (el2) { el2.focus(); try { el2.setSelectionRange(pos, pos); } catch(_) {} }
         };
       }
       return;
     }
 
-    if (tab === 'issues') {
-      const openList = state.incidents.filter(i => i.status !== 'Решена').slice(0, 12);
+    // 4. ПОЛОМКИ
+    if (tab === 'incidents') {
+      const statusBadge = (st) => {
+        if (st === 'Решена') return 'good';
+        if (st === 'В работе' || st === 'Принята') return 'accent';
+        if (st === 'Ожидает запчасть') return 'warn';
+        return 'bad';
+      };
       body.innerHTML = `
-        <button class="btn-lg primary" id="ni">+ Задача</button>
-        <div class="stack">${openList.length ? openList.map(i => {
-          const mCount = Array.isArray(i.media) ? i.media.length : (i.photoUrl ? 1 : 0);
-          return `<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span> ${mCount?`<span class="badge accent">📎 ${mCount}</span>`:''}<div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div>`;
-        }).join('') : '<div class="card-soft" style="text-align:center;color:var(--muted);">Открытых задач нет</div>'}</div>`;
-      document.getElementById('ni').onclick = () => openQuickReportModal('task');
+        <div class="stack">
+          <div class="card">
+            <h2 class="card-title" style="margin-bottom:4px;">Сообщить о поломке</h2>
+            <div class="card-sub" style="margin-bottom:12px;">Администратор сразу получит уведомление в Telegram</div>
+            <div class="field"><label>1. Оборудование или место</label><select id="inc-eq">${EQUIP_LIST.map((x) => `<option ${x === incForm.equip ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+            <div class="field"><label>2. Срочность</label><select id="inc-pr">${INC_TYPES.map((x) => `<option ${x === incForm.priority ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+            <div class="field"><label>3. Опишите неисправность</label><textarea id="inc-tx" placeholder="Что случилось и как проявляется?">${esc(incForm.text)}</textarea></div>
+            <div class="field">
+              <label>4. Фото или видео</label>
+              <label class="btn btn-full" style="cursor:pointer;">📷 ${incForm.photoUrl ? 'Фото прикреплено (переснять)' : 'Прикрепить фото с камеры'}<input type="file" accept="image/*" capture="environment" id="inc-ph" style="display:none;"></label>
+            </div>
+            <button class="btn btn-primary btn-full" id="inc-send">5. Отправить обращение</button>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title" style="margin-bottom:10px;">Мои и активные обращения (${(state.incidents || []).length})</h2>
+            <div class="stack-sm">
+              ${(state.incidents || []).length ? state.incidents.slice(0, 15).map((i) => `
+                <div class="card-soft">
+                  <div class="row-between">
+                    <b>${esc(i.id)} · ${esc(i.step || i.zone)}</b>
+                    <span class="badge ${statusBadge(i.status)}">${esc(i.status || 'Новая')}</span>
+                  </div>
+                  <div style="margin-top:4px;font-size:14px;">${esc(i.text)}</div>
+                  <div class="card-sub" style="margin-top:4px;">Дата: ${esc(i.date)} · Ответственный: ${esc(i.owner || 'Администратор')}${i.photoUrl ? ` · <a href="${esc(i.photoUrl)}" target="_blank" rel="noopener">Фото</a>` : ''}</div>
+                  ${i.history && i.history.length ? `<div class="card-sub" style="margin-top:3px;color:var(--accent);">Комментарий: ${esc(i.history[i.history.length - 1].comment || i.history[i.history.length - 1].status || '')}</div>` : ''}
+                </div>`).join('') : `<div class="empty-state"><div class="empty-title">Обращений пока нет</div><div class="empty-sub">Если что-то сломается, сообщите через форму выше</div></div>`}
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('inc-eq').onchange = (e) => { incForm.equip = e.target.value; };
+      document.getElementById('inc-pr').onchange = (e) => { incForm.priority = e.target.value; };
+      document.getElementById('inc-tx').oninput = (e) => { incForm.text = e.target.value; };
+      document.getElementById('inc-ph').onchange = (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        compressAndUploadPhoto(f, { block: incForm.equip, kind: 'incident' }, (url) => { incForm.photoUrl = url; render(); });
+      };
+      document.getElementById('inc-send').onclick = () => {
+        const txt = (incForm.text || '').trim();
+        if (!txt) { showToast('Опишите неисправность перед отправкой'); return; }
+        const id = 'INC-' + String(Date.now()).slice(-6);
+        const rec = { id, date: TODAY, time: nowHHMM(), step: incForm.equip, zone: incForm.equip, text: txt, priority: incForm.priority, status: 'Новая', who: authed, owner: 'Администратор', photoUrl: incForm.photoUrl };
+        state.incidents.unshift(rec);
+        saveStateLocal();
+        if (C) {
+          C.enqueueOp('report_standalone_incident', Object.assign({}, rec, { userName: authed, comment: txt, photo: rec.photoUrl, photo_url: rec.photoUrl }));
+        }
+        incForm = { equip: EQUIP_LIST[0], priority: INC_TYPES[1], text: '', photoUrl: '' };
+        showToast('Обращение ' + id + ' отправлено — администратор уведомлён');
+        render();
+      };
+      return;
+    }
+
+    // 5. ТТК (База знаний)
+    if (tab === 'ttk') {
+      const cats = ['Все'].concat([...new Set((state.ttk || []).map((k) => k.cat || 'Классика'))]);
+      const list = (state.ttk || []).filter((k) => {
+        const okCat = ttkCat === 'Все' || (k.cat || 'Классика') === ttkCat;
+        const okQ = !ttkQuery || String(k.name + ' ' + k.recipe + ' ' + k.cat).toLowerCase().includes(ttkQuery.toLowerCase());
+        return okCat && okQ;
+      });
+      body.innerHTML = `
+        <div class="stack">
+          <div class="card">
+            <h2 class="card-title" style="margin-bottom:10px;">Технологические карты</h2>
+            <div class="field" style="margin-bottom:10px;"><input id="ttk-q" value="${esc(ttkQuery)}" placeholder="Поиск напитка по названию или составу..."></div>
+            <div class="subtabs">${cats.map((c) => `<button data-cat="${esc(c)}" class="${c === ttkCat ? 'active' : ''}">${esc(c)}</button>`).join('')}</div>
+          </div>
+          ${list.length ? list.map((k) => `
+            <div class="card">
+              <div class="row-between" style="align-items:flex-start;">
+                <div>
+                  <div style="font-weight:800;font-size:16px;">☕ ${esc(k.name)}</div>
+                  <div class="card-sub">${esc(k.cat)} · ${esc(k.vol)} · ⏱ ${esc(k.prepTime || '2 мин')}</div>
+                </div>
+                <span class="badge accent">${fmtRub(k.price)}</span>
+              </div>
+              <div class="card-soft" style="margin-top:10px;">
+                <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Состав и приготовление</div>
+                <div style="font-size:14px;white-space:pre-line;">${esc(k.recipe || 'По стандарту Coffee Illy')}</div>
+                ${k.serve ? `<div class="card-sub" style="margin-top:6px;">Подача: ${esc(k.serve)}</div>` : ''}
+              </div>
+              <div class="row-between card-sub" style="margin-top:8px;">
+                <span>Аллергены: ${esc(k.allergens || 'Нет')}</span>
+                <span>Обновлено: ${esc(k.updatedAt || TODAY)}</span>
+              </div>
+            </div>`).join('') : `<div class="empty-state"><div class="empty-title">Карты не найдены</div><div class="empty-sub">Попробуйте изменить запрос или категорию</div></div>`}
+        </div>`;
+      const qEl = document.getElementById('ttk-q');
+      qEl.oninput = (e) => { ttkQuery = e.target.value; render(); document.getElementById('ttk-q').focus(); };
+      body.querySelectorAll('[data-cat]').forEach((b) => { b.onclick = () => { ttkCat = b.dataset.cat; render(); }; });
     }
   }
 
-  function onRemoteSync() {
-    const next = loadSharedState();
-    if (next.rev !== state.rev) {
-      state = next;
-      showToast('✓ Обновлено');
-      render();
-    }
-  }
-  if (syncCh) syncCh.onmessage = onRemoteSync;
-  window.addEventListener('storage', (e) => { if (e.key === STORE_KEY) onRemoteSync(); });
-  document.querySelectorAll('#bnav button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  document.querySelectorAll('#bnav button').forEach((b) => {
+    b.onclick = () => { tab = b.dataset.t; if (tab !== 'tasks') activeBlock = null; render(); };
+  });
+
   render();
-
-  setInterval(() => { const _c = document.getElementById('hdr-clock'); if (_c && window.CoffeeCloudV93) _c.textContent = window.CoffeeCloudV93.localHHMM(); }, 15000);
   runAutoLogin();
-  if (window.CoffeeCloudV93) {
-    window.CoffeeCloudV93.startCloudLoop({
+  if (C) {
+    cloudLoop = C.startCloudLoop({
       mode: 'terminal',
       getState: () => state,
-      onSynced: (st, srvRev) => {
-        try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
+      onStatus: updateSyncPill,
+      onSynced: (st) => {
+        saveStateLocal();
         if (!authed) runAutoLogin();
         else applyDeepLinkIfNeeded();
         render();
