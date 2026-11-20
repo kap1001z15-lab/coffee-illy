@@ -207,7 +207,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=95.0"></script>
-  <script src="js/cloud-sync-v94.js?v=95.0"></script>
+  <script src="js/cloud-sync-v95.js?v=95.0"></script>
 <script src="js/pos-csv-parser-v93.js?v=95.0"></script>
 </head>
 <body>
@@ -239,7 +239,6 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
     <button data-tab="checklists">Чек-листы <span class="badge" id="cnt-chk">0</span></button>
     <button data-tab="incidents">Поломки <span class="badge bad" id="cnt-inc">0</span></button>
     <button data-tab="team">Команда и ТТК</button>
-    <button data-tab="knowledge">База знаний</button>
     <button data-tab="settings">Управление</button>
   </nav>
   <div id="date-filter-bar" class="date-bar"></div>
@@ -256,7 +255,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 
 <script>
 
-const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[],"salesLog":[],"inventory":[],"inventoryMoves":[],"expiryItems":[],"reconciliation":[],"transactionsLog":[],"sheetStats":[],"spreadsheetUrl":"https://docs.google.com/spreadsheets/d/1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM/edit"};
+const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[],"salesLog":[],"inventory":[],"inventoryMoves":[],"expiryItems":[]};
 const STORE_KEY = 'coffee_illy_v90_live_state';
 const THEME_KEY = 'coffee_illy_v90_theme';
 const TODAY = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10));
@@ -347,10 +346,10 @@ function initTheme(btnId) {
   let adminAuthNeeded = !adminUnlocked;
   let incFilter = 'open';
   let chkFilter = 'all';
+  let kbQuery = '';
+  let ttkCatFilter = 'all';
   let salesCatFilter = 'all';
   let salesQuery = '';
-  let kbQuery = '';
-  let reconFilter = 'all';
   let whCatFilter = 'all';
   const DATE_STORE_KEY = 'coffee_illy_v93_date_range';
   function shiftIsoDate(baseIso, deltaDays) {
@@ -607,6 +606,59 @@ function initTheme(btnId) {
     return { label:'Открыт до ' + b.deadline, cls:'accent', open:true };
   }
 
+
+  function buildReconciliation(cashList, salesList, txList) {
+    const byDate = {};
+    const ensure = (d) => {
+      if (!byDate[d]) byDate[d] = { date: d, manualRev: 0, manualCash: 0, manualCard: 0, manualChecks: 0, posTxRev: 0, posTxCash: 0, posTxCard: 0, posTxChecks: 0, posSalesRev: 0, posSalesQty: 0, coffeeQty: 0, barista: '' };
+      return byDate[d];
+    };
+    (cashList || []).forEach(c => {
+      if (!c || !c.date) return;
+      const r = ensure(String(c.date).slice(0, 10));
+      r.manualRev += Number(c.revenue || ((Number(c.cash)||0) + (Number(c.card)||0))) || 0;
+      r.manualCash += Number(c.cash) || 0;
+      r.manualCard += Number(c.card) || 0;
+      r.manualChecks += Number(c.checks) || 0;
+      if (c.barista && !r.barista) r.barista = c.barista;
+    });
+    (txList || []).forEach(t => {
+      if (!t || !t.date) return;
+      const r = ensure(String(t.date).slice(0, 10));
+      const amt = Number(t.amount) || 0;
+      r.posTxRev += amt;
+      r.posTxChecks += 1;
+      const pt = String(t.payType || '').toLowerCase();
+      if (pt.includes('нал') && !pt.includes('безнал')) r.posTxCash += amt;
+      else r.posTxCard += amt;
+      if (t.barista && !r.barista) r.barista = t.barista;
+    });
+    (salesList || []).forEach(s => {
+      if (!s || !s.date) return;
+      const r = ensure(String(s.date).slice(0, 10));
+      r.posSalesRev += Number(s.sum) || 0;
+      r.posSalesQty += Number(s.qty) || 0;
+      const k = String(s.kind || '').toLowerCase();
+      if (k.includes('кофе') && !k.includes('не-кофе')) r.coffeeQty += Number(s.qty) || 0;
+      if (s.barista && !r.barista) r.barista = s.barista;
+    });
+    return Object.values(byDate).sort((a, b) => String(b.date).localeCompare(String(a.date))).map(r => {
+      const posRev = Math.max(r.posTxRev, r.posSalesRev);
+      const hasPos = posRev > 0;
+      const hasManual = r.manualRev > 0;
+      const diff = hasPos && hasManual ? Math.round(posRev - r.manualRev) : 0;
+      let status = 'match', label = '✓ Совпадает', cls = 'good';
+      if (hasPos && hasManual) {
+        if (Math.abs(diff) > 1) { status = 'diff'; label = (diff > 0 ? '+' : '') + diff + ' ₽'; cls = 'warn'; }
+      } else if (hasPos && !hasManual) {
+        status = 'pos_only'; label = '📄 Только POS'; cls = 'accent';
+      } else {
+        status = 'manual_only'; label = '✍️ Только вручную'; cls = '';
+      }
+      return Object.assign(r, { posRev: Math.round(posRev), hasPos, hasManual, diff, status, label, cls });
+    });
+  }
+
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
     document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'Онлайн' : 'Ожидание') + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '');
@@ -622,6 +674,8 @@ function initTheme(btnId) {
     const fChecklists = (state.checklists || []).filter(c => inDateRange(c.date, rng));
     const fIncidents = (state.incidents || []).filter(i => inDateRange(i.date, rng));
     const fSales = (state.salesLog || []).filter(s => inDateRange(s.date, rng));
+    const fTx = (state.transactionsLog || []).filter(t => inDateRange(t.date, rng));
+    const reconRows = buildReconciliation(fCash, fSales, fTx);
     const fInvMoves = (state.inventoryMoves || []).filter(m => inDateRange(m.date, rng));
     const fExpiry = (state.expiryItems || []).filter(x => !x.date || inDateRange(x.date, rng) || inDateRange(x.expiresDate, rng));
     const fAudit = (state.auditLog || []).filter(a => !a.date || inDateRange(a.date, rng));
@@ -640,36 +694,6 @@ function initTheme(btnId) {
     document.querySelectorAll('#admin-nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
 
     const root = document.getElementById('content');
-    // v95.0: Автоматическая сверка «Загружено из POS-отчётов» vs «Вписано вручную» за выбранный период
-    const allRecon = (Array.isArray(state.reconciliation) && state.reconciliation.length)
-      ? state.reconciliation
-      : fCash.map(c => {
-          const isPos = Array.isArray(c.csvHashes) && c.csvHashes.length > 0;
-          return {
-            date: c.date, barista: c.barista || 'Бариста',
-            source: isPos ? 'pos' : 'manual', status: isPos ? 'pos_only' : 'manual_only',
-            posRevenue: isPos ? (Number(c.revenue) || 0) : null, posCash: isPos ? (Number(c.cash) || 0) : 0, posCard: isPos ? (Number(c.card) || 0) : 0, posChecks: isPos ? (Number(c.checks) || 0) : 0,
-            manualRevenue: !isPos ? (Number(c.revenue) || 0) : null, manualCash: !isPos ? (Number(c.cash) || 0) : 0, manualCard: !isPos ? (Number(c.card) || 0) : 0, manualChecks: !isPos ? (Number(c.checks) || 0) : 0,
-            salesSum: 0, salesQty: 0, diffRub: null, posVsSalesDiff: null
-          };
-        });
-    const fRecon = allRecon.filter(r => inDateRange(r.date));
-    const fTx = (state.transactionsLog || []).filter(t => inDateRange(t.date));
-    const reconSummary = fRecon.reduce((acc, r) => {
-      if (r.posRevenue != null) { acc.posDays++; acc.posRev += r.posRevenue; acc.posChecks += (r.posChecks || 0); }
-      if (r.manualRevenue != null) { acc.manualDays++; acc.manualRev += r.manualRevenue; acc.manualChecks += (r.manualChecks || 0); }
-      if (r.status === 'match') acc.matchDays++;
-      if (r.status === 'mismatch') { acc.mismatchDays++; acc.totalDiff += (r.diffRub || 0); }
-      return acc;
-    }, { posDays: 0, manualDays: 0, matchDays: 0, mismatchDays: 0, posRev: 0, manualRev: 0, posChecks: 0, manualChecks: 0, totalDiff: 0 });
-    const payCashTotal = fCash.reduce((a, c) => a + (Number(c.cash) || 0), 0);
-    const payCardTotal = fCash.reduce((a, c) => a + (Number(c.card) || 0), 0);
-    const payTotal = Math.max(1, payCashTotal + payCardTotal);
-    const cashSharePct = Math.round((payCashTotal / payTotal) * 100);
-    const cardSharePct = 100 - cashSharePct;
-    const netProfit = totalRev - totalExp;
-    const marginPct = totalRev > 0 ? Math.round((netProfit / totalRev) * 100) : 0;
-
     if (tab === 'overview') {
       const syncBanner = !state.liveConnected
         ? `<div class="card-soft" style="margin-bottom:14px;border:1px solid var(--accent);display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>🔄 Загружаем актуальные данные из Google Таблицы Coffee_illy...</span></div>`
@@ -708,36 +732,6 @@ function initTheme(btnId) {
             }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:36px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
           </div>
         </div>
-        <div class="grid-2" style="margin-bottom:16px;align-items:stretch;">
-          <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Сверка: POS-отчёты vs Ручной ввод</h2><div class="card-sub">Автоматическое сравнение за период (${esc(rng.label)})</div></div><button class="chip-btn" id="ov-go-fin">Подробно →</button></div>
-            <div class="grid-2" style="margin-bottom:10px;">
-              <div class="card-soft"><div style="font-size:11.5px;color:var(--muted);">📥 Из отчётов POS (${reconSummary.posDays} дн.)</div><div style="font-size:18px;font-weight:800;">${fmtRub(reconSummary.posRev)}</div><div style="font-size:11.5px;color:var(--muted);">Чеков: ${reconSummary.posChecks}</div></div>
-              <div class="card-soft"><div style="font-size:11.5px;color:var(--muted);">✍️ Вписано вручную (${reconSummary.manualDays} дн.)</div><div style="font-size:18px;font-weight:800;">${fmtRub(reconSummary.manualRev)}</div><div style="font-size:11.5px;color:var(--muted);">Чеков: ${reconSummary.manualChecks}</div></div>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-              <span class="badge good">✓ Сошлось: ${reconSummary.matchDays} дн.</span>
-              <span class="badge ${reconSummary.mismatchDays?'bad':'good'}">${reconSummary.mismatchDays ? ('⚠️ Расхождения: ' + reconSummary.mismatchDays + ' дн. (' + (reconSummary.totalDiff > 0 ? '+' : '') + fmtRub(reconSummary.totalDiff) + ')') : '✓ Расхождений нет'}</span>
-              <span class="badge accent">Рентабельность: ${marginPct}%</span>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Структура оплат и выручка</h2><div class="card-sub">Наличные vs Безнал / Мобильный платёж</div></div><button class="chip-btn" id="ov-go-kb">📚 База знаний</button></div>
-            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
-              <span>💵 Наличные: <b>${fmtRub(payCashTotal)}</b> (${cashSharePct}%)</span>
-              <span>💳 Безнал: <b>${fmtRub(payCardTotal)}</b> (${cardSharePct}%)</span>
-            </div>
-            <div style="height:12px;border-radius:99px;background:var(--surface-2);overflow:hidden;display:flex;margin-bottom:12px;">
-              <div style="width:${cashSharePct}%;background:var(--good);"></div>
-              <div style="width:${cardSharePct}%;background:var(--accent);"></div>
-            </div>
-            <div style="font-size:12.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-              <span>📊 Загружено транзакций: <b>${fTx.length}</b></span>
-              <span>☕ Позиций продаж: <b>${fSales.length}</b></span>
-              <span>📋 Чек-листов: <b>${fChecklists.length}</b></span>
-            </div>
-          </div>
-        </div>
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Команда на смене</h2></div></div>
           <div class="stack">
@@ -755,9 +749,53 @@ function initTheme(btnId) {
             }).join('')}
           </div>
         </div>`;
+
+      const reconPosTotal = reconRows.reduce((a, r) => a + r.posRev, 0);
+      const reconManTotal = reconRows.reduce((a, r) => a + r.manualRev, 0);
+      const reconMatchCnt = reconRows.filter(r => r.status === 'match').length;
+      const reconDiffCnt = reconRows.filter(r => r.status === 'diff').length;
+      const reconMax = Math.max(reconPosTotal, reconManTotal, 1);
+      const sheetStats = state.sheetStats || {
+        'Касса': state.cash.length, 'Продажи': (state.salesLog || []).length, 'Транзакции': (state.transactionsLog || []).length,
+        'Расходы': state.expenses.length, 'Чек-листы': state.checklists.length, 'Поломки': state.incidents.length,
+        'Задачи': state.tasks.length, 'Сотрудники': state.staff.length, 'ТТК': state.ttk.length
+      };
+      const sheetUrl = state.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM/edit';
+      root.innerHTML += `
+        <div class="grid-2" style="margin-top:16px;align-items:start;">
+          <div class="card">
+            <div class="card-head">
+              <div><h2 class="card-title">Сверка: Отчёты POS vs Вручную</h2><div class="card-sub">Авто-сравнение загруженных выписок и записей кассы (${esc(rng.label)})</div></div>
+              <button class="chip-btn accent" id="ov-go-fin">Детали →</button>
+            </div>
+            <div class="stack" style="gap:10px;">
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;"><span>📄 Выписки POS (${fTx.length} чек. / ${fSales.length} поз.)</span><b>${fmtRub(reconPosTotal)}</b></div>
+                <div class="pbar good"><div style="width:${Math.round((reconPosTotal/reconMax)*100)}%"></div></div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;"><span>✍️ Вписано вручную / Касса (${fCash.length} смен)</span><b>${fmtRub(reconManTotal)}</b></div>
+                <div class="pbar"><div style="width:${Math.round((reconManTotal/reconMax)*100)}%"></div></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
+                <span class="badge good">✓ Совпадает дней: ${reconMatchCnt}</span>
+                <span class="badge ${reconDiffCnt?'warn':'good'}">${reconDiffCnt?'⚠️ Расхождений: '+reconDiffCnt:'✓ Без расхождений'}</span>
+                <span class="badge">Разница: ${fmtRub(reconPosTotal - reconManTotal)}</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <div><h2 class="card-title">Google Таблица · База данных</h2><div class="card-sub">${state.liveConnected ? '● Синхронизировано ' + esc(state.lastSyncAt || '') + (state.lastRttMs ? ' (' + state.lastRttMs + ' мс)' : '') : 'Подключение к Google Sheets...'}</div></div>
+              <a href="${esc(sheetUrl)}" target="_blank" rel="noopener" class="chip-btn accent" style="text-decoration:none;">↗ Открыть таблицу</a>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              ${Object.entries(sheetStats).map(([k, v]) => `<span class="badge" style="padding:5px 9px;">${esc(k)}: <b>${v}</b></span>`).join('')}
+            </div>
+          </div>
+        </div>`;
+      const _ovFin = document.getElementById('ov-go-fin'); if (_ovFin) _ovFin.onclick = () => { tab = 'finances'; render(); };
       const _ovU = document.getElementById('ov-unlock'); if (_ovU) _ovU.onclick = () => guard('Живые данные дашборда', () => {});
-      const _ovF = document.getElementById('ov-go-fin'); if (_ovF) _ovF.onclick = () => { tab = 'finances'; render(); };
-      const _ovK = document.getElementById('ov-go-kb'); if (_ovK) _ovK.onclick = () => { tab = 'knowledge'; render(); };
       return;
     }
 
@@ -861,83 +899,6 @@ function initTheme(btnId) {
           <div class="kpi"><div class="kpi-lbl">Кофе / Не-кофе</div><div class="kpi-val" style="color:var(--accent)">${coffeeQty} / ${otherQty}</div><div class="kpi-meta">Доля кофе: <b>${coffeeShare}%</b></div></div>
           <div class="kpi"><div class="kpi-lbl">Средняя цена позиции</div><div class="kpi-val">${avgUnitPrice} ₽</div><div class="kpi-meta">Уникальных позиций: ${topProducts.length}</div></div>
         </div>
-        ${(() => {
-          // 1. Разбивка по категориям
-          const catAgg = {};
-          fSales.forEach(s => {
-            const k = s.kind || 'Прочее';
-            if (!catAgg[k]) catAgg[k] = { kind: k, qty: 0, sum: 0 };
-            catAgg[k].qty += Number(s.qty) || 0;
-            catAgg[k].sum += Number(s.sum) || 0;
-          });
-          const catList = Object.values(catAgg).sort((a, b) => b.sum - a.sum);
-          const catTotal = Math.max(1, catList.reduce((a, c) => a + c.sum, 0));
-
-          // 2. Почасовая активность из транзакций POS (07:00 - 22:00)
-          const hourBuckets = {};
-          for (let h = 7; h <= 22; h++) hourBuckets[String(h).padStart(2, '0')] = { h: String(h).padStart(2, '0'), checks: 0, sum: 0 };
-          fTx.forEach(t => {
-            const m = String(t.time || '').match(/^(\d{1,2}):/);
-            if (m) {
-              const hh = m[1].padStart(2, '0');
-              if (hourBuckets[hh]) { hourBuckets[hh].checks++; hourBuckets[hh].sum += Number(t.amount) || 0; }
-            }
-          });
-          const hoursArr = Object.values(hourBuckets);
-          const maxH = Math.max(1, ...hoursArr.map(x => x.sum));
-          const peakH = hoursArr.slice().sort((a, b) => b.sum - a.sum)[0];
-
-          // 3. Рейтинг сотрудников по продажам и сменам
-          const empAgg = {};
-          fCash.forEach(c => {
-            const nm = c.barista || 'Бариста';
-            if (!empAgg[nm]) empAgg[nm] = { name: nm, shifts: 0, rev: 0, cash: 0, card: 0, checks: 0, coffee: 0, plan: 0 };
-            empAgg[nm].shifts++;
-            empAgg[nm].rev += Number(c.revenue) || 0;
-            empAgg[nm].cash += Number(c.cash) || 0;
-            empAgg[nm].card += Number(c.card) || 0;
-            empAgg[nm].checks += Number(c.checks) || 0;
-            empAgg[nm].coffee += Number(c.coffeeQty) || 0;
-            empAgg[nm].plan += getDayPlan(c.date).rev || state.plan || 2200;
-          });
-          const empList = Object.values(empAgg).sort((a, b) => b.rev - a.rev);
-
-          return `
-            <div class="grid-2" style="margin-bottom:16px;align-items:start;">
-              <div class="card">
-                <div class="card-head"><div><h2 class="card-title">Категории продаж</h2><div class="card-sub">Доля в выручке и объёме</div></div></div>
-                <div class="stack">
-                  ${catList.length ? catList.map(c => {
-                    const pct = Math.round((c.sum / catTotal) * 100);
-                    return `<div class="card-soft">
-                      <div style="display:flex;justify-content:space-between;font-size:13px;"><b>${esc(c.kind)}</b><span><b>${fmtRub(c.sum)}</b> · ${c.qty} шт. (${pct}%)</span></div>
-                      <div class="pbar"><div style="width:${pct}%"></div></div>
-                    </div>`;
-                  }).join('') : '<div style="color:var(--muted);font-size:13px;">Нет данных по категориям за период</div>'}
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div><h2 class="card-title">Пиковые часы продаж</h2><div class="card-sub">${fTx.length ? ('По ' + fTx.length + ' чекам POS · Пик: ' + peakH.h + ':00 (' + fmtRub(Math.round(peakH.sum)) + ')') : 'Загрузите CSV транзакций для почасового графика'}</div></div></div>
-                <div style="display:grid;grid-template-columns:repeat(16,minmax(16px,1fr));gap:4px;align-items:end;height:130px;padding-top:12px;overflow-x:auto;">
-                  ${hoursArr.map(x => `<div style="display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:3px;" title="${x.h}:00 · ${fmtRub(Math.round(x.sum))} · Чеков: ${x.checks}">
-                    <div style="font-size:9px;color:var(--muted);">${x.checks || ''}</div>
-                    <div style="width:100%;border-radius:6px 6px 2px 2px;background:${x.sum===maxH && x.sum>0?'var(--good)':'var(--accent)'};height:${x.sum>0?Math.max(10,Math.round((x.sum/maxH)*100)):3}%;opacity:${x.sum>0?1:0.25};"></div>
-                    <div style="font-size:9.5px;color:var(--muted);">${x.h}</div>
-                  </div>`).join('')}
-                </div>
-              </div>
-            </div>
-            <div class="card" style="margin-bottom:16px;">
-              <div class="card-head"><div><h2 class="card-title">Рейтинг бариста по продажам (${empList.length})</h2><div class="card-sub">Сравнение выручки, среднего чека и выполнения плана</div></div></div>
-              <div class="tbl-wrap"><table><thead><tr><th>Сотрудник</th><th>Смен</th><th>Выручка</th><th>План</th><th>Чеков</th><th>Ср. чек</th><th>Нал / Безнал</th></tr></thead><tbody>
-                ${empList.length ? empList.map(e => {
-                  const pct = e.plan > 0 ? Math.round((e.rev / e.plan) * 100) : 0;
-                  const avg = e.checks > 0 ? Math.round(e.rev / e.checks) : 0;
-                  return `<tr><td><b>${esc(e.name)}</b></td><td>${e.shifts}</td><td><b>${fmtRub(e.rev)}</b></td><td><span class="badge ${pct>=100?'good':'warn'}">${pct}%</span></td><td>${e.checks}</td><td><b>${avg} ₽</b></td><td style="color:var(--muted)">${fmtRub(e.cash)} / ${fmtRub(e.card)}</td></tr>`;
-                }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);">Нет смен за период</td></tr>'}
-              </tbody></table></div>
-            </div>`;
-        })()}
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head">
             <div><h2 class="card-title">Топ продаж по номенклатуре (${topProducts.length})</h2></div>
@@ -971,6 +932,58 @@ function initTheme(btnId) {
               <td><b>${fmtRub(s.sum)}</b></td>
             </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:14px;">Нет записей за выбранный период</td></tr>`}
           </tbody></table></div>
+        </div>`;
+
+      // Почасовая активность и структура оплат из выписок Транзакции
+      const hourBuckets = {};
+      let txCashAmt = 0, txCardAmt = 0;
+      fTx.forEach(t => {
+        const hh = String(t.time || '').slice(0, 2);
+        if (/^\d{2}$/.test(hh)) {
+          if (!hourBuckets[hh]) hourBuckets[hh] = { hh, sum: 0, cnt: 0 };
+          hourBuckets[hh].sum += Number(t.amount) || 0;
+          hourBuckets[hh].cnt += 1;
+        }
+        const pt = String(t.payType || '').toLowerCase();
+        if (pt.includes('нал') && !pt.includes('безнал')) txCashAmt += Number(t.amount) || 0;
+        else txCardAmt += Number(t.amount) || 0;
+      });
+      const hoursArr = Object.values(hourBuckets).sort((a, b) => a.hh.localeCompare(b.hh));
+      const maxHourSum = Math.max(...hoursArr.map(h => h.sum), 1);
+      const peakHour = hoursArr.slice().sort((a, b) => b.sum - a.sum)[0];
+      const payTot = (txCashAmt + txCardAmt) || 1;
+      const cashPct = Math.round((txCashAmt / payTot) * 100);
+      const cardPct = Math.max(0, 100 - cashPct);
+      const top10 = topProducts.slice(0, 10);
+      const top10Max = Math.max(...top10.map(p => p.sum), 1);
+      root.innerHTML = root.innerHTML + `
+        <div class="grid-2" style="margin-top:16px;align-items:start;">
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">Почасовая активность продаж</h2><div class="card-sub">${peakHour ? 'Пик продаж: ' + peakHour.hh + ':00 (' + fmtRub(peakHour.sum) + ', ' + peakHour.cnt + ' чек.)' : 'Появится автоматически после загрузки CSV Транзакции'}</div></div></div>
+            ${hoursArr.length ? `<div class="chart-wrap" style="height:170px;">
+              ${hoursArr.map(h => `<div class="bar-col" title="${h.hh}:00 · ${fmtRub(h.sum)} · ${h.cnt} чек."><div class="bar-val">${h.cnt}</div><div class="bar-fill ${peakHour&&peakHour.hh===h.hh?'hit':''}" style="height:${Math.max(12,Math.round((h.sum/maxHourSum)*100))}%"></div><div class="bar-dt">${h.hh}ч</div></div>`).join('')}
+            </div>` : `<div style="font-size:13px;color:var(--muted);padding:16px 0;">Загрузите файл «Транзакции CSV» во вкладке Финансы для построения графика пиковых часов.</div>`}
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">Структура оплат и Топ-10 позиций</h2><div class="card-sub">Автоматический расчёт из POS-отчётов и себестоимости ТТК</div></div></div>
+            ${(txCashAmt + txCardAmt) > 0 ? `<div style="margin-bottom:14px;">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;"><span>💵 Наличные: <b>${fmtRub(txCashAmt)} (${cashPct}%)</b></span><span>💳 Безнал/Моб.: <b>${fmtRub(txCardAmt)} (${cardPct}%)</b></span></div>
+              <div style="height:10px;border-radius:999px;overflow:hidden;display:flex;background:var(--surface-2);">
+                <div style="width:${cashPct}%;background:var(--good);"></div>
+                <div style="width:${cardPct}%;background:var(--accent);"></div>
+              </div>
+            </div>` : ''}
+            <div class="stack" style="gap:8px;">
+              ${top10.length ? top10.map(p => {
+                const ttkMatch = (state.ttk || []).find(k => String(k.name || '').toLowerCase() && (p.name.toLowerCase().includes(k.name.toLowerCase()) || k.name.toLowerCase().includes(p.name.toLowerCase())));
+                const marginStr = ttkMatch && ttkMatch.price > 0 ? (' · маржа ~' + Math.round(((ttkMatch.price - ttkMatch.cost) / ttkMatch.price) * 100) + '%') : '';
+                return `<div>
+                  <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:2px;"><span><b>${esc(p.name)}</b> <span style="color:var(--muted)">(${p.qty} шт.${marginStr})</span></span><b>${fmtRub(p.sum)}</b></div>
+                  <div class="pbar"><div style="width:${Math.max(6,Math.round((p.sum/top10Max)*100))}%"></div></div>
+                </div>`;
+              }).join('') : `<div style="font-size:13px;color:var(--muted);">Нет позиций за выбранный период.</div>`}
+            </div>
+          </div>
         </div>`;
       root.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { salesCatFilter = b.dataset.sc; render(); });
       const sq = document.getElementById('sales-q');
@@ -1074,50 +1087,20 @@ function initTheme(btnId) {
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head">
-            <div><h2 class="card-title">Сверка: Отчёты POS (CSV) vs Вписано вручную (${fRecon.length} дн.)</h2><div class="card-sub">Автоматическое сравнение загруженных выписок кассы с ручными отчётами бариста и суммой проданных позиций</div></div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="date-pill ${reconFilter==='all'?'active':''}" data-rf="all">Все (${fRecon.length})</button>
-              <button class="date-pill ${reconFilter==='mismatch'?'active':''}" data-rf="mismatch">⚠️ Расхождения (${reconSummary.mismatchDays})</button>
-              <button class="date-pill ${reconFilter==='both'?'active':''}" data-rf="both">🔀 Оба источника</button>
-            </div>
+            <div><h2 class="card-title">Сверка: Отчёты POS vs Ручной ввод (${reconRows.length} дн.)</h2><div class="card-sub">Автоматически сравнивает загруженные выписки (Транзакции/Продажи) с вписанными вручную сменами</div></div>
+            <button class="chip-btn accent" id="c-manual-add">+ Вписать кассу вручную</button>
           </div>
-          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Источник</th><th>POS-отчёт</th><th>Вручную</th><th>Разница Δ</th><th>Позиции (Продажи)</th><th>Статус</th></tr></thead><tbody>
-            ${(() => {
-              const list = fRecon.filter(r => reconFilter === 'all' || (reconFilter === 'mismatch' && r.status === 'mismatch') || (reconFilter === 'both' && r.source === 'both'));
-              if (!list.length) return '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:14px;">Нет записей для выбранного фильтра сверки</td></tr>';
-              return list.map(r => {
-                const srcBadge = r.source === 'both' ? '<span class="badge accent">🔀 POS + Ручной</span>' : (r.source === 'pos' ? '<span class="badge good">📥 POS CSV</span>' : '<span class="badge">✍️ Вручную</span>');
-                const stBadge = r.status === 'match' ? '<span class="badge good">✓ Сошлось</span>' : (r.status === 'mismatch' ? '<span class="badge bad">⚠️ Расхождение</span>' : (r.status === 'pos_only' ? '<span class="badge accent">Только POS</span>' : '<span class="badge">Только ручной</span>'));
-                const diffTxt = r.diffRub == null ? '—' : `<b style="color:${Math.abs(r.diffRub)<=5?'var(--good)':'var(--bad)'}">${r.diffRub > 0 ? '+' : ''}${fmtRub(r.diffRub)}</b>`;
-                return `<tr>
-                  <td><b>${r.date}</b> <span style="font-size:11.5px;color:var(--muted)">${esc(r.barista)}</span></td>
-                  <td>${srcBadge}</td>
-                  <td>${r.posRevenue != null ? ('<b>' + fmtRub(r.posRevenue) + '</b>' + (r.posChecks ? ' <span style="color:var(--muted);font-size:11.5px;">(' + r.posChecks + ' ч.)</span>' : '')) : '<span style="color:var(--muted)">—</span>'}</td>
-                  <td>${r.manualRevenue != null ? ('<b>' + fmtRub(r.manualRevenue) + '</b>' + (r.manualChecks ? ' <span style="color:var(--muted);font-size:11.5px;">(' + r.manualChecks + ' ч.)</span>' : '')) : '<span style="color:var(--muted)">—</span>'}</td>
-                  <td>${diffTxt}</td>
-                  <td>${r.salesSum ? (fmtRub(r.salesSum) + ' <span style="color:var(--muted);font-size:11.5px;">(' + r.salesQty + ' шт.)</span>') : '<span style="color:var(--muted)">—</span>'}</td>
-                  <td>${stBadge}</td>
-                </tr>`;
-              }).join('');
-            })()}
+          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>📄 POS-отчёт</th><th>✍️ Вручную / Касса</th><th>Разница</th><th>Чеков (POS / Ручн.)</th><th>Статус сверки</th></tr></thead><tbody>
+            ${reconRows.length ? reconRows.map(r => `<tr>
+              <td><b>${r.date}</b> <span style="color:var(--muted);font-size:11.5px;">${esc(r.barista)}</span></td>
+              <td><b>${r.hasPos ? fmtRub(r.posRev) : '—'}</b>${r.coffeeQty ? ' <span class="badge">☕ '+r.coffeeQty+'</span>' : ''}</td>
+              <td><b>${r.hasManual ? fmtRub(r.manualRev) : '—'}</b></td>
+              <td style="color:${Math.abs(r.diff)>1?'var(--warn)':'var(--good)'}"><b>${r.hasPos && r.hasManual ? ((r.diff>0?'+':'') + r.diff + ' ₽') : '—'}</b></td>
+              <td>${r.posTxChecks || '—'} / ${r.manualChecks || '—'}</td>
+              <td><span class="badge ${r.cls}">${esc(r.label)}</span></td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:14px;">Нет данных для сверки за период (${esc(rng.label)})</td></tr>`}
           </tbody></table></div>
         </div>
-        ${(() => {
-          const expByCat = {};
-          fExpenses.forEach(e => { const k = e.category || 'Прочее'; expByCat[k] = (expByCat[k] || 0) + (Number(e.amount) || 0); });
-          const expCats = Object.entries(expByCat).sort((a, b) => b[1] - a[1]);
-          if (!expCats.length) return '';
-          const eDen = Math.max(1, totalExp);
-          return `<div class="card" style="margin-bottom:16px;">
-            <div class="card-head"><div><h2 class="card-title">Структура расходов по категориям (${fmtRub(totalExp)})</h2><div class="card-sub">Доля расходов от выручки: ${totalRev > 0 ? Math.round((totalExp / totalRev) * 100) : 0}% · Чистая рентабельность: ${marginPct}%</div></div></div>
-            <div class="grid-2">
-              ${expCats.map(([cat, amt]) => {
-                const p = Math.round((amt / eDen) * 100);
-                return `<div class="card-soft"><div style="display:flex;justify-content:space-between;font-size:13px;"><b>${esc(cat)}</b><span><b>${fmtRub(amt)}</b> (${p}%)</span></div><div class="pbar"><div style="width:${p}%;background:var(--bad);"></div></div></div>`;
-              }).join('')}
-            </div>
-          </div>`;
-        })()}
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Кассовые смены (${fCash.length})</h2></div></div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Выручка / План</th><th>Чеков / План</th><th>Ср. чек / Мин.</th><th>Нал / Безнал</th><th>Бариста</th></tr></thead><tbody>
@@ -1138,7 +1121,15 @@ function initTheme(btnId) {
         </div>
         <div class="grid-2" style="align-items:start;">
           <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Расходы (${fmtRub(totalExp)})</h2></div><button class="chip-btn accent" id="e-add">+ Расход</button></div>
+            <div class="card-head"><div><h2 class="card-title">Расходы по категориям (${fmtRub(totalExp)})</h2></div><button class="chip-btn accent" id="e-add">+ Расход</button></div>
+            ${(() => {
+              const byCat = {};
+              fExpenses.forEach(e => { const c = e.category || 'Прочее'; byCat[c] = (byCat[c] || 0) + (Number(e.amount) || 0); });
+              const cArr = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+              if (!cArr.length) return '';
+              const tot = totalExp || 1;
+              return '<div class="stack" style="gap:6px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);">' + cArr.map(([cat, amt]) => `<div><div style="display:flex;justify-content:space-between;font-size:12px;"><span>${esc(cat)}</span><b>${fmtRub(amt)} (${Math.round((amt/tot)*100)}%)</b></div><div class="pbar"><div style="width:${Math.max(5,Math.round((amt/tot)*100))}%"></div></div></div>`).join('') + '</div>';
+            })()}
             <div class="stack">${fExpenses.length ? fExpenses.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет расходов за выбранный период</div>`}</div>
           </div>
           <div class="card">
@@ -1148,7 +1139,34 @@ function initTheme(btnId) {
             </tbody></table></div>
           </div>
         </div>`;
-      root.querySelectorAll('[data-rf]').forEach(b => b.onclick = () => { reconFilter = b.dataset.rf; render(); });
+      const manCashBtn = document.getElementById('c-manual-add');
+      if (manCashBtn) manCashBtn.onclick = () => guard('Вписать кассу вручную', () => {
+        const names = state.staff.filter(s => s.active !== false).map(s => s.name);
+        openModal('Ручной ввод кассовой смены', `
+          <div class="grid-2">
+            <div class="field"><label>Дата</label><input id="mc-d" type="date" value="${TODAY}"></div>
+            <div class="field"><label>Бариста</label><select id="mc-b">${optList(names, names[0] || 'Соня')}</select></div>
+          </div>
+          <div class="grid-3">
+            <div class="field"><label>Наличные (₽)</label><input id="mc-c" type="number" min="0" value="0"></div>
+            <div class="field"><label>Безнал (₽)</label><input id="mc-k" type="number" min="0" value="0"></div>
+            <div class="field"><label>Чеков (шт.)</label><input id="mc-n" type="number" min="0" value="0"></div>
+          </div>
+          <button class="btn-lg primary" id="mc-save">✓ Сохранить смену в Google Таблицу</button>
+        `);
+        document.getElementById('mc-save').onclick = () => {
+          const dt = document.getElementById('mc-d').value || TODAY;
+          const bName = document.getElementById('mc-b').value;
+          const cashV = Math.max(0, Number(document.getElementById('mc-c').value) || 0);
+          const cardV = Math.max(0, Number(document.getElementById('mc-k').value) || 0);
+          const chkV = Math.max(0, Number(document.getElementById('mc-n').value) || 0);
+          if (cashV + cardV <= 0) { showToast('Укажите сумму выручки'); return; }
+          const rec = { date: dt, barista: bName, who: bName, cash: cashV, card: cardV, revenue: cashV + cardV, total: cashV + cardV, checks: chkV, writeoff: 0 };
+          state.cash = [rec, ...state.cash.filter(x => x.date !== dt)];
+          saveSharedState(state, bName, 'Закрыта касса (' + dt + '): ' + fmtRub(cashV + cardV));
+          closeModal(); showToast('✓ Смена сохранена и сопоставлена с выписками'); render();
+        };
+      });
       const repBtn = document.getElementById('btn-gen-report');
       if (repBtn) repBtn.onclick = () => openReportModal(fCash, fExpenses, fChecklists, fIncidents, rng.label);
       const csvIn = document.getElementById('csv-imp-in');
@@ -1292,86 +1310,78 @@ function initTheme(btnId) {
             return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div>`;
           }).join('')}</div>
         </div>
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Техкарты ILLY (${state.ttk.length})</h2></div><button class="chip-btn accent" id="k-add">+ Техкарта</button></div>
-          <div class="tbl-wrap"><table><thead><tr><th>Напиток</th><th>Объём</th><th>Цена</th><th>Себест.</th><th>Маржа</th><th></th></tr></thead><tbody>
-            ${state.ttk.map(k=>`<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td>${k.cost} ₽</td><td><span class="badge good">${k.price?Math.round(((k.price-k.cost)/k.price)*100):0}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
-          </tbody></table></div>
-        </div>`;
+        ${(() => {
+          const ttkList = state.ttk || [];
+          const margins = ttkList.filter(k => k.price > 0).map(k => Math.round(((k.price - k.cost) / k.price) * 100));
+          const avgMargin = margins.length ? Math.round(margins.reduce((a, b) => a + b, 0) / margins.length) : 0;
+          const topMarginItem = ttkList.slice().sort((a, b) => ((b.price ? (b.price-b.cost)/b.price : 0) - (a.price ? (a.price-a.cost)/a.price : 0)))[0];
+          const ttkCats = ['all', ...Array.from(new Set(ttkList.map(k => k.cat || 'Классика')))];
+          const qKb = kbQuery.trim().toLowerCase();
+          const filteredTtk = ttkList.filter(k => (ttkCatFilter === 'all' || (k.cat || 'Классика') === ttkCatFilter) && (!qKb || String(k.name||'').toLowerCase().includes(qKb) || String(k.recipe||'').toLowerCase().includes(qKb)));
+          const stdTasks = (state.tasks || []).filter(t => !qKb || String(t.title||'').toLowerCase().includes(qKb) || String(t.instruction||'').toLowerCase().includes(qKb) || String(t.block||'').toLowerCase().includes(qKb));
+          return `
+          <div class="kpi-grid" style="margin-bottom:16px;">
+            <div class="kpi"><div class="kpi-lbl">Техкарт в Базе знаний</div><div class="kpi-val">${ttkList.length}</div><div class="kpi-meta">Категорий: ${Math.max(0, ttkCats.length - 1)}</div></div>
+            <div class="kpi"><div class="kpi-lbl">Средняя маржинальность</div><div class="kpi-val" style="color:var(--good)">${avgMargin}%</div><div class="kpi-meta">Лидер: ${topMarginItem ? esc(topMarginItem.name) : '—'}</div></div>
+            <div class="kpi"><div class="kpi-lbl">Стандартов и инструкций</div><div class="kpi-val">${(state.tasks || []).length}</div><div class="kpi-meta">Блоков чек-листов: ${(state.blocks || []).length}</div></div>
+            <div class="kpi"><div class="kpi-lbl">Продаж сопоставлено</div><div class="kpi-val" style="color:var(--accent)">${fSales.length}</div><div class="kpi-meta">Позиций за ${esc(rng.label)}</div></div>
+          </div>
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-head">
+              <div><h2 class="card-title">База знаний: Техкарты ILLY (${filteredTtk.length})</h2><div class="card-sub">Рецептура, экономика и сопоставление с реальными продажами POS</div></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input id="kb-q" value="${esc(kbQuery)}" placeholder="Поиск по ТТК и стандартам..." style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;min-width:190px;">
+                <button class="chip-btn accent" id="k-add">+ Техкарта</button>
+              </div>
+            </div>
+            <div class="date-pills" style="margin-bottom:12px;">
+              ${ttkCats.map(c => `<button class="date-pill ${ttkCatFilter===c?'active':''}" data-kc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+            </div>
+            <div class="tbl-wrap"><table><thead><tr><th>Напиток</th><th>Объём</th><th>Цена / Себест.</th><th>Маржа</th><th>Продано (POS)</th><th></th></tr></thead><tbody>
+              ${filteredTtk.map(k => {
+                const marginPct = k.price ? Math.round(((k.price - k.cost) / k.price) * 100) : 0;
+                const marginRub = Math.round((k.price - k.cost) * 10) / 10;
+                const soldRows = fSales.filter(s => String(s.name || '').toLowerCase().includes(String(k.name || '').toLowerCase()));
+                const soldQty = soldRows.reduce((a, s) => a + (Number(s.qty) || 0), 0);
+                return `<tr>
+                  <td><b>${esc(k.name)}</b><div style="font-size:11.5px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(k.recipe || 'Рецептура ILLY')}</div></td>
+                  <td style="color:var(--muted)">${esc(k.vol)}</td>
+                  <td><b>${k.price} ₽</b> / <span style="color:var(--muted)">${k.cost} ₽</span></td>
+                  <td><span class="badge good">${marginPct}% (+${marginRub} ₽)</span></td>
+                  <td>${soldQty ? `<b>${soldQty} шт.</b>` : '<span style="color:var(--muted)">0</span>'}</td>
+                  <td><div style="display:flex;gap:4px;"><button class="chip-btn" data-vk="${esc(k.id)}" style="padding:4px 8px;" title="Карточка">👁</button><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;" title="Изменить">✏️</button></div></td>
+                </tr>`;
+              }).join('')}
+            </tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">База знаний: Стандарты и инструкции смены (${stdTasks.length})</h2><div class="card-sub">Все актуальные регламенты из Google Таблицы, синхронизированные с терминалом бариста</div></div></div>
+            <div class="stack" style="max-height:300px;overflow-y:auto;">
+              ${stdTasks.slice(0, 60).map(t => `<div class="card-soft" style="padding:8px 12px;"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${esc(t.title)}</b><span class="badge">${esc(t.block)}</span></div><div style="font-size:12px;color:var(--muted);margin-top:3px;">${esc(t.instruction || 'Выполнять по стандарту Coffee Illy.')}</div></div>`).join('')}
+            </div>
+          </div>`;
+        })()}`;
       document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
       root.querySelectorAll('[data-es]').forEach(b => b.onclick = () => guard('Изменить сотрудника', () => openStaffModal(b.dataset.es)));
       document.getElementById('k-add').onclick = () => guard('Новая ТТК', () => openTtkModal(null));
       root.querySelectorAll('[data-ek]').forEach(b => b.onclick = () => guard('Изменить ТТК', () => openTtkModal(b.dataset.ek)));
-      return;
-    }
-
-    if (tab === 'knowledge') {
-      const sheetUrl = state.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM/edit';
-      const stats = (Array.isArray(state.sheetStats) && state.sheetStats.length) ? state.sheetStats : [
-        { name: 'Касса', exists: true, rows: state.cash.length },
-        { name: 'Продажи', exists: true, rows: (state.salesLog || []).length },
-        { name: 'Транзакции', exists: true, rows: (state.transactionsLog || []).length },
-        { name: 'Чек-листы', exists: true, rows: state.checklists.length },
-        { name: 'Задачи', exists: true, rows: state.tasks.length },
-        { name: 'Поломки', exists: true, rows: state.incidents.length },
-        { name: 'Расходы', exists: true, rows: state.expenses.length },
-        { name: 'ТТК', exists: true, rows: state.ttk.length },
-        { name: 'Сотрудники', exists: true, rows: state.staff.length }
-      ];
-      const totalSheetRows = stats.reduce((a, s) => a + (Number(s.rows) || 0), 0);
-      const q = kbQuery.trim().toLowerCase();
-      const filteredTtk = state.ttk.filter(k => !q || String(k.name || '').toLowerCase().includes(q) || String(k.cat || '').toLowerCase().includes(q) || String(k.recipe || '').toLowerCase().includes(q));
-      const avgTtkMargin = state.ttk.length ? Math.round(state.ttk.reduce((a, k) => a + (k.price ? ((k.price - k.cost) / k.price) * 100 : 0), 0) / state.ttk.length) : 0;
-      const photoTasksCnt = state.tasks.filter(t => t.photo).length;
-      root.innerHTML = `
-        <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-lbl">Google Таблица</div><div class="kpi-val">${stats.filter(s=>s.exists).length} листов</div><div class="kpi-meta">Всего записей: <b>${totalSheetRows}</b></div></div>
-          <div class="kpi"><div class="kpi-lbl">Техкарты ILLY</div><div class="kpi-val">${state.ttk.length}</div><div class="kpi-meta">Средняя маржа: <b style="color:var(--good)">${avgTtkMargin}%</b></div></div>
-          <div class="kpi"><div class="kpi-lbl">Регламенты задач</div><div class="kpi-val">${state.tasks.length}</div><div class="kpi-meta">С фото/видео: <b>${photoTasksCnt}</b> · Блоков: ${state.blocks.filter(b=>!b.isCash).length}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Синхронизация</div><div class="kpi-val" style="color:var(--good)">${state.liveConnected ? 'Онлайн' : 'Кэш'}</div><div class="kpi-meta">rev #${state.cloudRev || state.rev} ${state.lastRttMs ? ('· ' + state.lastRttMs + ' мс') : ''}</div></div>
-        </div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-head">
-            <div><h2 class="card-title">Живая Google Таблица Coffee_illy</h2><div class="card-sub">Подробная статистика по каждому листу базы данных в реальном времени</div></div>
-            <a href="${esc(sheetUrl)}" target="_blank" rel="noopener" class="chip-btn accent" style="text-decoration:none;">↗ Открыть Google Таблицу</a>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">
-            ${stats.map(s => `<div class="card-soft">
-              <div style="display:flex;justify-content:space-between;align-items:center;"><b style="font-size:13.5px;">${esc(s.name)}</b><span class="badge ${s.exists && s.rows > 0 ? 'good' : ''}">${s.exists ? '✓' : '—'}</span></div>
-              <div style="font-size:20px;font-weight:800;margin-top:4px;">${s.rows}</div>
-              <div style="font-size:11.5px;color:var(--muted);">строк в листе</div>
-            </div>`).join('')}
-          </div>
-        </div>
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-head">
-            <div><h2 class="card-title">База знаний: Техкарты и маржинальность (${filteredTtk.length})</h2><div class="card-sub">Себестоимость, прибыль с порции и рецептура приготовления</div></div>
-            <input id="kb-q" value="${esc(kbQuery)}" placeholder="Поиск по ТТК или рецепту..." style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;min-width:210px;">
-          </div>
-          <div class="tbl-wrap"><table><thead><tr><th>Напиток</th><th>Категория</th><th>Цена</th><th>Себест.</th><th>Прибыль</th><th>Маржа</th><th>Рецепт / стандарт</th></tr></thead><tbody>
-            ${filteredTtk.length ? filteredTtk.map(k => {
-              const prof = Math.round(((Number(k.price) || 0) - (Number(k.cost) || 0)) * 10) / 10;
-              const mrg = k.price ? Math.round(((k.price - k.cost) / k.price) * 100) : 0;
-              return `<tr><td><b>${esc(k.name)}</b> <span style="color:var(--muted);font-size:11.5px;">${esc(k.vol)}</span></td><td><span class="badge">${esc(k.cat)}</span></td><td><b>${k.price} ₽</b></td><td>${k.cost} ₽</td><td style="color:var(--good);font-weight:700;">+${prof} ₽</td><td><span class="badge ${mrg>=60?'good':'warn'}">${mrg}%</span></td><td style="font-size:12px;color:var(--muted);max-width:280px;">${esc(k.recipe || 'По стандарту ILLY')}</td></tr>`;
-            }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:14px;">Ничего не найдено</td></tr>'}
-          </tbody></table></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Стандарты и регламенты смен (${state.blocks.filter(b=>!b.isCash).length} блоков)</h2><div class="card-sub">Нажмите «Задачи», чтобы отредактировать шаги или инструкции — изменения сразу уйдут бариста</div></div></div>
-          <div class="stack">
-            ${state.blocks.filter(b => !b.isCash).map(b => {
-              const list = blockTasks(b.name);
-              const ph = list.filter(t => t.photo).length;
-              return `<div class="row-item"><div class="row-main">
-                <div class="row-title">${esc(b.name)} <span class="badge">${list.length} шагов</span> <span class="badge accent">📷 ${ph} с фото</span></div>
-                <div class="row-sub">Окно: ${b.openTime}–${b.deadline} · ${list.slice(0, 3).map(t => esc(t.title)).join(' · ')}${list.length > 3 ? ' …' : ''}</div>
-              </div><button class="chip-btn" data-kb-blk="${esc(b.name)}">✏️ Задачи</button></div>`;
-            }).join('')}
-          </div>
-        </div>`;
+      root.querySelectorAll('[data-kc]').forEach(b => b.onclick = () => { ttkCatFilter = b.dataset.kc; render(); });
       const kbIn = document.getElementById('kb-q');
       if (kbIn) kbIn.oninput = (e) => { kbQuery = e.target.value; render(); };
-      root.querySelectorAll('[data-kb-blk]').forEach(b => b.onclick = () => openTasksModal(b.dataset.kbBlk));
+      root.querySelectorAll('[data-vk]').forEach(b => b.onclick = () => {
+        const k = state.ttk.find(x => String(x.id) === String(b.dataset.vk));
+        if (!k) return;
+        const mPct = k.price ? Math.round(((k.price - k.cost) / k.price) * 100) : 0;
+        openModal('ТТК: ' + k.name, `
+          <div class="grid-3" style="margin-bottom:10px;">
+            <div class="card-soft"><div style="font-size:11px;color:var(--muted);">Цена</div><b>${k.price} ₽</b></div>
+            <div class="card-soft"><div style="font-size:11px;color:var(--muted);">Себест.</div><b>${k.cost} ₽</b></div>
+            <div class="card-soft"><div style="font-size:11px;color:var(--muted);">Маржа</div><b style="color:var(--good)">${mPct}%</b></div>
+          </div>
+          <div class="card-soft" style="margin-bottom:8px;"><div style="font-size:11.5px;color:var(--muted);">Объём и категория</div><div><b>${esc(k.vol)}</b> · ${esc(k.cat || 'Классика')}</div></div>
+          <div class="card-soft"><div style="font-size:11.5px;color:var(--muted);">Рецептура и стандарт подачи</div><div style="margin-top:4px;white-space:pre-wrap;">${esc(k.recipe || 'По стандарту ILLY')}${k.serve ? '\n\nПодача: ' + esc(k.serve) : ''}</div></div>
+        `);
+      });
       return;
     }
 

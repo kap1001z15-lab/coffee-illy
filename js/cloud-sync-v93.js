@@ -395,22 +395,6 @@
       state.autopilotEnabled = !!data.autopilotEnabled;
       changed = true;
     }
-    if (Array.isArray(data.reconciliation)) {
-      state.reconciliation = data.reconciliation;
-      changed = true;
-    }
-    if (Array.isArray(data.transactionsLog)) {
-      state.transactionsLog = data.transactionsLog;
-      changed = true;
-    }
-    if (Array.isArray(data.sheetStats)) {
-      state.sheetStats = data.sheetStats;
-      changed = true;
-    }
-    if (data.spreadsheetUrl) {
-      state.spreadsheetUrl = String(data.spreadsheetUrl);
-      changed = true;
-    }
     if (Array.isArray(data.salesLog)) {
       state.salesLog = data.salesLog.map((x) => ({
         date: String(x.date || '').slice(0, 10),
@@ -477,6 +461,26 @@
       }));
       changed = true;
     }
+    if (Array.isArray(data.salesLog)) {
+      state.salesLog = data.salesLog;
+      changed = true;
+    }
+    if (Array.isArray(data.transactionsLog)) {
+      state.transactionsLog = data.transactionsLog;
+      changed = true;
+    }
+    if (data.productsByDate && typeof data.productsByDate === 'object') {
+      state.productsByDate = data.productsByDate;
+      changed = true;
+    }
+    if (data.sheetStats && typeof data.sheetStats === 'object') {
+      state.sheetStats = data.sheetStats;
+      changed = true;
+    }
+    if (data.spreadsheetUrl) {
+      state.spreadsheetUrl = String(data.spreadsheetUrl);
+      changed = true;
+    }
     if (data.serverTime) {
       state.serverTime = String(data.serverTime);
       changed = true;
@@ -503,7 +507,7 @@
     } else if (desc.indexOf('Закрыта касса') === 0 && st.cash && st.cash.length) {
       const last = st.cash[0];
       const rev = Number(last.revenue || last.total || ((Number(last.cash) || 0) + (Number(last.card) || 0)));
-      enqueueOp('submit_cash', { source: 'manual',
+      enqueueOp('submit_cash', {
         date: last.date || localISO(),
         who: last.barista || last.who || actor,
         userName: last.barista || last.who || actor,
@@ -894,6 +898,7 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
+  window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;

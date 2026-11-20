@@ -2710,6 +2710,38 @@ function getAdmin_(ss) {
     cash: cash.reverse(),
     productsByDate: productsByDate,
     salesLog: salesLog,
+    transactionsLog: (function() {
+      var shTx = ss.getSheetByName('Транзакции');
+      if (!shTx || shTx.getLastRow() <= 1) return [];
+      var txRows = shTx.getDataRange().getValues();
+      var outTx = [];
+      for (var ti = Math.max(1, txRows.length - 600); ti < txRows.length; ti++) {
+        var tr = txRows[ti];
+        if (!tr[0]) continue;
+        var dtStr = fmtIso_(tr[0]);
+        if (!dtStr) continue;
+        outTx.push({
+          date: dtStr,
+          time: fmtTime_(tr[1]),
+          checkNo: String(tr[2] || ''),
+          payType: String(tr[3] || 'Наличные'),
+          amount: parseRubNum_(tr[4]),
+          barista: String(tr[5] || ''),
+          shift: String(tr[6] || '')
+        });
+      }
+      return outTx;
+    })(),
+    sheetStats: (function() {
+      var names = ['Касса', 'Продажи', 'Транзакции', 'Расходы', 'Чек-листы', 'Поломки', 'Задачи', 'Сотрудники', 'ТТК', 'Посещаемость', 'Аудит'];
+      var st = {};
+      names.forEach(function(nm) {
+        var s = ss.getSheetByName(nm);
+        st[nm] = s ? Math.max(0, s.getLastRow() - 1) : 0;
+      });
+      return st;
+    })(),
+    spreadsheetUrl: (typeof ss.getUrl === 'function' ? ss.getUrl() : '') || 'https://docs.google.com/spreadsheets/d/1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM/edit',
     expenses: expenses.reverse(),
     incidents: incidents.reverse(),
     announcements: getAnnouncements_(ss),
@@ -2745,10 +2777,6 @@ function getAdmin_(ss) {
       return outA;
     })(),
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
-    reconciliation: buildReconciliationV95_(ss, cash, salesLog),
-    transactionsLog: getTransactionsLogV95_(ss),
-    sheetStats: getSheetStatsV95_(ss),
-    spreadsheetUrl: (ss && typeof ss.getUrl === 'function') ? ss.getUrl() : 'https://docs.google.com/spreadsheets/d/1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM/edit',
     staffPresence: getStaffPresenceToday_(ss),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
     webappUrl: map.WEBAPP_URL || '',
@@ -3590,9 +3618,6 @@ function submitCash_(ss, b) {
   var cEnd = (b.counterEnd != null && b.counterEnd !== '') ? Number(b.counterEnd) : ((b.endCounter != null && b.endCounter !== '') ? Number(b.endCounter) : null);
 
   var incomingHashes = Array.isArray(b.csvHashes) ? b.csvHashes.filter(Boolean) : (b.csvHash ? [String(b.csvHash)] : []);
-  try {
-    recordReconEntryV95_(dt, b, incomingHashes, baristaName);
-  } catch (_) {}
   var salesRows = shSales.getDataRange().getValues();
   if (mode === 'replace') {
     for (var sDel = salesRows.length - 1; sDel >= 1; sDel--) {
@@ -5072,198 +5097,4 @@ function dedupeTasksV94_(tasks) {
     }
   }
   return out;
-}
-
-
-/* =========================================================================
-   COFFEE ILLY v95.0 — СВЕРКА POS vs РУЧНОЙ ВВОД, ТРАНЗАКЦИИ И СТАТИСТИКА ЛИСТОВ
-   ========================================================================= */
-
-function recordReconEntryV95_(dt, b, incomingHashes, baristaName) {
-  if (!dt || !b) return;
-  var ledger = getJsonProp_('COFFEE_RECON_LEDGER_JSON', {});
-  var rec = ledger[dt] || { date: dt };
-  var cVal = Number(b.cash) || 0;
-  var cdVal = Number(b.card) || 0;
-  var revVal = Number(b.revenue || b.total || (cVal + cdVal)) || 0;
-  var chkVal = Number(b.checks) || 0;
-  var isPos = (b.source === 'pos') ||
-    (Array.isArray(incomingHashes) && incomingHashes.length > 0) ||
-    (Array.isArray(b.transactions) && b.transactions.length > 0) ||
-    (Array.isArray(b.products) && b.products.length > 0);
-  var snap = {
-    cash: cVal,
-    card: cdVal,
-    revenue: revVal,
-    checks: chkVal,
-    barista: String(baristaName || b.barista || 'Бариста'),
-    updatedAt: new Date().toISOString()
-  };
-  if (isPos) {
-    rec.pos = snap;
-  } else {
-    rec.manual = snap;
-  }
-  ledger[dt] = rec;
-  // Храним последние 120 дней в ScriptProperties
-  var keys = Object.keys(ledger).sort();
-  if (keys.length > 120) {
-    for (var i = 0; i < keys.length - 120; i++) delete ledger[keys[i]];
-  }
-  setJsonProp_('COFFEE_RECON_LEDGER_JSON', ledger);
-}
-
-function getTransactionsLogV95_(ss) {
-  var sh = ss ? ss.getSheetByName('Транзакции') : null;
-  if (!sh || sh.getLastRow() <= 1) return [];
-  var rows = sh.getDataRange().getValues();
-  var out = [];
-  var start = Math.max(1, rows.length - 600);
-  for (var i = start; i < rows.length; i++) {
-    var r = rows[i];
-    if (!r[0]) continue;
-    var amt = Number(r[4]) || 0;
-    if (amt <= 0) continue;
-    out.push({
-      date: fmtIso_(r[0]),
-      time: fmtTime_(r[1]),
-      receiptNo: String(r[2] || ''),
-      payType: String(r[3] || ''),
-      amount: amt,
-      posUser: String(r[5] || ''),
-      barista: String(r[6] || '')
-    });
-  }
-  return out;
-}
-
-function getSheetStatsV95_(ss) {
-  var names = ['Касса', 'Продажи', 'Транзакции', 'Чек-листы', 'Задачи', 'Поломки', 'Расходы', 'ТТК', 'Сотрудники', 'Посещаемость', 'Медиафайлы', 'Аудит'];
-  var out = [];
-  names.forEach(function(nm) {
-    var sh = ss ? ss.getSheetByName(nm) : null;
-    var rows = sh ? Math.max(0, sh.getLastRow() - 1) : 0;
-    out.push({ name: nm, exists: !!sh, rows: rows });
-  });
-  return out;
-}
-
-function buildReconciliationV95_(ss, cashList, salesLog) {
-  var ledger = getJsonProp_('COFFEE_RECON_LEDGER_JSON', {});
-  var byDate = {};
-
-  function ensureD(d) {
-    if (!byDate[d]) {
-      byDate[d] = {
-        date: d,
-        barista: '',
-        posRevenue: null, posCash: 0, posCard: 0, posChecks: 0,
-        manualRevenue: null, manualCash: 0, manualCard: 0, manualChecks: 0,
-        salesSum: 0, salesQty: 0,
-        txRevenue: 0, txCash: 0, txCard: 0, txChecks: 0
-      };
-    }
-    return byDate[d];
-  }
-
-  // 1. Агрегируем фактические POS-транзакции из листа «Транзакции»
-  var txList = getTransactionsLogV95_(ss);
-  txList.forEach(function(tx) {
-    if (!tx.date) return;
-    var d = ensureD(tx.date);
-    d.txRevenue += tx.amount;
-    d.txChecks += 1;
-    var pt = String(tx.payType || '').toLowerCase();
-    if (pt.indexOf('нал') >= 0 && pt.indexOf('без') === -1) d.txCash += tx.amount;
-    else d.txCard += tx.amount;
-    if (tx.barista && !d.barista) d.barista = tx.barista;
-  });
-
-  // 2. Агрегируем продажи по позициям из листа «Продажи»
-  (salesLog || []).forEach(function(s) {
-    if (!s || !s.date) return;
-    var d = ensureD(s.date);
-    d.salesSum += Number(s.sum) || 0;
-    d.salesQty += Number(s.qty) || 0;
-    if (s.barista && !d.barista) d.barista = s.barista;
-  });
-
-  // 3. Добавляем записи из журнала сверки (POS vs Ручной)
-  Object.keys(ledger || {}).forEach(function(dt) {
-    var rec = ledger[dt];
-    if (!rec) return;
-    var d = ensureD(dt);
-    if (rec.pos) {
-      d.posRevenue = Number(rec.pos.revenue) || 0;
-      d.posCash = Number(rec.pos.cash) || 0;
-      d.posCard = Number(rec.pos.card) || 0;
-      d.posChecks = Number(rec.pos.checks) || 0;
-      if (rec.pos.barista) d.barista = rec.pos.barista;
-    }
-    if (rec.manual) {
-      d.manualRevenue = Number(rec.manual.revenue) || 0;
-      d.manualCash = Number(rec.manual.cash) || 0;
-      d.manualCard = Number(rec.manual.card) || 0;
-      d.manualChecks = Number(rec.manual.checks) || 0;
-      if (rec.manual.barista && !d.barista) d.barista = rec.manual.barista;
-    }
-  });
-
-  // 4. Сопоставляем с листом «Касса» для исторических дат
-  (cashList || []).forEach(function(c) {
-    if (!c || !c.date) return;
-    var d = ensureD(c.date);
-    if (c.barista && !d.barista) d.barista = c.barista;
-    var rev = (Number(c.cash) || 0) + (Number(c.card) || 0);
-    var hasHashes = Array.isArray(c.csvHashes) && c.csvHashes.length > 0;
-    if (hasHashes && d.posRevenue === null) {
-      d.posRevenue = rev;
-      d.posCash = Number(c.cash) || 0;
-      d.posCard = Number(c.card) || 0;
-      d.posChecks = Number(c.checks) || 0;
-    } else if (!hasHashes && d.manualRevenue === null) {
-      d.manualRevenue = rev;
-      d.manualCash = Number(c.cash) || 0;
-      d.manualCard = Number(c.card) || 0;
-      d.manualChecks = Number(c.checks) || 0;
-    }
-  });
-
-  // Финализируем расхождения и статусы
-  return Object.keys(byDate).sort().reverse().map(function(dt) {
-    var d = byDate[dt];
-    if (d.posRevenue === null && d.txRevenue > 0) {
-      d.posRevenue = Math.round(d.txRevenue);
-      d.posCash = Math.round(d.txCash);
-      d.posCard = Math.round(d.txCard);
-      d.posChecks = d.txChecks;
-    } else if (d.posRevenue === null && d.salesSum > 0) {
-      d.posRevenue = Math.round(d.salesSum);
-    }
-    var hasPos = d.posRevenue !== null;
-    var hasMan = d.manualRevenue !== null;
-    var diffRub = (hasPos && hasMan) ? Math.round(d.posRevenue - d.manualRevenue) : null;
-    var posVsSalesDiff = (hasPos && d.salesSum > 0) ? Math.round(d.posRevenue - d.salesSum) : null;
-    var status = 'manual_only';
-    if (hasPos && hasMan) status = (Math.abs(diffRub) <= 5) ? 'match' : 'mismatch';
-    else if (hasPos) status = 'pos_only';
-    return {
-      date: dt,
-      barista: d.barista || 'Бариста',
-      source: (hasPos && hasMan) ? 'both' : (hasPos ? 'pos' : 'manual'),
-      status: status,
-      posRevenue: hasPos ? Math.round(d.posRevenue) : null,
-      posCash: Math.round(d.posCash),
-      posCard: Math.round(d.posCard),
-      posChecks: d.posChecks,
-      manualRevenue: hasMan ? Math.round(d.manualRevenue) : null,
-      manualCash: Math.round(d.manualCash),
-      manualCard: Math.round(d.manualCard),
-      manualChecks: d.manualChecks,
-      salesSum: Math.round(d.salesSum),
-      salesQty: d.salesQty,
-      diffRub: diffRub,
-      posVsSalesDiff: posVsSalesDiff
-    };
-  });
 }
