@@ -21,7 +21,7 @@ for (const rel of jsFiles) {
   console.log('✓ JS syntax OK:', rel);
 }
 
-for (const htmlRel of ['index.html', 'owner.html']) {
+for (const htmlRel of ['index.html', 'dashboard.html', 'owner.html']) {
   const html = fs.readFileSync(path.join(root, htmlRel), 'utf8');
   const blocks = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
   if (!blocks.length) {

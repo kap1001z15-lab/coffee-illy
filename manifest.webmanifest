@@ -40,7 +40,7 @@
     {
       "name": "Дашборд владельца",
       "short_name": "Владелец",
-      "url": "./owner.html",
+      "url": "./dashboard.html",
       "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
