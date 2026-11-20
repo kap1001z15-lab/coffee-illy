@@ -220,10 +220,10 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.6.0"></script>
-  <script src="js/cloud-sync.js?v=97.6.0"></script>
-  <script src="js/pos-csv-parser.js?v=97.6.0"></script>
-<script src="js/camera.js?v=97.6.0"></script>
+  <script src="config.js?v=97.7.0"></script>
+  <script src="js/cloud-sync.js?v=97.7.0"></script>
+  <script src="js/pos-csv-parser.js?v=97.7.0"></script>
+<script src="js/camera.js?v=97.7.0"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -738,25 +738,87 @@ function initTheme(btnId) {
           }
           window.CoffeeCameraV94.open({
             title: 'Фото проблемы: ' + t.title,
-            onCaptured: async (dataUri, meta) => {
+            multi: false,
+            onCaptured: (dataUri, meta) => {
               const mType = (meta && meta.mediaType) || 'image';
-              const stEl = document.getElementById('prob-ph-status');
-              if (stEl) { stEl.style.color = 'var(--accent)'; stEl.textContent = '☁ Загружаем фото и переходим дальше...'; }
-              camBtn.disabled = true;
-              let uploadedUrl = '';
-              try {
-                if (window.CoffeeCloudV94 && window.CoffeeCloudV94.uploadMediaToDrive) {
-                  const up = await window.CoffeeCloudV94.uploadMediaToDrive({
-                    dataUri,
-                    userName: authed || 'Бариста',
-                    block: curBlk.name,
-                    taskId: t.id,
-                    kind: mType === 'video' ? 'incident_video' : 'incident'
-                  });
-                  uploadedUrl = (up && up.url) || '';
+              const incId = 'INC-' + Math.floor(100 + Math.random() * 899);
+              const priorityVal = (document.getElementById('ip') && document.getElementById('ip').value) || 'Критично';
+              const textVal = (document.getElementById('it') && document.getElementById('it').value.trim()) || 'Проблема по чек-листу';
+              const blkName = curBlk.name;
+              const taskTitle = t.title;
+              const taskId = t.id;
+              const actorName = authed || 'Бариста';
+
+              stepPhotos[stepKey] = Object.assign({}, stepPhotos[stepKey] || {}, {
+                url: '',
+                preview: dataUri,
+                dataUri: dataUri,
+                isIncident: true
+              });
+              state.incidents.unshift({
+                id: incId,
+                date: TODAY,
+                time: (window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : '13:25'),
+                block: blkName,
+                step: taskTitle,
+                text: textVal,
+                priority: priorityVal,
+                status: 'Новая проблема',
+                who: actorName,
+                owner: 'Администратор',
+                photoUrl: ''
+              });
+              if (stepIdx < tasks.length - 1) {
+                stepIdx++;
+                instOpen = true;
+                state.liveProgress[authed] = { block: blkName, done: stepIdx, total: tasks.length };
+                if (window.CoffeeCloudV94 && window.CoffeeCloudV94.sendStepProgress) window.CoffeeCloudV94.sendStepProgress(authed, blkName, stepIdx, tasks.length);
+              } else {
+                confirmFinish = true;
+              }
+              saveSharedState(state, authed, '');
+              closeModal();
+              showToast('✓ Проблема зафиксирована — следующая задача');
+              render();
+
+              (async () => {
+                let uploadedUrl = '';
+                try {
+                  if (window.CoffeeCloudV94 && window.CoffeeCloudV94.uploadMediaToDrive) {
+                    const up = await window.CoffeeCloudV94.uploadMediaToDrive({
+                      dataUri,
+                      userName: actorName,
+                      block: blkName,
+                      taskId: taskId,
+                      kind: mType === 'video' ? 'incident_video' : 'incident'
+                    });
+                    uploadedUrl = (up && up.url) || '';
+                  }
+                } catch (_) {}
+                if (uploadedUrl) {
+                  if (stepPhotos[stepKey]) stepPhotos[stepKey].url = uploadedUrl;
+                  const incObj = (state.incidents || []).find(x => x.id === incId);
+                  if (incObj) incObj.photoUrl = uploadedUrl;
                 }
-              } catch (_) {}
-              finalizeProblemAndAdvance(uploadedUrl, dataUri);
+                if (window.CoffeeCloudV94 && window.CoffeeCloudV94.enqueueOp) {
+                  window.CoffeeCloudV94.enqueueOp('report_standalone_incident', {
+                    id: incId,
+                    block: blkName,
+                    step: taskTitle,
+                    zone: taskTitle,
+                    comment: textVal,
+                    text: textVal,
+                    priority: priorityVal,
+                    who: actorName,
+                    userName: actorName,
+                    date: TODAY,
+                    photoUrl: uploadedUrl,
+                    photo_url: uploadedUrl,
+                    photo: uploadedUrl
+                  });
+                }
+                saveSharedState(state, actorName, '');
+              })();
             }
           });
         };
@@ -1050,7 +1112,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.6.0"></script>
+  <script src="./js/time-picker.js?v=97.7.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1058,7 +1120,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.6.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.7.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

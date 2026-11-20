@@ -168,6 +168,7 @@
     state.allowVideo = opts.allowVideo !== false;
     state.capturedItems = [];
     state.onDone = typeof opts.onCapture === 'function' ? opts.onCapture : null;
+    var onCapturedCb = typeof opts.onCaptured === 'function' ? opts.onCaptured : null;
 
     return new Promise(function (resolve, reject) {
       var resolved = false;
@@ -180,6 +181,16 @@
           return;
         }
         var out = state.multiMode ? items : (items[0] || null);
+        var first = Array.isArray(out) ? out[0] : out;
+        if (onCapturedCb && first && first.dataUrl) {
+          try {
+            onCapturedCb(first.dataUrl, {
+              mediaType: first.kind === 'video' ? 'video' : 'image',
+              mimeType: first.mimeType || 'image/jpeg',
+              items: Array.isArray(out) ? out : [first]
+            });
+          } catch (_) {}
+        }
         if (state.onDone && out) {
           try { state.onDone(out); } catch (_) {}
         }

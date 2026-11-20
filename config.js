@@ -1,5 +1,5 @@
 /**
- * Coffee Illy ERP & Checklist — Runtime Configuration (v97.6.0)
+ * Coffee Illy ERP & Checklist — Runtime Configuration (v97.7.0)
  * Приоритет определения API_URL:
  * 1. window.__COFFEE_ENV__.API_URL (подставляется CI/CD из GitHub Secrets при сборке)
  * 2. localStorage.getItem('coffee_illy_api_url_override') (ручная настройка на устройстве)
@@ -17,9 +17,12 @@
 
   window.COFFEE_CONFIG = {
     API_URL: resolvedUrl,
-    APP_VERSION: 'v97.6.0',
+    APP_VERSION: 'v97.7.0',
     APP_NAME: 'Coffee Illy ERP',
-    SYNC_INTERVAL_MS: Number(env.SYNC_INTERVAL_MS) || 3000,
+    SYNC_INTERVAL_MS: Number(env.SYNC_INTERVAL_MS) || 1200,
+    SYNC_ACTIVE_MS: Number(env.SYNC_ACTIVE_MS) || 900,
+    SYNC_WARM_MS: Number(env.SYNC_WARM_MS) || 2500,
+    SYNC_IDLE_MS: Number(env.SYNC_IDLE_MS) || 8000,
     SYNC_IDLE_INTERVAL_MS: Number(env.SYNC_IDLE_INTERVAL_MS) || 12000,
     OFFLINE_MAX_RETRIES: Number(env.OFFLINE_MAX_RETRIES) || 8,
     OFFLINE_BASE_DELAY_MS: Number(env.OFFLINE_BASE_DELAY_MS) || 1500

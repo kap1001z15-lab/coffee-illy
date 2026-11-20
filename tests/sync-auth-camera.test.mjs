@@ -212,3 +212,94 @@ test('CloudSync pullNow skips overwriting state when a local mutation happens mi
   await new Promise((r) => setTimeout(r, 15));
   assert.equal(state.location, 'Fresh Local Edit', 'Stale in-flight server response must NOT overwrite fresh local mutation');
 });
+
+test('CoffeeCameraV94.open invokes onCaptured(dataUri, meta) when shutter fires in single-photo mode', async () => {
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/camera.js', import.meta.url), 'utf8');
+  const listeners = new Map();
+  function makeEl(tag) {
+    const el = {
+      tagName: tag.toUpperCase(),
+      style: { cssText: '' },
+      children: [],
+      dataset: {},
+      disabled: false,
+      value: '',
+      innerHTML: '',
+      textContent: '',
+      className: '',
+      videoWidth: 640,
+      videoHeight: 480,
+      width: 640,
+      height: 480,
+      srcObject: null,
+      play: async () => {},
+      appendChild: (c) => { el.children.push(c); return c; },
+      removeChild: (c) => { el.children = el.children.filter((x) => x !== c); },
+      getContext: () => ({ drawImage: () => {} }),
+      toDataURL: () => 'data:image/jpeg;base64,TEST_PHOTO_DATA',
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      querySelector: (sel) => {
+        if (sel === 'video') return makeEl('video');
+        if (sel === '[data-cam="shot"]') return el._shotBtn || (el._shotBtn = makeEl('button'));
+        if (sel === '[data-cam="done"]') return el._doneBtn || (el._doneBtn = makeEl('button'));
+        if (sel === '[data-cam="close"]') return el._closeBtn || (el._closeBtn = makeEl('button'));
+        if (sel === '[data-cam="flip"]') return el._flipBtn || (el._flipBtn = makeEl('button'));
+        if (sel === '[data-cam="rec"]') return el._recBtn || (el._recBtn = makeEl('button'));
+        if (sel === '[data-cam="err"]') return el._errEl || (el._errEl = makeEl('div'));
+        if (sel === '[data-cam="devices"]') return el._devSel || (el._devSel = makeEl('select'));
+        if (sel === '[data-cam="devwrap"]') return el._devWrap || (el._devWrap = makeEl('div'));
+        if (sel === '[data-cam="strip"]') return el._strip || (el._strip = makeEl('div'));
+        if (sel === '[data-cam="count"]') return el._cnt || (el._cnt = makeEl('div'));
+        if (sel === '[data-cam="recbadge"]') return el._recBadge || (el._recBadge = makeEl('div'));
+        return null;
+      }
+    };
+    return el;
+  }
+  const fakeDoc = {
+    body: makeEl('body'),
+    hidden: false,
+    createElement: (tag) => makeEl(tag),
+    addEventListener: (ev, fn) => listeners.set(ev, fn),
+    removeEventListener: (ev) => listeners.delete(ev)
+  };
+  const ctx = {
+    window: {},
+    document: fakeDoc,
+    navigator: {
+      mediaDevices: {
+        getUserMedia: async () => ({ getTracks: () => [{ stop: () => {} }] }),
+        enumerateDevices: async () => [{ kind: 'videoinput', deviceId: 'cam1', label: 'Back Camera' }]
+      }
+    },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const camApi = ctx.window.CoffeeCameraV94;
+
+  let capturedUri = '';
+  let capturedMeta = null;
+  const p = camApi.open({
+    title: 'Test',
+    multi: false,
+    onCaptured: (uri, meta) => {
+      capturedUri = uri;
+      capturedMeta = meta;
+    }
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  const overlay = fakeDoc.body.children[0];
+  assert.ok(overlay, 'Camera overlay should mount');
+  const shotBtn = overlay.querySelector('[data-cam="shot"]');
+  assert.equal(typeof shotBtn.onclick, 'function');
+  shotBtn.onclick();
+  const out = await p;
+  assert.equal(capturedUri, 'data:image/jpeg;base64,TEST_PHOTO_DATA');
+  assert.equal(capturedMeta.mediaType, 'image');
+  assert.ok(out && out.dataUrl === 'data:image/jpeg;base64,TEST_PHOTO_DATA');
+});
