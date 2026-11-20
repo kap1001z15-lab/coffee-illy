@@ -69,3 +69,146 @@ test('Pixel M3 TimePicker parses and clamps HH:MM cleanly', () => {
   assert.deepEqual(timePicker.parseHHMM('bad'), { h: 8, m: 30 });
   assert.equal(timePicker.pad2(7), '07');
 });
+
+test('CloudSync flushOutbox retains retryable LOCK_TIMEOUT ops with exponential backoff and succeeds on retry', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); }
+  };
+  globalThis.window = {
+    COFFEE_CONFIG: { API_URL: 'https://script.google.com/macros/s/test/exec', OFFLINE_BASE_DELAY_MS: 1000 }
+  };
+  let callNum = 0;
+  globalThis.fetch = async () => {
+    callNum++;
+    if (callNum === 1) {
+      return { ok: true, json: async () => ({ ok: false, error: 'LOCK_TIMEOUT: busy' }) };
+    }
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+
+  // Load fresh instance of cloud-sync.js
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8');
+  const ctx = {
+    window: globalThis.window,
+    localStorage: globalThis.localStorage,
+    fetch: globalThis.fetch,
+    navigator: { onLine: true },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Set, Map, Promise, setTimeout, clearTimeout, encodeURIComponent,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const cloud = ctx.window.CoffeeCloudV94;
+
+  // Seed one outbox item directly
+  store.set('coffee_illy_v93_outbox', JSON.stringify([{
+    action: 'add_expense',
+    payload: { operationId: 'op_retry_1', amount: 150, category: 'Молоко' },
+    ts: Date.now(),
+    attempts: 0,
+    nextRetryAt: 0
+  }]));
+
+  // First flush hits LOCK_TIMEOUT -> item must NOT be dropped and nextRetryAt must be in the future
+  const r1 = await cloud.flushOutbox(true);
+  assert.equal(r1.flushed, 0);
+  assert.equal(r1.pending, 1);
+  const afterFail = JSON.parse(store.get('coffee_illy_v93_outbox'));
+  assert.equal(afterFail.length, 1);
+  assert.equal(afterFail[0].attempts, 1);
+  assert.ok(afterFail[0].nextRetryAt > Date.now());
+
+  // Force retry -> succeeds and clears outbox
+  const r2 = await cloud.flushOutbox(true);
+  assert.equal(r2.flushed, 1);
+  assert.equal(r2.pending, 0);
+});
+
+test('CloudSync mergeServerIntoState preserves revenue, avgPrice, serve, and Russian salesLog kinds', async () => {
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8');
+  const ctx = {
+    window: { COFFEE_CONFIG: {} },
+    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    navigator: { onLine: true },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Set, Map, Promise, setTimeout, clearTimeout, encodeURIComponent,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const cloud = ctx.window.CoffeeCloudV94;
+  const st = {};
+  const changed = cloud.mergeServerIntoState(st, {
+    cash: [{ date: '2026-11-20', cash: 1000, card: 1450, checks: 70, barista: 'Соня', csvHashes: ['h1'] }],
+    ttk: [{ id: 't1', name: '☕ Капучино', volume: '250 мл', category: 'Классика', price: 19, avgPrice: 18.5, cost: 0, serving: 'Стакан 250' }],
+    salesLog: [{ date: '2026-11-20', barista: 'Соня', name: 'Капучино', kind: 'coffee', price: 19, qty: 4, sum: 76 }]
+  });
+  assert.equal(changed, true);
+  assert.equal(st.cash[0].revenue, 2450);
+  assert.deepEqual(st.cash[0].csvHashes, ['h1']);
+  assert.equal(st.ttk[0].avgPrice, 18.5);
+  assert.equal(st.ttk[0].serve, 'Стакан 250');
+  assert.equal(st.salesLog[0].kind, 'Кофе');
+});
+
+test('CloudSync pullNow skips overwriting state when a local mutation happens mid-request (anti-race)', async () => {
+  const store = new Map();
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const src = fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8');
+  let resolveFetch = null;
+  let cloudRef = null;
+  const ctx = {
+    window: {
+      COFFEE_CONFIG: { API_URL: 'https://script.google.com/macros/s/test/exec' },
+      addEventListener: () => {}
+    },
+    document: { hidden: false, visibilityState: 'visible', addEventListener: () => {} },
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => { store.set(k, String(v)); },
+      removeItem: (k) => { store.delete(k); }
+    },
+    fetch: (url) => {
+      if (String(url).includes('action=get_rev')) {
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true, rev: '500' }) });
+      }
+      return new Promise((resolve) => {
+        resolveFetch = () => resolve({
+          ok: true,
+          json: async () => ({ ok: true, location: 'Stale Server Location' })
+        });
+      });
+    },
+    navigator: { onLine: true },
+    Date, Math, JSON, Object, Array, String, Number, Boolean, RegExp, Error, Set, Map, Promise,
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    encodeURIComponent,
+    module: { exports: {} }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  cloudRef = ctx.window.CoffeeCloudV94;
+
+  const state = { location: 'Fresh Local Edit' };
+  const loop = cloudRef.startCloudLoop({
+    mode: 'terminal',
+    getState: () => state,
+    onSynced: () => {}
+  });
+  // Wait for get_rev to finish and fetch(get_checklists) to be in-flight
+  await new Promise((r) => setTimeout(r, 15));
+  assert.ok(typeof resolveFetch === 'function', 'pullNow should be waiting on server payload');
+  // Simulate user editing locally while pullNow is in-flight
+  cloudRef.markLocalMutation();
+  resolveFetch();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(state.location, 'Fresh Local Edit', 'Stale in-flight server response must NOT overwrite fresh local mutation');
+});

@@ -42,6 +42,9 @@ function createMockGasSandbox() {
             }
           }
         },
+        setFontWeight: function () { return this; },
+        setBackground: function () { return this; },
+        setFontColor: function () { return this; },
         getValues: () => {
           const out = [];
           for (let i = 0; i < nr; i++) {
@@ -51,12 +54,15 @@ function createMockGasSandbox() {
           return out;
         }
       }),
+      setFrozenRows: () => {},
       _rows: data
     };
   }
 
   const mockSs = {
+    getSheets: () => Array.from(sheets.values()),
     getSheetByName: (n) => sheets.get(n) || null,
+    toast: () => {},
     insertSheet: (n) => {
       const s = makeSheet(n, []);
       sheets.set(n, s);
@@ -146,6 +152,10 @@ function createMockGasSandbox() {
         return dt.toISOString();
       }
     },
+    ScriptApp: {
+      getProjectTriggers: () => [],
+      newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }), atHour: () => ({ everyDays: () => ({ create: () => {} }) }) }) })
+    },
     UrlFetchApp: {
       fetch: () => ({ getResponseCode: () => 200, getContentText: () => '{"ok":true}' })
     }
@@ -157,21 +167,21 @@ function createMockGasSandbox() {
   return { sandbox, mockSs, sheets, propsStore };
 }
 
-test('GAS doGet(get_rev) returns ok:true and v97.3.0 without ReferenceError', { skip: !hasGas }, () => {
+test('GAS doGet(get_rev) returns ok:true and v97.4.0 without ReferenceError', { skip: !hasGas }, () => {
   const { sandbox } = createMockGasSandbox();
   const out = sandbox.doGet({ parameter: { action: 'get_rev' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true, 'doGet(get_rev) must succeed');
-  assert.equal(json.serverVersion, 'v97.3.0');
+  assert.equal(json.serverVersion, 'v97.4.0');
   assert.equal(json.api, 2);
 });
 
-test('GAS doGet(version) returns v97.3.0 and specVersion 5.0', { skip: !hasGas }, () => {
+test('GAS doGet(version) returns v97.4.0 and specVersion 5.0', { skip: !hasGas }, () => {
   const { sandbox } = createMockGasSandbox();
   const out = sandbox.doGet({ parameter: { action: 'version' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true);
-  assert.equal(json.serverVersion, 'v97.3.0');
+  assert.equal(json.serverVersion, 'v97.4.0');
   assert.equal(json.specVersion, '5.0');
 });
 
@@ -232,4 +242,63 @@ test('GAS saveTtk_ stores sale price, avgPrice, and zero cost', { skip: !hasGas 
   assert.equal(rows[1][4], 19);
   assert.equal(rows[1][5], 0);
   assert.equal(rows[1][11], 19);
+});
+
+test('GAS УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ binds spreadsheet and enables 1234 login', { skip: !hasGas }, () => {
+  const { sandbox } = createMockGasSandbox();
+  const res = sandbox.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ();
+  assert.equal(res.ok, true);
+  const okLogin = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '1234' }) } }).getContent());
+  assert.equal(okLogin.ok, true);
+  assert.ok(okLogin.sessionToken && okLogin.sessionToken.length > 10);
+  const badLogin = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '9999' }) } }).getContent());
+  assert.equal(badLogin.ok, false);
+});
+
+test('GAS saveTtk_ accepts frontend field aliases (vol, cat, serve, avgPrice)', { skip: !hasGas }, () => {
+  const { sandbox, mockSs, sheets } = createMockGasSandbox();
+  const res = sandbox.saveTtk_(mockSs, {
+    id: 'ttk_alias',
+    name: '☕ Латте ILLY',
+    vol: '350 мл (L)',
+    cat: 'Классика',
+    price: 29,
+    avgPrice: 28.5,
+    costBeans: 0,
+    costMilk: 0,
+    costSyrup: 0,
+    costCup: 0,
+    recipe: 'Эспрессо 36 г + молоко 270 мл',
+    serve: 'Стакан 350 мл с крышкой'
+  });
+  assert.equal(res.ok, true);
+  const row = sheets.get('Техкарты')._rows.find((r) => r[0] === 'ttk_alias');
+  assert.ok(row);
+  assert.equal(row[2], '350 мл (L)');
+  assert.equal(row[3], 'Классика');
+  assert.equal(row[10], 'Стакан 350 мл с крышкой');
+  assert.equal(row[11], 28.5);
+});
+
+test('GAS getAdmin_ computes cash.revenue, normalizes sales kinds, and merges legacy Coffee_illy_Cash products', { skip: !hasGas }, () => {
+  const { sandbox, mockSs, sheets } = createMockGasSandbox();
+  sandbox.ensureSheets_(mockSs);
+  sheets.get('Касса').appendRow(['2026-11-18', 1200, 1300, 70, 0, 'Капучино', 'Соня']);
+  sheets.get('Продажи').appendRow(['2026-11-18', 'Смена', 'Соня', 'Капучино', 'coffee', 19, 10, 190, 'hash1']);
+  sheets.get('Продажи').appendRow(['2026-11-18', 'Смена', 'Соня', 'Чизкейк', 'non_coffee', 25, 2, 50, 'hash1']);
+  const leg = mockSs.insertSheet('Coffee_illy_Cash');
+  leg.appendRow(['Дата', 'Смена', 'Бариста', 'Нал', 'Безнал', 'Выручка', 'Чеки', 'СрЧек', 'Списание', 'Топ', 'Товары JSON']);
+  leg.appendRow(['2026-10-30', '1', 'Алина', 500, 700, 1200, 30, 40, 0, '', JSON.stringify([{ name: 'Американо', qty: 5, sum: 95 }])]);
+
+  const adm = sandbox.getAdmin_(mockSs);
+  const c18 = adm.cash.find((c) => c.date === '2026-11-18');
+  assert.ok(c18);
+  assert.equal(c18.revenue, 2500);
+  assert.equal(c18.total, 2500);
+  const coffeeSale = adm.salesLog.find((s) => s.date === '2026-11-18' && s.name === 'Капучино');
+  const nonCoffeeSale = adm.salesLog.find((s) => s.date === '2026-11-18' && s.name === 'Чизкейк');
+  const legacySale = adm.salesLog.find((s) => s.date === '2026-10-30' && s.name === 'Американо');
+  assert.equal(coffeeSale.kind, 'Кофе');
+  assert.equal(nonCoffeeSale.kind, 'Не-кофе');
+  assert.ok(legacySale && legacySale.qty === 5 && legacySale.kind === 'Кофе');
 });

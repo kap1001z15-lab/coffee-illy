@@ -79,41 +79,67 @@
   let _lastRttMs = 0;
   let _lastServerRev = '';
   let _syncCallbacks = null;
+  let _pullPendingForce = false;
 
-  async function flushOutbox() {
+  function isRetryableServerError(errStr) {
+    return /LOCK|BUSY|RATE_LIMIT|TIMEOUT|TEMPORARY|UNAVAILABLE|PIN_REQUIRED|STAFF_AUTH_REQUIRED|SESSION/i.test(String(errStr || ''));
+  }
+
+  async function flushOutbox(forceRetry) {
     if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { flushed: 0, pending: readOutbox().length };
     if (_flushPromise) return _flushPromise;
     if (!readOutbox().length) return { flushed: 0, pending: 0 };
     const run = (async () => {
       let flushed = 0;
-      while (true) {
-        const q = readOutbox();
-        if (!q.length) break;
-        const batch = q.slice();
-        const doneIds = new Set();
-        let anyRetryableFailure = false;
-        for (let i = 0; i < batch.length; i++) {
-          const item = batch[i];
-          const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
-          try {
-            const t0 = Date.now();
-            const res = await gasPost(item.action, item.payload);
-            _lastRttMs = Math.max(1, Date.now() - t0);
+      const now = Date.now();
+      const q = readOutbox();
+      if (!q.length) return { flushed: 0, pending: 0 };
+      const doneIds = new Set();
+      const retryPatches = new Map();
+      for (let i = 0; i < q.length; i++) {
+        const item = q[i];
+        const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
+        if (!forceRetry && item.nextRetryAt && Number(item.nextRetryAt) > now) continue;
+        try {
+          const t0 = Date.now();
+          const res = await gasPost(item.action, item.payload);
+          _lastRttMs = Math.max(1, Date.now() - t0);
+          if (res && res.ok === false) {
+            const errMsg = String(res.error || 'SERVER_ERROR');
+            const attempts = (Number(item.attempts) || 0) + 1;
+            if (isRetryableServerError(errMsg) && attempts < 12) {
+              retryPatches.set(opId, { attempts: attempts, nextRetryAt: Date.now() + computeBackoffMs(attempts), lastError: errMsg });
+              continue;
+            }
+            // Permanent non-retryable validation error or max attempts exceeded
             doneIds.add(opId);
-            if (!res || res.ok !== false) flushed++;
-          } catch (_) {
-            anyRetryableFailure = true;
+            continue;
+          }
+          doneIds.add(opId);
+          flushed++;
+        } catch (err) {
+          const attempts = (Number(item.attempts) || 0) + 1;
+          if (attempts < 12) {
+            retryPatches.set(opId, { attempts: attempts, nextRetryAt: Date.now() + computeBackoffMs(attempts), lastError: String((err && err.message) || err) });
+          } else {
+            doneIds.add(opId);
           }
         }
-        const latest = readOutbox();
-        const remaining = latest.filter((item, idx) => {
-          const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + idx);
-          return !doneIds.has(opId);
-        });
-        writeOutbox(remaining);
-        if (!remaining.length || anyRetryableFailure) break;
       }
-      return { flushed: flushed, pending: readOutbox().length };
+      const latest = readOutbox();
+      const remaining = [];
+      for (let i = 0; i < latest.length; i++) {
+        const item = latest[i];
+        const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
+        if (doneIds.has(opId)) continue;
+        if (retryPatches.has(opId)) {
+          remaining.push(Object.assign({}, item, retryPatches.get(opId)));
+        } else {
+          remaining.push(item);
+        }
+      }
+      writeOutbox(remaining);
+      return { flushed: flushed, pending: remaining.length };
     })();
     const p = run.finally(() => { if (_flushPromise === p) _flushPromise = null; });
     _flushPromise = p;
@@ -125,10 +151,11 @@
     if (!action) return;
     const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const q = readOutbox();
-    q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now() });
+    q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now(), attempts: 0, nextRetryAt: 0 });
     writeOutbox(q);
-    flushOutbox().then(() => {
-      if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(false);
+    flushOutbox(true).then((res) => {
+      if (res && res.flushed > 0) _lastServerRev = '';
+      if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(!!(res && res.flushed > 0));
     }).catch(() => {});
   }
 
@@ -591,7 +618,12 @@
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
       const nm = desc.replace('Обновлена ТТК ', '').trim();
       const k = (st.ttk || []).find((x) => x.name === nm);
-      if (k) enqueueOp('save_ttk', k);
+      if (k) enqueueOp('save_ttk', Object.assign({}, k, {
+        volume: k.vol || k.volume || '250 мл (M)',
+        category: k.cat || k.category || 'Классика',
+        serving: k.serve || k.serving || '',
+        avgPrice: k.avgPrice != null ? Number(k.avgPrice) : Number(k.price || 0)
+      }));
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
@@ -634,16 +666,43 @@
     } catch (_) {}
 
     async function pullNow(forceFull) {
-      if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
+      if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        if (getState) {
+          const stOff = getState();
+          stOff.liveConnected = false;
+          stOff.pendingSyncCount = readOutbox().length;
+        }
+        return null;
+      }
+      if (_pullInFlight) {
+        if (forceFull) _pullPendingForce = true;
+        return { skipped: true, inFlight: true };
+      }
+      _pullInFlight = true;
       try {
-        const fl = await flushOutbox();
-        if (fl && fl.pending > 0 && !forceFull) return { changed: false, pending: fl.pending };
+        const fl = await flushOutbox(!!forceFull);
+        if (fl && fl.flushed > 0) _lastServerRev = '';
+        if (fl && fl.pending > 0 && !forceFull) {
+          if (getState) {
+            const stP = getState();
+            stP.pendingSyncCount = fl.pending;
+          }
+          return { changed: false, pending: fl.pending };
+        }
+        const seqBefore = _localMutationSeq;
         const t0 = Date.now();
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
         _lastRttMs = Math.max(1, Date.now() - t0);
         const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
-        if (!forceFull && srvRev && srvRev === _lastServerRev) return { changed: false, rev: srvRev };
-        if (srvRev) _lastServerRev = srvRev;
+        if (!forceFull && srvRev && srvRev === _lastServerRev) {
+          if (getState) {
+            const stOk = getState();
+            stOk.liveConnected = true;
+            stOk.syncError = '';
+            stOk.pendingSyncCount = readOutbox().length;
+          }
+          return { changed: false, rev: srvRev };
+        }
 
         let data = null;
         const sess = getSession();
@@ -662,6 +721,12 @@
         } else {
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
+        // Anti-race guard: if user mutated local state while pull was in flight, do NOT clobber local edit
+        if (_localMutationSeq !== seqBefore) {
+          _pullPendingForce = true;
+          return { skipped: true, reason: 'local_mutation_race' };
+        }
+        if (srvRev) _lastServerRev = srvRev;
         if (data && getState) {
           const st = getState();
           const changed = mergeServerIntoState(st, data);
@@ -669,10 +734,26 @@
           st.lastSyncAt = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           st.lastRttMs = _lastRttMs;
           st.liveConnected = true;
+          st.syncError = '';
+          st.pendingSyncCount = readOutbox().length;
           if ((changed || forceFull) && onSynced) onSynced(st, srvRev, _lastRttMs);
           return { changed: changed, rev: srvRev, rttMs: _lastRttMs };
         }
-      } catch (_) {}
+      } catch (err) {
+        if (getState) {
+          const stErr = getState();
+          stErr.liveConnected = false;
+          stErr.syncError = String((err && err.message) || err || 'SYNC_ERROR');
+          stErr.pendingSyncCount = readOutbox().length;
+          if (onSynced) onSynced(stErr, _lastServerRev, _lastRttMs);
+        }
+      } finally {
+        _pullInFlight = false;
+        if (_pullPendingForce) {
+          _pullPendingForce = false;
+          setTimeout(() => { pullNow(true); }, 150);
+        }
+      }
       return null;
     }
 
