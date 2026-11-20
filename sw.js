@@ -1,16 +1,31 @@
-const CACHE = 'coffee-illy-v94-premium-minimal';
-const ASSETS = ['./', './index.html', './owner.html', './dashboard.html', './css/coffee-illy-v94.css', './config.js', './version.js', './js/cloud-sync-v94.js'];
+const CACHE_NAME = 'coffee-illy-v93.1-m3soft-prod';
+const CORE = ['./', './index.html', './owner.html', './config.js', './js/pos-csv-parser-v93.js', './js/cloud-sync-v94.js', './js/camera-v92.js', './manifest.webmanifest'];
+
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(CORE)).catch(() => {}));
 });
+
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
 });
+
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || e.request.url.includes('script.google.com')) return;
-  e.respondWith(fetch(e.request).then((r) => {
-    const cp = r.clone();
-    caches.open(CACHE).then((c) => c.put(e.request, cp)).catch(() => {});
-    return r;
-  }).catch(() => caches.match(e.request)));
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = req.url || '';
+  if (url.indexOf('script.google.com') >= 0 || url.indexOf('telegram.org') >= 0 || url.indexOf('drive.google.com') >= 0) return;
+  e.respondWith(
+    fetch(req).then((res) => {
+      if (res && res.ok && res.type === 'basic') {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then((c) => c.put(req, clone)).catch(() => {});
+      }
+      return res;
+    }).catch(() => caches.match(req))
+  );
 });

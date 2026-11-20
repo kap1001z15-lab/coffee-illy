@@ -256,8 +256,7 @@
           status: x.status || 'Новая проблема',
           who: x.who || '',
           owner: x.owner || x.responsible || 'Администратор',
-          photoUrl: x.photoUrl || x.photo || '',
-          media: Array.isArray(x.media) ? x.media : (x.photoUrl || x.photo ? [{ type: 'photo', url: x.photoUrl || x.photo }] : [])
+          photoUrl: x.photoUrl || x.photo || ''
         };
       });
       changed = true;
@@ -319,10 +318,7 @@
         price: Number(k.price || 0),
         cost: Number(k.cost || 0),
         recipe: k.recipe || '',
-        serve: k.serve || '',
-        isNew: !!k.isNew,
-        seasonal: !!k.seasonal,
-        addedAt: k.addedAt || ''
+        serve: k.serve || ''
       }));
       changed = true;
     }
@@ -360,6 +356,25 @@
     }
     if (data.staffPresence && typeof data.staffPresence === 'object') {
       state.staffPresence = data.staffPresence;
+      changed = true;
+    }
+    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
+      const todayKey = localISO();
+      const nextExt = {};
+      Object.keys(data.deadlineExtensions).forEach((k) => {
+        const val = data.deadlineExtensions[k];
+        if (!val || !val.forceOpen) return;
+        if (k.indexOf(todayKey + ':') === 0) {
+          nextExt[k.slice(todayKey.length + 1)] = val;
+        } else if (!/^\d{4}-\d{2}-\d{2}:/.test(k)) {
+          nextExt[k] = val;
+        }
+      });
+      state.extensions = nextExt;
+      changed = true;
+    }
+    if (Array.isArray(data.inventory)) {
+      state.inventory = data.inventory;
       changed = true;
     }
     if (data.tgConfiguredOnServer !== undefined) {
@@ -496,9 +511,7 @@
         date: inc.date || localISO(),
         photoUrl: inc.photoUrl || '',
         photo_url: inc.photoUrl || '',
-        photo: inc.photoUrl || '',
-        photoUrls: Array.isArray(inc.media) ? inc.media.map((m) => m && m.url).filter(Boolean) : (inc.photoUrl ? [inc.photoUrl] : []),
-        media: Array.isArray(inc.media) ? inc.media : []
+        photo: inc.photoUrl || ''
       });
     } else if (desc.indexOf('Решён инцидент') === 0) {
       enqueueOp('update_incident', { id: desc.replace('Решён инцидент ', '').trim(), status: 'Решена' });
@@ -522,6 +535,9 @@
     } else if (desc.indexOf('Открыт блок') === 0) {
       const m = desc.match(/«([^»]+)»/);
       if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
+    } else if (desc.indexOf('Возвращено штатное окно') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
     } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
       const plansObj = {};
       const rosterObj = {};
@@ -555,6 +571,13 @@
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
+    } else if (desc.indexOf('Удалена задача ') === 0) {
+      const delId = desc.replace('Удалена задача ', '').trim();
+      if (delId) enqueueOp('delete_task', { id: delId });
+    } else if (desc.indexOf('Обновлён склад:') === 0 || desc.indexOf('Приход склада:') === 0 || desc.indexOf('Списание склада:') === 0) {
+      const nmPart = desc.split(':').slice(1).join(':').replace(/\([^)]*\)\s*$/, '').trim();
+      const invItem = (st.inventory || []).find((x) => x && x.name === nmPart);
+      if (invItem) enqueueOp('save_inventory', invItem);
     }
   }
 
@@ -781,6 +804,9 @@
   }
   async function runChecklistNotificationsNow(opts) {
     return gasPost('run_checklist_notifications_now', opts || {});
+  }
+  async function changeAdminPin(newPin) {
+    return gasPost('save_setting', { id: 'ADMIN_PIN', value: String(newPin || '').trim() });
   }
   async function saveInventoryItem(opts) {
     return gasPost('save_inventory', opts || {});

@@ -1,11 +1,9 @@
-/* Coffee Illy v94.0 — Быстрая двусторонняя синхронизация (Google Sheets + Drive + Offline Outbox + Telegram) */
+/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
   const OUTBOX_KEY = 'coffee_illy_v94_outbox';
   const SESSION_KEY = 'coffee_illy_v94_session';
-  const BC_NAME = 'coffee_illy_v94_sync';
-  const bc = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel(BC_NAME) : null;
 
   function localISO() {
     const d = new Date();
@@ -15,6 +13,7 @@
     const d = new Date();
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
+
   function getSession() {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {}; } catch (_) { return {}; }
   }
@@ -23,31 +22,16 @@
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(cur)); } catch (_) {}
     return cur;
   }
+
   function readOutbox() {
     try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || []; } catch (_) { return []; }
   }
   function writeOutbox(arr) {
-    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify((arr || []).slice(-250))); } catch (_) {}
-  }
-
-  let _flushPromise = null;
-  let _lastRttMs = 0;
-  let _lastServerRev = '';
-  let _syncCallbacks = null;
-  let _syncStatus = { state: 'syncing', lastSyncAt: '', error: '', pending: 0 };
-
-  function emitSyncStatus(patch) {
-    _syncStatus = Object.assign({}, _syncStatus, patch || {}, { pending: readOutbox().length });
-    if (_syncCallbacks && _syncCallbacks.onStatus) {
-      try { _syncCallbacks.onStatus(_syncStatus); } catch (_) {}
-    }
+    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify((arr || []).slice(-200))); } catch (_) {}
   }
 
   async function gasGet(params) {
-    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-      emitSyncStatus({ state: 'offline', error: '' });
-      return null;
-    }
+    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
     const qs = Object.keys(params || {}).map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
     const url = API_URL + (API_URL.indexOf('?') >= 0 ? '&' : '?') + qs + '&t=' + Date.now();
     const r = await fetch(url, { cache: 'no-store' });
@@ -56,10 +40,7 @@
   }
 
   async function gasPost(action, payload) {
-    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-      emitSyncStatus({ state: 'offline', error: '' });
-      return { ok: false, offline: true };
-    }
+    if (!API_URL) return { ok: false, offline: true };
     const sess = getSession();
     const body = Object.assign({
       action: action,
@@ -67,29 +48,26 @@
     }, payload || {});
     if (!body.sessionToken) body.sessionToken = sess.adminToken || sess.staffToken || '';
     if (!body.staffSessionToken && sess.staffToken) body.staffSessionToken = sess.staffToken;
-    const t0 = Date.now();
     const r = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body)
     });
-    _lastRttMs = Math.max(1, Date.now() - t0);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const json = await r.json();
-    if (bc) try { bc.postMessage({ type: 'mutated', action: action, ts: Date.now() }); } catch (_) {}
-    return json;
+    return r.json();
   }
 
+  let _flushPromise = null;
+  let _lastRttMs = 0;
+  let _lastServerRev = '';
+  let _syncCallbacks = null;
+
   async function flushOutbox() {
-    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-      emitSyncStatus({ state: 'offline' });
-      return { flushed: 0, pending: readOutbox().length };
-    }
+    if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { flushed: 0, pending: readOutbox().length };
     if (_flushPromise) return _flushPromise;
     if (!readOutbox().length) return { flushed: 0, pending: 0 };
     const run = (async () => {
       let flushed = 0;
-      emitSyncStatus({ state: 'syncing' });
       while (true) {
         const q = readOutbox();
         if (!q.length) break;
@@ -100,8 +78,9 @@
           const item = batch[i];
           const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
           try {
+            const t0 = Date.now();
             const res = await gasPost(item.action, item.payload);
-            if (res && res.offline) { anyRetryableFailure = true; break; }
+            _lastRttMs = Math.max(1, Date.now() - t0);
             doneIds.add(opId);
             if (!res || res.ok !== false) flushed++;
           } catch (_) {
@@ -116,9 +95,7 @@
         writeOutbox(remaining);
         if (!remaining.length || anyRetryableFailure) break;
       }
-      const left = readOutbox().length;
-      if (!left) emitSyncStatus({ state: 'synced', lastSyncAt: localHHMM(), error: '' });
-      return { flushed: flushed, pending: left };
+      return { flushed: flushed, pending: readOutbox().length };
     })();
     const p = run.finally(() => { if (_flushPromise === p) _flushPromise = null; });
     _flushPromise = p;
@@ -127,15 +104,13 @@
 
   function enqueueOp(action, payload) {
     if (!action) return;
-    const opId = (payload && payload.operationId) || ('op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+    const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const q = readOutbox();
     q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now() });
     writeOutbox(q);
-    emitSyncStatus({ state: (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'syncing' });
-    return flushOutbox().then((res) => {
+    flushOutbox().then(() => {
       if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(false);
-      return res;
-    }).catch(() => ({ flushed: 0, pending: readOutbox().length }));
+    }).catch(() => {});
   }
 
   async function uploadPhotoToDrive(opts) {
@@ -152,8 +127,16 @@
       return { ok: true, queued: true, url: '' };
     }
     try {
+      const t0 = Date.now();
       const res = await gasPost('upload_photo', payload);
-      if (res && res.ok) return { ok: true, fileId: res.fileId || '', url: res.url || res.viewUrl || '', fileName: res.fileName || '' };
+      _lastRttMs = Math.max(1, Date.now() - t0);
+      if (res && res.ok) {
+        return { ok: true, fileId: res.fileId || '', url: res.url || res.viewUrl || '', fileName: res.fileName || '' };
+      }
+      // If session expired or transient error, queue it
+      if (res && /STAFF_AUTH_REQUIRED/i.test(String(res.error || ''))) {
+        return { ok: false, error: res.error };
+      }
       enqueueOp('upload_photo', payload);
       return { ok: true, queued: true, url: '' };
     } catch (err) {
@@ -162,53 +145,12 @@
     }
   }
 
-  function getTelegramUser() {
-    try {
-      const tg = window.Telegram && window.Telegram.WebApp;
-      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-        return {
-          id: 'TG-' + tg.initDataUnsafe.user.id,
-          rawId: String(tg.initDataUnsafe.user.id),
-          initData: tg.initData || '',
-          name: tg.initDataUnsafe.user.first_name || ''
-        };
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  function getDeepLinkBlock() {
-    try {
-      if (typeof window !== 'undefined' && window.location && window.location.search) {
-        const sp = new URLSearchParams(window.location.search);
-        const b = sp.get('block') || sp.get('checklist') || '';
-        if (b) return b.trim();
-      }
-      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
-      const sparam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
-      if (sparam) {
-        const raw = String(sparam).trim();
-        return raw.indexOf('block_') === 0 ? decodeURIComponent(raw.slice(6)) : raw;
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  function normTgNum(val) {
-    return String(val || '').replace(/^TG-/i, '').replace(/[^0-9-]/g, '').trim();
-  }
-
   async function authLogin(role, opts) {
     try {
-      const payloadAuth = Object.assign({ role: role }, opts || {});
-      if (payloadAuth.name) {
-        if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name;
-        if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name;
-      }
-      const res = await gasPost('auth_login', payloadAuth);
+      const payloadAuth = Object.assign({ role: role }, opts || {}); if (payloadAuth.name) { if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name; if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name; } const res = await gasPost('auth_login', payloadAuth);
       if (res && res.ok && res.sessionToken) {
         if (role === 'admin') setSession({ adminToken: res.sessionToken });
-        else setSession({ staffToken: res.sessionToken, staffName: res.staffName || payloadAuth.staffName || '', tgId: res.tgId || payloadAuth.tgId || '', checkedInAt: res.checkedInAt || localHHMM(), checkedInDate: localISO() });
+        else setSession({ staffToken: res.sessionToken, staffName: (opts && opts.name) || '' });
         if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
       }
       return res;
@@ -217,56 +159,15 @@
     }
   }
 
-  async function autoLoginEmployee(state) {
-    const tg = getTelegramUser();
-    const sess = getSession();
-    if (tg && (tg.id || tg.rawId)) {
-      try {
-        const res = await gasPost('auth_login', { role: 'staff', autoLogin: true, tgId: tg.id, rawTgId: tg.rawId, initData: tg.initData || '' });
-        if (res && res.ok && res.sessionToken) {
-          setSession({ staffToken: res.sessionToken, staffName: res.staffName, tgId: res.tgId || tg.id, checkedInAt: res.checkedInAt || localHHMM(), checkedInDate: localISO() });
-          if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
-          return res;
-        }
-      } catch (_) {}
-      if (state && Array.isArray(state.staff)) {
-        const num = normTgNum(tg.rawId || tg.id);
-        const found = state.staff.find((s) => s && s.active !== false && normTgNum(s.tgId) === num);
-        if (found) {
-          const hm = localHHMM();
-          setSession({ staffName: found.name, tgId: found.tgId || tg.id, checkedInAt: hm, checkedInDate: localISO() });
-          return { ok: true, offline: true, autoLoggedIn: true, staffName: found.name, tgId: found.tgId || tg.id, onShift: true, checkedInAt: hm, welcomeMessage: 'Добро пожаловать на смену, ' + found.name + '! Вы отмечены на работе с ' + hm + '.' };
-        }
-      }
-    }
-    if (sess && sess.staffName) {
-      const hm = (sess.checkedInDate === localISO() && sess.checkedInAt) ? sess.checkedInAt : localHHMM();
-      if (sess.staffToken) {
-        try {
-          const ci = await gasPost('staff_checkin', { staffName: sess.staffName, tgId: sess.tgId || '', source: 'Авто-вход (устройство)' });
-          if (ci && ci.ok && ci.checkedInAt) {
-            setSession({ checkedInAt: ci.checkedInAt, checkedInDate: localISO() });
-            return { ok: true, autoLoggedIn: true, staffName: sess.staffName, tgId: sess.tgId || '', onShift: true, checkedInAt: ci.checkedInAt, welcomeMessage: 'С возвращением, ' + sess.staffName + '! Вы отмечены на работе с ' + ci.checkedInAt + '.' };
-          }
-        } catch (_) {}
-      }
-      return { ok: true, autoLoggedIn: true, staffName: sess.staffName, tgId: sess.tgId || '', onShift: true, checkedInAt: hm, welcomeMessage: 'С возвращением, ' + sess.staffName + '! Вы отмечены на работе с ' + hm + '.' };
-    }
-    return { ok: false };
-  }
-
-  async function checkOutStaff(staffName) {
-    try { await gasPost('staff_checkout', { staffName: staffName }); } catch (_) {}
-    setSession({ staffToken: '', staffName: '', checkedInAt: '', checkedInDate: '' });
-    return { ok: true };
-  }
-
   function mergeServerIntoState(state, data) {
     if (!data || typeof data !== 'object') return false;
     let changed = false;
     if (data.location) { state.location = String(data.location); changed = true; }
     if (Number(data.plan) > 0) { state.plan = Number(data.plan); changed = true; }
-    if (data.photoAll !== undefined) { state.photoAll = String(data.photoAll).toLowerCase() === 'да' || data.photoAll === true; changed = true; }
+    if (data.photoAll !== undefined) {
+      state.photoAll = String(data.photoAll).toLowerCase() === 'да' || data.photoAll === true;
+      changed = true;
+    }
     if (Array.isArray(data.settings) && data.settings.length) {
       const sMap = {};
       data.settings.forEach((x) => { if (x && x.id) sMap[String(x.id).toUpperCase()] = x.value; });
@@ -293,19 +194,21 @@
       })).filter((b) => b.name);
       changed = true;
     }
-    if (Array.isArray(data.tasks)) {
+    if (Array.isArray(data.tasks) && data.tasks.length) {
       const clean = data.tasks.filter((t) => t && t.title && !String(t.id || '').startsWith('__SYS'));
-      state.tasks = clean.map((t) => ({
-        id: t.id || ('t_' + Math.random().toString(36).slice(2, 6)),
-        block: t.block || 'Открытие',
-        group: t.groupName || t.group || '',
-        title: t.title || '',
-        instruction: t.instruction || '',
-        photo: String(t.photo || 'нет').toLowerCase() === 'да' || t.photo === true,
-        owner: t.responsible || t.owner || 'Бариста',
-        active: String(t.active || 'да').toLowerCase() !== 'нет'
-      }));
-      changed = true;
+      if (clean.length) {
+        state.tasks = clean.map((t) => ({
+          id: t.id || ('t_' + Math.random().toString(36).slice(2, 6)),
+          block: t.block || 'Открытие',
+          group: t.groupName || t.group || '',
+          title: t.title || '',
+          instruction: t.instruction || '',
+          photo: String(t.photo || 'нет').toLowerCase() === 'да' || t.photo === true,
+          owner: t.responsible || t.owner || 'Бариста',
+          active: String(t.active || 'да').toLowerCase() !== 'нет'
+        }));
+        changed = true;
+      }
     }
     if (Array.isArray(data.cash)) {
       state.cash = data.cash.map((c) => {
@@ -313,10 +216,14 @@
         const who = c.barista || c.who || 'Бариста';
         return {
           date: String(c.date || '').slice(0, 10),
-          who: who, barista: who,
-          revenue: rev, total: rev,
-          cash: Number(c.cash || 0), card: Number(c.card || 0),
-          checks: Number(c.checks || 0), writeoff: Number(c.writeoff || 0),
+          who: who,
+          barista: who,
+          revenue: rev,
+          total: rev,
+          cash: Number(c.cash || 0),
+          card: Number(c.card || 0),
+          checks: Number(c.checks || 0),
+          writeoff: Number(c.writeoff || 0),
           topItems: c.topItems || '',
           avgCheck: Number(c.avgCheck || c.avg || (Number(c.checks) > 0 ? Math.round(rev / Number(c.checks)) : 0))
         };
@@ -340,14 +247,16 @@
         return {
           id: x.id || ('INC-' + Math.random().toString(36).slice(2, 6)),
           date: String(x.date || '').slice(0, 10),
-          time: x.time || '', block: x.block || '',
-          step: step, zone: step,
+          time: x.time || '',
+          block: x.block || '',
+          step: step,
+          zone: step,
           text: x.text || x.comment || '',
           priority: x.priority || 'Терпит',
-          status: x.status || 'Новая',
-          who: x.who || '', owner: x.owner || x.responsible || 'Администратор',
-          photoUrl: x.photoUrl || x.photo || '',
-          history: Array.isArray(x.history) ? x.history : []
+          status: x.status || 'Новая проблема',
+          who: x.who || '',
+          owner: x.owner || x.responsible || 'Администратор',
+          photoUrl: x.photoUrl || x.photo || ''
         };
       });
       changed = true;
@@ -356,14 +265,28 @@
     if (rawLogs) {
       state.checklists = rawLogs.map((c) => {
         let phList = [];
-        if (Array.isArray(c.photos)) phList = c.photos.map((p) => (typeof p === 'string' ? p : (p && p.url ? p.url : ''))).filter(Boolean);
-        else if (typeof c.photos === 'string' && c.photos.trim().startsWith('[')) {
-          try { const parsed = JSON.parse(c.photos); if (Array.isArray(parsed)) phList = parsed.map((p) => (typeof p === 'string' ? p : (p && p.url ? p.url : ''))).filter(Boolean); } catch (_) {}
-        } else if (c.photoUrl) phList = [c.photoUrl];
+        if (Array.isArray(c.photos)) {
+          phList = c.photos.map((p) => (typeof p === 'string' ? p : (p && p.url ? p.url : ''))).filter(Boolean);
+        } else if (typeof c.photos === 'string' && c.photos.trim().startsWith('[')) {
+          try {
+            const parsed = JSON.parse(c.photos);
+            if (Array.isArray(parsed)) phList = parsed.map((p) => (typeof p === 'string' ? p : (p && p.url ? p.url : ''))).filter(Boolean);
+          } catch (_) {}
+        } else if (c.photoUrl) {
+          phList = [c.photoUrl];
+        }
         return {
-          date: String(c.date || '').slice(0, 10), time: c.time || '', block: c.block || '', who: c.who || '',
-          problems: Number(c.problems || 0), deadline: c.deadline || '', status: c.status || 'Выполнено',
-          isLate: !!c.isLate, done: Number(c.done || 0), total: Number(c.total || 0), photos: phList
+          date: String(c.date || '').slice(0, 10),
+          time: c.time || '',
+          block: c.block || '',
+          who: c.who || '',
+          problems: Number(c.problems || 0),
+          deadline: c.deadline || '',
+          status: c.status || 'Выполнено',
+          isLate: !!c.isLate,
+          done: Number(c.done || 0),
+          total: Number(c.total || 0),
+          photos: phList
         };
       });
       changed = true;
@@ -374,38 +297,288 @@
       state.staff = data.staff.map((s, idx) => {
         const prev = prevMap[s.name] || {};
         return Object.assign({}, prev, {
-          id: s.id || prev.id || ('st_' + idx), name: s.name, role: s.role || prev.role || 'Бариста',
-          shift: s.shift || prev.shift || '08:00–20:00', tgId: s.tgId || prev.tgId || '',
+          id: s.id || prev.id || ('st_' + idx),
+          name: s.name,
+          role: s.role || prev.role || 'Бариста',
+          shift: s.shift || prev.shift || '08:00–20:00',
+          tgId: s.tgId || prev.tgId || '',
           active: s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет',
-          pin: prev.pin || '1234', pinIsDefault: prev.pinIsDefault !== false
+          pin: prev.pin || '1234',
+          pinIsDefault: prev.pinIsDefault !== false
         });
       });
       changed = true;
     }
-    if (Array.isArray(data.ttk)) {
+    if (Array.isArray(data.ttk) && data.ttk.length) {
       state.ttk = data.ttk.map((k) => ({
         id: k.id || ('ttk_' + Math.random().toString(36).slice(2, 6)),
-        name: k.name || '', vol: k.vol || k.volume || '250 мл',
+        name: k.name || '',
+        vol: k.vol || k.volume || '250 мл (M)',
         cat: k.cat || k.category || 'Классика',
-        price: Number(k.price || 0), cost: Number(k.cost || 0),
-        recipe: k.recipe || '', serve: k.serve || '',
-        prepTime: k.prepTime || '2 мин', allergens: k.allergens || 'Нет',
-        updatedAt: k.updatedAt || localISO()
+        price: Number(k.price || 0),
+        cost: Number(k.cost || 0),
+        recipe: k.recipe || '',
+        serve: k.serve || ''
       }));
       changed = true;
     }
-    if (Array.isArray(data.announcements)) { state.announcements = data.announcements; changed = true; }
-    if (Array.isArray(data.inventory)) { state.inventory = data.inventory; changed = true; }
-    if (Array.isArray(data.inventoryLog)) { state.inventoryLog = data.inventoryLog; changed = true; }
-    if (data.financeSummary && typeof data.financeSummary === 'object') { state.financeSummary = data.financeSummary; changed = true; }
-    if (data.cashReviews && typeof data.cashReviews === 'object') { state.cashReviews = data.cashReviews; changed = true; }
-    if (data.staffPresence && typeof data.staffPresence === 'object') { state.staffPresence = data.staffPresence; changed = true; }
-    if (data.tgConfiguredOnServer !== undefined) { state.tgConfiguredOnServer = !!data.tgConfiguredOnServer; changed = true; }
-    if (data.tgChat !== undefined) { state.tgChat = String(data.tgChat || ''); changed = true; }
-    if (data.webappUrl !== undefined) { state.webappUrl = String(data.webappUrl || ''); changed = true; }
-    if (data.autopilotEnabled !== undefined) { state.autopilotEnabled = !!data.autopilotEnabled; changed = true; }
-    if (data.serverTime) { state.serverTime = String(data.serverTime); changed = true; }
+    if (data.dailyPlans && typeof data.dailyPlans === 'object') {
+      const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+      const prevByDay = {};
+      (state.plans || []).forEach((p) => { prevByDay[p.day] = p; });
+      state.plans = days.map((d) => {
+        const p = data.dailyPlans[d] || {};
+        const prev = prevByDay[d] || {};
+        const rev = Number(p.revenue || p.rev || prev.rev || state.plan || 2200);
+        const avg = Number(p.avgCheck || p.avg || prev.avg || 35);
+        return {
+          day: d,
+          rev: rev,
+          revenue: rev,
+          avg: avg,
+          avgCheck: avg,
+          checks: Number(p.checks || prev.checks || 75),
+          roster: (data.shiftRoster && data.shiftRoster[d] !== undefined ? data.shiftRoster[d] : (p.roster || prev.roster || ''))
+        };
+      });
+      changed = true;
+    }
+    if (data.userActiveState && typeof data.userActiveState === 'object') {
+      state.liveProgress = state.liveProgress || {};
+      Object.keys(data.userActiveState).forEach((k) => {
+        const rec = data.userActiveState[k];
+        if (rec && rec.block && Number(rec.total) > 0) {
+          const who = rec.userName || k.split(':')[0] || k;
+          state.liveProgress[who] = { block: rec.block, done: Number(rec.done || 0), total: Number(rec.total || 0), updatedAt: rec.updatedAt || '' };
+        }
+      });
+      changed = true;
+    }
+    if (data.staffPresence && typeof data.staffPresence === 'object') {
+      state.staffPresence = data.staffPresence;
+      changed = true;
+    }
+    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
+      const todayKey = localISO();
+      const nextExt = {};
+      Object.keys(data.deadlineExtensions).forEach((k) => {
+        const val = data.deadlineExtensions[k];
+        if (!val || !val.forceOpen) return;
+        if (k.indexOf(todayKey + ':') === 0) {
+          nextExt[k.slice(todayKey.length + 1)] = val;
+        } else if (!/^\d{4}-\d{2}-\d{2}:/.test(k)) {
+          nextExt[k] = val;
+        }
+      });
+      state.extensions = nextExt;
+      changed = true;
+    }
+    if (Array.isArray(data.inventory)) {
+      state.inventory = data.inventory;
+      changed = true;
+    }
+    if (data.tgConfiguredOnServer !== undefined) {
+      state.tgConfiguredOnServer = !!data.tgConfiguredOnServer;
+      changed = true;
+    }
+    if (data.tgChat !== undefined) {
+      state.tgChat = String(data.tgChat || '');
+      changed = true;
+    }
+    if (data.webappUrl !== undefined) {
+      state.webappUrl = String(data.webappUrl || '');
+      changed = true;
+    }
+    if (data.autopilotEnabled !== undefined) {
+      state.autopilotEnabled = !!data.autopilotEnabled;
+      changed = true;
+    }
+    if (Array.isArray(data.salesLog)) {
+      state.salesLog = data.salesLog.map((x) => ({
+        date: String(x.date || '').slice(0, 10),
+        shift: x.shift || '',
+        barista: x.barista || 'Бариста',
+        name: x.name || '',
+        kind: x.kind || 'Кофе',
+        price: Number(x.price || 0),
+        qty: Number(x.qty || 0),
+        sum: Number(x.sum || ((Number(x.price || 0)) * (Number(x.qty || 0))))
+      })).filter((x) => x.date && x.name && x.qty > 0);
+      changed = true;
+    }
+    if (Array.isArray(data.inventory)) {
+      state.inventory = data.inventory.map((it, idx) => ({
+        id: it.id || ('inv_' + idx),
+        name: it.name || '',
+        category: it.category || 'Сырьё',
+        unit: it.unit || 'г',
+        stock: Number(it.stock || 0),
+        minStock: Number(it.minStock || 0),
+        updatedAt: String(it.updatedAt || '').slice(0, 10)
+      })).filter((it) => it.name);
+      changed = true;
+    }
+    if (Array.isArray(data.inventoryMoves)) {
+      state.inventoryMoves = data.inventoryMoves.map((m) => ({
+        id: m.id || ('mv_' + Math.random().toString(36).slice(2, 6)),
+        itemId: m.itemId || '',
+        name: m.name || '',
+        category: m.category || 'Сырьё',
+        type: m.type || 'edit',
+        delta: Number(m.delta || 0),
+        stockAfter: Number(m.stockAfter || 0),
+        unit: m.unit || 'шт',
+        date: String(m.date || '').slice(0, 10),
+        time: m.time || '',
+        actor: m.actor || 'Администратор',
+        note: m.note || ''
+      }));
+      changed = true;
+    }
+    if (Array.isArray(data.expiryItems)) {
+      state.expiryItems = data.expiryItems.map((x) => ({
+        id: x.id || ('exp_' + Math.random().toString(36).slice(2, 6)),
+        title: x.title || x.name || '',
+        category: x.category || 'Бар',
+        openedAtMs: Number(x.openedAtMs || 0),
+        expiresAtMs: Number(x.expiresAtMs || 0),
+        date: String(x.date || (x.openedAtMs ? new Date(Number(x.openedAtMs)).toISOString().slice(0, 10) : '')).slice(0, 10),
+        expiresDate: String(x.expiresDate || (x.expiresAtMs ? new Date(Number(x.expiresAtMs)).toISOString().slice(0, 10) : '')).slice(0, 10),
+        status: x.status || 'active',
+        who: x.who || x.openedBy || ''
+      }));
+      changed = true;
+    }
+    if (Array.isArray(data.auditLog) && data.auditLog.length) {
+      state.auditLog = data.auditLog.map((a) => ({
+        date: String(a.date || '').slice(0, 10),
+        time: a.time || '',
+        actor: a.actor || 'Система',
+        text: a.text || a.action || '',
+        rev: a.rev || state.cloudRev || state.rev || 1
+      }));
+      changed = true;
+    }
+    if (data.serverTime) {
+      state.serverTime = String(data.serverTime);
+      changed = true;
+    }
     return changed;
+  }
+
+  function dispatchStateChange(st, actor, desc) {
+    if (!desc || !st) return;
+    if (desc.indexOf('Сдан чек-лист') === 0 && st.checklists && st.checklists.length) {
+      const last = st.checklists[0];
+      const items = Array.isArray(last.items) && last.items.length
+        ? last.items
+        : (Array.isArray(last.photos) ? last.photos.map((u, idx) => ({ title: 'Фото ' + (idx + 1), photo_url: u, isIncident: false })) : []);
+      enqueueOp('submit_checklist', {
+        block: last.block,
+        who: last.who || actor,
+        userName: last.who || actor,
+        date: last.date || localISO(),
+        deadline: last.deadline || '22:00',
+        isLate: !!last.isLate,
+        items: items
+      });
+    } else if (desc.indexOf('Закрыта касса') === 0 && st.cash && st.cash.length) {
+      const last = st.cash[0];
+      const rev = Number(last.revenue || last.total || ((Number(last.cash) || 0) + (Number(last.card) || 0)));
+      enqueueOp('submit_cash', {
+        date: last.date || localISO(),
+        who: last.barista || last.who || actor,
+        userName: last.barista || last.who || actor,
+        total: rev,
+        revenue: rev,
+        cash: Number(last.cash || 0),
+        card: Number(last.card || 0),
+        checks: Number(last.checks || 0),
+        writeoff: Number(last.writeoff || 0)
+      });
+    } else if (desc.indexOf('Проблема:') === 0 || desc.indexOf('Внеплановая поломка:') === 0) {
+      const inc = st.incidents && st.incidents[0];
+      if (inc) enqueueOp('report_standalone_incident', {
+        id: inc.id,
+        block: inc.block || '',
+        step: inc.step || inc.zone || 'Поломка',
+        zone: inc.zone || inc.step || 'Поломка',
+        comment: inc.text || '',
+        text: inc.text || '',
+        priority: inc.priority || 'Терпит',
+        who: inc.who || actor,
+        userName: inc.who || actor,
+        date: inc.date || localISO(),
+        photoUrl: inc.photoUrl || '',
+        photo_url: inc.photoUrl || '',
+        photo: inc.photoUrl || ''
+      });
+    } else if (desc.indexOf('Решён инцидент') === 0) {
+      enqueueOp('update_incident', { id: desc.replace('Решён инцидент ', '').trim(), status: 'Решена' });
+    } else if (desc.indexOf('Добавлен расход') === 0 && st.expenses && st.expenses.length) {
+      const e = st.expenses[0];
+      enqueueOp('add_expense', { id: e.id, date: e.date || localISO(), category: e.category, amount: e.amount, comment: e.comment, who: e.who || actor });
+    } else if (desc.indexOf('Удалён расход') === 0) {
+      enqueueOp('delete_expense', { id: desc.replace('Удалён расход ', '').trim() });
+    } else if (desc.indexOf('Обновлены настройки точки') === 0) {
+      enqueueOp('save_all_settings', { items: [
+        { id: 'LOCATION', value: String(st.location || 'Кофейня №1') },
+        { id: 'PLAN', value: String(st.plan || 2200) },
+        { id: 'MIN_AVG_CHECK', value: String(st.minAvgCheck || 35) },
+        { id: 'PLAN_CHECKS', value: String(st.planChecks || 75) },
+        { id: 'WO_NORM', value: String(st.woNorm || 15) },
+        { id: 'INIT_COUNTER', value: String(st.initCounter || 600) },
+        { id: 'PHOTO_ALL', value: st.photoAll ? 'да' : 'нет' }
+      ] });
+    } else if (desc.indexOf('Окно «') === 0 || desc.indexOf('Создан блок') === 0) {
+      enqueueOp('save_checklist_blocks', { blocks: st.blocks || [] });
+    } else if (desc.indexOf('Открыт блок') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
+    } else if (desc.indexOf('Возвращено штатное окно') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
+    } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
+      const plansObj = {};
+      const rosterObj = {};
+      (st.plans || []).forEach((p) => {
+        plansObj[p.day] = {
+          revenue: Number(p.rev || p.revenue || st.plan || 2200),
+          avgCheck: Number(p.avg || p.avgCheck || st.minAvgCheck || 35),
+          checks: Number(p.checks || st.planChecks || 75)
+        };
+        if (p.roster !== undefined) rosterObj[p.day] = String(p.roster || '');
+      });
+      enqueueOp('save_daily_plans', { plans: plansObj });
+      enqueueOp('save_shift_roster', { roster: rosterObj });
+    } else if (desc.indexOf('Сменил личный PIN') === 0) {
+      const s = (st.staff || []).find((x) => x.name === actor);
+      if (s && s.pin) enqueueOp('change_staff_pin', { name: s.name, newPin: s.pin });
+    } else if (desc.indexOf('Привязан Telegram ID') === 0) {
+      const s = (st.staff || []).find((x) => x.name === actor);
+      if (s && s.tgId) enqueueOp('bind_telegram_user', { name: s.name, tgId: s.tgId });
+    } else if (desc.indexOf('Обновлён сотрудник') === 0) {
+      const nm = desc.replace('Обновлён сотрудник ', '').trim();
+      const s = (st.staff || []).find((x) => x.name === nm);
+      if (s) {
+        enqueueOp('save_staff', { name: s.name, role: s.role, shift: s.shift, tgId: s.tgId || '' });
+        if (s.pin) enqueueOp('save_staff_pins', { pins: [{ name: s.name, pin: s.pin }] });
+      }
+    } else if (desc.indexOf('Обновлена ТТК') === 0) {
+      const nm = desc.replace('Обновлена ТТК ', '').trim();
+      const k = (st.ttk || []).find((x) => x.name === nm);
+      if (k) enqueueOp('save_ttk', k);
+    } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
+      const t = st.tasks[st.tasks.length - 1];
+      enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
+    } else if (desc.indexOf('Удалена задача ') === 0) {
+      const delId = desc.replace('Удалена задача ', '').trim();
+      if (delId) enqueueOp('delete_task', { id: delId });
+    } else if (desc.indexOf('Обновлён склад:') === 0 || desc.indexOf('Приход склада:') === 0 || desc.indexOf('Списание склада:') === 0) {
+      const nmPart = desc.split(':').slice(1).join(':').replace(/\([^)]*\)\s*$/, '').trim();
+      const invItem = (st.inventory || []).find((x) => x && x.name === nmPart);
+      if (invItem) enqueueOp('save_inventory', invItem);
+    }
   }
 
   let _lastActive = Date.now();
@@ -415,7 +588,7 @@
     const mode = (opts && opts.mode) || 'terminal';
     const getState = opts && opts.getState;
     const onSynced = opts && opts.onSynced;
-    const onStatus = opts && opts.onStatus;
+    const onAuthRequired = opts && opts.onAuthRequired;
 
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -428,62 +601,53 @@
     } catch (_) {}
 
     async function pullNow(forceFull) {
-      if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-        emitSyncStatus({ state: 'offline', error: '' });
-        return null;
-      }
+      if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
       try {
-        if (forceFull) emitSyncStatus({ state: 'syncing', error: '' });
         await flushOutbox();
         const t0 = Date.now();
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
         _lastRttMs = Math.max(1, Date.now() - t0);
         const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
-        if (!forceFull && srvRev && srvRev === _lastServerRev) {
-          emitSyncStatus({ state: 'synced', lastSyncAt: localHHMM(), error: '' });
-          return { changed: false, rev: srvRev };
-        }
+        if (!forceFull && srvRev && srvRev === _lastServerRev) return { changed: false, rev: srvRev };
         if (srvRev) _lastServerRev = srvRev;
 
         let data = null;
         const sess = getSession();
         if (mode === 'owner' && sess.adminToken) {
           data = await gasPost('admin', { sessionToken: sess.adminToken });
+          if (data && data.ok === false && /PIN_REQUIRED|PIN_INVALID|FORBIDDEN|SETUP_REQUIRED/i.test(String(data.error || ''))) {
+            setSession({ adminToken: '' });
+            if (onAuthRequired) onAuthRequired(String(data.error || 'PIN_REQUIRED'));
+            data = await gasGet({ action: 'get_checklists', nocache: '1' });
+          }
+        } else if (mode === 'owner' && !sess.adminToken) {
+          if (onAuthRequired) onAuthRequired('PIN_REQUIRED');
+          data = await gasGet({ action: 'get_checklists', nocache: '1' });
         } else if (mode === 'terminal' && sess.staffToken) {
           data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
         } else {
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
-        if (data && data.ok === false && data.error) {
-          emitSyncStatus({ state: 'error', error: String(data.error) });
-          return { ok: false, error: data.error };
-        }
         if (data && getState) {
           const st = getState();
           const changed = mergeServerIntoState(st, data);
-          st.dataLoaded = true;
-          st.loadError = '';
-          st.lastSyncAt = localHHMM();
-          emitSyncStatus({ state: 'synced', lastSyncAt: st.lastSyncAt, error: '' });
+          if (srvRev) st.cloudRev = srvRev;
+          st.lastSyncAt = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          st.lastRttMs = _lastRttMs;
+          st.liveConnected = true;
           if ((changed || forceFull) && onSynced) onSynced(st, srvRev, _lastRttMs);
           return { changed: changed, rev: srvRev, rttMs: _lastRttMs };
         }
-      } catch (err) {
-        if (getState) {
-          const st = getState();
-          st.loadError = 'Не удалось загрузить данные с сервера';
-        }
-        emitSyncStatus({ state: 'error', error: String((err && err.message) || 'Ошибка сети') });
-      }
+      } catch (_) {}
       return null;
     }
 
     function nextDelay() {
-      if (typeof document !== 'undefined' && document.hidden) return 20000;
+      if (typeof document !== 'undefined' && document.hidden) return 25000;
       const idle = Date.now() - _lastActive;
-      const a = Number(CFG.SYNC_ACTIVE_MS) || 800;
-      const w = Number(CFG.SYNC_WARM_MS) || 2200;
-      const idl = Number(CFG.SYNC_IDLE_MS) || 8000;
+      const a = Number(CFG.SYNC_ACTIVE_MS) || 900;
+      const w = Number(CFG.SYNC_WARM_MS) || 2500;
+      const idl = Number(CFG.SYNC_IDLE_MS) || 10000;
       return idle < 120000 ? a : (idle < 600000 ? w : idl);
     }
 
@@ -501,36 +665,209 @@
       );
       const wake = () => { _lastActive = Date.now(); pullNow(false); };
       window.addEventListener('focus', wake);
-      window.addEventListener('online', () => { flushOutbox().then(() => pullNow(true)); });
-      window.addEventListener('offline', () => { emitSyncStatus({ state: 'offline' }); });
+      window.addEventListener('online', () => { flushOutbox().then(wake); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
       }
     }
-    if (bc) bc.onmessage = () => { pullNow(true); };
 
-    _syncCallbacks = { pullNow: pullNow, flushOutbox: flushOutbox, onStatus: onStatus };
+    _syncCallbacks = { pullNow: pullNow, flushOutbox: flushOutbox };
     pullNow(true).finally(schedule);
     return _syncCallbacks;
   }
 
+  function getTelegramUser() {
+    try {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        return {
+          id: 'TG-' + tg.initDataUnsafe.user.id,
+          rawId: String(tg.initDataUnsafe.user.id),
+          initData: tg.initData || '',
+          name: tg.initDataUnsafe.user.first_name || ''
+        };
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function getDeepLinkBlock() {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const sp = new URLSearchParams(window.location.search);
+        const b = sp.get('block') || sp.get('checklist') || '';
+        if (b) return b.trim();
+      }
+      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
+      const startParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+      if (startParam) {
+        const raw = String(startParam).trim();
+        if (raw.indexOf('block_') === 0) return decodeURIComponent(raw.slice(6));
+        return raw;
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function normTgNum(val) {
+    return String(val || '').replace(/^TG-/i, '').replace(/[^0-9-]/g, '').trim();
+  }
+
+  async function autoLoginEmployee(state) {
+    const tg = getTelegramUser();
+    const sess = getSession();
+    // 1. Telegram Mini App auto-login by Telegram User ID
+    if (tg && (tg.id || tg.rawId)) {
+      try {
+        const res = await gasPost('auth_login', {
+          role: 'staff',
+          autoLogin: true,
+          tgId: tg.id,
+          rawTgId: tg.rawId,
+          initData: tg.initData || ''
+        });
+        if (res && res.ok && res.sessionToken) {
+          setSession({ staffToken: res.sessionToken, staffName: res.staffName, tgId: res.tgId || tg.id, checkedInAt: res.checkedInAt || localHHMM(), checkedInDate: localISO() });
+          if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
+          return res;
+        }
+      } catch (_) {}
+      // Offline / fallback match against synced staff list
+      if (state && Array.isArray(state.staff)) {
+        const num = normTgNum(tg.rawId || tg.id);
+        const found = state.staff.find((s) => s && s.active !== false && normTgNum(s.tgId) === num);
+        if (found) {
+          const hm = localHHMM();
+          setSession({ staffName: found.name, tgId: found.tgId || tg.id, checkedInAt: hm, checkedInDate: localISO() });
+          return {
+            ok: true,
+            offline: true,
+            autoLoggedIn: true,
+            staffName: found.name,
+            tgId: found.tgId || tg.id,
+            onShift: true,
+            checkedInAt: hm,
+            welcomeMessage: 'Добро пожаловать на смену, ' + found.name + '! Вы отмечены на работе с ' + hm + '.'
+          };
+        }
+      }
+    }
+    // 2. Remembered staff session on this device
+    if (sess && sess.staffName) {
+      const hm = (sess.checkedInDate === localISO() && sess.checkedInAt) ? sess.checkedInAt : localHHMM();
+      if (sess.staffToken) {
+        try {
+          const ci = await gasPost('staff_checkin', { staffName: sess.staffName, tgId: sess.tgId || '', source: 'Авто-вход (устройство)' });
+          if (ci && ci.ok && ci.checkedInAt) {
+            setSession({ checkedInAt: ci.checkedInAt, checkedInDate: localISO() });
+            return {
+              ok: true,
+              autoLoggedIn: true,
+              staffName: sess.staffName,
+              tgId: sess.tgId || '',
+              onShift: true,
+              checkedInAt: ci.checkedInAt,
+              welcomeMessage: 'С возвращением на смену, ' + sess.staffName + '! Вы отмечены на работе с ' + ci.checkedInAt + '.'
+            };
+          }
+        } catch (_) {}
+      }
+      return {
+        ok: true,
+        autoLoggedIn: true,
+        staffName: sess.staffName,
+        tgId: sess.tgId || '',
+        onShift: true,
+        checkedInAt: hm,
+        welcomeMessage: 'С возвращением на смену, ' + sess.staffName + '! Вы отмечены на работе с ' + hm + '.'
+      };
+    }
+    return { ok: false };
+  }
+
+  async function checkOutStaff(staffName) {
+    try {
+      await gasPost('staff_checkout', { staffName: staffName });
+    } catch (_) {}
+    setSession({ staffToken: '', staffName: '', checkedInAt: '', checkedInDate: '' });
+    return { ok: true };
+  }
+
+  async function saveTelegramSettings(opts) {
+    return gasPost('save_telegram_settings', opts || {});
+  }
+  async function testTelegramAlert() {
+    return gasPost('test_telegram_alert', {});
+  }
+  async function setupTriggers() {
+    return gasPost('setup_autonomous_triggers', {});
+  }
+  async function runChecklistNotificationsNow(opts) {
+    return gasPost('run_checklist_notifications_now', opts || {});
+  }
+  async function changeAdminPin(newPin) {
+    return gasPost('save_setting', { id: 'ADMIN_PIN', value: String(newPin || '').trim() });
+  }
+  async function saveInventoryItem(opts) {
+    return gasPost('save_inventory', opts || {});
+  }
+  async function restockInventory(id, delta, note) {
+    return gasPost('restock_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
+  }
+  async function writeoffInventory(id, delta, note) {
+    return gasPost('writeoff_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
+  }
+  async function addExpiryItem(opts) {
+    return gasPost('add_expiry_item', opts || {});
+  }
+  async function disposeExpiryItem(id) {
+    return gasPost('dispose_expiry_item', { id: id });
+  }
+  async function importPosBatch(days, mergeMode) {
+    const res = await gasPost('batch_submit_cash', {
+      days: days || [],
+      mergeMode: mergeMode || 'sum'
+    });
+    if (res && res.ok && _syncCallbacks && _syncCallbacks.pullNow) {
+      _syncCallbacks.pullNow(true);
+    }
+    return res;
+  }
+
   const API_OBJ = {
-    localISO, localHHMM, getSession, setSession,
-    gasGet, gasPost, enqueueOp, flushOutbox, uploadPhotoToDrive,
-    authLogin, autoLoginEmployee, checkOutStaff,
-    getTelegramUser, getDeepLinkBlock, mergeServerIntoState, startCloudLoop,
-    getSyncStatus: () => _syncStatus,
-    getPendingCount: () => readOutbox().length,
-    getLastRttMs: () => _lastRttMs,
-    saveTelegramSettings: (opts) => gasPost('save_telegram_settings', opts || {}),
-    testTelegramAlert: () => gasPost('test_telegram_alert', {}),
-    setupTriggers: () => gasPost('setup_autonomous_triggers', {}),
-    runChecklistNotificationsNow: (opts) => gasPost('run_checklist_notifications_now', opts || {}),
-    reviewCashReport: (opts) => gasPost('review_cash_report', opts || {}),
-    createTaskFromIncident: (opts) => gasPost('create_task_from_incident', opts || {}),
-    recordInventoryMove: (opts) => gasPost('inventory_move', opts || {}),
-    createBackup: () => gasPost('create_server_backup', {})
+    localISO: localISO,
+    localHHMM: localHHMM,
+    authLogin: authLogin,
+    enqueueOp: enqueueOp,
+    flushOutbox: flushOutbox,
+    uploadPhotoToDrive: uploadPhotoToDrive,
+    mergeServerIntoState: mergeServerIntoState,
+    dispatchStateChange: dispatchStateChange,
+    startCloudLoop: startCloudLoop,
+    getTelegramUser: getTelegramUser,
+    getPendingCount: function () { return readOutbox().length; },
+    getLastRttMs: function () { return _lastRttMs; },
+    getLastRev: function () { return _lastServerRev; },
+    getSession: getSession,
+    getDeepLinkBlock: getDeepLinkBlock,
+    autoLoginEmployee: autoLoginEmployee,
+    checkOutStaff: checkOutStaff,
+    saveTelegramSettings: saveTelegramSettings,
+    testTelegramAlert: testTelegramAlert,
+    setupTriggers: setupTriggers,
+    runChecklistNotificationsNow: runChecklistNotificationsNow,
+    saveInventoryItem: saveInventoryItem,
+    restockInventory: restockInventory,
+    writeoffInventory: writeoffInventory,
+    addExpiryItem: addExpiryItem,
+    disposeExpiryItem: disposeExpiryItem,
+    importPosBatch: importPosBatch,
+    sendStepProgress: function (userName, block, done, total) {
+      if (!userName || !block) return;
+      enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
+    }
   };
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
+  window.CoffeeCloudV92 = API_OBJ;
 })();
