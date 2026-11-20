@@ -206,9 +206,9 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.2.0"></script>
-  <script src="js/cloud-sync.js?v=97.2.0"></script>
-<script src="js/pos-csv-parser.js?v=97.2.0"></script>
+  <script src="config.js?v=97.3.0"></script>
+  <script src="js/cloud-sync.js?v=97.3.0"></script>
+<script src="js/pos-csv-parser.js?v=97.3.0"></script>
 </head>
 <body>
 <header class="topbar">
@@ -625,7 +625,12 @@ function initTheme(btnId) {
     const invAll = state.inventory || [];
     const lowStockCount = invAll.filter(it => Number(it.stock || 0) <= Number(it.minStock || 0)).length;
 
-    const totalRev = fCash.reduce((a,c)=>a+c.revenue,0);
+    const cashRev = (c) => {
+      const r = Number(c && (c.revenue != null ? c.revenue : (c.total != null ? c.total : ((Number(c.cash)||0) + (Number(c.card)||0)))));
+      return Number.isFinite(r) ? r : 0;
+    };
+    fCash.forEach(c => { if (c && (c.revenue == null || isNaN(Number(c.revenue)))) c.revenue = cashRev(c); });
+    const totalRev = fCash.reduce((a,c)=>a+cashRev(c),0);
     const totalExp = fExpenses.reduce((a,e)=>a+e.amount,0);
     const openIncs = fIncidents.filter(i=>i.status!=='Решена').length;
     const salesQtyTotal = fSales.reduce((a, s) => a + (Number(s.qty) || 0), 0);
@@ -662,16 +667,28 @@ function initTheme(btnId) {
           <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">За период: ${fIncidents.length} · Задач: ${state.tasks.length}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Выручка</h2><div class="card-sub">План (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div></div>
-          <div class="chart-wrap">
-            <div class="chart-plan-line" style="bottom:${Math.min(92,Math.max(16,todayPlanPct*0.78))}%"><span class="chart-plan-lbl">План ${todayPlan.day}: ${fmtRub(todayPlan.rev)}</span></div>
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Динамика выручки по дням</h2>
+              <div class="card-sub">План (${todayPlan.day}): ${fmtRub(todayPlan.rev)} · Макс. за период: ${fmtRub(maxRev)}</div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;font-size:11.5px;color:var(--muted);flex-wrap:wrap;">
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:4px;"></span>План выполнен</span>
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--accent);margin-right:4px;"></span>Ниже плана</span>
+              <span><span style="display:inline-block;width:14px;border-top:2px dashed var(--muted);vertical-align:middle;margin-right:4px;"></span>План дня</span>
+            </div>
+          </div>
+          <div class="chart-wrap" style="min-height:190px;padding-top:26px;">
+            <div class="chart-plan-line" style="bottom:${Math.min(88,Math.max(18,todayPlanPct*0.76))}%"><span class="chart-plan-lbl">План ${todayPlan.day}: ${fmtRub(todayPlan.rev)}</span></div>
             ${days.length ? days.map(c => {
+              const revVal = cashRev(c);
               const dp = getDayPlan(c.date);
-              const avgC = c.checks ? Math.round(c.revenue / c.checks) : 0;
-              const hit = c.revenue >= dp.rev;
-              const pct = dp.rev > 0 ? Math.round((c.revenue / dp.rev) * 100) : 0;
-              const tip = `${dp.day} ${c.date} · Выручка: ${c.revenue} / ${dp.rev} ₽ (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} / ≥${dp.avg} ₽`;
-              return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val">${c.revenue}</div><div class="bar-fill ${hit?'hit':''}" style="height:${Math.max(12,Math.round((c.revenue/maxRev)*100))}%"></div><div class="bar-dt">${dp.day} ${c.date.slice(8)}</div></div>`;
+              const avgC = c.checks ? Math.round(revVal / c.checks) : 0;
+              const hit = revVal >= dp.rev;
+              const pct = dp.rev > 0 ? Math.round((revVal / dp.rev) * 100) : 0;
+              const hPct = revVal > 0 ? Math.max(10, Math.round((revVal / maxRev) * 100)) : 4;
+              const tip = `${dp.day} ${c.date} · Выручка: ${fmtRub(revVal)} / ${fmtRub(dp.rev)} (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} ₽`;
+              return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val" style="font-size:11px;font-weight:700;">${revVal.toLocaleString('ru-RU')} ₽</div><div class="bar-fill ${hit?'hit':''}" style="height:${hPct}%;${hit?'background:var(--good);':''}"></div><div class="bar-dt">${dp.day} ${c.date.slice(8)}.${c.date.slice(5,7)}</div></div>`;
             }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:36px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
           </div>
         </div>
@@ -807,7 +824,7 @@ function initTheme(btnId) {
 
     if (tab === 'sales') {
       const salesTotalSum = fSales.reduce((a, s) => a + (Number(s.sum) || 0), 0);
-      const coffeeRows = fSales.filter(s => String(s.kind || '').toLowerCase().includes('кофе') && !String(s.kind || '').toLowerCase().includes('не-кофе'));
+      const coffeeRows = fSales.filter(s => { const k = String(s.kind || '').toLowerCase(); return (k === 'coffee' || k.includes('кофе')) && !k.includes('не-кофе') && !k.includes('non_coffee'); });
       const coffeeQty = coffeeRows.reduce((a, s) => a + (Number(s.qty) || 0), 0);
       const otherQty = Math.max(0, salesQtyTotal - coffeeQty);
       const coffeeShare = salesQtyTotal > 0 ? Math.round((coffeeQty / salesQtyTotal) * 100) : 0;
@@ -835,7 +852,7 @@ function initTheme(btnId) {
           <div class="card-head">
             <div><h2 class="card-title">Топ продаж по номенклатуре (${topProducts.length})</h2></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <input id="sales-q" value="${esc(salesQuery)}" placeholder="Поиск напитка или бариста..." style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;min-width:190px;">
+              <label class="chip-btn accent" style="cursor:pointer;">📂 Загрузить CSV<input id="sales-csv-in" type="file" accept=".csv,.txt" multiple style="display:none"></label><input id="sales-q" value="${esc(salesQuery)}" placeholder="Поиск напитка или бариста..." style="background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;min-width:190px;">
             </div>
           </div>
           <div class="date-pills" style="margin-bottom:12px;">
@@ -868,6 +885,36 @@ function initTheme(btnId) {
       root.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { salesCatFilter = b.dataset.sc; render(); });
       const sq = document.getElementById('sales-q');
       if (sq) sq.oninput = (e) => { salesQuery = e.target.value; render(); };
+      const scsv = document.getElementById('sales-csv-in');
+      if (scsv) scsv.onchange = async (ev) => {
+        const files = Array.from(ev.target.files || []);
+        if (!files.length || !window.CoffeePosCsvV93) return;
+        const loaded = await Promise.all(files.map(f => f.text().then(text => ({ name: f.name, text }))));
+        const staffNames = (state.staff || []).map(s => s.name).filter(Boolean);
+        const batch = window.CoffeePosCsvV93.parsePosBatch(loaded, staffNames);
+        if (!batch.days.length) { showToast('Не удалось распознать CSV'); return; }
+        openModal('Импорт выписки POS (' + batch.summary.filesCount + ' ф.)', `
+          <div class="card-soft" style="margin-bottom:12px;">
+            <div>Дней: <b>${batch.summary.daysCount}</b> · Выручка: <b>${fmtRub(batch.summary.totalRevenue)}</b> · Чеков: <b>${batch.summary.totalChecks}</b> · Позиций: <b>${batch.summary.totalProducts}</b></div>
+          </div>
+          <button class="btn-lg primary" id="sales-csv-confirm">✓ Загрузить в Google Таблицу</button>
+        `);
+        document.getElementById('sales-csv-confirm').onclick = () => guard('Импорт CSV продаж', async () => {
+          const btn = document.getElementById('sales-csv-confirm');
+          if (btn) { btn.disabled = true; btn.textContent = '⏳ Загрузка...'; }
+          const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
+          const res = api && api.importPosBatch ? await api.importPosBatch(batch.days, 'sum') : { ok: false };
+          if (res && res.ok) {
+            closeModal();
+            showToast('✓ Загружено дней: ' + (res.count || batch.days.length));
+            if (api && api.pullNow) await api.pullNow(true);
+            render();
+          } else {
+            if (btn) { btn.disabled = false; btn.textContent = '✓ Загрузить в Google Таблицу'; }
+            showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи'));
+          }
+        });
+      };
       return;
     }
 
@@ -1461,7 +1508,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.2.0"></script>
+  <script src="./js/time-picker.js?v=97.3.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1469,7 +1516,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.2.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.3.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

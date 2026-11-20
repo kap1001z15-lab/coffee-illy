@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.2.0 */
-const CACHE_NAME = 'coffee-illy-v97-2-0';
+/* Coffee Illy ERP & Checklist — Service Worker v97.3.0 */
+const CACHE_NAME = 'coffee-illy-v97-3-0';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -43,7 +43,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Network-first для HTML и config.js (чтобы обновления приходили мгновенно, но офлайн всё открывалось)
-  const isHtmlOrConfig = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/config.js');
+  const isHtmlOrConfig = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
   if (isHtmlOrConfig) {
     event.respondWith(
       fetch(req)

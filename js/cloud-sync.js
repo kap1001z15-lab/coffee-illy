@@ -67,6 +67,7 @@
     if (!body.staffSessionToken && sess.staffToken) body.staffSessionToken = sess.staffToken;
     const r = await fetch(API_URL, {
       method: 'POST',
+      cache: 'no-store',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body)
     });
@@ -264,6 +265,11 @@
           checks: Number(c.checks || 0),
           writeoff: Number(c.writeoff || 0),
           topItems: c.topItems || '',
+          coffeeQty: Number(c.coffeeQty || 0),
+          counterStart: c.counterStart != null ? c.counterStart : null,
+          counterEnd: c.counterEnd != null ? c.counterEnd : null,
+          csvHashes: Array.isArray(c.csvHashes) ? c.csvHashes : [],
+          products: Array.isArray(c.products) ? c.products : [],
           avgCheck: Number(c.avgCheck || c.avg || (Number(c.checks) > 0 ? Math.round(rev / Number(c.checks)) : 0))
         };
       }).filter((c) => c.date);
@@ -355,9 +361,10 @@
         vol: k.vol || k.volume || '250 мл (M)',
         cat: k.cat || k.category || 'Классика',
         price: Number(k.price || 0),
+        avgPrice: Number(k.avgPrice != null ? k.avgPrice : (k.price || 0)),
         cost: Number(k.cost || 0),
         recipe: k.recipe || '',
-        serve: k.serve || ''
+        serve: k.serve || k.serving || ''
       }));
       changed = true;
     }
@@ -419,7 +426,7 @@
         shift: x.shift || '',
         barista: x.barista || 'Бариста',
         name: x.name || '',
-        kind: x.kind || 'Кофе',
+        kind: (String(x.kind||'').toLowerCase()==='coffee'?'Кофе':(String(x.kind||'').toLowerCase()==='non_coffee'?'Не-кофе':(x.kind||'Прочее'))),
         price: Number(x.price || 0),
         qty: Number(x.qty || 0),
         sum: Number(x.sum || ((Number(x.price || 0)) * (Number(x.qty || 0))))
@@ -690,7 +697,7 @@
       ['pointerdown', 'keydown', 'touchstart'].forEach((ev) =>
         window.addEventListener(ev, () => { _lastActive = Date.now(); }, { passive: true })
       );
-      const wake = () => { _lastActive = Date.now(); pullNow(false); };
+      const wake = () => { _lastActive = Date.now(); pullNow(true); };
       window.addEventListener('focus', wake);
       window.addEventListener('online', () => { flushOutbox().then(wake); });
       window.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) { flushOutbox().then(() => pullNow(true)); } });
