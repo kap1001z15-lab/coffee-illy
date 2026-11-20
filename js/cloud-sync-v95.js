@@ -103,6 +103,7 @@
   }
 
   function enqueueOp(action, payload) {
+    _localMutationSeq++;
     if (!action) return;
     const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const q = readOutbox();
@@ -542,6 +543,14 @@
       ] });
     } else if (desc.indexOf('Окно «') === 0 || desc.indexOf('Создан блок') === 0) {
       enqueueOp('save_checklist_blocks', { blocks: st.blocks || [] });
+      if (desc.indexOf('Создан блок') === 0) {
+        const bm = desc.match(/«([^»]+)»/);
+        if (bm && Array.isArray(st.tasks)) {
+          st.tasks.filter((t) => t && (t.block === bm[1] || t.group === bm[1])).forEach((t) => {
+            enqueueOp('save_task', Object.assign({}, t, { block: bm[1], group: bm[1], photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Администратор', active: 'да' }));
+          });
+        }
+      }
     } else if (desc.indexOf('Открыт блок') === 0) {
       const m = desc.match(/«([^»]+)»/);
       if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
@@ -581,7 +590,7 @@
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
       const nm = desc.replace('Обновлена ТТК ', '').trim();
       const k = (st.ttk || []).find((x) => x.name === nm);
-      if (k) enqueueOp('save_ttk', { id: k.id, name: k.name, volume: k.vol || '', category: k.cat || 'Классика', price: Number(k.price) || 0, costBeans: Number(k.cost) || 0, costMilk: 0, costSyrup: 0, costCup: 0, recipe: k.recipe || '', serving: k.serve || '' });
+      if (k) enqueueOp('save_ttk', { id: k.id, name: k.name, volume: k.vol || '', category: k.cat || 'Классика', price: Number(k.price) || 0, avgPrice: Number(k.avgPrice != null ? k.avgPrice : k.price) || 0, costBeans: Number(k.cost) || 0, costMilk: 0, costSyrup: 0, costCup: 0, recipe: k.recipe || '', serving: k.serve || '' });
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
@@ -617,6 +626,7 @@
     }
   }
 
+  let _localMutationSeq = 0;
   let _lastActive = Date.now();
   let _pollTimer = null;
 
@@ -640,6 +650,7 @@
       if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
       try {
         const fl = await flushOutbox();
+        const seqAtStart = _localMutationSeq;
         if (fl && fl.pending > 0 && !forceFull) return { changed: false, pending: fl.pending };
         const t0 = Date.now();
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
@@ -666,6 +677,7 @@
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
         if (data && getState) {
+          if (_localMutationSeq !== seqAtStart && !forceFull) return { changed: false, deferred: true };
           const st = getState();
           const changed = mergeServerIntoState(st, data);
           if (srvRev) st.cloudRev = srvRev;

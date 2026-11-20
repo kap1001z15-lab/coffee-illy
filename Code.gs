@@ -56,10 +56,10 @@ function RUN_ONE_CLICK_SETUP() {
   var trigRes = setupAutonomousTriggers_(ss);
   var rev = bumpDataRev_();
   try { onOpen(); } catch (_) {}
-  var msg = '✅ СИСТЕМА КОФЕЙНЯ v90 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ v95.1 ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
   try { Logger.log(msg); } catch (_) {}
   try { console.log(msg); } catch (_) {}
-  try { ss.toast(msg, '☕ Кофейня ERP v90', 8); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v95.1', 8); } catch (_) {}
   return { ok: true, message: msg, rev: rev, drive: folderStatus };
 }
 
@@ -155,11 +155,11 @@ function doGet(e) {
         ok: true,
         rev: curRev,
         serverTs: Date.now(),
-        serverVersion: 'v90', specVersion: '4.0',
+        serverVersion: 'v95.1', specVersion: '4.0',
         api: 2
       });
     }
-    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v90', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: 'v95.1', specVersion: '4.0', baseVersion: 'v87', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
     ss = getTargetSpreadsheet_();
     ensureSheets_(ss);
 
@@ -1014,9 +1014,13 @@ function findStaffByTelegramId_(ss, tgIdRaw) {
   var binds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
   var bKeys = Object.keys(binds || {});
   for (var j = 0; j < bKeys.length; j++) {
-    if (normTgNumericId_(binds[bKeys[j]]) === num) {
+    var bKey = bKeys[j];
+    var bVal = binds[bKey];
+    var candNum = (bVal && typeof bVal === 'object') ? normTgNumericId_(bVal.tgId || bKey) : normTgNumericId_(bVal);
+    var candName = (bVal && typeof bVal === 'object') ? String(bVal.staffName || '').trim() : String(bKey || '').trim();
+    if (candNum === num && candName) {
       for (var k = 0; k < list.length; k++) {
-        if (list[k] && String(list[k].name || '').trim().toLowerCase() === String(bKeys[j]).trim().toLowerCase()) {
+        if (list[k] && String(list[k].name || '').trim().toLowerCase() === candName.toLowerCase()) {
           return list[k];
         }
       }
@@ -1272,7 +1276,7 @@ function sendTelegramServerAlert_(ss, payload) {
 
     // Автоматически добавляем inline-кнопку перехода в нужный чек-лист или дашборд, если задан WEBAPP_URL (v93.0)
     var sendOpts = Object.assign({}, payload);
-    var baseAppUrl = String(payload.webappUrl || map.WEBAPP_URL || '').trim();
+    var baseAppUrl = String(payload.webappUrl || map.WEBAPP_URL || 'https://kap1001z15-lab.github.io/coffee-illy').trim();
     if (baseAppUrl && !sendOpts.reply_markup && !sendOpts.entityId) {
       var targetUrl = baseAppUrl;
       if (payload.targetPage) {
@@ -1374,7 +1378,7 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
   return {
     ok: true,
     v: res.v || 55,
-    serverVersion: 'v90', specVersion: '4.0',
+    serverVersion: 'v95.1', specVersion: '4.0',
     location: res.location || 'Кофейня №1',
     staff: safeStaff,
     serverTime: res.serverTime,
@@ -1446,7 +1450,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     ok: true,
     v: full.v || 55,
     rev: getDataRev_(),
-    serverVersion: 'v90', specVersion: '4.0',
+    serverVersion: 'v95.1', specVersion: '4.0',
     profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
     location: full.location || 'Кофейня №1',
     photoAll: full.photoAll || 'нет',
@@ -2749,7 +2753,7 @@ function getAdmin_(ss) {
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
     staffPresence: getStaffPresenceToday_(ss),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
-    webappUrl: map.WEBAPP_URL || '',
+    webappUrl: map.WEBAPP_URL || 'https://kap1001z15-lab.github.io/coffee-illy',
     autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
     serverTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm'),
     settings: getSettingsArray_(map)
@@ -3302,16 +3306,30 @@ function saveStaff_(ss, b) {
     generatedPin = String(100000 + Math.floor(Math.random() * 900000));
     props.setProperty('STAFF_PIN_HASH_' + staffName, normalizePinHash_(generatedPin));
   }
+  var tgIdClean = String(b.tgId || b.telegramId || '').trim();
+  if (rows.length > 0 && !String(rows[0][6] || '').trim()) {
+    try { sh.getRange(1, 7).setValue('Telegram ID'); } catch (_) {}
+  }
+  if (tgIdClean && staffName) {
+    try {
+      var binds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+      binds[tgIdClean] = { tgId: tgIdClean, staffName: staffName, updatedAt: Date.now() };
+      setJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', binds);
+    } catch (_) {}
+  }
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id || String(rows[i][1]).trim().toLowerCase() === staffName.toLowerCase()) {
-      sh.getRange(i + 1, 1, 1, 6).setValues([[id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••']]);
-      var resUpd = { ok: true, id: id };
+      var keepTg = tgIdClean || String(rows[i][6] || '').trim();
+      sh.getRange(i + 1, 1, 1, 7).setValues([[id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••', keepTg]]);
+      bumpDataRev_();
+      var resUpd = { ok: true, id: id, tgId: keepTg };
       if (generatedPin) resUpd.generatedPin = generatedPin;
       return resUpd;
     }
   }
-  sh.appendRow([id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••']);
-  var resNew = { ok: true, id: id };
+  sh.appendRow([id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••', tgIdClean]);
+  bumpDataRev_();
+  var resNew = { ok: true, id: id, tgId: tgIdClean };
   if (generatedPin) resNew.generatedPin = generatedPin;
   return resNew;
 }
@@ -4568,7 +4586,7 @@ function buildTelegramInteractiveButtonsV80_(entityId, webappUrl) {
 }
 
 // === V82 SECURITY & AUDIT FIXES (Document 1: P0 Telegram HMAC Auth, P0 Factory PIN Lock, P1 Private Drive Photos, P1 Verified Telegram Delivery) ===
-var COFFEE_SERVER_VERSION_V82 = 'v90';
+var COFFEE_SERVER_VERSION_V82 = 'v95.1';
 
 function applySecureDriveFileSharingV82_(file) {
   if (!file) return 'PRIVATE';
@@ -4975,7 +4993,7 @@ function saveTelegramSettingsV93_(ss, body) {
 function testTelegramAlertV93_(ss, body) {
   var map = getSettingsMap_(ss);
   var loc = map.LOCATION || 'Кофейня №1';
-  var text = '✅ <b>Тест связи Coffee Illy v93.0</b>\n📍 Точка: ' + escapeTgHtml_(loc) + '\n🔔 Уведомления об инцидентах и открытии чек-листов работают корректно.';
+  var text = '✅ <b>Тест связи Coffee Illy v95.1</b>\n📍 Точка: ' + escapeTgHtml_(loc) + '\n🔔 Уведомления об инцидентах и открытии чек-листов работают корректно.';
   var res = sendTelegramServerAlert_(ss, {
     type: 'test',
     force: true,
@@ -5049,7 +5067,7 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
   var notified = {};
   try { notified = JSON.parse(props.getProperty(notifKey) || '{}') || {}; } catch (_) { notified = {}; }
 
-  var baseAppUrl = String(map.WEBAPP_URL || '').trim();
+  var baseAppUrl = String(map.WEBAPP_URL || 'https://kap1001z15-lab.github.io/coffee-illy').trim();
   var sent = [];
   var skipped = [];
 
