@@ -220,11 +220,10 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=95.0"></script>
-  <script src="js/ttk-catalog-v95.js?v=95.0"></script>
-<script src="js/cloud-sync-v95.js?v=95.0"></script>
-  <script src="js/pos-csv-parser-v93.js?v=95.0"></script>
-<script src="js/camera-v94.js?v=95.0"></script>
+  <script src="config.js?v=94.1"></script>
+  <script src="js/cloud-sync-v94.js?v=94.1"></script>
+  <script src="js/pos-csv-parser-v93.js?v=94.1"></script>
+<script src="js/camera-v94.js?v=94.1"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -274,7 +273,6 @@ const EQUIP_ZONES = ['Кофемашина','Кофемолка','Холодил
 
 function freshState() {
   const s = JSON.parse(JSON.stringify(LIVE_SNAPSHOT));
-  if ((!s.ttk || !s.ttk.length) && Array.isArray(window.COFFEE_TTK_CATALOG_V95)) s.ttk = JSON.parse(JSON.stringify(window.COFFEE_TTK_CATALOG_V95));
   s.rev = 1; s.woNorm = 15; s.initCounter = 600; s.photoAll = false; s.simTime = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '13:25');
   s.adminPin = '1234'; s.extensions = {};
   s.staff = s.staff.map(st => Object.assign({}, st, {

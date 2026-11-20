@@ -1,4 +1,4 @@
-/* Coffee Illy v95.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
@@ -103,7 +103,6 @@
   }
 
   function enqueueOp(action, payload) {
-    _localMutationSeq++;
     if (!action) return;
     const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const q = readOutbox();
@@ -332,24 +331,16 @@
       changed = true;
     }
     if (Array.isArray(data.ttk) && data.ttk.length) {
-      const srvTtk = data.ttk.map((k) => ({
+      state.ttk = data.ttk.map((k) => ({
         id: k.id || ('ttk_' + Math.random().toString(36).slice(2, 6)),
         name: k.name || '',
         vol: k.vol || k.volume || '250 мл (M)',
         cat: k.cat || k.category || 'Классика',
         price: Number(k.price || 0),
-        avgPrice: Number(k.avgPrice || k.price || 0),
-        cost: Number(k.cost != null ? k.cost : 0),
+        cost: Number(k.cost || 0),
         recipe: k.recipe || '',
-        serve: k.serve || k.serving || ''
+        serve: k.serve || ''
       }));
-      const baseCat = (typeof window !== 'undefined' && Array.isArray(window.COFFEE_TTK_CATALOG_V95)) ? window.COFFEE_TTK_CATALOG_V95 : [];
-      const byName = new Set(srvTtk.map((x) => String(x.name || '').trim().toLowerCase()));
-      const merged = srvTtk.slice();
-      baseCat.forEach((c) => {
-        if (!byName.has(String(c.name || '').trim().toLowerCase())) merged.push(Object.assign({}, c));
-      });
-      state.ttk = merged;
       changed = true;
     }
     if (data.dailyPlans && typeof data.dailyPlans === 'object') {
@@ -402,6 +393,22 @@
     }
     if (data.autopilotEnabled !== undefined) {
       state.autopilotEnabled = !!data.autopilotEnabled;
+      changed = true;
+    }
+    if (Array.isArray(data.reconciliation)) {
+      state.reconciliation = data.reconciliation;
+      changed = true;
+    }
+    if (Array.isArray(data.transactionsLog)) {
+      state.transactionsLog = data.transactionsLog;
+      changed = true;
+    }
+    if (Array.isArray(data.sheetStats)) {
+      state.sheetStats = data.sheetStats;
+      changed = true;
+    }
+    if (data.spreadsheetUrl) {
+      state.spreadsheetUrl = String(data.spreadsheetUrl);
       changed = true;
     }
     if (Array.isArray(data.salesLog)) {
@@ -496,7 +503,7 @@
     } else if (desc.indexOf('Закрыта касса') === 0 && st.cash && st.cash.length) {
       const last = st.cash[0];
       const rev = Number(last.revenue || last.total || ((Number(last.cash) || 0) + (Number(last.card) || 0)));
-      enqueueOp('submit_cash', {
+      enqueueOp('submit_cash', { source: 'manual',
         date: last.date || localISO(),
         who: last.barista || last.who || actor,
         userName: last.barista || last.who || actor,
@@ -543,24 +550,9 @@
       ] });
     } else if (desc.indexOf('Окно «') === 0 || desc.indexOf('Создан блок') === 0) {
       enqueueOp('save_checklist_blocks', { blocks: st.blocks || [] });
-      if (desc.indexOf('Создан блок') === 0) {
-        const bm = desc.match(/«([^»]+)»/);
-        if (bm && Array.isArray(st.tasks)) {
-          st.tasks.filter((t) => t && (t.block === bm[1] || t.group === bm[1])).forEach((t) => {
-            enqueueOp('save_task', Object.assign({}, t, { block: bm[1], group: bm[1], photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Администратор', active: 'да' }));
-          });
-        }
-      }
     } else if (desc.indexOf('Открыт блок') === 0) {
       const m = desc.match(/«([^»]+)»/);
       if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
-    } else if (desc.indexOf('Обновлены финансовые планы') === 0) {
-      enqueueOp('save_all_settings', { items: [
-        { id: 'PLAN', value: String(st.plan || 2200) },
-        { id: 'PLAN_CHECKS', value: String(st.planChecks || 75) },
-        { id: 'MIN_AVG_CHECK', value: String(st.minAvgCheck || 35) },
-        { id: 'WO_NORM', value: String(st.woNorm || 15) }
-      ] });
     } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
       const plansObj = {};
       const rosterObj = {};
@@ -590,7 +582,7 @@
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
       const nm = desc.replace('Обновлена ТТК ', '').trim();
       const k = (st.ttk || []).find((x) => x.name === nm);
-      if (k) enqueueOp('save_ttk', { id: k.id, name: k.name, volume: k.vol || '', category: k.cat || 'Классика', price: Number(k.price) || 0, avgPrice: Number(k.avgPrice != null ? k.avgPrice : k.price) || 0, costBeans: Number(k.cost) || 0, costMilk: 0, costSyrup: 0, costCup: 0, recipe: k.recipe || '', serving: k.serve || '' });
+      if (k) enqueueOp('save_ttk', k);
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
@@ -610,23 +602,9 @@
     } else if (desc.indexOf('Удалена ТТК ') === 0) {
       const kid = desc.replace('Удалена ТТК ', '').trim();
       if (kid) enqueueOp('delete_ttk', { id: kid });
-    } else if (desc.indexOf('Удалён блок «') === 0) {
-      const m = desc.match(/«([^»]+)»/);
-      if (m) enqueueOp('delete_checklist_block', { name: m[1] });
-    } else if (desc.indexOf('Статус инцидента ') === 0) {
-      const iid = desc.replace('Статус инцидента ', '').trim();
-      const inc = (st.incidents || []).find((x) => x.id === iid);
-      if (inc) enqueueOp('update_incident', { id: inc.id, status: inc.status, responsible: inc.owner || 'Администратор' });
-    } else if (desc.indexOf('Удалён инцидент ') === 0) {
-      const iid = desc.replace('Удалён инцидент ', '').trim();
-      if (iid) enqueueOp('delete_incident', { id: iid });
-    } else if (desc.indexOf('Удалена позиция склада ') === 0) {
-      const wid = desc.replace('Удалена позиция склада ', '').trim();
-      if (wid) enqueueOp('delete_inventory', { id: wid });
     }
   }
 
-  let _localMutationSeq = 0;
   let _lastActive = Date.now();
   let _pollTimer = null;
 
@@ -650,7 +628,6 @@
       if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
       try {
         const fl = await flushOutbox();
-        const seqAtStart = _localMutationSeq;
         if (fl && fl.pending > 0 && !forceFull) return { changed: false, pending: fl.pending };
         const t0 = Date.now();
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
@@ -677,7 +654,6 @@
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
         if (data && getState) {
-          if (_localMutationSeq !== seqAtStart && !forceFull) return { changed: false, deferred: true };
           const st = getState();
           const changed = mergeServerIntoState(st, data);
           if (srvRev) st.cloudRev = srvRev;
@@ -857,9 +833,6 @@
   async function sendDailyDigest(dateStr) {
     return gasPost('send_daily_digest', dateStr ? { date: dateStr } : {});
   }
-  async function batchSaveTtk(items) {
-    return gasPost('batch_save_ttk', { items: items || [] });
-  }
   async function saveInventoryItem(opts) {
     return gasPost('save_inventory', opts || {});
   }
@@ -921,7 +894,6 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
-  window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
