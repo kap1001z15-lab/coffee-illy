@@ -279,6 +279,14 @@ function doPost(e) {
       return idempotentJsonOut_(ss, body, upOut, actorSess, actorSess);
     }
 
+    // 4.5. Молниеносные lock-free чтения с DATA_REV-кэшем (v94.2): чтение не ждёт блокировку записи!
+    if (action === 'admin') {
+      return jsonOut_(getAdminCachedV94_(ss));
+    }
+    if (action === 'staff_bootstrap') {
+      return jsonOut_(buildStaffBootstrapDto_(ss, actorSess, body.sinceTs));
+    }
+
     // 5. Короткая критическая секция для операций с Google Sheets
     lock.waitLock(15000);
     hasLock = true;
@@ -648,8 +656,10 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
     try { applySecureDriveFileSharingV82_(file); } catch (_) {}
     var retentionDays = Number(props.getProperty('MEDIA_RETENTION_DAYS') || 90);
     var expiresAt = isoDate_(new Date(Date.now() + retentionDays * 86400000));
-    var directMediaUrl = /^video\//i.test(mimeType)
-      ? ('https://drive.google.com/uc?export=download&id=' + file.getId())
+    var isVideoMedia = /^video\//i.test(mimeType);
+    var previewUrl = 'https://drive.google.com/file/d/' + file.getId() + '/preview';
+    var directMediaUrl = isVideoMedia
+      ? previewUrl
       : ('https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200');
     var lockedHere = false;
     if (lockOpt) {
@@ -667,7 +677,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
         try { lockOpt.releaseLock(); } catch (_) {}
       }
     }
-    return { ok: true, mediaId: file.getId(), fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), mediaType: isVideoMedia ? 'video' : 'image', url: directMediaUrl, previewUrl: previewUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
@@ -2367,7 +2377,8 @@ function getChecklists_(ss) {
 
   return {
     ok: true,
-    v: 55,
+    v: 94,
+    rev: getDataRev_(),
     checklists: chkLog,
     userDrafts: userDraftsMap,
     userActiveState: userActiveMap,
@@ -2683,7 +2694,8 @@ function getAdmin_(ss) {
 
   return {
     ok: true,
-    v: 28,
+    v: 94,
+    rev: getDataRev_(),
     today: isoDate_(),
     location: map.LOCATION,
     plan: Number(map.PLAN) || 2200,
@@ -3166,16 +3178,26 @@ function extendDeadline_(ss, b) {
   var extMap = {};
   try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
   var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
-  extMap[extKey] = {
-    openFrom: b.openFrom || '00:00',
-    until: b.until || '23:59',
-    forceOpen: true,
-    reason: b.reason || 'Разблокировано администратором онлайн',
-    at: tm
-  };
-  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
-  bumpDataRev_();
-  appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
+  if (b.clear) {
+    delete extMap[extKey];
+    Object.keys(extMap).forEach(function(k) {
+      if (k === blk || k.slice(-(':' + blk).length) === (':' + blk)) delete extMap[k];
+    });
+    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Возврат окна чек-листа в расписание', blk);
+  } else {
+    extMap[extKey] = {
+      openFrom: b.openFrom || '00:00',
+      until: b.until || '23:59',
+      forceOpen: true,
+      reason: b.reason || 'Разблокировано администратором онлайн',
+      at: tm
+    };
+    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
+  }
   return { ok: true, deadlineExtensions: extMap, rev: getDataRev_() };
 }
 
@@ -3310,6 +3332,7 @@ function deleteStaff_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3325,6 +3348,7 @@ function saveTtk_(ss, b) {
     }
   }
   sh.appendRow(rowVals);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3337,6 +3361,7 @@ function deleteTtk_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3453,6 +3478,7 @@ function saveTask_(ss, b, sessOpt) {
     return { ok: true, id: id, row: Number(b.row) };
   }
   sh.appendRow(rowVals);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3465,13 +3491,16 @@ function deleteTask_(ss, b) {
     if (rId === '__SYS_CONFIG_V19__' || rTitle === '__SYS_SYNC__') continue;
     if ((b.id && rId === String(b.id).trim()) || (b.expect && rTitle === String(b.expect).trim())) {
       sh.deleteRow(i + 1);
-      return { ok: true };
+      bumpDataRev_();
+      try { appendAudit_(ss, 'Администратор', 'Удалена задача чек-листа', rTitle || rId); } catch (_) {}
+      return { ok: true, deletedId: rId, rev: getDataRev_() };
     }
   }
   if (b.row && Number(b.row) >= 2 && Number(b.row) <= sh.getLastRow()) {
     sh.deleteRow(Number(b.row));
+    bumpDataRev_();
   }
-  return { ok: true };
+  return { ok: true, rev: getDataRev_() };
 }
 
 function reorderTask_(ss, b) {
@@ -3843,6 +3872,7 @@ function addExpense_(ss, b) {
   var sh = ss.getSheetByName('Расходы');
   var id = String(b.id || newId_('EXP')).trim();
   sh.appendRow([id, b.date || isoDate_(), b.category || 'Прочее', Number(b.amount) || 0, b.comment || '']);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3864,6 +3894,7 @@ function deleteExpense_(ss, b) {
   for (var i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][0]) === String(b.id)) sh.deleteRow(i + 1);
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -4148,6 +4179,7 @@ function updateIncident_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -5043,4 +5075,73 @@ function dedupeTasksV94_(tasks) {
     }
   }
   return out;
+}
+
+
+/* =========================================================================
+   COFFEE ILLY v94.2 — DATA_REV-КЭШ ДЛЯ МОЛНИЕНОСНОЙ ЗАГРУЗКИ ДАШБОРДА
+   ========================================================================= */
+function readChunkedCacheV94_(keyBase) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (!cache) return null;
+    var metaRaw = cache.get(keyBase + '_m');
+    if (!metaRaw) return null;
+    var meta = JSON.parse(metaRaw);
+    if (!meta || !meta.n) return null;
+    var parts = [];
+    for (var i = 0; i < meta.n; i++) {
+      var p = cache.get(keyBase + '_' + i);
+      if (p == null) return null;
+      parts.push(p);
+    }
+    return JSON.parse(parts.join(''));
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeChunkedCacheV94_(keyBase, obj, ttlSec) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (!cache) return;
+    var raw = JSON.stringify(obj);
+    var CHUNK = 90000;
+    if (raw.length > CHUNK * 4) return; // safety cap (~360KB)
+    var n = Math.ceil(raw.length / CHUNK);
+    for (var i = 0; i < n; i++) {
+      cache.put(keyBase + '_' + i, raw.slice(i * CHUNK, (i + 1) * CHUNK), ttlSec || 300);
+    }
+    cache.put(keyBase + '_m', JSON.stringify({ n: n }), ttlSec || 300);
+  } catch (_) {}
+}
+
+function getAdminCachedV94_(ss) {
+  var rev = getDataRev_();
+  var cKey = 'adm_v94_' + rev;
+  var hit = readChunkedCacheV94_(cKey);
+  if (hit && hit.ok) {
+    hit.cacheHit = true;
+    return hit;
+  }
+  var fresh = maskSensitiveSettingsInResponse_(getAdmin_(ss), ss);
+  fresh.rev = rev;
+  fresh.cacheHit = false;
+  writeChunkedCacheV94_(cKey, fresh, 300);
+  return fresh;
+}
+
+function getChecklistsCachedV94_(ss) {
+  var rev = getDataRev_();
+  var cKey = 'chk_v94_' + rev;
+  var hit = readChunkedCacheV94_(cKey);
+  if (hit && hit.ok) {
+    hit.cacheHit = true;
+    return hit;
+  }
+  var fresh = maskSensitiveSettingsInResponse_(getChecklists_(ss), ss);
+  fresh.rev = rev;
+  fresh.cacheHit = false;
+  writeChunkedCacheV94_(cKey, fresh, 300);
+  return fresh;
 }

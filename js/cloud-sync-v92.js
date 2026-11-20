@@ -461,6 +461,22 @@
       }));
       changed = true;
     }
+    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
+      const todayKey = localISO();
+      const normExt = {};
+      Object.keys(data.deadlineExtensions).forEach((k) => {
+        const val = data.deadlineExtensions[k];
+        if (!val || !val.forceOpen) return;
+        const m = String(k).match(/^(\d{4}-\d{2}-\d{2}):(.+)$/);
+        if (m) {
+          if (m[1] === todayKey) normExt[m[2]] = val;
+        } else {
+          normExt[k] = val;
+        }
+      });
+      state.extensions = normExt;
+      changed = true;
+    }
     if (data.serverTime) {
       state.serverTime = String(data.serverTime);
       changed = true;
@@ -570,6 +586,22 @@
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
+    } else if (desc.indexOf('Обновлена задача ') === 0) {
+      const tid = desc.replace('Обновлена задача ', '').trim();
+      const t = (st.tasks || []).find((x) => String(x.id) === tid);
+      if (t) enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: t.active === false ? 'нет' : 'да' }));
+    } else if (desc.indexOf('Удалена задача ') === 0) {
+      const tid = desc.replace('Удалена задача ', '').trim();
+      if (tid) enqueueOp('delete_task', { id: tid });
+    } else if (desc.indexOf('Возвращено окно «') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
+    } else if (desc.indexOf('Удалён сотрудник ') === 0) {
+      const nm = desc.replace('Удалён сотрудник ', '').trim();
+      if (nm) enqueueOp('delete_staff', { name: nm });
+    } else if (desc.indexOf('Удалена ТТК ') === 0) {
+      const kid = desc.replace('Удалена ТТК ', '').trim();
+      if (kid) enqueueOp('delete_ttk', { id: kid });
     }
   }
 
@@ -595,13 +627,17 @@
     async function pullNow(forceFull) {
       if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
       try {
-        await flushOutbox();
+        const fl = await flushOutbox();
+        if (fl && fl.pending > 0 && !forceFull) return { changed: false, pending: fl.pending };
         const t0 = Date.now();
-        const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
-        _lastRttMs = Math.max(1, Date.now() - t0);
-        const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
-        if (!forceFull && srvRev && srvRev === _lastServerRev) return { changed: false, rev: srvRev };
-        if (srvRev) _lastServerRev = srvRev;
+        let srvRev = _lastServerRev;
+        if (!forceFull) {
+          const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
+          _lastRttMs = Math.max(1, Date.now() - t0);
+          srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
+          if (srvRev && srvRev === _lastServerRev) return { changed: false, rev: srvRev };
+          if (srvRev) _lastServerRev = srvRev;
+        }
 
         let data = null;
         const sess = getSession();
@@ -623,6 +659,8 @@
         if (data && getState) {
           const st = getState();
           const changed = mergeServerIntoState(st, data);
+          if (forceFull) _lastRttMs = Math.max(1, Date.now() - t0);
+          if (data.rev != null && String(data.rev)) { srvRev = String(data.rev); _lastServerRev = srvRev; }
           if (srvRev) st.cloudRev = srvRev;
           st.lastSyncAt = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           st.lastRttMs = _lastRttMs;
@@ -797,6 +835,9 @@
   async function runChecklistNotificationsNow(opts) {
     return gasPost('run_checklist_notifications_now', opts || {});
   }
+  async function sendDailyDigest(dateStr) {
+    return gasPost('send_daily_digest', dateStr ? { date: dateStr } : {});
+  }
   async function saveInventoryItem(opts) {
     return gasPost('save_inventory', opts || {});
   }
@@ -846,6 +887,7 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
+    sendDailyDigest: sendDailyDigest,
     saveInventoryItem: saveInventoryItem,
     restockInventory: restockInventory,
     writeoffInventory: writeoffInventory,

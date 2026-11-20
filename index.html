@@ -220,9 +220,10 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=94.0"></script>
-  <script src="js/cloud-sync-v94.js?v=94.0"></script>
-  <script src="js/camera-v94.js?v=94.0"></script>
+  <script src="config.js?v=94.2"></script>
+  <script src="js/cloud-sync-v94.js?v=94.2"></script>
+  <script src="js/pos-csv-parser-v93.js?v=94.2"></script>
+<script src="js/camera-v94.js?v=94.2"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -707,20 +708,67 @@ function initTheme(btnId) {
       const tCsvIn = document.getElementById('t-csv-in');
       if (tCsvIn) tCsvIn.onchange = async (ev) => {
         const files = Array.from(ev.target.files || []);
-        if (!files.length || !window.CoffeePosCsvV93) return;
+        if (!files.length) return;
+        if (!window.CoffeePosCsvV93) { showToast('Модуль парсера CSV не загружен'); return; }
         const loaded = await Promise.all(files.map(f => f.text().then(text => ({ name: f.name, text }))));
         const staffNames = (state.staff || []).map(s => s.name).filter(Boolean);
         parsedCashBatch = window.CoffeePosCsvV93.parsePosBatch(loaded, staffNames);
+        ev.target.value = '';
         const info = document.getElementById('t-csv-info');
-        if (parsedCashBatch.days.length) {
-          const d0 = parsedCashBatch.days[parsedCashBatch.days.length - 1];
-          document.getElementById('cc').value = d0.cash;
-          document.getElementById('cd').value = d0.card;
-          document.getElementById('ck').value = d0.checks;
-          if (info) info.textContent = '✓ Распознано: ' + parsedCashBatch.summary.daysCount + ' дн. · ' + fmtRub(parsedCashBatch.summary.totalRevenue) + ' · Чеков: ' + parsedCashBatch.summary.totalChecks;
-        } else if (info) {
-          info.textContent = '⚠️ Не удалось распознать файл';
+        if (!parsedCashBatch.days.length) {
+          const errMsg = (parsedCashBatch.errors && parsedCashBatch.errors[0] && parsedCashBatch.errors[0].error) || 'Проверьте формат выписки (Транзакции / Продажи CSV)';
+          if (info) info.textContent = '⚠️ ' + errMsg;
+          openModal('Ошибка чтения выписки', `<div class="card-soft" style="border:1px solid var(--bad);font-size:13px;">${esc(errMsg)}</div>`);
+          return;
         }
+        const d0 = parsedCashBatch.days[parsedCashBatch.days.length - 1];
+        document.getElementById('cc').value = d0.cash;
+        document.getElementById('cd').value = d0.card;
+        document.getElementById('ck').value = d0.checks;
+        if (info) info.textContent = '✓ Распознано: ' + parsedCashBatch.summary.daysCount + ' дн. · ' + fmtRub(parsedCashBatch.summary.totalRevenue) + ' · Чеков: ' + parsedCashBatch.summary.totalChecks;
+        // Автоматическое всплывающее окно с подробной расшифровкой транзакций и продаж
+        openModal('Выписка кассы распознана ✓', `
+          <div class="card-soft" style="margin-bottom:10px;border:1px solid var(--accent);">
+            <div style="font-size:12px;color:var(--muted);">Файлов: ${parsedCashBatch.summary.filesCount} · Дней: ${parsedCashBatch.summary.daysCount}</div>
+            <div style="font-size:20px;font-weight:800;margin:4px 0;">${fmtRub(parsedCashBatch.summary.totalRevenue)}</div>
+            <div style="font-size:12.5px;">💵 Нал: <b>${fmtRub(parsedCashBatch.summary.totalCash)}</b> · 💳 Безнал/Моб.: <b>${fmtRub(parsedCashBatch.summary.totalCard)}</b></div>
+            <div style="font-size:12.5px;margin-top:2px;">🧾 Чеков: <b>${parsedCashBatch.summary.totalChecks}</b> · ☕ Позиций: <b>${parsedCashBatch.summary.totalProducts}</b></div>
+          </div>
+          <div class="stack" style="max-height:220px;overflow-y:auto;margin-bottom:12px;">
+            ${parsedCashBatch.days.map(d => `<div class="card-soft" style="font-size:12.5px;">
+              <div><b>${d.date}</b> · ${esc(d.barista || authed)}</div>
+              <div style="margin-top:2px;">Выручка: <b>${fmtRub(d.revenue)}</b> (Нал ${fmtRub(d.cash)} / Безнал ${fmtRub(d.card)}) · Чеков: ${d.checks}${d.coffeeQty ? ' · Кофе: ' + d.coffeeQty + ' шт.' : ''}</div>
+              ${d.topItems ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Хиты: ${esc(d.topItems)}</div>` : ''}
+              ${d.warnings && d.warnings.length ? `<div style="color:var(--warn);font-size:11.5px;margin-top:3px;">⚠️ ${d.warnings.map(esc).join(' · ')}</div>` : ''}
+            </div>`).join('')}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button class="btn-lg primary" id="csv-modal-save">✓ Сохранить выписку в Google Таблицу</button>
+            <button class="btn-lg soft" id="csv-modal-fill">Заполнить поля и проверить вручную</button>
+          </div>
+        `);
+        document.getElementById('csv-modal-fill').onclick = () => { closeModal(); showToast('Поля кассы заполнены из выписки'); };
+        document.getElementById('csv-modal-save').onclick = async () => {
+          const btn = document.getElementById('csv-modal-save');
+          if (btn) { btn.disabled = true; btn.textContent = '⏳ Сохраняем в таблицу...'; }
+          const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
+          const res = api && api.importPosBatch ? await api.importPosBatch(parsedCashBatch.days, 'sum') : { ok: false };
+          if (res && res.ok) {
+            parsedCashBatch.days.forEach(d => {
+              const ex = state.cash.find(x => x.date === d.date);
+              if (ex) { ex.cash = d.cash; ex.card = d.card; ex.revenue = d.revenue; ex.checks = d.checks; ex.barista = d.barista; ex.topItems = d.topItems; }
+              else state.cash.unshift({ date: d.date, cash: d.cash, card: d.card, revenue: d.revenue, checks: d.checks, writeoff: 0, topItems: d.topItems, barista: d.barista });
+            });
+            saveSharedState(state, authed, 'Импорт выписки кассы: ' + fmtRub(parsedCashBatch.summary.totalRevenue));
+            parsedCashBatch = null;
+            closeModal();
+            showToast('✓ Выписка загружена! Чеков: ' + (res.txAdded || 0));
+            render();
+          } else {
+            if (btn) { btn.disabled = false; btn.textContent = '✓ Сохранить выписку в Google Таблицу'; }
+            showToast('Ошибка загрузки: ' + ((res && res.error) || 'проверьте сеть'));
+          }
+        };
       };
       document.getElementById('cs').onclick = async () => {
         if (document.activeElement) try { document.activeElement.blur(); } catch(_) {}

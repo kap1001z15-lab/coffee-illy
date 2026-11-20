@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coffee-illy-v93.1-m3soft-prod';
+const CACHE_NAME = 'coffee-illy-v94-2-m3soft-prod';
 const CORE = ['./', './index.html', './owner.html', './config.js', './js/pos-csv-parser-v93.js', './js/cloud-sync-v94.js', './js/camera-v94.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
