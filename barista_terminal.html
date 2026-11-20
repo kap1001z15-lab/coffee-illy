@@ -221,7 +221,7 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=94.2"></script>
-  <script src="js/cloud-sync-v96.js?v=96.0"></script>
+  <script src="js/cloud-sync-v96.js?v=96.1"></script>
   <script src="js/pos-csv-parser-v93.js?v=94.2"></script>
 <script src="js/camera-v94.js?v=94.2"></script>
 </head>
@@ -606,7 +606,10 @@ function initTheme(btnId) {
           }
         }
       }
-      body.innerHTML = welcomeHtml + h;
+      const annHtml = (Array.isArray(state.announcements) && state.announcements.length)
+        ? `<div class="card-soft" style="margin-bottom:10px;border-left:3px solid var(--accent);font-size:12.5px;"><b>📢 ${esc(state.announcements[0].title || 'Объявление')}:</b> ${esc(state.announcements[0].text || '')}</div>`
+        : '';
+      body.innerHTML = welcomeHtml + annHtml + h;
       const wc = document.getElementById('w-close'); if (wc) wc.onclick = () => { welcomeBanner = ''; render(); };
       document.getElementById('tg-st').onclick = () => { stagesOpen = !stagesOpen; render(); };
       body.querySelectorAll('[data-pk]').forEach(b=>b.onclick=()=>{ activeBlock=b.dataset.pk; finishedBlock=''; confirmFinish=false; stepIdx=0; instOpen=true; stagesOpen=false; render(); });
@@ -654,6 +657,7 @@ function initTheme(btnId) {
         if (stepIdx < tasks.length-1) {
           stepIdx++; instOpen = true;
           state.liveProgress[authed] = { block:curBlk.name, done:stepIdx, total:tasks.length };
+          if (window.CoffeeCloudV96 && window.CoffeeCloudV96.pushLiveProgress) window.CoffeeCloudV96.pushLiveProgress(authed, curBlk.name, stepIdx, tasks.length);
           if (window.CoffeeCloudV94 && window.CoffeeCloudV94.sendStepProgress) window.CoffeeCloudV94.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
           saveSharedState(state, authed, ''); render();
         } else {
@@ -796,6 +800,10 @@ function initTheme(btnId) {
     }
 
     if (tab === 'ttk') {
+      const lowInv = (state.inventory || []).filter(it => Number(it.minStock) > 0 && Number(it.stock) <= Number(it.minStock));
+      const invAlertHtml = lowInv.length
+        ? `<div class="card-soft" style="margin-bottom:10px;border:1px solid var(--warn);font-size:12.5px;"><b>📦 Заканчивается на складе (${lowInv.length}):</b> ${lowInv.slice(0, 5).map(i => esc(i.name) + ' (' + i.stock + ' ' + esc(i.unit || '') + ')').join(', ')}</div>`
+        : '';
       // Screenshot 8: 4 Categories instead of flat list + Search bar moved to BOTTOM
       const q = ttkQ.trim().toLowerCase();
       const shiftItems = state.blocks.filter(b => !b.isCash && b.active !== false && b.name !== 'Карта добрых дел');

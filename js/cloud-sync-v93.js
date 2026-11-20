@@ -523,6 +523,40 @@
       }));
       changed = true;
     }
+    if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
+      const todayIso = localISO();
+      const normExt = {};
+      Object.keys(data.deadlineExtensions).forEach((k) => {
+        const val = data.deadlineExtensions[k];
+        if (!val) return;
+        const parts = String(k).split(':');
+        if (parts.length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) {
+          if (parts[0] === todayIso) {
+            const blkName = parts.slice(1).join(':');
+            normExt[blkName] = val;
+          }
+        } else {
+          normExt[k] = val;
+        }
+      });
+      state.extensions = normExt;
+      changed = true;
+    }
+    if (Array.isArray(data.announcements)) {
+      state.announcements = data.announcements.map((a) => ({
+        id: a.id || '',
+        date: String(a.date || '').slice(0, 10),
+        title: a.title || '',
+        text: a.text || a.body || '',
+        priority: a.priority || 'info',
+        author: a.author || 'Администратор'
+      }));
+      changed = true;
+    }
+    if (Number(data.planChecks) > 0) { state.planChecks = Number(data.planChecks); changed = true; }
+    if (Number(data.minAvgCheck) > 0) { state.minAvgCheck = Number(data.minAvgCheck); changed = true; }
+    if (data.woNorm !== undefined && Number(data.woNorm) >= 0) { state.woNorm = Number(data.woNorm); changed = true; }
+    if (data.initCounter !== undefined && Number(data.initCounter) >= 0) { state.initCounter = Number(data.initCounter); changed = true; }
     if (data.serverTime) {
       state.serverTime = String(data.serverTime);
       changed = true;
@@ -622,13 +656,34 @@
       const nm = desc.replace('Обновлён сотрудник ', '').trim();
       const s = (st.staff || []).find((x) => x.name === nm);
       if (s) {
-        enqueueOp('save_staff', { name: s.name, role: s.role, shift: s.shift, tgId: s.tgId || '' });
+        enqueueOp('save_staff', {
+          id: s.id || '',
+          name: s.name,
+          role: s.role || 'Бариста',
+          shop: s.shop || st.location || 'Кофейня №1',
+          shift: s.shift || '08:00–20:00',
+          active: s.active === false ? 'нет' : 'да',
+          tgId: s.tgId || '',
+          pin: s.pin || ''
+        });
         if (s.pin) enqueueOp('save_staff_pins', { pins: [{ name: s.name, pin: s.pin }] });
       }
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
       const nm = desc.replace('Обновлена ТТК ', '').trim();
       const k = (st.ttk || []).find((x) => x.name === nm);
-      if (k) enqueueOp('save_ttk', k);
+      if (k) enqueueOp('save_ttk', {
+        id: k.id || '',
+        name: k.name || '',
+        volume: k.vol || k.volume || '',
+        vol: k.vol || k.volume || '',
+        category: k.cat || k.category || 'Классика',
+        cat: k.cat || k.category || 'Классика',
+        price: Number(k.price || 0),
+        cost: Number(k.cost || 0),
+        costBeans: Number(k.cost || 0),
+        recipe: k.recipe || '',
+        serving: k.serve || k.serving || ''
+      });
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
@@ -920,6 +975,21 @@
     return res;
   }
 
+  let _progTimer = null;
+  function pushLiveProgress(staffName, block, done, total) {
+    if (!staffName || !block) return;
+    clearTimeout(_progTimer);
+    _progTimer = setTimeout(() => {
+      enqueueOp('save_checklist_draft', {
+        date: localISO(),
+        userName: staffName,
+        block: block,
+        activeState: { userName: staffName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: Date.now() },
+        updatedAt: Date.now()
+      });
+    }, 350);
+  }
+
   const API_OBJ = {
     localISO: localISO,
     localHHMM: localHHMM,
@@ -944,6 +1014,7 @@
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
     sendDailyDigest: sendDailyDigest,
+    pushLiveProgress: pushLiveProgress,
     deleteInventoryItem: deleteInventoryItem,
     seedDefaultInventory: seedDefaultInventory,
     recalcInventoryFromSales: recalcInventoryFromSales,

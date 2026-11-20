@@ -419,7 +419,8 @@ function doPost(e) {
     if (action === 'save_setting') return idempotentJsonOut_(ss, body, saveSettingSecure_(ss, body), actorSess);
     if (action === 'save_all_settings' && body.items) {
       body.items.forEach(function(it) { saveSettingSecure_(ss, it); });
-      return idempotentJsonOut_(ss, body, { ok: true }, actorSess);
+      bumpDataRev_();
+      return idempotentJsonOut_(ss, body, { ok: true, rev: getDataRev_() }, actorSess);
     }
     if (action === 'extend_deadline') return idempotentJsonOut_(ss, body, extendDeadline_(ss, body), actorSess);
     if (action === 'save_block_windows') return idempotentJsonOut_(ss, body, saveBlockWindows_(ss, body), actorSess);
@@ -1387,16 +1388,74 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
   };
 }
 
+function getRecentCashAndIncidentsForSync_(ss) {
+  var cash = [];
+  var shC = ss.getSheetByName('Касса');
+  if (shC && shC.getLastRow() > 1) {
+    var cRows = shC.getDataRange().getValues();
+    for (var i = 1; i < cRows.length; i++) {
+      var r = cRows[i];
+      if (!r[0]) continue;
+      var cashVal = Number(r[1]) || 0;
+      var cardVal = Number(r[2]) || 0;
+      cash.push({
+        date: fmtIso_(r[0]),
+        cash: cashVal,
+        card: cardVal,
+        revenue: cashVal + cardVal,
+        checks: Number(r[3]) || 0,
+        writeoff: Number(r[4]) || 0,
+        topItems: String(r[5] || ''),
+        barista: String(r[6] || 'Бариста')
+      });
+    }
+    cash.sort(function(a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+    if (cash.length > 35) cash = cash.slice(0, 35);
+  }
+  var incidents = [];
+  var shI = ss.getSheetByName('Поломки');
+  if (shI && shI.getLastRow() > 1) {
+    var iRows = shI.getDataRange().getValues();
+    for (var j = 1; j < iRows.length; j++) {
+      var ri = iRows[j];
+      if (!ri[0]) continue;
+      incidents.push({
+        id: String(ri[0]),
+        date: fmtIso_(ri[1]),
+        time: fmtTime_(ri[2]),
+        step: String(ri[3] || 'Проблема'),
+        text: String(ri[4] || ''),
+        priority: String(ri[5] || 'Терпит'),
+        status: String(ri[6] || 'Новая проблема'),
+        who: String(ri[7] || ''),
+        owner: String(ri[8] || 'Администратор'),
+        photo: String(ri[9] || ''),
+        photoUrl: String(ri[9] || ''),
+        block: String(ri[10] || '')
+      });
+    }
+    incidents.reverse();
+    if (incidents.length > 80) incidents = incidents.slice(0, 80);
+  }
+  return { cash: cash, incidents: incidents };
+}
+
 function buildStaffBootstrapDto_(ss, sess, sinceTs) {
   var full = getChecklists_(ss);
+  var extra = getRecentCashAndIncidentsForSync_(ss);
   var isAdmin = (sess && sess.role === 'admin');
   var staffName = String((sess && sess.staffName) || '').trim();
+  var todayStr = isoDate_();
+
   var safeStaff = Array.isArray(full.staff) ? full.staff.map(function(s) {
     return {
       id: s.id,
       name: s.name,
       role: s.role,
-      location: s.location,
+      shop: s.shop || full.location || 'Кофейня №1',
+      location: s.shop || full.location || 'Кофейня №1',
+      shift: s.shift || '08:00–20:00',
+      tgId: s.tgId || '',
       active: s.active
     };
   }) : [];
@@ -1410,34 +1469,26 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     }
   });
 
-  var filteredActive = {};
-  var rawActive = full.userActiveState || {};
-  Object.keys(rawActive).forEach(function(k) {
-    if (isAdmin || k === staffName || k.indexOf(staffName + ':') === 0 || k.indexOf(':' + staffName) >= 0) {
-      filteredActive[k] = rawActive[k];
-    }
-  });
-
-  var filteredPersonal = {};
-  var rawPersonal = full.personalTasksDone || {};
-  Object.keys(rawPersonal).forEach(function(k) {
-    if (isAdmin || k === staffName || k.indexOf(staffName + ':') === 0) {
-      filteredPersonal[k] = rawPersonal[k];
-    }
-  });
-
+  // Все чек-листы за сегодня (чтобы смена видела уже пройденные блоки) + свои за историю
   var filteredChecklists = Array.isArray(full.checklists) ? full.checklists.filter(function(c) {
-    return isAdmin || (c && String(c.who || '').trim() === staffName);
+    if (!c) return false;
+    return isAdmin || String(c.date || '').slice(0, 10) === todayStr || String(c.who || '').trim() === staffName;
   }) : [];
 
+  // Полные ТТК (включая цену, себестоимость и подачу, чтобы терминал не занулял прайс)
   var safeTtk = Array.isArray(full.ttk) ? full.ttk.map(function(t) {
     return {
       id: t.id,
-      category: t.category,
-      name: t.name,
-      volume: t.volume,
-      ingredients: t.ingredients,
-      recipe: t.recipe
+      category: t.category || t.cat || 'Классика',
+      cat: t.category || t.cat || 'Классика',
+      name: t.name || '',
+      volume: t.volume || t.vol || '',
+      vol: t.volume || t.vol || '',
+      price: Number(t.price || 0),
+      cost: Number(t.cost || ((Number(t.costBeans)||0) + (Number(t.costMilk)||0) + (Number(t.costSyrup)||0) + (Number(t.costCup)||0))),
+      ingredients: t.ingredients || '',
+      recipe: t.recipe || '',
+      serve: t.serving || t.serve || ''
     };
   }) : [];
 
@@ -1447,11 +1498,16 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
 
   return {
     ok: true,
-    v: full.v || 55,
+    v: 96,
     rev: getDataRev_(),
-    serverVersion: 'v90', specVersion: '4.0',
+    serverVersion: 'v96.1', specVersion: '4.1',
     profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
     location: full.location || 'Кофейня №1',
+    plan: Number(full.plan) || 2200,
+    planChecks: Number(full.planChecks) || 75,
+    minAvgCheck: Number(full.minAvgCheck) || 35,
+    woNorm: Number(full.woNorm) || 15,
+    initCounter: Number(full.initCounter) || 600,
     photoAll: full.photoAll || 'нет',
     openStart: full.openStart,
     deadline: full.deadline,
@@ -1460,16 +1516,17 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     closeStart: full.closeStart,
     closeDeadline: full.closeDeadline,
     checklistBlocks: full.checklistBlocks || [],
+    dailyPlans: full.dailyPlans || {},
+    shiftRoster: full.shiftRoster || {},
     deadlineExtensions: full.deadlineExtensions || {},
     shiftCompletedBlocksToday: (function() {
       var mapDone = {};
-      var todayStr = isoDate_();
       (Array.isArray(full.checklists) ? full.checklists : []).forEach(function(c) {
         if (!c || String(c.date || '').slice(0, 10) !== todayStr) return;
         var bName = String(c.block || '').trim();
         if (!bName) return;
         if (bName.toLowerCase() === 'день') bName = 'Лайн Чек 1';
-        mapDone[bName] = { date: todayStr, time: String(c.time || ''), status: String(c.status || 'В срок') };
+        mapDone[bName] = { date: todayStr, time: String(c.time || ''), status: String(c.status || 'В срок'), who: String(c.who || '') };
       });
       return mapDone;
     })(),
@@ -1477,11 +1534,17 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     staff: safeStaff,
     ttk: safeTtk,
     goodDeeds: full.goodDeeds || [],
+    serviceAudits: getServiceAuditsFromSheet_(ss),
     tasks: safeTasks,
     checklists: filteredChecklists,
+    cash: extra.cash,
+    incidents: extra.incidents,
+    inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
+    inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
+    expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     userDrafts: filteredDrafts,
-    userActiveState: filteredActive,
-    personalTasksDone: filteredPersonal,
+    userActiveState: full.userActiveState || {},
+    personalTasksDone: full.personalTasksDone || {},
     deltas: getDeltasSince_(ss, Number(sinceTs) || 0, sess ? sess.role : 'staff', null, sess),
     staffPresence: getStaffPresenceToday_(ss),
     serverTime: full.serverTime,
@@ -2404,6 +2467,11 @@ function getChecklists_(ss) {
     ttk: ttkList,
     goodDeeds: gdList,
     tasks: dedupeTasksV94_(tasks),
+    rev: getDataRev_(),
+    cash: getRecentCashAndIncidentsForSync_(ss).cash,
+    incidents: getRecentCashAndIncidentsForSync_(ss).incidents,
+    inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
+    expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     staffPresence: getStaffPresenceToday_(ss),
     serverTime: serverTime,
     serverDate: serverDate
@@ -3114,10 +3182,12 @@ function saveGoodDeed_(ss, b) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
       sh.getRange(i + 1, 1, 1, 7).setValues([rowVals]);
-      return { ok: true, id: id };
+      bumpDataRev_();
+  return { ok: true, id: id };
     }
   }
   sh.appendRow(rowVals);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3130,6 +3200,7 @@ function deleteGoodDeed_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3146,10 +3217,12 @@ function saveServiceAudit_(ss, b) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
       sh.getRange(i + 1, 1, 1, 10).setValues([rowVals]);
-      return { ok: true, id: id };
+      bumpDataRev_();
+  return { ok: true, id: id };
     }
   }
   sh.appendRow(rowVals);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3162,6 +3235,7 @@ function deleteServiceAudit_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3245,11 +3319,13 @@ function saveAnnouncement_(ss, b) {
     if (String(rows[i][0]).trim() === id) {
       sh.getRange(i + 1, 1, 1, 10).setValues([rowVals]);
       appendAudit_(ss, 'Администратор', 'Обновление объявления', b.title);
-      return { ok: true, id: id };
+      bumpDataRev_();
+  return { ok: true, id: id };
     }
   }
   sh.appendRow(rowVals);
   appendAudit_(ss, 'Администратор', 'Публикация объявления', b.title);
+  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3263,6 +3339,7 @@ function deleteAnnouncement_(ss, b) {
       break;
     }
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3295,6 +3372,8 @@ function saveStaff_(ss, b) {
   var id = String(b.id || ('st_' + Date.now().toString(36))).trim();
   var staffName = String(b.name || '').trim();
   var pinStr = String(b.pin || '').trim();
+  var activeStr = (b.active === false || String(b.active || 'да').toLowerCase() === 'нет') ? 'нет' : 'да';
+  var tgVal = String(b.tgId || '').trim();
   var props = PropertiesService.getScriptProperties();
   var generatedPin = '';
   if (pinStr && pinStr.indexOf('••') === -1) {
@@ -3304,20 +3383,27 @@ function saveStaff_(ss, b) {
     generatedPin = String(100000 + Math.floor(Math.random() * 900000));
     props.setProperty('STAFF_PIN_HASH_' + staffName, normalizePinHash_(generatedPin));
   }
+  if (tgVal && staffName) {
+    var binds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+    binds[staffName] = tgVal;
+    setJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', binds);
+  }
+  var updated = false;
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id || String(rows[i][1]).trim().toLowerCase() === staffName.toLowerCase()) {
-      sh.getRange(i + 1, 1, 1, 6).setValues([[id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••']]);
-      var resUpd = { ok: true, id: id };
-      if (generatedPin) resUpd.generatedPin = generatedPin;
-      return resUpd;
+      sh.getRange(i + 1, 1, 1, 7).setValues([[id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', activeStr, '••', tgVal || String(rows[i][6] || '')]]);
+      updated = true;
+      break;
     }
   }
-  sh.appendRow([id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', b.active || 'да', '••']);
-  var resNew = { ok: true, id: id };
-  if (generatedPin) resNew.generatedPin = generatedPin;
-  return resNew;
+  if (!updated) {
+    sh.appendRow([id, staffName, b.role || 'Бариста', b.shop || 'Кофейня №1', activeStr, '••', tgVal]);
+  }
+  bumpDataRev_();
+  var resOut = { ok: true, id: id, rev: getDataRev_() };
+  if (generatedPin) resOut.generatedPin = generatedPin;
+  return resOut;
 }
-
 function deleteStaff_(ss, b) {
   var sh = ss.getSheetByName('Сотрудники');
   var rows = sh.getDataRange().getValues();
@@ -3335,16 +3421,24 @@ function saveTtk_(ss, b) {
   var sh = ss.getSheetByName('Техкарты');
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
-  var rowVals = [id, b.name || '', b.volume || '', b.category || '', Number(b.price) || 0, Number(b.costBeans) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || ''];
+  var vol = b.volume || b.vol || '';
+  var cat = b.category || b.cat || 'Классика';
+  var cBeans = Number(b.costBeans != null ? b.costBeans : (b.cost != null ? b.cost : 0)) || 0;
+  var cMilk = Number(b.costMilk) || 0;
+  var cSyrup = Number(b.costSyrup) || 0;
+  var cCup = Number(b.costCup) || 0;
+  var serving = b.serving || b.serve || '';
+  var rowVals = [id, b.name || '', vol, cat, Number(b.price) || 0, cBeans, cMilk, cSyrup, cCup, b.recipe || '', serving];
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
       sh.getRange(i + 1, 1, 1, 11).setValues([rowVals]);
-      return { ok: true, id: id };
+      bumpDataRev_();
+      return { ok: true, id: id, rev: getDataRev_() };
     }
   }
   sh.appendRow(rowVals);
   bumpDataRev_();
-  return { ok: true, id: id };
+  return { ok: true, id: id, rev: getDataRev_() };
 }
 
 function deleteTtk_(ss, b) {
@@ -4001,6 +4095,7 @@ function saveChecklistDraft_(ss, b) {
   if (draftsStr.length <= 45000) {
     saveSetting_(ss, { id: 'USER_DRAFTS_JSON', value: draftsStr });
   }
+  bumpDataRev_();
   return { ok: true, updatedAt: tsNow };
 }
 
@@ -4333,6 +4428,7 @@ function addExpiryItem_(ss, b) {
   list.unshift(item);
   if (list.length > 60) list.length = 60;
   setJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', list);
+  bumpDataRev_();
   return { ok: true, item: item };
 }
 
@@ -4351,6 +4447,7 @@ function disposeExpiryItem_(ss, b) {
     }
   }
   setJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', list);
+  bumpDataRev_();
   return { ok: true };
 }
 
