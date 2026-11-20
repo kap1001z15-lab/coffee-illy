@@ -206,9 +206,9 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.0.0"></script>
-  <script src="js/cloud-sync.js?v=97.0.0"></script>
-<script src="js/pos-csv-parser.js?v=97.0.0"></script>
+  <script src="config.js?v=97.1.0"></script>
+  <script src="js/cloud-sync.js?v=97.1.0"></script>
+<script src="js/pos-csv-parser.js?v=97.1.0"></script>
 </head>
 <body>
 <header class="topbar">
@@ -1411,7 +1411,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.0.0"></script>
+  <script src="./js/time-picker.js?v=97.1.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1419,7 +1419,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.0.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.1.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
@@ -1463,6 +1463,105 @@ function initTheme(btnId) {
             }
           }
           return res;
+        };
+      }
+    })();
+  </script>
+
+
+  <script>
+    (function () {
+      if (window.__coffeeOwnerV971Enhanced) return;
+      window.__coffeeOwnerV971Enhanced = true;
+
+      // 1. Гарантированная сортировка истории чек-листов от самых новых к самым старым + сравнение POS vs ручной ввод
+      function sortHistoryNewestFirst(arr) {
+        if (!Array.isArray(arr)) return arr;
+        return arr.sort(function (a, b) {
+          var da = String((a && a.date) || '');
+          var db = String((b && b.date) || '');
+          if (da !== db) return da < db ? 1 : -1;
+          var ta = String((a && a.time) || '').padStart(5, '0');
+          var tb = String((b && b.time) || '').padStart(5, '0');
+          if (ta !== tb) return ta < tb ? 1 : -1;
+          return 0;
+        });
+      }
+
+      function buildPosVsManualHtml(st) {
+        var cash = Array.isArray(st && st.cash) ? st.cash : [];
+        if (!cash.length) return '';
+        var posDays = 0, posRev = 0, posChecks = 0, posCoffee = 0;
+        var manDays = 0, manRev = 0, manChecks = 0, counterDeltaSum = 0;
+        cash.forEach(function (c) {
+          var rev = (Number(c.cash) || 0) + (Number(c.card) || 0);
+          var chk = Number(c.checks) || 0;
+          var hasPos = (Array.isArray(c.csvHashes) && c.csvHashes.length > 0) || (Array.isArray(c.products) && c.products.length > 0);
+          if (hasPos) {
+            posDays++; posRev += rev; posChecks += chk; posCoffee += (Number(c.coffeeQty) || 0);
+          } else {
+            manDays++; manRev += rev; manChecks += chk;
+          }
+          if (c.counterStart != null && c.counterEnd != null && c.counterStart !== '' && c.counterEnd !== '') {
+            var d = Number(c.counterEnd) - Number(c.counterStart);
+            if (d > 0) counterDeltaSum += d;
+          }
+        });
+        var totalRev = posRev + manRev;
+        var posShare = totalRev > 0 ? Math.round((posRev / totalRev) * 100) : 0;
+        var lowStock = (Array.isArray(st && st.inventory) ? st.inventory : []).filter(function (it) {
+          return Number(it.minStock) > 0 && Number(it.stock) <= Number(it.minStock);
+        });
+        var lowHtml = lowStock.length
+          ? '<div style="margin-top:8px;padding:8px 10px;border-radius:12px;background:rgba(198,40,40,0.10);color:#B33A3A;font-size:12px;font-weight:700;">⚠️ Заканчивается на складе (' + lowStock.length + '): ' + lowStock.slice(0, 5).map(function (x) { return x.name + ' (' + x.stock + ' ' + (x.unit || '') + ')'; }).join(', ') + '</div>'
+          : '<div style="margin-top:8px;font-size:12px;color:#266D45;font-weight:600;">✓ Все позиции склада выше минимального порога</div>';
+
+        return '<div id="v971-pos-manual-card" style="margin:12px 0;padding:14px 16px;border-radius:20px;background:var(--card,#fff);border:1px solid var(--border,rgba(0,0,0,0.08));box-shadow:var(--shadow,none);">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">' +
+            '<div style="font-size:13px;font-weight:800;">📊 Сверка источников: Отчёты POS vs Ручной ввод</div>' +
+            '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--accent-soft,rgba(125,78,36,0.12));color:var(--accent,#7D4E24);">POS: ' + posShare + '% выручки</span>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;font-size:12px;">' +
+            '<div style="padding:10px;border-radius:14px;background:var(--surface,#f4ece4);">' +
+              '<div style="opacity:0.7;margin-bottom:2px;">Из POS-отчётов (' + posDays + ' дн.)</div>' +
+              '<div style="font-size:15px;font-weight:800;">' + Math.round(posRev).toLocaleString('ru-RU') + ' ₽</div>' +
+              '<div style="opacity:0.75;">Чеков: ' + posChecks + ' · Кофе: ' + posCoffee + ' шт</div>' +
+            '</div>' +
+            '<div style="padding:10px;border-radius:14px;background:var(--surface,#f4ece4);">' +
+              '<div style="opacity:0.7;margin-bottom:2px;">Ручной ввод (' + manDays + ' дн.)</div>' +
+              '<div style="font-size:15px;font-weight:800;">' + Math.round(manRev).toLocaleString('ru-RU') + ' ₽</div>' +
+              '<div style="opacity:0.75;">Чеков: ' + manChecks + (counterDeltaSum > 0 ? ' · Счётчик: ' + counterDeltaSum : '') + '</div>' +
+            '</div>' +
+          '</div>' +
+          lowHtml +
+        '</div>';
+      }
+
+      if (typeof window.render === 'function') {
+        var prevRender = window.render;
+        window.render = function () {
+          try {
+            if (typeof st !== 'undefined' && st) {
+              if (Array.isArray(st.checklists)) sortHistoryNewestFirst(st.checklists);
+              if (Array.isArray(st.logs)) sortHistoryNewestFirst(st.logs);
+            }
+          } catch (_) {}
+          var out = prevRender.apply(this, arguments);
+          try {
+            var curTab = (typeof tab !== 'undefined') ? tab : '';
+            if (curTab === 'overview' || curTab === 'sales' || curTab === 'finance') {
+              var host = document.getElementById('main') || document.querySelector('main') || document.getElementById('app');
+              if (host && !document.getElementById('v971-pos-manual-card') && typeof st !== 'undefined' && st) {
+                var html = buildPosVsManualHtml(st);
+                if (html) {
+                  var wrap = document.createElement('div');
+                  wrap.innerHTML = html;
+                  if (host.firstChild) host.insertBefore(wrap.firstChild, host.firstChild.nextSibling || host.firstChild);
+                }
+              }
+            }
+          } catch (_) {}
+          return out;
         };
       }
     })();
