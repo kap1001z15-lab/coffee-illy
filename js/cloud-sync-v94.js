@@ -3,7 +3,7 @@
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
   const OUTBOX_KEY = 'coffee_illy_v94_outbox';
-  const SESSION_KEY = 'coffee_illy_v93_session';
+  const SESSION_KEY = 'coffee_illy_v94_session';
 
   function localISO() {
     const d = new Date();
@@ -159,44 +159,6 @@
     }
   }
 
-
-  function canonicalTaskKey(block, title) {
-    let s = String(title || '').toLowerCase();
-    // Remove emojis, symbols, numbers-only suffixes, and "фото" / "+ холдеры" markers
-    s = s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, ' ');
-    s = s.replace(/\+\s*холдер\S*/g, ' ');
-    s = s.replace(/\b(фото|видео|2-3\s*сек|для\s+гостей|и\s+проверка\s+помола|запас\s*-?\s*\d+\s*шт\.?)\b/g, ' ');
-    s = s.replace(/[^a-zа-яё0-9]+/gi, ' ').trim();
-    if (s.indexOf('санузел') === 0) s = 'санузел';
-    if (s.indexOf('кофемашин') === 0) s = 'кофемашина';
-    if (s.indexOf('гриндер') === 0) s = 'гриндеры';
-    if (s.indexOf('мусор выброшен') === 0) s = 'мусор выброшен';
-    if (s === 'закрытие помещения' || s === 'помещение') s = 'закрытие помещения';
-    return String(block || '').trim().toLowerCase() + '::' + s;
-  }
-
-  function dedupeTasksList(list) {
-    const map = new Map();
-    const out = [];
-    (Array.isArray(list) ? list : []).forEach((t) => {
-      if (!t || !t.title) return;
-      const key = canonicalTaskKey(t.block, t.title);
-      if (map.has(key)) {
-        const prev = map.get(key);
-        // Merge best attributes: keep photo=true if either requires photo, keep longer instruction
-        if (t.photo && !prev.photo) prev.photo = true;
-        if (String(t.instruction || '').length > String(prev.instruction || '').length) {
-          prev.instruction = t.instruction;
-        }
-      } else {
-        const copy = Object.assign({}, t);
-        map.set(key, copy);
-        out.push(copy);
-      }
-    });
-    return out;
-  }
-
   function mergeServerIntoState(state, data) {
     if (!data || typeof data !== 'object') return false;
     let changed = false;
@@ -235,7 +197,7 @@
     if (Array.isArray(data.tasks) && data.tasks.length) {
       const clean = data.tasks.filter((t) => t && t.title && !String(t.id || '').startsWith('__SYS'));
       if (clean.length) {
-        state.tasks = dedupeTasksList(clean.map((t) => ({
+        state.tasks = clean.map((t) => ({
           id: t.id || ('t_' + Math.random().toString(36).slice(2, 6)),
           block: t.block || 'Открытие',
           group: t.groupName || t.group || '',
@@ -244,7 +206,7 @@
           photo: String(t.photo || 'нет').toLowerCase() === 'да' || t.photo === true,
           owner: t.responsible || t.owner || 'Бариста',
           active: String(t.active || 'да').toLowerCase() !== 'нет'
-        })));
+        }));
         changed = true;
       }
     }
@@ -294,7 +256,8 @@
           status: x.status || 'Новая проблема',
           who: x.who || '',
           owner: x.owner || x.responsible || 'Администратор',
-          photoUrl: x.photoUrl || x.photo || ''
+          photoUrl: String(x.photoUrl || x.photo || '').split(/\r?\n/)[0] || '',
+          photos: Array.isArray(x.photos) ? x.photos : String(x.photoUrl || x.photo || '').split(/\r?\n/).map((u) => u.trim()).filter(Boolean)
         };
       });
       changed = true;
@@ -356,7 +319,11 @@
         price: Number(k.price || 0),
         cost: Number(k.cost || 0),
         recipe: k.recipe || '',
-        serve: k.serve || ''
+        serve: k.serve || k.serving || '',
+        isNew: !!k.isNew,
+        seasonTag: k.seasonTag || '',
+        addedAt: k.addedAt || '',
+        ackBy: Array.isArray(k.ackBy) ? k.ackBy : []
       }));
       changed = true;
     }
@@ -528,9 +495,10 @@
         who: inc.who || actor,
         userName: inc.who || actor,
         date: inc.date || localISO(),
-        photoUrl: inc.photoUrl || '',
-        photo_url: inc.photoUrl || '',
-        photo: inc.photoUrl || ''
+        photoUrl: inc.photoUrl || (Array.isArray(inc.photos) && inc.photos[0]) || '',
+        photo_url: inc.photoUrl || (Array.isArray(inc.photos) && inc.photos[0]) || '',
+        photo: Array.isArray(inc.photos) && inc.photos.length ? inc.photos.join('\n') : (inc.photoUrl || ''),
+        photos: Array.isArray(inc.photos) ? inc.photos : (inc.photoUrl ? [inc.photoUrl] : [])
       });
     } else if (desc.indexOf('Решён инцидент') === 0) {
       enqueueOp('update_incident', { id: desc.replace('Решён инцидент ', '').trim(), status: 'Решена' });
@@ -674,6 +642,7 @@
       );
       const wake = () => { _lastActive = Date.now(); pullNow(false); };
       window.addEventListener('focus', wake);
+      window.addEventListener('pageshow', (e) => { if (e && e.persisted) { flushOutbox().then(wake); } });
       window.addEventListener('online', () => { flushOutbox().then(wake); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
@@ -698,6 +667,30 @@
       }
     } catch (_) {}
     return null;
+  }
+
+  function getDeepLinkTab() {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const sp = new URLSearchParams(window.location.search);
+        const t = sp.get('tab') || '';
+        if (t) return t.trim().toLowerCase();
+      }
+      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
+      const startParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+      if (startParam && String(startParam).indexOf('tab_') === 0) {
+        return String(startParam).slice(4).trim().toLowerCase();
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function sendStepProgress(staffName, block, done, total) {
+    enqueueOp('report_step_progress', { staffName: staffName, userName: staffName, block: block, done: done, total: total });
+  }
+
+  function ackTtkItem(ttkId, staffName) {
+    enqueueOp('ack_ttk_item', { id: ttkId, staffName: staffName, userName: staffName });
   }
 
   function getDeepLinkBlock() {
@@ -862,6 +855,8 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
+    getDeepLinkTab: getDeepLinkTab,
+    ackTtkItem: ackTtkItem,
     saveInventoryItem: saveInventoryItem,
     restockInventory: restockInventory,
     writeoffInventory: writeoffInventory,
@@ -873,6 +868,8 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
+  window.CoffeeCloudV94 = API_OBJ;
+  window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
