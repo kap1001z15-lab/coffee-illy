@@ -1,4 +1,4 @@
-/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v96.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
@@ -159,6 +159,30 @@
     }
   }
 
+  function normalizeSaleKind(rawKind, name) {
+    const k = String(rawKind || '').trim().toLowerCase();
+    const n = String(name || '').trim().toLowerCase();
+    if (k === 'non_coffee' || k.includes('не-кофе') || k.includes('не кофе')) {
+      if (/десерт|чизкейк|макарон|круассан|рулет|печень|торт|пирож|шоколад|батончик|сэндвич|сырник/.test(n)) return 'Десерты';
+      if (/чай|матча|какао|лимонад|сок|вода|кола|смузи|милкшейк/.test(n)) return 'Чай и напитки';
+      return 'Не-кофе';
+    }
+    if (k === 'coffee' || (k.includes('кофе') && !k.includes('не-кофе'))) return 'Кофе';
+    if (k === 'review' || k.includes('отзыв')) return 'Прочее';
+    if (/эспрессо|американо|капучино|латте|раф|флэт|кофе|макиато|мокко|бамбл|айс|гляссе|кортадо|доппио/.test(n)) return 'Кофе';
+    if (/десерт|чизкейк|макарон|круассан|рулет|печень|торт|пирож|шоколад|батончик|сэндвич|сырник/.test(n)) return 'Десерты';
+    if (/чай|матча|какао|лимонад|сок|вода|кола|смузи|милкшейк/.test(n)) return 'Чай и напитки';
+    return rawKind ? String(rawKind) : 'Не-кофе';
+  }
+
+  function normalizeIncidentStatus(st) {
+    const s = String(st || '').trim();
+    const l = s.toLowerCase();
+    if (l === 'resolved' || l === 'решено' || l === 'решена' || l === 'закрыто' || l === 'закрыта') return 'Решена';
+    if (l === 'в работе' || l === 'принято в работу' || l === 'принята в работу') return 'В работе';
+    return s || 'Новая проблема';
+  }
+
   function mergeServerIntoState(state, data) {
     if (!data || typeof data !== 'object') return false;
     let changed = false;
@@ -275,7 +299,7 @@
           zone: step,
           text: x.text || x.comment || '',
           priority: x.priority || 'Терпит',
-          status: x.status || 'Новая проблема',
+          status: normalizeIncidentStatus(x.status),
           who: x.who || '',
           owner: x.owner || x.responsible || 'Администратор',
           photoUrl: x.photoUrl || x.photo || ''
@@ -386,6 +410,33 @@
       });
       changed = true;
     }
+    if (Array.isArray(data.serviceAudits)) {
+      state.serviceAudits = data.serviceAudits.map((a) => ({
+        id: a.id || '',
+        date: String(a.date || '').slice(0, 10),
+        barista: a.barista || '',
+        auditor: a.auditor || a.checker || '',
+        greeting: Number(a.greet || a.greeting || 0),
+        clarify: Number(a.clarify || 0),
+        upsell: Number(a.upsell || 0),
+        farewell: Number(a.farewell || 0),
+        total: Number(a.total || a.score || 0),
+        comment: a.comment || ''
+      }));
+      changed = true;
+    }
+    if (Array.isArray(data.goodDeeds)) {
+      state.goodDeeds = data.goodDeeds.map((g) => ({
+        id: g.id || '',
+        title: g.title || g.name || '',
+        period: g.period || g.frequency || '',
+        window: g.window || g.timeWindow || '',
+        executor: g.executor || 'Бариста',
+        checker: g.checker || 'Администратор',
+        instruction: g.instruction || ''
+      }));
+      changed = true;
+    }
     if (data.staffPresence && typeof data.staffPresence === 'object') {
       state.staffPresence = data.staffPresence;
       changed = true;
@@ -412,7 +463,7 @@
         shift: x.shift || '',
         barista: x.barista || 'Бариста',
         name: x.name || '',
-        kind: x.kind || 'Кофе',
+        kind: normalizeSaleKind(x.kind, x.name),
         price: Number(x.price || 0),
         qty: Number(x.qty || 0),
         sum: Number(x.sum || ((Number(x.price || 0)) * (Number(x.qty || 0))))
@@ -909,6 +960,7 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
+  window.CoffeeCloudV96 = API_OBJ;
   window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;

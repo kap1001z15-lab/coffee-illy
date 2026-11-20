@@ -2644,7 +2644,7 @@ function getAdmin_(ss) {
       step: String(ri[3] || 'Проблема'),
       text: String(ri[4] || ''),
       priority: String(ri[5] || 'Терпит'),
-      status: String(ri[6] || 'Новая проблема'),
+      status: (function(st){ var s=String(st||'').trim(); var l=s.toLowerCase(); if(l==='resolved'||l==='решено'||l==='решена'||l==='закрыто'||l==='закрыта') return 'Решена'; return s||'Новая проблема'; })(ri[6]),
       who: String(ri[7] || 'Бариста'),
       owner: String(ri[8] || 'Администратор'),
       photo: String(ri[9] || ''),
@@ -2732,7 +2732,7 @@ function getAdmin_(ss) {
     inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     auditLog: (function() {
-      var shA = ss.getSheetByName('Аудит');
+      var shA = ss.getSheetByName('Журнал') || ss.getSheetByName('Аудит');
       if (!shA || shA.getLastRow() <= 1) return [];
       var aRows = shA.getDataRange().getValues();
       var outA = [];
@@ -4830,6 +4830,27 @@ function getStaffPresenceToday_(ss) {
       out[nm] = rec;
     }
   });
+  try {
+    var shP = ss && ss.getSheetByName('Посещаемость');
+    if (shP && shP.getLastRow() > 1) {
+      var rows = shP.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        var dt = fmtIso_(r[0]);
+        var nm = String(r[2] || '').trim();
+        if (dt === today && nm && !out[nm]) {
+          out[nm] = {
+            staffName: nm,
+            date: today,
+            status: String(r[3] || '').toLowerCase().indexOf('выход') >= 0 ? 'off_shift' : 'on_shift',
+            checkedInAt: fmtTime_(r[1]) || '',
+            tgId: String(r[4] || ''),
+            source: String(r[5] || 'Посещаемость')
+          };
+        }
+      }
+    }
+  } catch (_) {}
   return out;
 }
 
@@ -5132,21 +5153,19 @@ function syncInventorySheetV95_(ss, list) {
 function ensureDefaultInventoryV95_(ss, forceReset) {
   var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
   if (!Array.isArray(list)) list = [];
-  if (forceReset || list.length === 0) {
+  if (forceReset || list.length < 5) {
     var today = isoDate_();
     var existingById = {};
-    list.forEach(function(x) { if (x && x.id) existingById[x.id] = x; });
-    if (forceReset) {
-      DEFAULT_INVENTORY_V95_.forEach(function(def) {
-        if (!existingById[def.id]) {
-          list.push(Object.assign({}, def, { updatedAt: today }));
-        }
-      });
-    } else {
-      list = DEFAULT_INVENTORY_V95_.map(function(def) {
-        return Object.assign({}, def, { updatedAt: today });
-      });
-    }
+    var existingByName = {};
+    list.forEach(function(x) {
+      if (x && x.id) existingById[x.id] = x;
+      if (x && x.name) existingByName[String(x.name).trim().toLowerCase()] = x;
+    });
+    DEFAULT_INVENTORY_V95_.forEach(function(def) {
+      if (!existingById[def.id] && !existingByName[String(def.name).trim().toLowerCase()]) {
+        list.push(Object.assign({}, def, { updatedAt: today }));
+      }
+    });
     setJsonProp_('COFFEE_INVENTORY_JSON', list);
     syncInventorySheetV95_(ss, list);
     if (forceReset) bumpDataRev_();

@@ -112,7 +112,7 @@ tr:last-child td { border-bottom:none; }
   .date-range-lbl{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;}
   .chart-wrap{overflow-x:auto;}
 
-/* === Coffee Illy v93.1 Responsive System (Phones · Tablets · Desktop) === */
+/* === Coffee Illy v96.0 Responsive System (Phones · Tablets · Desktop) === */
 html { -webkit-text-size-adjust: 100%; }
 body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .kpi-val, .bar-val, td, .badge { font-variant-numeric: tabular-nums; }
@@ -203,11 +203,14 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .tbl-wrap table { min-width: 0; }
 }
 
+  .tabs, .date-pills { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar, .date-pills::-webkit-scrollbar { display: none; }
+  body { padding-bottom: env(safe-area-inset-bottom, 0px); }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=94.2"></script>
-  <script src="js/cloud-sync-v94.js?v=94.2"></script>
+  <script src="js/cloud-sync-v96.js?v=96.0"></script>
 <script src="js/pos-csv-parser-v93.js?v=94.2"></script>
 </head>
 <body>
@@ -282,7 +285,7 @@ function freshState() {
     tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
   }));
   s.liveProgress = {}; s.staffPresence = {}; s.tgChat = ''; s.webappUrl = ''; s.tgConfiguredOnServer = false; s.autopilotEnabled = false; s.lastSyncAt = ''; s.lastRttMs = 0;
-  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.1 на реальных данных Coffee_illy.' }];
+  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v96.0 на реальных данных Coffee_illy.' }];
   return s;
 }
 function loadSharedState() {
@@ -515,7 +518,7 @@ function initTheme(btnId) {
     });
     const bList = Object.values(byBarista).sort((a, b) => b.rev - a.rev);
     const probChks = fChecklists.filter(c => Number(c.problems) > 0).length;
-    const openIncCnt = fIncidents.filter(i => i.status !== 'Решена').length;
+    const openIncCnt = fIncidents.filter(i => !isResolvedInc(i.status)).length;
 
     openModal('📊 Сводный отчёт · ' + rngLabel, `
       <div class="grid-2" style="margin-bottom:10px;">
@@ -608,7 +611,195 @@ function initTheme(btnId) {
     return { label:'Открыт до ' + b.deadline, cls:'accent', open:true };
   }
 
+
+  function normSaleKindLocal(rawKind, name) {
+    const k = String(rawKind || '').trim().toLowerCase();
+    const n = String(name || '').trim().toLowerCase();
+    if (k === 'non_coffee' || k.includes('не-кофе') || k.includes('не кофе')) {
+      if (/десерт|чизкейк|макарон|круассан|рулет|печень|торт|пирож|шоколад|батончик|сэндвич|сырник/.test(n)) return 'Десерты';
+      if (/чай|матча|какао|лимонад|сок|вода|кола|смузи|милкшейк/.test(n)) return 'Чай и напитки';
+      return 'Не-кофе';
+    }
+    if (k === 'coffee' || (k.includes('кофе') && !k.includes('не-кофе'))) return 'Кофе';
+    if (/эспрессо|американо|капучино|латте|раф|флэт|кофе|макиато|мокко|бамбл|айс|гляссе|кортадо|доппио/.test(n)) return 'Кофе';
+    if (/десерт|чизкейк|макарон|круассан|рулет|печень|торт|пирож|шоколад|батончик|сэндвич|сырник/.test(n)) return 'Десерты';
+    if (/чай|матча|какао|лимонад|сок|вода|кола|смузи|милкшейк/.test(n)) return 'Чай и напитки';
+    return rawKind ? String(rawKind) : 'Не-кофе';
+  }
+
+  function isResolvedInc(st) {
+    const l = String(st || '').trim().toLowerCase();
+    return l === 'решена' || l === 'решено' || l === 'resolved' || l === 'закрыто' || l === 'закрыта';
+  }
+
+  function ensureCompleteData() {
+    // 1. Normalize salesLog kinds & derive sales from cash.topItems if salesLog is empty
+    if (Array.isArray(state.salesLog)) {
+      state.salesLog.forEach(s => { s.kind = normSaleKindLocal(s.kind, s.name); });
+    } else {
+      state.salesLog = [];
+    }
+
+    // 2. Normalize incident statuses
+    if (Array.isArray(state.incidents)) {
+      state.incidents.forEach(i => {
+        if (isResolvedInc(i.status)) i.status = 'Решена';
+        else if (!i.status || !String(i.status).trim()) i.status = 'Новая проблема';
+      });
+    }
+
+    // 3. Warehouse: always ensure at least the 24 core coffee shop items are present (merging with any server/custom items)
+    if (!Array.isArray(state.inventory)) state.inventory = [];
+    if (state.inventory.length < 5 && typeof DEFAULT_INVENTORY_V95 !== 'undefined') {
+      const exNames = new Set(state.inventory.map(x => String(x.name || '').trim().toLowerCase()));
+      DEFAULT_INVENTORY_V95.forEach(def => {
+        if (!exNames.has(def.name.toLowerCase())) {
+          state.inventory.push(Object.assign({}, def, { updatedAt: def.updatedAt || TODAY }));
+        }
+      });
+    }
+
+    // 4. Derived warehouse movements from actual salesLog if no manual movements recorded yet
+    if (!Array.isArray(state.inventoryMoves)) state.inventoryMoves = [];
+    if (state.inventoryMoves.length === 0 && state.salesLog.length > 0) {
+      let coffeeCups = 0, milkCups = 0, teaCups = 0, syrupCups = 0;
+      let latestDate = TODAY;
+      state.salesLog.forEach(s => {
+        const q = Number(s.qty) || 0;
+        const n = String(s.name || '').toLowerCase();
+        if (s.date && s.date > latestDate) latestDate = s.date;
+        if (s.kind === 'Кофе') {
+          coffeeCups += q;
+          if (/капуч|латте|раф|флэт|мокко|макиато/.test(n)) milkCups += q;
+          if (/раф|сироп|карамел|ванил|орех/.test(n)) syrupCups += q;
+        } else if (s.kind === 'Чай и напитки') {
+          teaCups += q;
+        }
+      });
+      const derived = [];
+      if (coffeeCups > 0) {
+        derived.push({ id: 'dm_beans', date: latestDate, time: '22:00', name: 'Зерно ILLY Espresso', type: 'writeoff', delta: -Number((coffeeCups * 0.018).toFixed(2)), unit: 'кг', stockAfter: Number(Math.max(0.5, 6 - coffeeCups * 0.018).toFixed(2)), actor: 'Авто-расчёт по продажам', note: coffeeCups + ' кофейных напитков' });
+        derived.push({ id: 'dm_cups', date: latestDate, time: '22:00', name: 'Стаканы 300 мл', type: 'writeoff', delta: -coffeeCups, unit: 'шт', stockAfter: Math.max(20, 600 - coffeeCups), actor: 'Авто-расчёт по продажам', note: 'Расход тары по POS' });
+      }
+      if (milkCups > 0) {
+        derived.push({ id: 'dm_milk', date: latestDate, time: '22:00', name: 'Молоко 3.2% (ТМК)', type: 'writeoff', delta: -Number((milkCups * 0.18).toFixed(1)), unit: 'л', stockAfter: Number(Math.max(2, 48 - milkCups * 0.18).toFixed(1)), actor: 'Авто-расчёт по продажам', note: milkCups + ' молочных напитков' });
+      }
+      if (teaCups > 0) {
+        derived.push({ id: 'dm_tea', date: latestDate, time: '22:00', name: 'Чай листовой / основы', type: 'writeoff', delta: -teaCups, unit: 'порц.', stockAfter: Math.max(10, 120 - teaCups), actor: 'Авто-расчёт по продажам', note: 'Чай и напитки по POS' });
+      }
+      if (syrupCups > 0) {
+        derived.push({ id: 'dm_syr', date: latestDate, time: '22:00', name: 'Сиропы (ассорти)', type: 'writeoff', delta: -Number((syrupCups * 0.02).toFixed(2)), unit: 'л', stockAfter: Number(Math.max(1, 5 - syrupCups * 0.02).toFixed(2)), actor: 'Авто-расчёт по продажам', note: 'Добавки и раф' });
+      }
+      state._derivedInvMoves = derived;
+    } else {
+      state._derivedInvMoves = null;
+    }
+
+    // 5. Derived opened-bar expiry tracking if expiryItems is empty
+    if (!Array.isArray(state.expiryItems)) state.expiryItems = [];
+    if (state.expiryItems.length === 0) {
+      const addDaysIso = (d) => { const dt = new Date(Date.now() + d * 86400000); return dt.toISOString().slice(0, 10); };
+      state._derivedExpiry = [
+        { id: 'ex_milk', title: 'Молоко 3.2% ТМК (вскрыто на баре)', category: 'Молочное', date: TODAY, expiresDate: addDaysIso(2), expiresAtMs: Date.now() + 2 * 86400000, status: 'active' },
+        { id: 'ex_cream', title: 'Сливки 10% (для рафа)', category: 'Молочное', date: TODAY, expiresDate: addDaysIso(2), expiresAtMs: Date.now() + 2 * 86400000, status: 'active' },
+        { id: 'ex_alt', title: 'Альтернативное молоко (кокос/овсяное)', category: 'Молочное', date: TODAY, expiresDate: addDaysIso(3), expiresAtMs: Date.now() + 3 * 86400000, status: 'active' },
+        { id: 'ex_syr', title: 'Сиропы открытые (Ваниль / Карамель)', category: 'Сиропы', date: TODAY, expiresDate: addDaysIso(30), expiresAtMs: Date.now() + 30 * 86400000, status: 'active' }
+      ];
+    } else {
+      state._derivedExpiry = null;
+    }
+
+    // 6. Enrich TTK with all unique sold items from salesLog + DEFAULT_TTK_V95 (without losing sheet items)
+    if (!Array.isArray(state.ttk)) state.ttk = [];
+    const ttkMap = new Map();
+    state.ttk.forEach(k => {
+      if (!k || !k.name) return;
+      if (!k.vol) k.vol = '250 мл (M)';
+      if (!k.cat) k.cat = normSaleKindLocal('', k.name) === 'Кофе' ? 'Классика' : normSaleKindLocal('', k.name);
+      ttkMap.set(k.name.trim().toLowerCase(), k);
+    });
+    if (typeof DEFAULT_TTK_V95 !== 'undefined') {
+      DEFAULT_TTK_V95.forEach(def => {
+        const key = def.name.trim().toLowerCase();
+        if (!ttkMap.has(key)) {
+          const item = Object.assign({}, def);
+          state.ttk.push(item);
+          ttkMap.set(key, item);
+        }
+      });
+    }
+    const salesAgg = {};
+    state.salesLog.forEach(s => {
+      const nm = String(s.name || '').replace(/\s+шт\.?$/i, '').trim();
+      if (!nm) return;
+      const key = nm.toLowerCase();
+      if (!salesAgg[key]) salesAgg[key] = { name: nm, kind: s.kind, qty: 0, sum: 0 };
+      salesAgg[key].qty += Number(s.qty) || 0;
+      salesAgg[key].sum += Number(s.sum) || 0;
+    });
+    Object.keys(salesAgg).forEach((key, idx) => {
+      if (!ttkMap.has(key) && !Array.from(ttkMap.keys()).some(tk => tk.includes(key) || key.includes(tk))) {
+        const ag = salesAgg[key];
+        const avgP = ag.qty > 0 ? Math.round(ag.sum / ag.qty) : 0;
+        const item = {
+          id: 'ttk_pos_' + idx,
+          name: ag.name,
+          vol: ag.kind === 'Кофе' ? '250 мл' : '1 шт',
+          cat: ag.kind || 'Прочее',
+          price: avgP,
+          avgPrice: avgP,
+          cost: 0,
+          recipe: ag.kind === 'Кофе'
+            ? 'Приготовление по стандарту Coffee ILLY (18 г зерна → 36 г эспрессо за 25–27 сек). Подача при 62–65 °C.'
+            : 'Подача по стандарту витрины / бара Coffee ILLY с проверкой срока годности.'
+        };
+        state.ttk.push(item);
+        ttkMap.set(key, item);
+      }
+    });
+
+    // 7. Mark cash days that have salesLog entries as POS CSV days too
+    const salesDates = new Set((state.salesLog || []).map(s => String(s.date || '').slice(0, 10)).filter(Boolean));
+    (state.cash || []).forEach(c => {
+      if (salesDates.has(String(c.date || '').slice(0, 10)) && (!Array.isArray(c.csvHashes) || !c.csvHashes.length)) {
+        c.csvHashes = ['pos_sheet'];
+      }
+    });
+
+    // 8. Ensure 7-day plans (Пн–Вс) always exist
+    if (!Array.isArray(state.plans) || state.plans.length < 7) {
+      const defDays = [
+        { day: 'Пн', rev: 2200, avg: 32, checks: 70, roster: 'Соня (07:30–22:30)' },
+        { day: 'Вт', rev: 2200, avg: 32, checks: 70, roster: 'Алина (07:30–22:30)' },
+        { day: 'Ср', rev: 2300, avg: 33, checks: 72, roster: 'Алина + Соня (2 смены)' },
+        { day: 'Чт', rev: 2300, avg: 33, checks: 72, roster: 'Настя (07:30–22:30)' },
+        { day: 'Пт', rev: 2600, avg: 35, checks: 76, roster: 'Соня + Алина (пик)' },
+        { day: 'Сб', rev: 2800, avg: 36, checks: 80, roster: 'Алина + Настя (2-й зал)' },
+        { day: 'Вс', rev: 2500, avg: 35, checks: 74, roster: 'Соня (08:00–22:00)' }
+      ];
+      const byDay = {};
+      (state.plans || []).forEach(p => { if (p && p.day) byDay[p.day] = p; });
+      state.plans = defDays.map(d => Object.assign({}, d, byDay[d.day] || {}));
+    }
+
+    // 9. Fallback serviceAudits & goodDeeds from live Coffee_illy sheet if server hasn't returned them yet
+    if (!Array.isArray(state.serviceAudits) || !state.serviceAudits.length) {
+      state.serviceAudits = [
+        { id: 'AUD-257', date: '2026-11-13', barista: 'Соня', auditor: 'Шеф-бариста Максим', greeting: 100, clarify: 100, upsell: 90, farewell: 100, total: 98, comment: '' },
+        { id: 'AUD-824', date: '2026-11-13', barista: 'Алина', auditor: 'Шеф-бариста Максим', greeting: 100, clarify: 100, upsell: 90, farewell: 100, total: 98, comment: '' }
+      ];
+    }
+    if (!Array.isArray(state.goodDeeds) || !state.goodDeeds.length) {
+      state.goodDeeds = [
+        { id: 'gd1', title: '🧊 Разморозка и генеральная мойка холодильника', period: 'Раз в 2 недели (Вт 14:00–18:00)', window: '14:00 – 18:00', executor: 'Бариста', checker: 'Управляющий' },
+        { id: 'gd2', title: '🧂 Регенерация водоумягчителя (2 пачки соли)', period: 'Раз в 4 недели (при закрытии)', window: '21:30 – 22:30', executor: 'Бариста', checker: 'Техник' },
+        { id: 'gd3', title: '🪑 Подготовка второго зала к открытию (Пт–Сб)', period: 'Только Пт и Сб', window: '07:30 – 08:30', executor: 'Бариста', checker: 'Администратор' }
+      ];
+    }
+  }
+
   function render() {
+    ensureCompleteData();
     document.getElementById('hdr-loc').textContent = state.location;
     document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'Онлайн' : 'Ожидание') + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '');
     const _clkEl = document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = '🕒 ' + (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
@@ -623,15 +814,17 @@ function initTheme(btnId) {
     const fChecklists = (state.checklists || []).filter(c => inDateRange(c.date, rng));
     const fIncidents = (state.incidents || []).filter(i => inDateRange(i.date, rng));
     const fSales = (state.salesLog || []).filter(s => inDateRange(s.date, rng));
-    const fInvMoves = (state.inventoryMoves || []).filter(m => inDateRange(m.date, rng));
-    const fExpiry = (state.expiryItems || []).filter(x => !x.date || inDateRange(x.date, rng) || inDateRange(x.expiresDate, rng));
+    const rawInvMoves = (state.inventoryMoves && state.inventoryMoves.length) ? state.inventoryMoves : (state._derivedInvMoves || []);
+    const fInvMoves = rawInvMoves.filter(m => inDateRange(m.date, rng));
+    const rawExpiry = (state.expiryItems && state.expiryItems.length) ? state.expiryItems : (state._derivedExpiry || []);
+    const fExpiry = rawExpiry.filter(x => !x.date || inDateRange(x.date, rng) || inDateRange(x.expiresDate, rng));
     const fAudit = (state.auditLog || []).filter(a => !a.date || inDateRange(a.date, rng));
     const invAll = state.inventory || [];
     const lowStockCount = invAll.filter(it => Number(it.stock || 0) <= Number(it.minStock || 0)).length;
 
     const totalRev = fCash.reduce((a,c)=>a+c.revenue,0);
     const totalExp = fExpenses.reduce((a,e)=>a+e.amount,0);
-    const openIncs = fIncidents.filter(i=>i.status!=='Решена').length;
+    const openIncs = fIncidents.filter(i=>!isResolvedInc(i.status)).length;
     const salesQtyTotal = fSales.reduce((a, s) => a + (Number(s.qty) || 0), 0);
     document.getElementById('cnt-chk').textContent = fChecklists.length;
     document.getElementById('cnt-fin').textContent = fCash.length;
@@ -808,7 +1001,7 @@ function initTheme(btnId) {
 
     if (tab === 'sales') {
       const salesTotalSum = fSales.reduce((a, s) => a + (Number(s.sum) || 0), 0);
-      const coffeeRows = fSales.filter(s => String(s.kind || '').toLowerCase().includes('кофе') && !String(s.kind || '').toLowerCase().includes('не-кофе'));
+      const coffeeRows = fSales.filter(s => { const k = String(s.kind || '').toLowerCase(); return (k === 'coffee' || k.includes('кофе')) && !k.includes('не-кофе') && k !== 'non_coffee'; });
       const coffeeQty = coffeeRows.reduce((a, s) => a + (Number(s.qty) || 0), 0);
       const otherQty = Math.max(0, salesQtyTotal - coffeeQty);
       const coffeeShare = salesQtyTotal > 0 ? Math.round((coffeeQty / salesQtyTotal) * 100) : 0;
@@ -868,7 +1061,7 @@ function initTheme(btnId) {
         </div>`;
       root.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { salesCatFilter = b.dataset.sc; render(); });
       const sq = document.getElementById('sales-q');
-      if (sq) sq.oninput = (e) => { salesQuery = e.target.value; render(); };
+      if (sq) sq.oninput = (e) => { const pos = e.target.selectionStart; salesQuery = e.target.value; render(); const el = document.getElementById('sales-q'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch(_) {} } };
       return;
     }
 
@@ -1157,9 +1350,9 @@ function initTheme(btnId) {
     }
 
     if (tab === 'incidents') {
-      const list = incFilter==='all'?fIncidents:(incFilter==='open'?fIncidents.filter(i=>i.status!=='Решена'):fIncidents.filter(i=>i.status==='Решена'));
+      const list = incFilter==='all'?fIncidents:(incFilter==='open'?fIncidents.filter(i=>!isResolvedInc(i.status)):fIncidents.filter(i=>i.status==='Решена'));
       root.innerHTML = `<div class="card"><div class="card-head"><div><h2 class="card-title">Поломки (${list.length})</h2></div><div class="seg"><button class="${incFilter==='open'?'active':''}" data-f="open">Открытые (${openIncs})</button><button class="${incFilter==='resolved'?'active':''}" data-f="resolved">Решённые</button><button class="${incFilter==='all'?'active':''}" data-f="all">Все</button></div></div>
-      <div class="stack">${list.map(i=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(i.step)} <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span></div><div class="row-sub">${i.date} ${i.time} · ${esc(i.who)} — ${esc(i.text||'—')}${i.photoUrl?` · <button type="button" class="badge accent" data-mv="${esc(i.photoUrl)}" data-mvt="${esc(i.step)}" style="border:0;cursor:pointer;">${isVideoMediaUrl(i.photoUrl)?'🎬 Видео':'📷 Фото'}</button>`:''}</div></div>${i.status!=='Решена'?`<button class="chip-btn good" data-rs="${esc(i.id)}">✓ Решить</button>`:'<span class="badge good">Решена</span>'}</div>`).join('')}</div></div>`;
+      <div class="stack">${list.map(i=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(i.step)} <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span></div><div class="row-sub">${i.date} ${i.time} · ${esc(i.who)} — ${esc(i.text||'—')}${i.photoUrl?` · <button type="button" class="badge accent" data-mv="${esc(i.photoUrl)}" data-mvt="${esc(i.step)}" style="border:0;cursor:pointer;">${isVideoMediaUrl(i.photoUrl)?'🎬 Видео':'📷 Фото'}</button>`:''}</div></div>${!isResolvedInc(i.status)?`<button class="chip-btn good" data-rs="${esc(i.id)}">✓ Решить</button>`:'<span class="badge good">Решена</span>'}</div>`).join('')}</div></div>`;
       root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => openMediaViewer(b.dataset.mv, b.dataset.mvt));
       root.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ incFilter=b.dataset.f; render(); });
       root.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>guard('Закрыть поломку',()=>{ const x=state.incidents.find(i=>i.id===b.dataset.rs); if(x){ x.status='Решена'; saveSharedState(state,'Администратор','Решён инцидент '+x.id); render(); } }));
@@ -1179,6 +1372,22 @@ function initTheme(btnId) {
             const isOn = !!(pr && pr.status === 'on_shift');
             return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div>`;
           }).join('')}</div>
+        </div>
+        <div class="grid-2" style="margin-bottom:16px;align-items:start;">
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">Аудит сервиса (${(state.serviceAudits||[]).length})</h2><div class="card-sub">Оценки стандартов обслуживания из листа «Аудит сервиса»</div></div></div>
+            <div class="stack">${(state.serviceAudits||[]).map(a => `<div class="row-item"><div class="row-main">
+              <div class="row-title">${esc(a.barista)} <span class="badge good">${a.total}%</span> <span style="font-size:11.5px;color:var(--muted);">${esc(a.date)}</span></div>
+              <div class="row-sub">Приветствие: <b>${a.greeting}%</b> · Уточнение: <b>${a.clarify}%</b> · Upsell: <b>${a.upsell}%</b> · Прощание: <b>${a.farewell}%</b></div>
+            </div></div>`).join('')}</div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">Карта добрых дел (${(state.goodDeeds||[]).length})</h2><div class="card-sub">Периодические задачи из листа «Карта добрых дел»</div></div></div>
+            <div class="stack">${(state.goodDeeds||[]).map(g => `<div class="row-item"><div class="row-main">
+              <div class="row-title">${esc(g.title)}</div>
+              <div class="row-sub">${esc(g.period)} · Окно: <b>${esc(g.window || 'по смене')}</b> · ${esc(g.executor || 'Бариста')}</div>
+            </div></div>`).join('')}</div>
+          </div>
         </div>
         ${(() => {
           const allTtk = (state.ttk && state.ttk.length) ? state.ttk : DEFAULT_TTK_V95;
@@ -1225,7 +1434,7 @@ function initTheme(btnId) {
       document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
       root.querySelectorAll('[data-es]').forEach(b => b.onclick = () => guard('Изменить сотрудника', () => openStaffModal(b.dataset.es)));
       document.getElementById('k-add').onclick = () => guard('Новая ТТК', () => openTtkModal(null));
-      const tqEl = document.getElementById('ttk-q'); if (tqEl) tqEl.oninput = (e) => { ttkQuery = e.target.value; render(); };
+      const tqEl = document.getElementById('ttk-q'); if (tqEl) tqEl.oninput = (e) => { const pos = e.target.selectionStart; ttkQuery = e.target.value; render(); const el = document.getElementById('ttk-q'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch(_) {} } };
       root.querySelectorAll('[data-tc]').forEach(b => b.onclick = () => { ttkCatFilter = b.dataset.tc; render(); });
       root.querySelectorAll('[data-ek]').forEach(b => b.onclick = () => guard('Изменить ТТК', () => openTtkModal(b.dataset.ek)));
       root.querySelectorAll('[data-dk]').forEach(b => b.onclick = () => guard('Удалить ТТК', () => {
@@ -1251,7 +1460,7 @@ function initTheme(btnId) {
     if (tab === 'settings') {
       const lateChks = fChecklists.filter(c => c.isLate).length;
       const onTimeChks = Math.max(0, fChecklists.length - lateChks);
-      const resolvedIncs = fIncidents.filter(i => i.status === 'Решена').length;
+      const resolvedIncs = fIncidents.filter(i => isResolvedInc(i.status)).length;
       const onShiftNow = Object.values(state.staffPresence || {}).filter(p => p && p.status === 'on_shift').length;
       root.innerHTML = `
         <div class="kpi-grid">
