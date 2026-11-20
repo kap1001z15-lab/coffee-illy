@@ -220,10 +220,10 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.5.0"></script>
-  <script src="js/cloud-sync.js?v=97.5.0"></script>
-  <script src="js/pos-csv-parser.js?v=97.5.0"></script>
-<script src="js/camera.js?v=97.5.0"></script>
+  <script src="config.js?v=97.6.0"></script>
+  <script src="js/cloud-sync.js?v=97.6.0"></script>
+  <script src="js/pos-csv-parser.js?v=97.6.0"></script>
+<script src="js/camera.js?v=97.6.0"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -475,7 +475,8 @@ function initTheme(btnId) {
 
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
-    document.getElementById('hdr-rev').textContent = (navigator.onLine === false ? 'Офлайн' : 'Онлайн');
+    const _pend = (window.CoffeeCloudV94 && window.CoffeeCloudV94.getPendingCount) ? window.CoffeeCloudV94.getPendingCount() : (state.pendingSyncCount || 0);
+    document.getElementById('hdr-rev').textContent = (navigator.onLine === false || state.liveConnected === false) ? 'Офлайн' : (_pend > 0 ? ('Синхр. ' + _pend) : 'Онлайн');
     document.getElementById('hdr-clock').textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (state.simTime || '13:25'));
     const body = document.getElementById('body'), nav = document.getElementById('bnav'), uc = document.getElementById('user-ctl');
 
@@ -663,9 +664,10 @@ function initTheme(btnId) {
       };
       const bcy = document.getElementById('b-confirm-yes'); if (bcy && curBlk) bcy.onclick = () => {
         const tasks = blockTasks(curBlk.name);
-        const _blkItems = tasks.map(tk => { const p = stepPhotos[curBlk.name+':'+tk.id]; return { id: tk.id, title: tk.title, photo_url: (p && p.url) || '', isIncident: false }; });
+        const _blkItems = tasks.map(tk => { const p = stepPhotos[curBlk.name+':'+tk.id]; return { id: tk.id, title: tk.title, photo_url: (p && p.url) || '', isIncident: !!(p && p.isIncident) }; });
         const _blkPhotos = _blkItems.map(x=>x.photo_url).filter(Boolean);
-        state.checklists.unshift({ items:_blkItems, photos:_blkPhotos, date:TODAY, time:(window.CoffeeCloudV94?window.CoffeeCloudV94.localHHMM():'13:25'), block:curBlk.name, who:authed, problems:0, deadline:curBlk.deadline, status:'Выполнено', isLate:false });
+        const _blkProblems = _blkItems.filter(x => x.isIncident).length;
+        state.checklists.unshift({ items:_blkItems, photos:_blkPhotos, date:TODAY, time:(window.CoffeeCloudV94?window.CoffeeCloudV94.localHHMM():'13:25'), block:curBlk.name, who:authed, problems:_blkProblems, deadline:curBlk.deadline, status:'Выполнено', isLate:false });
         state.liveProgress[authed] = { block:curBlk.name, done:tasks.length, total:tasks.length };
         finishedBlock = curBlk.name;
         confirmFinish = false;
@@ -676,16 +678,92 @@ function initTheme(btnId) {
       };
       const bcb = document.getElementById('b-confirm-back'); if (bcb) bcb.onclick = () => { confirmFinish = false; render(); };
       const bis = document.getElementById('b-is'); if (bis && curBlk) bis.onclick = () => {
-        const t = blockTasks(curBlk.name)[Math.min(stepIdx,blockTasks(curBlk.name).length-1)];
-        openModal('Задача: ' + t.title, `
+        const tasks = blockTasks(curBlk.name);
+        const t = tasks[Math.min(stepIdx, tasks.length - 1)];
+        const stepKey = curBlk.name + ':' + t.id;
+        const existingPh = stepPhotos[stepKey];
+        const hasExistingPhoto = !!(existingPh && (existingPh.url || existingPh.dataUri));
+        openModal('Проблема: ' + t.title, `
           <div class="field"><label>Срочность</label><select id="ip"><option>Критично</option><option>Терпит</option></select></div>
-          <div class="field"><label>Описание</label><textarea id="it" rows="3" enterkeyhint="done"></textarea></div>
-          <button class="btn-lg primary" id="is">Сохранить</button>
+          <div class="field"><label>Описание проблемы</label><textarea id="it" rows="3" placeholder="Опишите, что случилось..." enterkeyhint="done"></textarea></div>
+          <div class="card-soft" style="margin-bottom:12px;text-align:center;border:1px dashed var(--accent);">
+            <div id="prob-ph-status" style="font-size:12.5px;color:${hasExistingPhoto?'var(--good)':'var(--muted)'};margin-bottom:8px;">
+              ${hasExistingPhoto ? '✓ Фото уже снято для этой задачи' : '📸 Для фиксации проблемы обязательно сделайте фото — после отправки откроется следующая задача'}
+            </div>
+            <button type="button" class="btn-lg primary" id="prob-cam-send" style="width:100%;">📷 Сделать фото и отправить</button>
+          </div>
+          ${hasExistingPhoto ? '<button type="button" class="btn-lg" id="is" style="width:100%;background:var(--surface-2);">Отправить с текущим фото →</button>' : ''}
         `);
-        document.getElementById('is').onclick = () => {
-          const _stepPh = stepPhotos[curBlk.name+':'+t.id];
-          state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:(window.CoffeeCloudV94?window.CoffeeCloudV94.localHHMM():'13:25'), block:curBlk.name, step:t.title, text:document.getElementById('it').value.trim()||'Задача', priority:document.getElementById('ip').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:(_stepPh&&_stepPh.url)||'' });
-          saveSharedState(state, authed, 'Проблема: ' + t.title); closeModal(); showToast('✓ Отправлено'); render();
+
+        function finalizeProblemAndAdvance(photoUrl, dataUri) {
+          const priorityVal = (document.getElementById('ip') && document.getElementById('ip').value) || 'Критично';
+          const textVal = (document.getElementById('it') && document.getElementById('it').value.trim()) || 'Проблема по чек-листу';
+          stepPhotos[stepKey] = Object.assign({}, stepPhotos[stepKey] || {}, {
+            url: photoUrl || (existingPh && existingPh.url) || '',
+            dataUri: dataUri || (existingPh && existingPh.dataUri) || '',
+            isIncident: true
+          });
+          state.incidents.unshift({
+            id: 'INC-' + Math.floor(100 + Math.random() * 899),
+            date: TODAY,
+            time: (window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : '13:25'),
+            block: curBlk.name,
+            step: t.title,
+            text: textVal,
+            priority: priorityVal,
+            status: 'Новая проблема',
+            who: authed,
+            owner: 'Администратор',
+            photoUrl: photoUrl || (existingPh && existingPh.url) || ''
+          });
+          if (stepIdx < tasks.length - 1) {
+            stepIdx++;
+            instOpen = true;
+            state.liveProgress[authed] = { block: curBlk.name, done: stepIdx, total: tasks.length };
+            if (window.CoffeeCloudV94 && window.CoffeeCloudV94.sendStepProgress) window.CoffeeCloudV94.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
+          } else {
+            confirmFinish = true;
+          }
+          saveSharedState(state, authed, 'Проблема: ' + t.title);
+          closeModal();
+          showToast('✓ Проблема с фото отправлена — следующая задача');
+          render();
+        }
+
+        const camBtn = document.getElementById('prob-cam-send');
+        if (camBtn) camBtn.onclick = () => {
+          if (!window.CoffeeCameraV94) {
+            showToast('Камера недоступна на этом устройстве');
+            return;
+          }
+          window.CoffeeCameraV94.open({
+            title: 'Фото проблемы: ' + t.title,
+            onCaptured: async (dataUri, meta) => {
+              const mType = (meta && meta.mediaType) || 'image';
+              const stEl = document.getElementById('prob-ph-status');
+              if (stEl) { stEl.style.color = 'var(--accent)'; stEl.textContent = '☁ Загружаем фото и переходим дальше...'; }
+              camBtn.disabled = true;
+              let uploadedUrl = '';
+              try {
+                if (window.CoffeeCloudV94 && window.CoffeeCloudV94.uploadMediaToDrive) {
+                  const up = await window.CoffeeCloudV94.uploadMediaToDrive({
+                    dataUri,
+                    userName: authed || 'Бариста',
+                    block: curBlk.name,
+                    taskId: t.id,
+                    kind: mType === 'video' ? 'incident_video' : 'incident'
+                  });
+                  uploadedUrl = (up && up.url) || '';
+                }
+              } catch (_) {}
+              finalizeProblemAndAdvance(uploadedUrl, dataUri);
+            }
+          });
+        };
+
+        const existingSubmitBtn = document.getElementById('is');
+        if (existingSubmitBtn) existingSubmitBtn.onclick = () => {
+          finalizeProblemAndAdvance((existingPh && existingPh.url) || '', (existingPh && existingPh.dataUri) || '');
         };
       };
       return;
@@ -952,13 +1030,27 @@ function initTheme(btnId) {
         try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
         if (!authed) runAutoLogin();
         else applyDeepLinkIfNeeded();
+        const ae = document.activeElement;
+        const bodyEl = document.getElementById('body');
+        const isEditingBody = !!(ae && bodyEl && bodyEl.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+        const modalOpen = !!(document.getElementById('modal-bg') && document.getElementById('modal-bg').classList.contains('open'));
+        if (isEditingBody || modalOpen) {
+          const _pend = (window.CoffeeCloudV94 && window.CoffeeCloudV94.getPendingCount) ? window.CoffeeCloudV94.getPendingCount() : 0;
+          const revEl = document.getElementById('hdr-rev');
+          if (revEl) revEl.textContent = (navigator.onLine === false || st.liveConnected === false) ? 'Офлайн' : (_pend > 0 ? ('Синхр. ' + _pend) : 'Онлайн');
+          if (isEditingBody && !ae.dataset.syncBlurBound) {
+            ae.dataset.syncBlurBound = '1';
+            ae.addEventListener('blur', () => { render(); }, { once: true });
+          }
+          return;
+        }
         render();
       }
     });
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.5.0"></script>
+  <script src="./js/time-picker.js?v=97.6.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -966,7 +1058,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.5.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.6.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
