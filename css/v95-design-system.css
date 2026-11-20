@@ -1,0 +1,209 @@
+/* Coffee Illy v95.0 — Unified Design System (Premium Minimal + Material Design 3) */
+:root,
+[data-theme="light"] {
+  --bg: #F6F3EE;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  --surface-2: #EFEAE2;
+  --card-soft: #F3EFE8;
+  --text: #1F1C19;
+  --muted: #6E655D;
+  --border: rgba(31, 28, 25, 0.10);
+  --accent: #8B5A2B;
+  --accent-ink: #FFFFFF;
+  --accent-soft: rgba(139, 90, 43, 0.11);
+  --good: #1F7A4D;
+  --good-soft: rgba(31, 122, 77, 0.12);
+  --warn: #B86E00;
+  --warn-soft: rgba(184, 110, 0, 0.13);
+  --bad: #C0392B;
+  --bad-soft: rgba(192, 57, 43, 0.12);
+  --shadow: 0 2px 10px rgba(31, 28, 25, 0.05);
+  --shadow-lg: 0 12px 32px rgba(31, 28, 25, 0.10);
+  --radius: 20px;
+  --radius-sm: 12px;
+}
+
+[data-theme="dark"] {
+  --bg: #151311;
+  --surface: #1E1B18;
+  --card: #1E1B18;
+  --surface-2: #282420;
+  --card-soft: #26221E;
+  --text: #F5F0EA;
+  --muted: #A79D93;
+  --border: rgba(245, 240, 234, 0.10);
+  --accent: #E2B485;
+  --accent-ink: #1C1510;
+  --accent-soft: rgba(226, 180, 133, 0.15);
+  --good: #6ED4A0;
+  --good-soft: rgba(110, 212, 160, 0.14);
+  --warn: #F2BE66;
+  --warn-soft: rgba(242, 190, 102, 0.15);
+  --bad: #F28B82;
+  --bad-soft: rgba(242, 139, 130, 0.16);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.42);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Unified M3 Surfaces */
+.card, .step-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-soft {
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* Sync status pill (human-readable) */
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.sync-pill.ok { background: var(--good-soft); color: var(--good); }
+.sync-pill.busy { background: var(--accent-soft); color: var(--accent); }
+.sync-pill.warn { background: var(--warn-soft); color: var(--warn); }
+.sync-pill.err { background: var(--bad-soft); color: var(--bad); }
+
+/* Priority Hero Card ("Мой день") */
+.hero-action-card {
+  background: linear-gradient(135deg, var(--accent-soft), var(--card));
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow);
+}
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.quick-btn {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  color: var(--text);
+  font-weight: 650;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease;
+}
+.quick-btn:hover { border-color: var(--accent); }
+.quick-btn:active { transform: scale(0.98); }
+.quick-btn .q-ico { font-size: 20px; }
+.quick-btn .q-sub { font-size: 11.5px; font-weight: 500; color: var(--muted); }
+
+/* 5-tab mobile bottom nav */
+.bnav.bnav-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+.bnav.bnav-5 button {
+  font-size: 10.5px;
+  padding: 7px 2px;
+}
+
+/* Cash Stepper */
+.cash-stepper {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
+.cash-step-dot {
+  flex: 1;
+  min-width: 54px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.cash-step-dot.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.cash-step-dot.done {
+  background: var(--good-soft);
+  color: var(--good);
+  border-color: var(--good);
+}
+
+/* Warehouse status pills */
+.wh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.wh-pill.ok { background: var(--good-soft); color: var(--good); }
+.wh-pill.soon { background: var(--warn-soft); color: var(--warn); }
+.wh-pill.low { background: var(--bad-soft); color: var(--bad); }
+.wh-pill.check { background: var(--accent-soft); color: var(--accent); }
+
+/* Sub-navigation pills (Team sub-pages & Settings groups) */
+.subnav {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.subnav button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.subnav button.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+/* Status select in incident dispatcher */
+.status-sel {
+  padding: 5px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}

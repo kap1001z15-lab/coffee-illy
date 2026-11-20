@@ -1,9 +1,9 @@
-/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v95.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
-  const OUTBOX_KEY = 'coffee_illy_v94_outbox';
-  const SESSION_KEY = 'coffee_illy_v94_session';
+  const OUTBOX_KEY = 'coffee_illy_v93_outbox';
+  const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
     const d = new Date();
@@ -197,7 +197,7 @@
     if (Array.isArray(data.tasks) && data.tasks.length) {
       const clean = data.tasks.filter((t) => t && t.title && !String(t.id || '').startsWith('__SYS'));
       if (clean.length) {
-        state.tasks = clean.map((t) => ({
+        const mapped = clean.map((t) => ({
           id: t.id || ('t_' + Math.random().toString(36).slice(2, 6)),
           block: t.block || 'Открытие',
           group: t.groupName || t.group || '',
@@ -207,6 +207,27 @@
           owner: t.responsible || t.owner || 'Бариста',
           active: String(t.active || 'да').toLowerCase() !== 'нет'
         }));
+        const seen = new Map();
+        const deduped = [];
+        mapped.forEach((t) => {
+          const normTitle = String(t.title || '')
+            .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, ' ')
+            .replace(/\bфото\b/gi, ' ')
+            .replace(/[+\-—·•:().,!?\d]+/g, ' ')
+            .replace(/\s+/g, ' ').trim().toLowerCase();
+          const key = String(t.block || '').trim().toLowerCase() + '|' + normTitle;
+          if (!normTitle || !seen.has(key)) {
+            seen.set(key, deduped.length);
+            deduped.push(t);
+          } else {
+            const idx0 = seen.get(key);
+            const prev = deduped[idx0];
+            if ((t.photo && !prev.photo) || (t.instruction.length > prev.instruction.length + 30 && t.photo === prev.photo)) {
+              deduped[idx0] = t;
+            }
+          }
+        });
+        state.tasks = deduped;
         changed = true;
       }
     }
@@ -256,8 +277,7 @@
           status: x.status || 'Новая проблема',
           who: x.who || '',
           owner: x.owner || x.responsible || 'Администратор',
-          photoUrl: String(x.photoUrl || x.photo || '').split(/\r?\n/)[0] || '',
-          photos: Array.isArray(x.photos) ? x.photos : String(x.photoUrl || x.photo || '').split(/\r?\n/).map((u) => u.trim()).filter(Boolean)
+          photoUrl: x.photoUrl || x.photo || ''
         };
       });
       changed = true;
@@ -311,20 +331,24 @@
       changed = true;
     }
     if (Array.isArray(data.ttk) && data.ttk.length) {
-      state.ttk = data.ttk.map((k) => ({
+      const srvTtk = data.ttk.map((k) => ({
         id: k.id || ('ttk_' + Math.random().toString(36).slice(2, 6)),
         name: k.name || '',
         vol: k.vol || k.volume || '250 мл (M)',
         cat: k.cat || k.category || 'Классика',
         price: Number(k.price || 0),
-        cost: Number(k.cost || 0),
+        avgPrice: Number(k.avgPrice || k.price || 0),
+        cost: Number(k.cost != null ? k.cost : 0),
         recipe: k.recipe || '',
-        serve: k.serve || k.serving || '',
-        isNew: !!k.isNew,
-        seasonTag: k.seasonTag || '',
-        addedAt: k.addedAt || '',
-        ackBy: Array.isArray(k.ackBy) ? k.ackBy : []
+        serve: k.serve || k.serving || ''
       }));
+      const baseCat = (typeof window !== 'undefined' && Array.isArray(window.COFFEE_TTK_CATALOG_V95)) ? window.COFFEE_TTK_CATALOG_V95 : [];
+      const byName = new Set(srvTtk.map((x) => String(x.name || '').trim().toLowerCase()));
+      const merged = srvTtk.slice();
+      baseCat.forEach((c) => {
+        if (!byName.has(String(c.name || '').trim().toLowerCase())) merged.push(Object.assign({}, c));
+      });
+      state.ttk = merged;
       changed = true;
     }
     if (data.dailyPlans && typeof data.dailyPlans === 'object') {
@@ -495,10 +519,9 @@
         who: inc.who || actor,
         userName: inc.who || actor,
         date: inc.date || localISO(),
-        photoUrl: inc.photoUrl || (Array.isArray(inc.photos) && inc.photos[0]) || '',
-        photo_url: inc.photoUrl || (Array.isArray(inc.photos) && inc.photos[0]) || '',
-        photo: Array.isArray(inc.photos) && inc.photos.length ? inc.photos.join('\n') : (inc.photoUrl || ''),
-        photos: Array.isArray(inc.photos) ? inc.photos : (inc.photoUrl ? [inc.photoUrl] : [])
+        photoUrl: inc.photoUrl || '',
+        photo_url: inc.photoUrl || '',
+        photo: inc.photoUrl || ''
       });
     } else if (desc.indexOf('Решён инцидент') === 0) {
       enqueueOp('update_incident', { id: desc.replace('Решён инцидент ', '').trim(), status: 'Решена' });
@@ -522,6 +545,13 @@
     } else if (desc.indexOf('Открыт блок') === 0) {
       const m = desc.match(/«([^»]+)»/);
       if (m) enqueueOp('extend_deadline', { block: m[1], openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' });
+    } else if (desc.indexOf('Обновлены финансовые планы') === 0) {
+      enqueueOp('save_all_settings', { items: [
+        { id: 'PLAN', value: String(st.plan || 2200) },
+        { id: 'PLAN_CHECKS', value: String(st.planChecks || 75) },
+        { id: 'MIN_AVG_CHECK', value: String(st.minAvgCheck || 35) },
+        { id: 'WO_NORM', value: String(st.woNorm || 15) }
+      ] });
     } else if (desc.indexOf('Обновлён план') === 0 && st.plans) {
       const plansObj = {};
       const rosterObj = {};
@@ -551,10 +581,39 @@
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
       const nm = desc.replace('Обновлена ТТК ', '').trim();
       const k = (st.ttk || []).find((x) => x.name === nm);
-      if (k) enqueueOp('save_ttk', k);
+      if (k) enqueueOp('save_ttk', { id: k.id, name: k.name, volume: k.vol || '', category: k.cat || 'Классика', price: Number(k.price) || 0, costBeans: Number(k.cost) || 0, costMilk: 0, costSyrup: 0, costCup: 0, recipe: k.recipe || '', serving: k.serve || '' });
     } else if (desc.indexOf('Добавлена задача') === 0 && st.tasks && st.tasks.length) {
       const t = st.tasks[st.tasks.length - 1];
       enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: 'да' }));
+    } else if (desc.indexOf('Обновлена задача ') === 0) {
+      const tid = desc.replace('Обновлена задача ', '').trim();
+      const t = (st.tasks || []).find((x) => String(x.id) === tid);
+      if (t) enqueueOp('save_task', Object.assign({}, t, { photo: t.photo ? 'да' : 'нет', responsible: t.owner || 'Бариста', active: t.active === false ? 'нет' : 'да' }));
+    } else if (desc.indexOf('Удалена задача ') === 0) {
+      const tid = desc.replace('Удалена задача ', '').trim();
+      if (tid) enqueueOp('delete_task', { id: tid });
+    } else if (desc.indexOf('Возвращено окно «') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('extend_deadline', { block: m[1], clear: true });
+    } else if (desc.indexOf('Удалён сотрудник ') === 0) {
+      const nm = desc.replace('Удалён сотрудник ', '').trim();
+      if (nm) enqueueOp('delete_staff', { name: nm });
+    } else if (desc.indexOf('Удалена ТТК ') === 0) {
+      const kid = desc.replace('Удалена ТТК ', '').trim();
+      if (kid) enqueueOp('delete_ttk', { id: kid });
+    } else if (desc.indexOf('Удалён блок «') === 0) {
+      const m = desc.match(/«([^»]+)»/);
+      if (m) enqueueOp('delete_checklist_block', { name: m[1] });
+    } else if (desc.indexOf('Статус инцидента ') === 0) {
+      const iid = desc.replace('Статус инцидента ', '').trim();
+      const inc = (st.incidents || []).find((x) => x.id === iid);
+      if (inc) enqueueOp('update_incident', { id: inc.id, status: inc.status, responsible: inc.owner || 'Администратор' });
+    } else if (desc.indexOf('Удалён инцидент ') === 0) {
+      const iid = desc.replace('Удалён инцидент ', '').trim();
+      if (iid) enqueueOp('delete_incident', { id: iid });
+    } else if (desc.indexOf('Удалена позиция склада ') === 0) {
+      const wid = desc.replace('Удалена позиция склада ', '').trim();
+      if (wid) enqueueOp('delete_inventory', { id: wid });
     }
   }
 
@@ -580,7 +639,8 @@
     async function pullNow(forceFull) {
       if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
       try {
-        await flushOutbox();
+        const fl = await flushOutbox();
+        if (fl && fl.pending > 0 && !forceFull) return { changed: false, pending: fl.pending };
         const t0 = Date.now();
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
         _lastRttMs = Math.max(1, Date.now() - t0);
@@ -642,7 +702,6 @@
       );
       const wake = () => { _lastActive = Date.now(); pullNow(false); };
       window.addEventListener('focus', wake);
-      window.addEventListener('pageshow', (e) => { if (e && e.persisted) { flushOutbox().then(wake); } });
       window.addEventListener('online', () => { flushOutbox().then(wake); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
@@ -667,30 +726,6 @@
       }
     } catch (_) {}
     return null;
-  }
-
-  function getDeepLinkTab() {
-    try {
-      if (typeof window !== 'undefined' && window.location && window.location.search) {
-        const sp = new URLSearchParams(window.location.search);
-        const t = sp.get('tab') || '';
-        if (t) return t.trim().toLowerCase();
-      }
-      const tg = typeof window !== 'undefined' && window.Telegram && window.Telegram.WebApp;
-      const startParam = tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param;
-      if (startParam && String(startParam).indexOf('tab_') === 0) {
-        return String(startParam).slice(4).trim().toLowerCase();
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  function sendStepProgress(staffName, block, done, total) {
-    enqueueOp('report_step_progress', { staffName: staffName, userName: staffName, block: block, done: done, total: total });
-  }
-
-  function ackTtkItem(ttkId, staffName) {
-    enqueueOp('ack_ttk_item', { id: ttkId, staffName: staffName, userName: staffName });
   }
 
   function getDeepLinkBlock() {
@@ -807,6 +842,12 @@
   async function runChecklistNotificationsNow(opts) {
     return gasPost('run_checklist_notifications_now', opts || {});
   }
+  async function sendDailyDigest(dateStr) {
+    return gasPost('send_daily_digest', dateStr ? { date: dateStr } : {});
+  }
+  async function batchSaveTtk(items) {
+    return gasPost('batch_save_ttk', { items: items || [] });
+  }
   async function saveInventoryItem(opts) {
     return gasPost('save_inventory', opts || {});
   }
@@ -840,6 +881,7 @@
     enqueueOp: enqueueOp,
     flushOutbox: flushOutbox,
     uploadPhotoToDrive: uploadPhotoToDrive,
+    uploadMediaToDrive: uploadPhotoToDrive,
     mergeServerIntoState: mergeServerIntoState,
     dispatchStateChange: dispatchStateChange,
     startCloudLoop: startCloudLoop,
@@ -855,8 +897,7 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
-    getDeepLinkTab: getDeepLinkTab,
-    ackTtkItem: ackTtkItem,
+    sendDailyDigest: sendDailyDigest,
     saveInventoryItem: saveInventoryItem,
     restockInventory: restockInventory,
     writeoffInventory: writeoffInventory,
@@ -868,7 +909,6 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
-  window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;

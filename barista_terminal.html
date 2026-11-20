@@ -217,54 +217,14 @@ body.kb-open .kb-done-bar { display:block; }
 body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 .center-action-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:8px 0 10px; }
 
-
-/* === v94.2 Adaptive Multi-Device Polish (320px Phones, Tablets, Desktops, Telegram WebApp) === */
-html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
-body { min-height: 100vh; min-height: 100dvh; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
-button, a, select, input, textarea, label { touch-action: manipulation; }
-.btn-lg { min-height: 46px; }
-.chip-btn { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
-.tbl-wrap table { min-width: 480px; width: 100%; }
-.nav-pills, #admin-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-.nav-pills::-webkit-scrollbar, #admin-nav::-webkit-scrollbar { display: none; }
-
-@media (max-width: 600px) {
-  .modal-bg { align-items: flex-end !important; padding: 0 !important; }
-  .modal { width: 100% !important; max-width: 100% !important; border-radius: 24px 24px 0 0 !important; max-height: 90dvh !important; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important; }
-  .bnav { padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important; }
-  .bnav button { min-height: 46px; }
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
-  .grid-2, .grid-3 { grid-template-columns: 1fr !important; }
-  .card, .step-card { padding: 14px !important; border-radius: 20px !important; }
-  .row-item { flex-direction: column; align-items: flex-start !important; gap: 8px; }
-}
-
-@media (max-width: 390px) {
-  .hdr { padding: 8px 10px !important; gap: 6px !important; }
-  .hdr-title { font-size: 14px !important; }
-  .kpi-val { font-size: 19px !important; }
-  .chip-btn { font-size: 11.5px !important; padding: 5px 8px !important; }
-  .pin-key { min-height: 48px !important; font-size: 18px !important; }
-}
-
-@media (min-width: 601px) and (max-width: 1024px) {
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .modal { max-width: 600px !important; }
-}
-
-@media (min-width: 1025px) {
-  .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
-  .modal { max-width: 640px !important; }
-}
-
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=94.2"></script>
-  <script src="js/cloud-sync-v94.js?v=94.2"></script>
-  <script src="js/pos-csv-parser-v93.js?v=94.2"></script>
-<script src="js/camera-v94.js?v=94.2"></script>
+  <script src="config.js?v=95.0"></script>
+  <script src="js/ttk-catalog-v95.js?v=95.0"></script>
+<script src="js/cloud-sync-v95.js?v=95.0"></script>
+  <script src="js/pos-csv-parser-v93.js?v=95.0"></script>
+<script src="js/camera-v94.js?v=95.0"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -314,6 +274,7 @@ const EQUIP_ZONES = ['Кофемашина','Кофемолка','Холодил
 
 function freshState() {
   const s = JSON.parse(JSON.stringify(LIVE_SNAPSHOT));
+  if ((!s.ttk || !s.ttk.length) && Array.isArray(window.COFFEE_TTK_CATALOG_V95)) s.ttk = JSON.parse(JSON.stringify(window.COFFEE_TTK_CATALOG_V95));
   s.rev = 1; s.woNorm = 15; s.initCounter = 600; s.photoAll = false; s.simTime = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '13:25');
   s.adminPin = '1234'; s.extensions = {};
   s.staff = s.staff.map(st => Object.assign({}, st, {

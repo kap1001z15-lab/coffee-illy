@@ -429,6 +429,7 @@ function doPost(e) {
     if (action === 'save_staff') return idempotentJsonOut_(ss, body, saveStaff_(ss, body), actorSess);
     if (action === 'delete_staff') return idempotentJsonOut_(ss, body, deleteStaff_(ss, body), actorSess);
     if (action === 'save_ttk') return idempotentJsonOut_(ss, body, saveTtk_(ss, body), actorSess);
+    if (action === 'batch_save_ttk') return idempotentJsonOut_(ss, body, batchSaveTtk_(ss, body), actorSess);
     if (action === 'delete_ttk') return idempotentJsonOut_(ss, body, deleteTtk_(ss, body), actorSess);
     if (action === 'save_shift_roster') return idempotentJsonOut_(ss, body, saveShiftRoster_(ss, body), actorSess);
     if (action === 'reorder_task') return idempotentJsonOut_(ss, body, reorderTask_(ss, body), actorSess);
@@ -444,6 +445,7 @@ function doPost(e) {
     if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body), actorSess);
     if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body), actorSess);
     if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body), actorSess);
+    if (action === 'delete_inventory') return idempotentJsonOut_(ss, body, deleteInventory_(ss, body), actorSess);
     if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() }, actorSess);
     if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
     if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
@@ -836,7 +838,6 @@ function changeStaffPin_(ss, body) {
     }
   }
   appendAudit_(ss, staffName, 'Смена персонального PIN-кода', 'Установлен новый индивидуальный PIN');
-  bumpDataRev_();
   return { ok: true, staffName: staffName, pinChanged: true };
 }
 
@@ -2941,7 +2942,6 @@ function saveSetting_(ss, b) {
     }
   }
   sh.appendRow([k, b.value]);
-  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3041,6 +3041,7 @@ function deleteChecklistBlock_(ss, b) {
     return x.name !== target && x.id !== b.id;
   });
   syncChecklistBlocksSheet_(ss, blocks);
+  bumpDataRev_();
   return { ok: true, checklistBlocks: blocks };
 }
 
@@ -3100,7 +3101,6 @@ function saveStaffPins_(ss, b) {
       }
     }
   });
-  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3248,7 +3248,6 @@ function saveAnnouncement_(ss, b) {
   }
   sh.appendRow(rowVals);
   appendAudit_(ss, 'Администратор', 'Публикация объявления', b.title);
-  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -3262,7 +3261,6 @@ function deleteAnnouncement_(ss, b) {
       break;
     }
   }
-  bumpDataRev_();
   return { ok: true };
 }
 
@@ -3316,8 +3314,7 @@ function saveStaff_(ss, b) {
   var resNew = { ok: true, id: id };
   if (generatedPin) resNew.generatedPin = generatedPin;
   return resNew;
-}bumpDataRev_();
-  
+}
 
 function deleteStaff_(ss, b) {
   var sh = ss.getSheetByName('Сотрудники');
@@ -3334,18 +3331,99 @@ function deleteStaff_(ss, b) {
 
 function saveTtk_(ss, b) {
   var sh = ss.getSheetByName('Техкарты');
+  if (!sh) {
+    sh = ss.insertSheet('Техкарты');
+    sh.appendRow(['ID', 'Название', 'Объём', 'Категория', 'Цена', 'Зерно', 'Молоко', 'Сироп', 'Стакан', 'Рецептура', 'Подача']);
+  }
   var rows = sh.getDataRange().getValues();
   var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
-  var rowVals = [id, b.name || '', b.volume || '', b.category || '', Number(b.price) || 0, Number(b.costBeans) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || ''];
+  var cBeans = b.costBeans != null ? Number(b.costBeans) || 0 : (b.cost != null ? Number(b.cost) || 0 : 0);
+  var rowVals = [
+    id,
+    String(b.name || '').trim(),
+    String(b.volume || b.vol || ''),
+    String(b.category || b.cat || 'Классика'),
+    Number(b.price) || 0,
+    cBeans,
+    Number(b.costMilk) || 0,
+    Number(b.costSyrup) || 0,
+    Number(b.costCup) || 0,
+    String(b.recipe || ''),
+    String(b.serving || b.serve || '')
+  ];
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
       sh.getRange(i + 1, 1, 1, 11).setValues([rowVals]);
+      bumpDataRev_();
       return { ok: true, id: id };
     }
   }
   sh.appendRow(rowVals);
   bumpDataRev_();
   return { ok: true, id: id };
+}
+
+function batchSaveTtk_(ss, b) {
+  var items = Array.isArray(b && b.items) ? b.items : [];
+  var sh = ss.getSheetByName('Техкарты');
+  if (!sh) {
+    sh = ss.insertSheet('Техкарты');
+    sh.appendRow(['ID', 'Название', 'Объём', 'Категория', 'Цена', 'Зерно', 'Молоко', 'Сироп', 'Стакан', 'Рецептура', 'Подача']);
+  }
+  var rows = sh.getDataRange().getValues();
+  var byId = {};
+  var byName = {};
+  for (var i = 1; i < rows.length; i++) {
+    var rid = String(rows[i][0] || '').trim();
+    var rnm = String(rows[i][1] || '').trim().toLowerCase();
+    if (rid) byId[rid] = i + 1;
+    if (rnm) byName[rnm] = i + 1;
+  }
+  var saved = 0;
+  items.forEach(function(it) {
+    if (!it || !it.name) return;
+    var id = String(it.id || ('ttk_' + Date.now().toString(36) + '_' + saved)).trim();
+    var cleanName = String(it.name || '').trim();
+    var nKey = cleanName.toLowerCase();
+    var rowVals = [
+      id,
+      cleanName,
+      String(it.volume || it.vol || ''),
+      String(it.category || it.cat || 'Классика'),
+      Number(it.price) || 0,
+      Number(it.cost) || 0,
+      0, 0, 0,
+      String(it.recipe || ''),
+      String(it.serving || it.serve || '')
+    ];
+    var targetRow = byId[id] || byName[nKey];
+    if (targetRow) {
+      sh.getRange(targetRow, 1, 1, 11).setValues([rowVals]);
+      byId[id] = targetRow;
+      byName[nKey] = targetRow;
+    } else {
+      sh.appendRow(rowVals);
+      var lr = sh.getLastRow();
+      byId[id] = lr;
+      byName[nKey] = lr;
+    }
+    saved++;
+  });
+  bumpDataRev_();
+  try { appendAudit_(ss, 'Администратор', 'Синхронизация каталога ТТК', 'Обновлено позиций: ' + saved); } catch (_) {}
+  return { ok: true, saved: saved, rev: getDataRev_() };
+}
+
+function deleteInventory_(ss, b) {
+  var id = String((b && b.id) || '').trim();
+  if (!id) return { ok: false, error: 'EMPTY_ID' };
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var next = list.filter(function(x) { return x && String(x.id) !== id; });
+  setJsonProp_('COFFEE_INVENTORY_JSON', next);
+  bumpDataRev_();
+  try { appendAudit_(ss, 'Администратор', 'Удалена позиция склада', id); } catch (_) {}
+  return { ok: true, count: next.length, rev: getDataRev_() };
 }
 
 function deleteTtk_(ss, b) {
@@ -4017,7 +4095,6 @@ function bindTelegramUser_(ss, b) {
       }
     }
   } catch (_) {}
-  bumpDataRev_();
   return { ok: true, tgId: tgId, staffName: staffName };
 }
 
@@ -4154,7 +4231,6 @@ function reportIncident_(ss, b) {
     JSON.stringify(hist)
   ]);
   appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
-  bumpDataRev_();
   return { ok: true, id: id };
 }
 
@@ -4187,6 +4263,7 @@ function deleteIncident_(ss, b) {
   for (var i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][0]).trim() === String(b.id).trim()) sh.deleteRow(i + 1);
   }
+  bumpDataRev_();
   return { ok: true };
 }
 
