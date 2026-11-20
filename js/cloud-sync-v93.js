@@ -246,6 +246,7 @@
           checks: Number(c.checks || 0),
           writeoff: Number(c.writeoff || 0),
           topItems: c.topItems || '',
+          csvHashes: Array.isArray(c.csvHashes) ? c.csvHashes : [],
           avgCheck: Number(c.avgCheck || c.avg || (Number(c.checks) > 0 ? Math.round(rev / Number(c.checks)) : 0))
         };
       }).filter((c) => c.date);
@@ -827,6 +828,21 @@
   async function sendDailyDigest(dateStr) {
     return gasPost('send_daily_digest', dateStr ? { date: dateStr } : {});
   }
+  async function deleteInventoryItem(id) {
+    return gasPost('delete_inventory', { id: id });
+  }
+  async function seedDefaultInventory() {
+    return gasPost('seed_default_inventory', {});
+  }
+  async function recalcInventoryFromSales(dateStr) {
+    return gasPost('recalc_inventory_from_sales', dateStr ? { date: dateStr } : {});
+  }
+  async function sendLowStockAlert() {
+    return gasPost('send_low_stock_alert', {});
+  }
+  async function bulkSeedTtk(items, overwrite) {
+    return gasPost('bulk_seed_ttk', { items: items || [], overwrite: !!overwrite });
+  }
   async function saveInventoryItem(opts) {
     return gasPost('save_inventory', opts || {});
   }
@@ -877,6 +893,11 @@
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
     sendDailyDigest: sendDailyDigest,
+    deleteInventoryItem: deleteInventoryItem,
+    seedDefaultInventory: seedDefaultInventory,
+    recalcInventoryFromSales: recalcInventoryFromSales,
+    sendLowStockAlert: sendLowStockAlert,
+    bulkSeedTtk: bulkSeedTtk,
     saveInventoryItem: saveInventoryItem,
     restockInventory: restockInventory,
     writeoffInventory: writeoffInventory,
@@ -888,6 +909,7 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
+  window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;

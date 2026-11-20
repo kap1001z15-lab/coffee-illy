@@ -444,6 +444,11 @@ function doPost(e) {
     if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body), actorSess);
     if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body), actorSess);
     if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body), actorSess);
+    if (action === 'delete_inventory') return idempotentJsonOut_(ss, body, deleteInventoryV95_(ss, body), actorSess);
+    if (action === 'seed_default_inventory') return idempotentJsonOut_(ss, body, ensureDefaultInventoryV95_(ss, true), actorSess);
+    if (action === 'recalc_inventory_from_sales') return idempotentJsonOut_(ss, body, recalcInventoryFromSalesV95_(ss, body), actorSess);
+    if (action === 'send_low_stock_alert') return idempotentJsonOut_(ss, body, sendLowStockAlertV95_(ss, true), actorSess);
+    if (action === 'bulk_seed_ttk') return idempotentJsonOut_(ss, body, bulkSeedTtkV95_(ss, body), actorSess);
     if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() }, actorSess);
     if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
     if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
@@ -2723,7 +2728,7 @@ function getAdmin_(ss) {
     personalTasksDone: getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {}),
     tgUserBindings: getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {}),
     customNomenclatureRules: getJsonProp_('COFFEE_CUSTOM_NOMENCLATURE_JSON', {}),
-    inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
+    inventory: ensureDefaultInventoryV95_(ss, false).inventory,
     inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     auditLog: (function() {
@@ -3838,8 +3843,14 @@ function batchSubmitCash_(ss, b) {
     }
     savedDates.push(fmtIso_(d.date) || isoDate_());
   });
+  var allImpProds = [];
+  days.forEach(function(dd) { if (dd && Array.isArray(dd.products)) dd.products.forEach(function(pr) { allImpProds.push(pr); }); });
+  var invDeduct = null;
+  if (allImpProds.length) {
+    try { invDeduct = deductInventoryForProductsV95_(ss, allImpProds, 'POS-импорт'); } catch (_) {}
+  }
   bumpDataRev_();
-  return { ok: true, count: savedDates.length, savedDays: savedDates.length, savedDates: savedDates, dates: savedDates, txAdded: totalTxAdded, txSkipped: totalTxSkipped };
+  return { ok: true, count: savedDates.length, savedDays: savedDates.length, savedDates: savedDates, dates: savedDates, txAdded: totalTxAdded, txSkipped: totalTxSkipped, inventoryDeducted: invDeduct };
 }
 
 function deleteCash_(ss, b) {
@@ -4288,8 +4299,13 @@ function saveInventory_(ss, b) {
     setJsonProp_('COFFEE_INVENTORY_MOVES_JSON', moves);
   }
   setJsonProp_('COFFEE_INVENTORY_JSON', list);
+  syncInventorySheetV95_(ss, list);
   bumpDataRev_();
-  return { ok: true, inventory: list, inventoryMoves: moves };
+  var lowItems = list.filter(function(x) { return x && Number(x.stock || 0) <= Number(x.minStock || 0); });
+  if (moveType === 'writeoff' && targetItem && Number(targetItem.stock || 0) <= Number(targetItem.minStock || 0)) {
+    try { sendLowStockAlertV95_(ss, false); } catch (_) {}
+  }
+  return { ok: true, inventory: list, inventoryMoves: moves, lowStockCount: lowItems.length };
 }
 
 function addExpiryItem_(ss, b) {
@@ -5076,4 +5092,257 @@ function dedupeTasksV94_(tasks) {
     }
   }
   return out;
+}
+
+
+/* =========================================================================
+   COFFEE ILLY v95.0 — СКЛАД (АВТОСПИСАНИЕ + УВЕДОМЛЕНИЯ) И ПОЛНАЯ БАЗА ТТК
+   ========================================================================= */
+
+var DEFAULT_INVENTORY_V95_ = [{"id": "inv_beans_illy", "name": "Зерно ILLY Espresso (100% Арабика)", "category": "Кофе и зерно", "unit": "г", "stock": 4000, "minStock": 1000}, {"id": "inv_beans_decaf", "name": "Зерно ILLY Decaf (без кофеина)", "category": "Кофе и зерно", "unit": "г", "stock": 750, "minStock": 250}, {"id": "inv_milk_32", "name": "Молоко классическое 3.2%", "category": "Молоко и сливки", "unit": "мл", "stock": 12000, "minStock": 3000}, {"id": "inv_milk_alt", "name": "Альтернативное молоко (овсяное/миндальное/кокосовое)", "category": "Молоко и сливки", "unit": "мл", "stock": 4000, "minStock": 1000}, {"id": "inv_milk_lf", "name": "Безлактозное молоко", "category": "Молоко и сливки", "unit": "мл", "stock": 2000, "minStock": 1000}, {"id": "inv_cream_10", "name": "Сливки 10% (для рафа и добавок)", "category": "Молоко и сливки", "unit": "мл", "stock": 2000, "minStock": 500}, {"id": "inv_cup_200", "name": "Стакан бумажный 200 мл (S)", "category": "Стаканы и упаковка", "unit": "шт", "stock": 250, "minStock": 60}, {"id": "inv_cup_300", "name": "Стакан бумажный 300 мл (M)", "category": "Стаканы и упаковка", "unit": "шт", "stock": 300, "minStock": 80}, {"id": "inv_cup_400", "name": "Стакан бумажный 400 мл (L)", "category": "Стаканы и упаковка", "unit": "шт", "stock": 200, "minStock": 60}, {"id": "inv_lids", "name": "Крышки для стаканов (S/M/L)", "category": "Стаканы и упаковка", "unit": "шт", "stock": 500, "minStock": 120}, {"id": "inv_straws", "name": "Трубочки", "category": "Стаканы и упаковка", "unit": "шт", "stock": 400, "minStock": 100}, {"id": "inv_napkins", "name": "Салфетки бумажные", "category": "Стаканы и упаковка", "unit": "шт", "stock": 600, "minStock": 150}, {"id": "inv_stirrers", "name": "Размешиватели деревянные", "category": "Стаканы и упаковка", "unit": "шт", "stock": 500, "minStock": 100}, {"id": "inv_holders", "name": "Держатели для стаканов (2/4 шт)", "category": "Стаканы и упаковка", "unit": "шт", "stock": 80, "minStock": 20}, {"id": "inv_syrup", "name": "Сиропы в ассортименте (ваниль, карамель, орех, кокос)", "category": "Сиропы и добавки", "unit": "мл", "stock": 3500, "minStock": 700}, {"id": "inv_sugar", "name": "Сахар порционный (стики)", "category": "Сиропы и добавки", "unit": "шт", "stock": 500, "minStock": 120}, {"id": "inv_cocoa", "name": "Какао-порошок натуральный", "category": "Сиропы и добавки", "unit": "г", "stock": 1000, "minStock": 250}, {"id": "inv_marshmallow", "name": "Маршмеллоу мини", "category": "Сиропы и добавки", "unit": "г", "stock": 500, "minStock": 150}, {"id": "inv_tea", "name": "Чай в ассортименте (чёрный, зелёный, травяной)", "category": "Чай и напитки", "unit": "порц", "stock": 120, "minStock": 30}, {"id": "inv_berry_base", "name": "Основы для авторских чаёв (облепиха, малина-имбирь, ягоды)", "category": "Чай и напитки", "unit": "г", "stock": 2000, "minStock": 500}, {"id": "inv_soda", "name": "Напитки бут. (Кола, Спрайт, Фанта)", "category": "Чай и напитки", "unit": "шт", "stock": 36, "minStock": 10}, {"id": "inv_water_btl", "name": "Вода минеральная / питьевая 0.5 л", "category": "Чай и напитки", "unit": "шт", "stock": 24, "minStock": 8}, {"id": "inv_ice", "name": "Лёд пищевой", "category": "Лёд и расходники", "unit": "г", "stock": 5000, "minStock": 1500}, {"id": "inv_cleaner", "name": "Химия для кофемашины (таблетки / жидкость для молока)", "category": "Лёд и расходники", "unit": "мл", "stock": 1000, "minStock": 250}];
+var DEFAULT_TTK_V95_ = [{"id": "ttk_americano", "name": "Американо", "cat": "Классика", "vol": "200 мл", "price": 12, "avgPrice": 12, "cost": 0, "recipe": "1. Смолоть 9 г зерна ILLY, темперовать ровно (15 кг). 2. Сварить одинарный эспрессо (30 мл за 25–28 сек). 3. Добавить 150–170 мл горячей воды 90–92°C (сначала вода, затем эспрессо для сохранения крема).", "serve": "Подать в стакане 200 мл с крышкой, предложить сахар и молоко."}, {"id": "ttk_americano_illy", "name": "Американо ILLY", "cat": "Классика", "vol": "250 мл", "price": 19, "avgPrice": 19, "cost": 0, "recipe": "1. Смолоть 18 г отборного зерна ILLY. 2. Пролить двойной эспрессо (55–60 мл за 26–28 сек). 3. Добавить 180 мл фильтрованной воды 90°C, сохранив плотную золотистую крему.", "serve": "Подать в фирменном стакане ILLY 250–300 мл."}, {"id": "ttk_espresso", "name": "Эспрессо", "cat": "Классика", "vol": "30 мл", "price": 12, "avgPrice": 12, "cost": 0, "recipe": "1. Прогреть чашку/стакан, сбросить воду из группы. 2. Смолоть 9 г зерна ILLY, разровнять и темперовать. 3. Экстракция 28–32 мл за 25–28 сек при 9 бар и 93°C.", "serve": "Подать немедленно с плотной ореховой кремой и стаканом прохладной воды."}, {"id": "ttk_long_black", "name": "Длинный черный", "cat": "Классика", "vol": "200 мл", "price": 17, "avgPrice": 17, "cost": 0, "recipe": "1. Налить 120–140 мл горячей воды 90°C в стакан. 2. Сверху аккуратно пролить двойной эспрессо (18 г зерна, 55–60 мл, 26–28 сек), чтобы сохранить насыщенный аромат и плотную крему.", "serve": "Подать без перемешивания в стакане 200 мл."}, {"id": "ttk_macchiato", "name": "Эспрессо Макиато", "cat": "Классика", "vol": "60 мл", "price": 17, "avgPrice": 17, "cost": 0, "recipe": "1. Сварить одинарный эспрессо (30 мл из 9 г зерна). 2. Взбить 50 мл молока 3.2% до глянцевой микропены (60°C). 3. Выложить ложкой 20–30 мл нежной молочной пены поверх эспрессо.", "serve": "Подать в чашке/стакане для эспрессо."}, {"id": "ttk_cappuccino", "name": "Капучино", "cat": "Молочные", "vol": "250 мл", "price": 19, "avgPrice": 19, "cost": 0, "recipe": "1. Сварить одинарный эспрессо (9 г, 30 мл). 2. Взбить 170–180 мл холодного молока 3.2% до 60–65°C с глянцевой пеной толщиной 1–1.5 см. 3. Влить молоко тонкой струйкой с латте-артом.", "serve": "Подать в стакане 250–300 мл, при необходимости предложить корицу/сахар."}, {"id": "ttk_dbl_cappuccino", "name": "Двойной капучино", "cat": "Молочные", "vol": "350 мл", "price": 29, "avgPrice": 29, "cost": 0, "recipe": "1. Сварить двойной эспрессо (18 г зерна, 55–60 мл). 2. Взбить 240–260 мл молока 3.2% до 60–65°C с бархатной пеной 1.5 см. 3. Аккуратно соединить с эспрессо.", "serve": "Подать в стакане 350–400 мл."}, {"id": "ttk_flat_white", "name": "Flat white", "cat": "Молочные", "vol": "200 мл", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. Сварить двойной ристретто/эспрессо (18 г зерна, 45–50 мл). 2. Взбить 140–150 мл молока 3.2% до 58–62°C с минимальной шелковистой пеной (до 0.5 см). 3. Влить в кофе, подчеркнув плотный кофейный вкус.", "serve": "Подать в стакане 200 мл."}, {"id": "ttk_latte_s", "name": "Латте (мал)", "cat": "Молочные", "vol": "250 мл", "price": 20, "avgPrice": 20, "cost": 0, "recipe": "1. Сварить одинарный эспрессо (30 мл). 2. Взбить 200 мл молока 3.2% до 62–65°C с мягкой пеной 0.8–1 см. 3. Влить молоко в кофе круговыми движениями.", "serve": "Подать в стакане 250–300 мл."}, {"id": "ttk_latte_l", "name": "Латте (бол)", "cat": "Молочные", "vol": "350 мл", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. Сварить двойной или насыщенный одинарный эспрессо (45–55 мл). 2. Взбить 280–300 мл молока 3.2% до 62–65°C. 3. Соединить молоко с кофе до нежной однородной текстуры.", "serve": "Подать в стакане 350–400 мл."}, {"id": "ttk_van_orange_latte", "name": "Ванильно апельсиновый Лате", "cat": "Авторские", "vol": "350 мл", "price": 30, "avgPrice": 30, "cost": 0, "recipe": "1. Налить в стакан 15 мл ванильного сиропа и 15 мл апельсинового сиропа (или свежевыжатого сока/цедры). 2. Сварить эспрессо (35–45 мл) и перемешать с сиропами. 3. Взбить 250 мл молока 3.2% до 62°C и аккуратно влить.", "serve": "Украсить долькой сушёного апельсина или щепоткой цедры, стакан 350–400 мл."}, {"id": "ttk_raf_classic", "name": "Раф классический (бол)", "cat": "Авторские", "vol": "350 мл", "price": 39, "avgPrice": 39, "cost": 0, "recipe": "1. В питчер налить 150 мл молока 3.2% и 100 мл сливок 10%, добавить 15 г ванильного сахара (или 15 мл сиропа «Ваниль»). 2. Влить свежий двойной эспрессо (50 мл) прямо в питчер. 3. Взбить всё вместе паром до 63–65°C в густую сливочную пену.", "serve": "Перелить в стакан 350–400 мл, подать с крышкой."}, {"id": "ttk_nut_mocha", "name": "Ореховый мокко", "cat": "Авторские", "vol": "350 мл", "price": 35, "avgPrice": 35, "cost": 0, "recipe": "1. В стакан добавить 15 г какао/шоколадного топинга и 15 мл орехового сиропа (лесной орех/пралине). 2. Пролить эспрессо (45 мл) и тщательно размешать до гладкости. 3. Взбить 240 мл молока до 62°C и влить.", "serve": "Украсить какао-пудрой или дроблёным орехом, стакан 350 мл."}, {"id": "ttk_steamer_l", "name": "Стимер (бол)", "cat": "Молочные", "vol": "350 мл", "price": 22, "avgPrice": 22, "cost": 0, "recipe": "1. В стакан добавить 20 мл выбранного сиропа (ваниль, карамель, банан и др.). 2. Взбить 300 мл молока 3.2% паром до 60–62°C с воздушной пеной. 3. Влить молоко в сироп и слегка перемешать.", "serve": "Подать в стакане 350–400 мл (напиток без кофеина, подходит детям)."}, {"id": "ttk_cocoa_s", "name": "Какао", "cat": "Какао", "vol": "200 мл", "price": 15, "avgPrice": 15, "cost": 0, "recipe": "1. В питчер насыпать 15 г какао-порошка и 10 г сахара, растворить в 20 мл горячей воды. 2. Добавить 170 мл молока 3.2% и взбить паром до 62–65°C до однородной пенки.", "serve": "Подать в стакане 200 мл, по желанию добавить маршмеллоу."}, {"id": "ttk_cocoa_m", "name": "Какао (ср)", "cat": "Какао", "vol": "300 мл", "price": 20, "avgPrice": 20, "cost": 0, "recipe": "1. Насыпать 20–25 г какао-порошка и 12 г сахара в питчер, развести 30 мл кипятка. 2. Влить 250 мл молока 3.2%, взбить стимером до 65°C.", "serve": "Подать в стакане 300 мл."}, {"id": "ttk_cocoa_l", "name": "Какао (бол)", "cat": "Какао", "vol": "400 мл", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. Смешать 30 г какао-порошка и 15 г сахара с 35 мл горячей воды до однородной пасты. 2. Добавить 330 мл молока 3.2% и взбить паром до 65°C.", "serve": "Подать в стакане 400 мл."}, {"id": "ttk_cocoa_bounty", "name": "Какао «Баунти»", "cat": "Какао", "vol": "350 мл", "price": 30, "avgPrice": 30, "cost": 0, "recipe": "1. В питчере развести 25 г какао и 20 мл кокосового сиропа в 30 мл горячей воды. 2. Добавить 270 мл молока (или кокосового молока) и взбить паром до 63°C.", "serve": "Посыпать кокосовой стружкой, подать в стакане 350–400 мл."}, {"id": "ttk_cocoa_cran_orange", "name": "Бруснично - апельсиновый какао", "cat": "Какао", "vol": "350 мл", "price": 33, "avgPrice": 33, "cost": 0, "recipe": "1. В стакан положить 30 г брусничного пюре/основы и 15 мл апельсинового сиропа. 2. В питчере приготовить какао (25 г какао + 260 мл молока, взбить до 63°C). 3. Влить горячий какао в стакан и аккуратно перемешать.", "serve": "Украсить долькой апельсина, стакан 350–400 мл."}, {"id": "ttk_tea_seabuck_400", "name": "Облепиховый чай 400 мл.", "cat": "Чаи", "vol": "400 мл", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. В стакан 400 мл положить 50 г облепиховой основы (пюре/ягоды с мёдом), 15 мл апельсинового сиропа и дольку апельсина. 2. Залить 320 мл горячей воды 85–90°C и тщательно размешать. 3. Дать настояться 1 минуту.", "serve": "Подать с крышкой и ложечкой/трубочкой."}, {"id": "ttk_tea_rasp_400", "name": "Малиново - имбирный чай 400 мл.", "cat": "Чаи", "vol": "400 мл", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. Положить 45 г малиновой основы, 10 г тёртого/сиропного имбиря и 10 мл лимонного сока в стакан 400 мл. 2. Залить 330 мл воды 88°C, хорошо размешать.", "serve": "Подать в стакане 400 мл с крышкой."}, {"id": "ttk_tea_rasp_800", "name": "Малиново - имбирный чай 800 мл.", "cat": "Чаи", "vol": "800 мл", "price": 45, "avgPrice": 45, "cost": 0, "recipe": "1. В чайник 800 мл добавить 90 г малиновой основы, 20 г имбиря, 20 мл мёда/сиропа и 2 дольки лимона. 2. Залить 680 мл горячей воды 88°C, перемешать и настоять 2 минуты.", "serve": "Подать в чайнике 800 мл с двумя чашками."}, {"id": "ttk_tea_apple_400", "name": "Чай \"Пряное яблоко\" 400 мл.", "cat": "Чаи", "vol": "400 мл", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. В стакан 400 мл положить 45 г яблочной основы с корицей (или 30 мл сиропа «Яблочный пирог» + дольки яблока и палочку корицы). 2. Залить 330 мл горячей воды 88°C, размешать.", "serve": "Подать в стакане 400 мл."}, {"id": "ttk_tea_berry_800", "name": "Чай \"Ягодный микс\" 800 мл.", "cat": "Чаи", "vol": "800 мл", "price": 45, "avgPrice": 45, "cost": 0, "recipe": "1. В чайник 800 мл положить 90 г микса ягод (смородина, вишня, малина), 25 мл сахарного/ягодного сиропа и веточку мяты. 2. Залить 680 мл горячей воды 88°C, настоять 2–3 минуты.", "serve": "Подать в чайнике 800 мл с чашками."}, {"id": "ttk_tea_fruit_400", "name": "Ягодный / фруктовый чай ... 400 мл.", "cat": "Чаи", "vol": "400 мл", "price": 20, "avgPrice": 20, "cost": 0, "recipe": "1. В стакан 400 мл добавить 40 г выбранной ягодной/фруктовой основы или 1 порцию фруктового чая + 15 мл сиропа. 2. Залить 340 мл воды 88–90°C, размешать.", "serve": "Подать в стакане 400 мл с крышкой."}, {"id": "ttk_tea_ginger_400", "name": "Имбирный чай 400 мл.", "cat": "Чаи", "vol": "400 мл", "price": 18, "avgPrice": 18, "cost": 0, "recipe": "1. В стакан 400 мл положить 25 г имбирно-лимонной основы (или свежий имбирь + 2 дольки лимона + 15 мл мёда). 2. Залить 350 мл горячей воды 85–88°C, размешать.", "serve": "Подать в стакане 400 мл."}, {"id": "ttk_tea_herbal_400", "name": "Травяной чай .. 400 мл.", "cat": "Чаи", "vol": "400 мл", "price": 17, "avgPrice": 17, "cost": 0, "recipe": "1. Поместить 1 фильтр-пакет / 4 г травяного сбора в стакан 400 мл. 2. Залить 360 мл воды 85–90°C, настоять 2–3 минуты.", "serve": "Подать в стакане 400 мл, предложить сахар/мёд."}, {"id": "ttk_tea_assort", "name": "Чай в ассортименте", "cat": "Чаи", "vol": "300 мл", "price": 15, "avgPrice": 15, "cost": 0, "recipe": "1. Выбрать сорт чая по запросу гостя (чёрный, зелёный, бергамот, фруктовый). 2. Залить 280–300 мл горячей воды (95°C для чёрного, 80°C для зелёного).", "serve": "Подать в стакане 300 мл, предложить сахар и лимон."}, {"id": "ttk_pina_colada", "name": "Пина Колада", "cat": "Холодные", "vol": "400 мл", "price": 35, "avgPrice": 35, "cost": 0, "recipe": "1. Наполнить стакан 400 мл льдом на 2/3. 2. Влить 20 мл кокосового сиропа, 150 мл ананасового сока и 50 мл сливок 10% (или кокосового молока). 3. Взбить в шейкере/блендере или тщательно перемешать.", "serve": "Подать с трубочкой, украсить долькой фрукта."}, {"id": "ttk_black_cherry", "name": "Black cherry", "cat": "Авторские", "vol": "350 мл", "price": 33, "avgPrice": 33, "cost": 0, "recipe": "1. В стакан налить 20 мл вишнёвого сиропа (или 40 мл вишнёвого сока) и 10 мл шоколадного топинга. 2. Сварить эспрессо (40 мл) и соединить с вишней. 3. Добавить 220 мл взбитого молока 62°C (или со льдом в холодном варианте).", "serve": "Подать в стакане 350 мл."}, {"id": "ttk_lemonade", "name": "Лимонад", "cat": "Холодные", "vol": "400 мл", "price": 28, "avgPrice": 28, "cost": 0, "recipe": "1. В стакан 400 мл положить 120 г льда, 25 мл фруктового/цитрусового сиропа, 15 мл лимонного сока и 2 дольки лимона/мяты. 2. Долить 250 мл холодной газированной воды, аккуратно перемешать.", "serve": "Подать сразу с трубочкой."}, {"id": "ttk_soda", "name": "Напитки (кола, спрайт, фанта)", "cat": "Холодные", "vol": "330–500 мл", "price": 20, "avgPrice": 20, "cost": 0, "recipe": "1. Достать охлаждённую бутылку/банку из холодильной витрины (+4..+6°C). 2. Проверить целостность упаковки и срок годности.", "serve": "Подать гостю охлаждённым, предложить стакан со льдом и трубочку."}, {"id": "ttk_water", "name": "Вода / минеральная", "cat": "Холодные", "vol": "500 мл", "price": 15, "avgPrice": 15, "cost": 0, "recipe": "1. Достать бутылку воды (газированной или без газа по запросу гостя) из холодильника или со стеллажа.", "serve": "Подать гостю, при необходимости предложить стакан."}, {"id": "ttk_cheesecake", "name": "Чизкейк", "cat": "Десерты", "vol": "1 порц", "price": 40, "avgPrice": 40, "cost": 0, "recipe": "1. Проверить срок годности и температуру хранения витрины (+2..+6°C). 2. Аккуратно переложить кусочек чизкейка щипцами/лопаткой на блюдце или в крафт-бокс с собой.", "serve": "Подать с десертной вилкой и салфеткой."}, {"id": "ttk_eclair", "name": "Эклер", "cat": "Десерты", "vol": "1 шт", "price": 30, "avgPrice": 30, "cost": 0, "recipe": "1. Взять свежий эклер с охлаждаемой витрины щипцами. 2. Выложить на тарелку или упаковать в бумажный пакет/коробочку.", "serve": "Подать с салфеткой."}, {"id": "ttk_dubai_choc", "name": "Дубайский Шоколад 30 руб", "cat": "Десерты", "vol": "1 шт", "price": 30, "avgPrice": 30, "cost": 0, "recipe": "1. Проверить целостность упаковки и дату на витрине. 2. Передать гостю вместе с заказом.", "serve": "Подача комнатной температуры или слегка охлаждённым."}, {"id": "ttk_choc_25", "name": "Шоколад 25 руб", "cat": "Десерты", "vol": "1 шт", "price": 25, "avgPrice": 25, "cost": 0, "recipe": "1. Выдать позицию шоколада категории 25 руб с витрины, проверив срок годности.", "serve": "Подать с салфеткой."}, {"id": "ttk_choc_20", "name": "Шоколад 20 руб", "cat": "Десерты", "vol": "1 шт", "price": 20, "avgPrice": 20, "cost": 0, "recipe": "1. Выдать позицию шоколада категории 20 руб с витрины, проверив срок годности.", "serve": "Подать с салфеткой."}, {"id": "ttk_choc_15", "name": "Шоколад 15 руб", "cat": "Десерты", "vol": "1 шт", "price": 15, "avgPrice": 15, "cost": 0, "recipe": "1. Выдать позицию шоколада категории 15 руб с витрины, проверив срок годности.", "serve": "Подать с салфеткой."}, {"id": "ttk_choc_10", "name": "Шоколад 10 руб", "cat": "Десерты", "vol": "1 шт", "price": 10, "avgPrice": 10, "cost": 0, "recipe": "1. Выдать мини-шоколад категории 10 руб с прикассовой зоны.", "serve": "Подать вместе с напитком."}, {"id": "ttk_add_milk", "name": "Молоко 50 мл", "cat": "Добавки", "vol": "50 мл", "price": 5, "avgPrice": 5, "cost": 0, "recipe": "1. Отмерить 50 мл свежего молока 3.2% (холодного или подогретого по желанию гостя). 2. Влить в напиток или подать отдельно в молочнике.", "serve": "Проверить срок годности вскрытого пакета."}, {"id": "ttk_add_alt_milk", "name": "Альтернативное молоко 50 мл", "cat": "Добавки", "vol": "50 мл", "price": 10, "avgPrice": 10, "cost": 0, "recipe": "1. Взболтать пакет альтернативного молока (овсяное, миндальное, кокосовое или банановое). 2. Отмерить 50 мл и добавить в напиток (при взбивании не перегревать выше 60°C).", "serve": "Уточнить у гостя вкус альтернативного молока."}, {"id": "ttk_add_lf_milk", "name": "Безлактозное молоко", "cat": "Добавки", "vol": "50 мл", "price": 5, "avgPrice": 5, "cost": 0, "recipe": "1. Отмерить 50 мл охлаждённого безлактозного молока. 2. Добавить в напиток или взбить отдельно чистым питчером (во избежание попадания обычного молока).", "serve": "Использовать чистый питчер и протереть стимер перед взбиванием."}, {"id": "ttk_add_cream", "name": "Сливки 10 мл.", "cat": "Добавки", "vol": "10 мл", "price": 5, "avgPrice": 5, "cost": 0, "recipe": "1. Выдать порционную упаковку сливок 10% (10 мл) или влить 10 мл свежих сливок в кофе.", "serve": "Подать с кофе."}, {"id": "ttk_add_syrup", "name": "Сироп 15 мл.", "cat": "Добавки", "vol": "15 мл", "price": 5, "avgPrice": 5, "cost": 0, "recipe": "1. Сделать 2 нажатия дозатора (15 мл) выбранного гостем сиропа в стакан до вливания кофе/молока. 2. Перемешать с напитком.", "serve": "Уточнить вкус сиропа у гостя."}, {"id": "ttk_add_marsh", "name": "Маршмеллоу", "cat": "Добавки", "vol": "15 г", "price": 8, "avgPrice": 8, "cost": 0, "recipe": "1. Выложить 15 г мини-маршмеллоу чистыми щипцами поверх горячего какао или кофе.", "serve": "Подать сразу, пока пена держит маршмеллоу."}, {"id": "ttk_add_fruits", "name": "Фрукты", "cat": "Добавки", "vol": "1 порц", "price": 5, "avgPrice": 5, "cost": 0, "recipe": "1. Добавить 1–2 свежие дольки лимона, апельсина или сезонных фруктов чистыми щипцами в чай/напиток.", "serve": "Использовать только свежую нарезку текущего дня."}];
+
+function syncInventorySheetV95_(ss, list) {
+  if (!ss || !Array.isArray(list)) return;
+  try {
+    var sh = ss.getSheetByName('Склад');
+    if (!sh) {
+      sh = ss.insertSheet('Склад');
+    }
+    var rows = [['ID', 'Наименование', 'Категория', 'Остаток', 'Мин. порог', 'Ед. изм.', 'Статус', 'Обновлено']];
+    list.forEach(function(it) {
+      if (!it || !it.name) return;
+      var low = Number(it.stock || 0) <= Number(it.minStock || 0);
+      rows.push([
+        String(it.id || ''),
+        String(it.name || ''),
+        String(it.category || 'Сырьё'),
+        Number(it.stock || 0),
+        Number(it.minStock || 0),
+        String(it.unit || 'шт'),
+        low ? '⚠️ Мало' : '✓ Норма',
+        String(it.updatedAt || isoDate_())
+      ]);
+    });
+    if (sh.getLastRow() > 0 && typeof sh.clearContents === 'function') sh.clearContents();
+    sh.getRange(1, 1, rows.length, 8).setValues(rows);
+  } catch (_) {}
+}
+
+function ensureDefaultInventoryV95_(ss, forceReset) {
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  if (forceReset || list.length === 0) {
+    var today = isoDate_();
+    var existingById = {};
+    list.forEach(function(x) { if (x && x.id) existingById[x.id] = x; });
+    if (forceReset) {
+      DEFAULT_INVENTORY_V95_.forEach(function(def) {
+        if (!existingById[def.id]) {
+          list.push(Object.assign({}, def, { updatedAt: today }));
+        }
+      });
+    } else {
+      list = DEFAULT_INVENTORY_V95_.map(function(def) {
+        return Object.assign({}, def, { updatedAt: today });
+      });
+    }
+    setJsonProp_('COFFEE_INVENTORY_JSON', list);
+    syncInventorySheetV95_(ss, list);
+    if (forceReset) bumpDataRev_();
+  }
+  return { ok: true, inventory: list };
+}
+
+function deleteInventoryV95_(ss, b) {
+  var id = String((b && b.id) || '').trim();
+  if (!id) return { ok: false, error: 'EMPTY_ID' };
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var next = list.filter(function(x) { return x && String(x.id) !== id; });
+  setJsonProp_('COFFEE_INVENTORY_JSON', next);
+  syncInventorySheetV95_(ss, next);
+  bumpDataRev_();
+  try { appendAudit_(ss, 'Администратор', 'Удалена позиция со склада', id); } catch (_) {}
+  return { ok: true, inventory: next };
+}
+
+function deductInventoryForProductsV95_(ss, products, actor) {
+  if (!Array.isArray(products) || !products.length) return { ok: true, deducted: 0, lowItems: [] };
+  var list = ensureDefaultInventoryV95_(ss, false).inventory;
+  var byId = {};
+  list.forEach(function(it) { byId[it.id] = it; });
+  var consumed = {};
+  function addUse(id, amt) {
+    if (!byId[id] || amt <= 0) return;
+    consumed[id] = (consumed[id] || 0) + amt;
+  }
+
+  products.forEach(function(p) {
+    var nm = String((p && p.name) || '').toLowerCase();
+    var qty = Number((p && p.qty) || 0);
+    if (!nm || qty <= 0) return;
+
+    if (nm.indexOf('эспрессо') >= 0 || nm.indexOf('американо') >= 0 || nm.indexOf('длинный') >= 0) {
+      addUse('inv_beans_illy', 12 * qty);
+      addUse('inv_cup_200', qty);
+      addUse('inv_lids', qty);
+      addUse('inv_napkins', qty);
+    } else if (nm.indexOf('капучино') >= 0 || nm.indexOf('flat white') >= 0 || nm.indexOf('латте') >= 0 || nm.indexOf('раф') >= 0 || nm.indexOf('мокко') >= 0 || nm.indexOf('black cherry') >= 0) {
+      var isLarge = nm.indexOf('бол') >= 0 || nm.indexOf('двойн') >= 0 || nm.indexOf('раф') >= 0;
+      addUse('inv_beans_illy', (isLarge ? 18 : 10) * qty);
+      addUse('inv_milk_32', (isLarge ? 250 : 180) * qty);
+      if (nm.indexOf('раф') >= 0) addUse('inv_cream_10', 100 * qty);
+      if (nm.indexOf('ваниль') >= 0 || nm.indexOf('орех') >= 0 || nm.indexOf('cherry') >= 0) addUse('inv_syrup', 15 * qty);
+      addUse(isLarge ? 'inv_cup_400' : 'inv_cup_300', qty);
+      addUse('inv_lids', qty);
+      addUse('inv_napkins', qty);
+    } else if (nm.indexOf('какао') >= 0) {
+      addUse('inv_cocoa', 25 * qty);
+      addUse('inv_milk_32', 240 * qty);
+      addUse('inv_cup_300', qty);
+      addUse('inv_lids', qty);
+    } else if (nm.indexOf('стимер') >= 0) {
+      addUse('inv_milk_32', 280 * qty);
+      addUse('inv_syrup', 15 * qty);
+      addUse('inv_cup_400', qty);
+      addUse('inv_lids', qty);
+    } else if (nm.indexOf('чай') >= 0) {
+      var isBigTea = nm.indexOf('800') >= 0;
+      if (nm.indexOf('облепих') >= 0 || nm.indexOf('малин') >= 0 || nm.indexOf('ягод') >= 0 || nm.indexOf('яблок') >= 0 || nm.indexOf('имбир') >= 0) {
+        addUse('inv_berry_base', (isBigTea ? 90 : 45) * qty);
+      } else {
+        addUse('inv_tea', qty);
+      }
+      addUse('inv_cup_400', qty);
+      addUse('inv_lids', qty);
+    } else if (nm.indexOf('лимонад') >= 0 || nm.indexOf('пина колада') >= 0) {
+      addUse('inv_ice', 120 * qty);
+      addUse('inv_syrup', 25 * qty);
+      addUse('inv_cup_400', qty);
+      addUse('inv_straws', qty);
+    } else if (nm.indexOf('кола') >= 0 || nm.indexOf('спрайт') >= 0 || nm.indexOf('фанта') >= 0) {
+      addUse('inv_soda', qty);
+    } else if (nm.indexOf('вода') >= 0) {
+      addUse('inv_water_btl', qty);
+    } else if (nm.indexOf('альтернатив') >= 0) {
+      addUse('inv_milk_alt', 50 * qty);
+    } else if (nm.indexOf('без лактоз') >= 0 || nm.indexOf('безлактоз') >= 0) {
+      addUse('inv_milk_lf', 50 * qty);
+    } else if (nm.indexOf('молоко') >= 0) {
+      addUse('inv_milk_32', 50 * qty);
+    } else if (nm.indexOf('сливки') >= 0) {
+      addUse('inv_cream_10', 10 * qty);
+    } else if (nm.indexOf('сироп') >= 0) {
+      addUse('inv_syrup', 15 * qty);
+    } else if (nm.indexOf('маршмеллоу') >= 0) {
+      addUse('inv_marshmallow', 15 * qty);
+    }
+  });
+
+  var moves = getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []);
+  if (!Array.isArray(moves)) moves = [];
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
+  var deductedCount = 0;
+
+  Object.keys(consumed).forEach(function(id) {
+    var amt = Math.round(consumed[id]);
+    if (amt <= 0 || !byId[id]) return;
+    byId[id].stock = Math.max(0, (Number(byId[id].stock) || 0) - amt);
+    byId[id].updatedAt = today;
+    deductedCount++;
+    moves.unshift({
+      id: 'mv_auto_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1000),
+      itemId: id,
+      name: byId[id].name,
+      category: byId[id].category,
+      type: 'writeoff',
+      delta: -amt,
+      stockAfter: byId[id].stock,
+      unit: byId[id].unit,
+      date: today,
+      time: hm,
+      actor: actor || 'Автосписание (продажи)',
+      note: 'Автоматический расход по продажам'
+    });
+  });
+
+  if (moves.length > 500) moves = moves.slice(0, 500);
+  setJsonProp_('COFFEE_INVENTORY_JSON', list);
+  setJsonProp_('COFFEE_INVENTORY_MOVES_JSON', moves);
+  syncInventorySheetV95_(ss, list);
+  bumpDataRev_();
+
+  var lowItems = list.filter(function(x) { return x && Number(x.stock || 0) <= Number(x.minStock || 0); });
+  if (lowItems.length) {
+    try { sendLowStockAlertV95_(ss, false); } catch (_) {}
+  }
+  return { ok: true, deducted: deductedCount, inventory: list, inventoryMoves: moves, lowItems: lowItems };
+}
+
+function recalcInventoryFromSalesV95_(ss, b) {
+  var shSales = ss.getSheetByName('Продажи');
+  var rows = shSales ? shSales.getDataRange().getValues() : [];
+  var targetDate = String((b && b.date) || '').trim();
+  var prods = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] || !r[3]) continue;
+    var dt = fmtIso_(r[0]);
+    if (targetDate && dt !== targetDate) continue;
+    var q = Number(r[6]) || 0;
+    if (q > 0) prods.push({ name: String(r[3]), qty: q });
+  }
+  return deductInventoryForProductsV95_(ss, prods, 'Пересчёт по продажам');
+}
+
+function sendLowStockAlertV95_(ss, force) {
+  var list = ensureDefaultInventoryV95_(ss, false).inventory;
+  var low = list.filter(function(x) { return x && Number(x.stock || 0) <= Number(x.minStock || 0); });
+  if (!low.length) return { ok: true, lowCount: 0, skipped: true };
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var lines = ['⚠️ <b>ЗАКАНЧИВАЮТСЯ ТОВАРЫ НА СКЛАДЕ</b> (' + escapeTgHtml_(loc) + ')'];
+  low.forEach(function(it) {
+    lines.push('• <b>' + escapeTgHtml_(it.name) + '</b>: осталось <b>' + it.stock + ' ' + escapeTgHtml_(it.unit) + '</b> (мин. ' + it.minStock + ')');
+  });
+  var tg = sendTelegramServerAlert_(ss, {
+    type: 'low_stock',
+    force: !!force,
+    skipDedup: !!force,
+    targetPage: 'owner.html',
+    buttonText: '📦 Открыть Склад в дашборде',
+    text: lines.join('\n')
+  });
+  return { ok: !!(tg && tg.ok), lowCount: low.length, telegram: tg };
+}
+
+function bulkSeedTtkV95_(ss, b) {
+  var items = (b && Array.isArray(b.items) && b.items.length) ? b.items : DEFAULT_TTK_V95_;
+  var existing = getTtkList_(ss) || [];
+  var exMap = {};
+  existing.forEach(function(k) { if (k && k.name) exMap[String(k.name).trim().toLowerCase()] = true; });
+  var added = 0;
+  items.forEach(function(k) {
+    if (!k || !k.name) return;
+    if (!b || !b.overwrite) {
+      if (exMap[String(k.name).trim().toLowerCase()]) return;
+    }
+    saveTtk_(ss, {
+      id: k.id || ('ttk_' + Date.now() + '_' + added),
+      name: k.name,
+      cat: k.cat || k.category || 'Классика',
+      vol: k.vol || k.volume || '250 мл',
+      price: Number(k.price) || 0,
+      cost: 0,
+      recipe: k.recipe || '',
+      serve: k.serve || ''
+    });
+    added++;
+  });
+  bumpDataRev_();
+  return { ok: true, added: added, total: getTtkList_(ss).length, ttk: getTtkList_(ss) };
 }
