@@ -26,7 +26,7 @@ html[data-theme="dark"] {
 html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased; transition:background .2s,color .2s; }
 button, input, select, textarea { font-family:inherit; color:inherit; }
 button { cursor:pointer; border:none; background:transparent; }
-.topbar { position:sticky; top:0; z-index:40; background:var(--bg); border-bottom:1px solid var(--border); padding:10px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.topbar { position:sticky; top:0; z-index:40; background:var(--bg); border-bottom:1px solid var(--border); padding:10px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; max-width:100%; }
 .brand { display:flex; align-items:center; gap:10px; }
 .brand-dot { width:36px; height:36px; border-radius:14px; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; font-weight:800; font-size:15px; }
 .brand-title { font-weight:750; font-size:16px; }
@@ -93,14 +93,23 @@ tr:last-child td { border-bottom:none; }
 .kpi-lbl { font-size:12px; color:var(--muted); font-weight:600; }
 .kpi-val { font-size:24px; font-weight:800; margin:4px 0 2px; }
 .kpi-meta { font-size:12px; color:var(--muted); }
-.chart-wrap { display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:8px; align-items:end; height:150px; padding-top:20px; position:relative; }
-.chart-plan-line { position:absolute; left:0; right:0; border-top:1.5px dashed var(--accent); opacity:.55; pointer-events:none; }
-.chart-plan-lbl { position:absolute; right:0; top:-18px; font-size:11px; font-weight:650; color:var(--accent); }
-.bar-col { display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; justify-content:flex-end; }
-.bar-val { font-size:10.5px; font-weight:700; color:var(--muted); }
-.bar-fill { width:100%; max-width:34px; border-radius:10px 10px 4px 4px; background:var(--accent); }
+.chart-scroll { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+.chart-scroll::-webkit-scrollbar { height:6px; }
+.chart-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
+.chart-wrap { position:relative; display:flex; flex-wrap:nowrap; align-items:stretch; gap:10px; height:228px; padding:12px 6px 4px; min-width:100%; width:max-content; }
+.chart-plan-line { position:absolute; left:0; right:0; border-top:1.5px dashed rgba(232,184,138,0.65); pointer-events:none; z-index:2; }
+.chart-plan-lbl { position:absolute; right:6px; top:-22px; font-size:11px; font-weight:700; color:var(--accent); background:var(--card); border:1px solid var(--border); padding:2px 8px; border-radius:999px; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,0.18); }
+.bar-col { flex:1 0 64px; max-width:108px; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; position:relative; z-index:1; }
+.bar-val { font-size:11px; font-weight:750; color:var(--ink); white-space:nowrap; line-height:1.15; height:15px; display:flex; align-items:center; }
+.bar-track { flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; min-height:110px; }
+.bar-fill { width:72%; max-width:42px; min-width:22px; border-radius:10px 10px 4px 4px; background:var(--accent); transition:height .25s ease, opacity .15s ease; }
 .bar-fill.hit { background:var(--good); }
-.bar-dt { font-size:10.5px; color:var(--muted); font-weight:600; }
+.bar-col:hover .bar-fill { opacity:.86; }
+.bar-dt { font-size:11px; color:var(--muted); font-weight:650; white-space:nowrap; line-height:1.15; height:16px; display:flex; align-items:center; }
+.chart-ctrl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.chart-gran { display:inline-flex; background:var(--surface); padding:3px; border-radius:999px; border:1px solid var(--border); gap:2px; }
+.chart-gran button { padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:650; color:var(--muted); }
+.chart-gran button.active { background:var(--accent); color:var(--accent-ink); }
 
   .date-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border-radius:16px;background:var(--surface);border:1px solid var(--border);}
   .date-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
@@ -110,7 +119,6 @@ tr:last-child td { border-bottom:none; }
   .date-custom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .date-custom input[type="date"]{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:5px 9px;font-size:12.5px;font-family:inherit;}
   .date-range-lbl{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;}
-  .chart-wrap{overflow-x:auto;}
 
 /* === Coffee Illy v93.1 Responsive System (Phones · Tablets · Desktop) === */
 html { -webkit-text-size-adjust: 100%; }
@@ -161,7 +169,8 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .kpi-lbl, .kpi-meta { font-size: 11.5px; }
   .card { padding: 14px; border-radius: 20px; }
   .card-title { font-size: 15px; }
-  .chart-wrap { min-width: 440px; height: 145px; }
+  .chart-wrap { height: 205px; }
+  .bar-col { flex: 1 0 54px; }
   .field input, .field select, .field textarea { font-size: 16px; min-height: 44px; }
   .btn-lg { min-height: 46px; }
   th, td { padding: 8px 8px; font-size: 12.5px; }
@@ -199,16 +208,16 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .kpi { padding: 18px 20px; }
   .kpi-val { font-size: 26px; }
   .card { padding: 22px; }
-  .chart-wrap { height: 170px; }
+  .chart-wrap { height: 236px; }
   .tbl-wrap table { min-width: 0; }
 }
 
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.4.1"></script>
-  <script src="js/cloud-sync.js?v=97.4.1"></script>
-<script src="js/pos-csv-parser.js?v=97.4.1"></script>
+  <script src="config.js?v=97.5.0"></script>
+  <script src="js/cloud-sync.js?v=97.5.0"></script>
+<script src="js/pos-csv-parser.js?v=97.5.0"></script>
 </head>
 <body>
 <header class="topbar">
@@ -360,6 +369,7 @@ function initTheme(btnId) {
     return m ? (m[3] + '.' + m[2] + '.' + m[1]) : String(iso || '');
   }
   let datePreset = '30d';
+  let chartGranularity = 'auto';
   let customFrom = shiftIsoDate(TODAY, -6);
   let customTo = TODAY;
   try {
@@ -385,15 +395,22 @@ function initTheme(btnId) {
     }
     if (datePreset === '30d') {
       const f = shiftIsoDate(TODAY, -29);
-      return { from: f, to: TODAY, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+      return { from: f, to: TODAY, spanDays: 30, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+    }
+    if (datePreset === '90d') {
+      const f = shiftIsoDate(TODAY, -89);
+      return { from: f, to: TODAY, spanDays: 90, label: '90 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
     }
     if (datePreset === 'all') {
-      return { from: '2000-01-01', to: '2099-12-31', isAll: true, label: 'Всё время' };
+      return { from: '2000-01-01', to: '2099-12-31', isAll: true, spanDays: 365, label: 'Всё время' };
     }
     let f = customFrom || shiftIsoDate(TODAY, -6);
     let t = customTo || TODAY;
     if (f > t) { const tmp = f; f = t; t = tmp; }
-    return { from: f, to: t, label: fmtDateRu(f) + ' – ' + fmtDateRu(t) };
+    const d1 = new Date(f + 'T12:00:00');
+    const d2 = new Date(t + 'T12:00:00');
+    const span = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+    return { from: f, to: t, spanDays: span, label: fmtDateRu(f) + ' – ' + fmtDateRu(t) + ' (' + span + ' дн.)' };
   }
   function inDateRange(dateStr, rng) {
     if (rng && rng.isAll) return true;
@@ -410,6 +427,7 @@ function initTheme(btnId) {
       { id: 'yesterday', label: 'Вчера' },
       { id: '7d', label: '7 дней' },
       { id: '30d', label: '30 дней' },
+      { id: '90d', label: '90 дней' },
       { id: 'all', label: 'Всё время' },
       { id: 'custom', label: 'Свой период' }
     ];
@@ -656,9 +674,74 @@ function initTheme(btnId) {
       const targetAvgCheck = fCash.length ? Math.round(fCash.reduce((a, c) => a + getDayPlan(c.date).avg, 0) / fCash.length) : todayPlan.avg;
       const revPlanPct = totalPlanRev > 0 ? Math.round((totalRev / totalPlanRev) * 100) : 0;
       const checksPlanPct = totalPlanChecks > 0 ? Math.round((totalChecks / totalPlanChecks) * 100) : 0;
-      const days = fCash.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(-31);
-      const maxRev = Math.max(todayPlan.rev, ...days.map(c => Math.max(c.revenue, getDayPlan(c.date).rev)), 1);
-      const todayPlanPct = Math.round((todayPlan.rev / maxRev) * 100);
+      const sortedCash = fCash.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const effectiveSpan = rng.spanDays || (sortedCash.length > 1
+        ? Math.max(1, Math.round((new Date(sortedCash[sortedCash.length - 1].date + 'T12:00:00') - new Date(sortedCash[0].date + 'T12:00:00')) / 86400000) + 1)
+        : 1);
+      const effGran = chartGranularity === 'auto'
+        ? (effectiveSpan > 120 && sortedCash.length > 35 ? 'month' : (effectiveSpan > 31 && sortedCash.length > 18 ? 'week' : 'day'))
+        : chartGranularity;
+      const monthNamesRu = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+      function buildChartSeries(list, gran) {
+        if (gran === 'day') {
+          return list.map(c => {
+            const revVal = cashRev(c);
+            const dp = getDayPlan(c.date);
+            const avgC = c.checks ? Math.round(revVal / c.checks) : 0;
+            const pct = dp.rev > 0 ? Math.round((revVal / dp.rev) * 100) : 0;
+            return {
+              label: dp.day + ' ' + c.date.slice(8) + '.' + c.date.slice(5, 7),
+              rev: revVal,
+              plan: dp.rev,
+              hit: revVal >= dp.rev,
+              shifts: 1,
+              tip: `${dp.day} ${fmtDateRu(c.date)} · Выручка: ${fmtRub(revVal)} / ${fmtRub(dp.rev)} (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} ₽`
+            };
+          });
+        }
+        const map = new Map();
+        list.forEach(c => {
+          const revVal = cashRev(c);
+          const dp = getDayPlan(c.date);
+          const dt = new Date(c.date + 'T12:00:00');
+          let key = c.date.slice(0, 7);
+          let lbl = (monthNamesRu[dt.getMonth()] || '') + ' ' + String(dt.getFullYear()).slice(2);
+          if (gran === 'week') {
+            const dayIdx = (dt.getDay() + 6) % 7;
+            const mon = new Date(dt.getTime() - dayIdx * 86400000);
+            const sun = new Date(mon.getTime() + 6 * 86400000);
+            key = mon.toISOString().slice(0, 10);
+            lbl = String(mon.getDate()).padStart(2, '0') + '.' + String(mon.getMonth() + 1).padStart(2, '0') + '–' + String(sun.getDate()).padStart(2, '0') + '.' + String(sun.getMonth() + 1).padStart(2, '0');
+          }
+          const cur = map.get(key) || { key, label: lbl, rev: 0, plan: 0, checks: 0, shifts: 0 };
+          cur.rev += revVal;
+          cur.plan += dp.rev;
+          cur.checks += (Number(c.checks) || 0);
+          cur.shifts += 1;
+          map.set(key, cur);
+        });
+        return Array.from(map.values()).map(g => {
+          const pct = g.plan > 0 ? Math.round((g.rev / g.plan) * 100) : 0;
+          const avgC = g.checks > 0 ? Math.round(g.rev / g.checks) : 0;
+          return {
+            label: g.label,
+            rev: g.rev,
+            plan: g.plan,
+            hit: g.rev >= g.plan,
+            shifts: g.shifts,
+            tip: `${g.label} (${g.shifts} смен) · Выручка: ${fmtRub(g.rev)} / План: ${fmtRub(g.plan)} (${pct}%) · Чеки: ${g.checks} · Ср. чек: ${avgC} ₽`
+          };
+        });
+      }
+      const chartPts = buildChartSeries(sortedCash, effGran);
+      const refPlanVal = effGran === 'day'
+        ? todayPlan.rev
+        : (chartPts.length ? Math.round(chartPts.reduce((a, p) => a + p.plan, 0) / chartPts.length) : todayPlan.rev);
+      const maxRev = Math.max(refPlanVal, ...chartPts.map(p => p.rev), 1);
+      const avgBucketRev = chartPts.length ? Math.round(chartPts.reduce((a, p) => a + p.rev, 0) / chartPts.length) : 0;
+      const planTrackPct = Math.min(92, Math.max(8, Math.round((refPlanVal / maxRev) * 100)));
+      const chartTitle = effGran === 'month' ? 'Динамика выручки по месяцам' : (effGran === 'week' ? 'Динамика выручки по неделям' : 'Динамика выручки по дням');
+      const planRefLabel = effGran === 'day' ? `План (${todayPlan.day}): ${fmtRub(refPlanVal)}` : `Ср. план: ${fmtRub(refPlanVal)}`;
       root.innerHTML = syncBanner + `
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Выручка (${fCash.length} смен)</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div>
@@ -669,27 +752,30 @@ function initTheme(btnId) {
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head">
             <div>
-              <h2 class="card-title">Динамика выручки по дням</h2>
-              <div class="card-sub">План (${todayPlan.day}): ${fmtRub(todayPlan.rev)} · Макс. за период: ${fmtRub(maxRev)}</div>
+              <h2 class="card-title">${chartTitle}</h2>
+              <div class="card-sub">${planRefLabel} · Средняя: ${fmtRub(avgBucketRev)} · Макс.: ${fmtRub(maxRev)} · Период: ${esc(rng.label)}</div>
             </div>
-            <div style="display:flex;gap:10px;align-items:center;font-size:11.5px;color:var(--muted);flex-wrap:wrap;">
-              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:4px;"></span>План выполнен</span>
-              <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--accent);margin-right:4px;"></span>Ниже плана</span>
-              <span><span style="display:inline-block;width:14px;border-top:2px dashed var(--muted);vertical-align:middle;margin-right:4px;"></span>План дня</span>
+            <div class="chart-ctrl">
+              <div class="chart-gran" id="chart-gran-ctrl">
+                <button class="${chartGranularity==='auto'?'active':''}" data-cg="auto">Авто</button>
+                <button class="${chartGranularity==='day'?'active':''}" data-cg="day">Дни</button>
+                <button class="${chartGranularity==='week'?'active':''}" data-cg="week">Недели</button>
+                <button class="${chartGranularity==='month'?'active':''}" data-cg="month">Месяцы</button>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;font-size:11.5px;color:var(--muted);flex-wrap:wrap;">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--good);margin-right:4px;"></span>План выполнен</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--accent);margin-right:4px;"></span>Ниже плана</span>
+              </div>
             </div>
           </div>
-          <div class="chart-wrap" style="min-height:190px;padding-top:26px;">
-            <div class="chart-plan-line" style="bottom:${Math.min(88,Math.max(18,todayPlanPct*0.76))}%"><span class="chart-plan-lbl">План ${todayPlan.day}: ${fmtRub(todayPlan.rev)}</span></div>
-            ${days.length ? days.map(c => {
-              const revVal = cashRev(c);
-              const dp = getDayPlan(c.date);
-              const avgC = c.checks ? Math.round(revVal / c.checks) : 0;
-              const hit = revVal >= dp.rev;
-              const pct = dp.rev > 0 ? Math.round((revVal / dp.rev) * 100) : 0;
-              const hPct = revVal > 0 ? Math.max(10, Math.round((revVal / maxRev) * 100)) : 4;
-              const tip = `${dp.day} ${c.date} · Выручка: ${fmtRub(revVal)} / ${fmtRub(dp.rev)} (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} ₽`;
-              return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val" style="font-size:11px;font-weight:700;">${revVal.toLocaleString('ru-RU')} ₽</div><div class="bar-fill ${hit?'hit':''}" style="height:${hPct}%;${hit?'background:var(--good);':''}"></div><div class="bar-dt">${dp.day} ${c.date.slice(8)}.${c.date.slice(5,7)}</div></div>`;
-            }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:36px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
+          <div class="chart-scroll">
+            <div class="chart-wrap">
+              ${chartPts.length ? `<div class="chart-plan-line" style="bottom:calc(28px + ${planTrackPct}% * 0.72)"><span class="chart-plan-lbl">${esc(planRefLabel)}</span></div>` : ''}
+              ${chartPts.length ? chartPts.map(p => {
+                const hPct = p.rev > 0 ? Math.max(8, Math.round((p.rev / maxRev) * 100)) : 4;
+                return `<div class="bar-col" title="${esc(p.tip)}"><div class="bar-val">${p.rev.toLocaleString('ru-RU')} ₽</div><div class="bar-track"><div class="bar-fill ${p.hit?'hit':''}" style="height:${hPct}%;"></div></div><div class="bar-dt">${esc(p.label)}</div></div>`;
+              }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:48px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
+            </div>
           </div>
         </div>
         ${(() => {
@@ -740,6 +826,7 @@ function initTheme(btnId) {
             }).join('')}
           </div>
         </div>`;
+      root.querySelectorAll('[data-cg]').forEach(b => b.onclick = () => { chartGranularity = b.dataset.cg; render(); });
       const _ovU = document.getElementById('ov-unlock'); if (_ovU) _ovU.onclick = () => guard('Живые данные дашборда', () => {});
       return;
     }
@@ -1508,7 +1595,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.4.1"></script>
+  <script src="./js/time-picker.js?v=97.5.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1516,7 +1603,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.4.1').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.5.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
