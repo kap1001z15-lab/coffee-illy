@@ -310,6 +310,16 @@
           photos: phList
         };
       });
+      state.checklists.sort((a, b) => {
+        const da = String((a && a.date) || '').slice(0, 10);
+        const db = String((b && b.date) || '').slice(0, 10);
+        if (da !== db) return db.localeCompare(da);
+        const padT = (t) => {
+          const m = String(t || '').match(/(\d{1,2}):(\d{2})/);
+          return m ? (String(m[1]).padStart(2, '0') + ':' + m[2]) : '00:00';
+        };
+        return padT(b && b.time).localeCompare(padT(a && a.time));
+      });
       changed = true;
     }
     if (Array.isArray(data.staff) && data.staff.length) {
@@ -459,26 +469,6 @@
         text: a.text || a.action || '',
         rev: a.rev || state.cloudRev || state.rev || 1
       }));
-      changed = true;
-    }
-    if (Array.isArray(data.salesLog)) {
-      state.salesLog = data.salesLog;
-      changed = true;
-    }
-    if (Array.isArray(data.transactionsLog)) {
-      state.transactionsLog = data.transactionsLog;
-      changed = true;
-    }
-    if (data.productsByDate && typeof data.productsByDate === 'object') {
-      state.productsByDate = data.productsByDate;
-      changed = true;
-    }
-    if (data.sheetStats && typeof data.sheetStats === 'object') {
-      state.sheetStats = data.sheetStats;
-      changed = true;
-    }
-    if (data.spreadsheetUrl) {
-      state.spreadsheetUrl = String(data.spreadsheetUrl);
       changed = true;
     }
     if (data.serverTime) {
@@ -898,7 +888,6 @@
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
     }
   };
-  window.CoffeeCloudV95 = API_OBJ;
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;

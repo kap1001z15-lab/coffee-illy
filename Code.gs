@@ -2710,38 +2710,6 @@ function getAdmin_(ss) {
     cash: cash.reverse(),
     productsByDate: productsByDate,
     salesLog: salesLog,
-    transactionsLog: (function() {
-      var shTx = ss.getSheetByName('Транзакции');
-      if (!shTx || shTx.getLastRow() <= 1) return [];
-      var txRows = shTx.getDataRange().getValues();
-      var outTx = [];
-      for (var ti = Math.max(1, txRows.length - 600); ti < txRows.length; ti++) {
-        var tr = txRows[ti];
-        if (!tr[0]) continue;
-        var dtStr = fmtIso_(tr[0]);
-        if (!dtStr) continue;
-        outTx.push({
-          date: dtStr,
-          time: fmtTime_(tr[1]),
-          checkNo: String(tr[2] || ''),
-          payType: String(tr[3] || 'Наличные'),
-          amount: parseRubNum_(tr[4]),
-          barista: String(tr[5] || ''),
-          shift: String(tr[6] || '')
-        });
-      }
-      return outTx;
-    })(),
-    sheetStats: (function() {
-      var names = ['Касса', 'Продажи', 'Транзакции', 'Расходы', 'Чек-листы', 'Поломки', 'Задачи', 'Сотрудники', 'ТТК', 'Посещаемость', 'Аудит'];
-      var st = {};
-      names.forEach(function(nm) {
-        var s = ss.getSheetByName(nm);
-        st[nm] = s ? Math.max(0, s.getLastRow() - 1) : 0;
-      });
-      return st;
-    })(),
-    spreadsheetUrl: (typeof ss.getUrl === 'function' ? ss.getUrl() : '') || 'https://docs.google.com/spreadsheets/d/1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM/edit',
     expenses: expenses.reverse(),
     incidents: incidents.reverse(),
     announcements: getAnnouncements_(ss),
@@ -3981,6 +3949,17 @@ function getChecklistsLogFromSheet_(ss) {
       });
     }
   }
+  // v94.2: Автоматическая сортировка истории прохождения чек-листов от самых новых к самым старым
+  list.sort(function(a, b) {
+    var da = String((a && a.date) || '').slice(0, 10);
+    var db = String((b && b.date) || '').slice(0, 10);
+    if (da !== db) return db.localeCompare(da);
+    var padT = function(t) {
+      var m = String(t || '').match(/(\d{1,2}):(\d{2})/);
+      return m ? (String(m[1]).padStart(2, '0') + ':' + m[2]) : '00:00';
+    };
+    return padT(b && b.time).localeCompare(padT(a && a.time));
+  });
   return list;
 }
 
