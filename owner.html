@@ -101,11 +101,21 @@ tr:last-child td { border-bottom:none; }
 .bar-fill { width:100%; max-width:34px; border-radius:10px 10px 4px 4px; background:var(--accent); }
 .bar-fill.hit { background:var(--good); }
 .bar-dt { font-size:10.5px; color:var(--muted); font-weight:600; }
+
+  .date-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border-radius:16px;background:var(--surface);border:1px solid var(--border);}
+  .date-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .date-pill{border:1px solid var(--border);background:transparent;color:var(--muted);padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
+  .date-pill:hover{color:var(--text);border-color:var(--accent);}
+  .date-pill.active{background:var(--accent);color:#1d1510;border-color:var(--accent);}
+  .date-custom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .date-custom input[type="date"]{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:5px 9px;font-size:12.5px;font-family:inherit;}
+  .date-range-lbl{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;}
+  .chart-wrap{overflow-x:auto;}
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v=92"></script>
-  <script src="js/cloud-sync-v93.js?v=92"></script>
+  <script src="js/cloud-sync-v94.js?v=92"></script>
 </head>
 <body>
 <header class="topbar">
@@ -130,12 +140,15 @@ tr:last-child td { border-bottom:none; }
 <main class="wrap">
   <nav class="admin-nav" id="admin-nav">
     <button class="active" data-tab="overview">Обзор</button>
-    <button data-tab="checklists">Чек-листы <span class="badge" id="cnt-chk">0</span></button>
+    <button data-tab="sales">Продажи <span class="badge" id="cnt-sales">0</span></button>
     <button data-tab="finances">Финансы <span class="badge" id="cnt-fin">0</span></button>
+    <button data-tab="warehouse">Склад <span class="badge" id="cnt-wh">0</span></button>
+    <button data-tab="checklists">Чек-листы <span class="badge" id="cnt-chk">0</span></button>
     <button data-tab="incidents">Поломки <span class="badge bad" id="cnt-inc">0</span></button>
     <button data-tab="team">Команда и ТТК</button>
-    <button data-tab="settings">Настройки и Безопасность</button>
+    <button data-tab="settings">Управление</button>
   </nav>
+  <div id="date-filter-bar" class="date-bar"></div>
   <div id="content"></div>
 </main>
 
@@ -149,7 +162,7 @@ tr:last-child td { border-bottom:none; }
 
 <script>
 
-const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[]};
+const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[],"salesLog":[],"inventory":[],"inventoryMoves":[],"expiryItems":[]};
 const STORE_KEY = 'coffee_illy_v90_live_state';
 const THEME_KEY = 'coffee_illy_v90_theme';
 const TODAY = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10));
@@ -191,7 +204,7 @@ function saveSharedState(st, actor, desc) {
   st.rev = (Number(st.rev) || 0) + 1;
   if (desc) {
     st.auditLog = st.auditLog || [];
-    st.auditLog.unshift({ time: st.simTime || '13:25', actor: actor || 'Система', rev: st.rev, text: desc });
+    st.auditLog.unshift({ date: TODAY, time: (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (st.simTime || '13:25')), actor: actor || 'Система', rev: st.rev, text: desc });
     if (st.auditLog.length > 50) st.auditLog.pop();
   }
   try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
@@ -240,6 +253,94 @@ function initTheme(btnId) {
   let adminAuthNeeded = !adminUnlocked;
   let incFilter = 'open';
   let chkFilter = 'all';
+  let salesCatFilter = 'all';
+  let salesQuery = '';
+  let whCatFilter = 'all';
+  const DATE_STORE_KEY = 'coffee_illy_v93_date_range';
+  function shiftIsoDate(baseIso, deltaDays) {
+    const m = String(baseIso || TODAY).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const dt = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + deltaDays, 12, 0, 0) : new Date(Date.now() + deltaDays * 86400000);
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  }
+  function fmtDateRu(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? (m[3] + '.' + m[2] + '.' + m[1]) : String(iso || '');
+  }
+  let datePreset = '30d';
+  let customFrom = shiftIsoDate(TODAY, -6);
+  let customTo = TODAY;
+  try {
+    const savedRange = JSON.parse(localStorage.getItem(DATE_STORE_KEY) || 'null');
+    if (savedRange && savedRange.preset) {
+      datePreset = savedRange.preset;
+      if (savedRange.from) customFrom = savedRange.from;
+      if (savedRange.to) customTo = savedRange.to;
+    }
+  } catch (_) {}
+  function saveDateRangePref() {
+    try { localStorage.setItem(DATE_STORE_KEY, JSON.stringify({ preset: datePreset, from: customFrom, to: customTo })); } catch (_) {}
+  }
+  function getActiveDateRange() {
+    if (datePreset === 'today') return { from: TODAY, to: TODAY, label: 'Сегодня (' + fmtDateRu(TODAY) + ')' };
+    if (datePreset === 'yesterday') {
+      const y = shiftIsoDate(TODAY, -1);
+      return { from: y, to: y, label: 'Вчера (' + fmtDateRu(y) + ')' };
+    }
+    if (datePreset === '7d') {
+      const f = shiftIsoDate(TODAY, -6);
+      return { from: f, to: TODAY, label: '7 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+    }
+    if (datePreset === '30d') {
+      const f = shiftIsoDate(TODAY, -29);
+      return { from: f, to: TODAY, label: '30 дней (' + fmtDateRu(f) + ' – ' + fmtDateRu(TODAY) + ')' };
+    }
+    if (datePreset === 'all') {
+      return { from: '2000-01-01', to: '2099-12-31', isAll: true, label: 'Всё время' };
+    }
+    let f = customFrom || shiftIsoDate(TODAY, -6);
+    let t = customTo || TODAY;
+    if (f > t) { const tmp = f; f = t; t = tmp; }
+    return { from: f, to: t, label: fmtDateRu(f) + ' – ' + fmtDateRu(t) };
+  }
+  function inDateRange(dateStr, rng) {
+    if (rng && rng.isAll) return true;
+    const d = String(dateStr || '').slice(0, 10);
+    if (!d) return false;
+    return d >= rng.from && d <= rng.to;
+  }
+  function renderDateBar(rng) {
+    const bar = document.getElementById('date-filter-bar');
+    if (!bar) return;
+    bar.style.display = 'flex';
+    const presets = [
+      { id: 'today', label: 'Сегодня' },
+      { id: 'yesterday', label: 'Вчера' },
+      { id: '7d', label: '7 дней' },
+      { id: '30d', label: '30 дней' },
+      { id: 'all', label: 'Всё время' },
+      { id: 'custom', label: 'Свой период' }
+    ];
+    bar.innerHTML = `
+      <div class="date-pills">
+        ${presets.map(p => `<button class="date-pill ${datePreset===p.id?'active':''}" data-dp="${p.id}">${p.label}</button>`).join('')}
+      </div>
+      <div class="date-custom">
+        ${datePreset === 'custom'
+          ? `<input type="date" id="df-from" value="${esc(rng.from)}"><span style="color:var(--muted);font-size:12px;">—</span><input type="date" id="df-to" value="${esc(rng.to)}">`
+          : `<span class="date-range-lbl">📅 ${esc(rng.label)}</span>`}
+      </div>`;
+    bar.querySelectorAll('[data-dp]').forEach(btn => {
+      btn.onclick = () => {
+        datePreset = btn.dataset.dp;
+        saveDateRangePref();
+        render();
+      };
+    });
+    const fEl = document.getElementById('df-from');
+    const tEl = document.getElementById('df-to');
+    if (fEl) fEl.onchange = (e) => { customFrom = e.target.value || customFrom; saveDateRangePref(); render(); };
+    if (tEl) tEl.onchange = (e) => { customTo = e.target.value || customTo; saveDateRangePref(); render(); };
+  }
 
   initTheme('btn-theme');
   function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); }
@@ -289,7 +390,7 @@ function initTheme(btnId) {
     const avg = Number((found && (found.avg || found.avgCheck)) || state.minAvgCheck || 35);
     return { day: dayKey, rev, checks, avg, roster: (found && found.roster) || '' };
   }
-  function blockTasks(nm) { return state.tasks.filter(t => t.block === nm); }
+  function blockTasks(nm) { const raw = state.tasks.filter(t => t.block === nm); return (window.CoffeeCloudV94 && window.CoffeeCloudV94.dedupeTasksList) ? window.CoffeeCloudV94.dedupeTasksList(raw) : raw; }
   function getBlkSt(b) {
     if (b.active === false) return { label:'Отключён', cls:'', open:false };
     if (state.extensions[b.name] && state.extensions[b.name].forceOpen) return { label:'Открыт админом до 23:59', cls:'good', open:true };
@@ -307,12 +408,28 @@ function initTheme(btnId) {
     lb.textContent = adminUnlocked ? '🔓 Админ-сессия' : '🔒 Защищено PIN';
     lb.className = 'chip-btn ' + (adminUnlocked ? 'good' : 'warn');
 
-    const totalRev = state.cash.reduce((a,c)=>a+c.revenue,0);
-    const totalExp = state.expenses.reduce((a,e)=>a+e.amount,0);
-    const openIncs = state.incidents.filter(i=>i.status!=='Решена').length;
-    document.getElementById('cnt-chk').textContent = state.checklists.length;
-    document.getElementById('cnt-fin').textContent = state.cash.length;
+    const rng = getActiveDateRange();
+    renderDateBar(rng);
+    const fCash = (state.cash || []).filter(c => inDateRange(c.date, rng));
+    const fExpenses = (state.expenses || []).filter(e => inDateRange(e.date, rng));
+    const fChecklists = (state.checklists || []).filter(c => inDateRange(c.date, rng));
+    const fIncidents = (state.incidents || []).filter(i => inDateRange(i.date, rng));
+    const fSales = (state.salesLog || []).filter(s => inDateRange(s.date, rng));
+    const fInvMoves = (state.inventoryMoves || []).filter(m => inDateRange(m.date, rng));
+    const fExpiry = (state.expiryItems || []).filter(x => !x.date || inDateRange(x.date, rng) || inDateRange(x.expiresDate, rng));
+    const fAudit = (state.auditLog || []).filter(a => !a.date || inDateRange(a.date, rng));
+    const invAll = state.inventory || [];
+    const lowStockCount = invAll.filter(it => Number(it.stock || 0) <= Number(it.minStock || 0)).length;
+
+    const totalRev = fCash.reduce((a,c)=>a+c.revenue,0);
+    const totalExp = fExpenses.reduce((a,e)=>a+e.amount,0);
+    const openIncs = fIncidents.filter(i=>i.status!=='Решена').length;
+    const salesQtyTotal = fSales.reduce((a, s) => a + (Number(s.qty) || 0), 0);
+    document.getElementById('cnt-chk').textContent = fChecklists.length;
+    document.getElementById('cnt-fin').textContent = fCash.length;
     document.getElementById('cnt-inc').textContent = openIncs;
+    const csEl = document.getElementById('cnt-sales'); if (csEl) csEl.textContent = salesQtyTotal || fSales.length;
+    const cwEl = document.getElementById('cnt-wh'); if (cwEl) { cwEl.textContent = lowStockCount ? ('!' + lowStockCount) : invAll.length; cwEl.className = 'badge ' + (lowStockCount ? 'bad' : ''); }
     document.querySelectorAll('#admin-nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
 
     const root = document.getElementById('content');
@@ -323,35 +440,35 @@ function initTheme(btnId) {
           ? `<div class="card-soft" style="margin-bottom:14px;border:1px solid var(--warn);display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>🔒 Войдите по PIN владельца, чтобы подтянуть живую кассу, расходы и поломки из Google Таблицы.</span><button class="chip-btn accent" id="ov-unlock">Войти по PIN</button></div>`
           : '');
       const todayPlan = getDayPlan(TODAY);
-      const totalPlanRev = state.cash.reduce((a, c) => a + getDayPlan(c.date).rev, 0);
-      const totalChecks = state.cash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
-      const totalPlanChecks = state.cash.reduce((a, c) => a + getDayPlan(c.date).checks, 0);
+      const totalPlanRev = fCash.reduce((a, c) => a + getDayPlan(c.date).rev, 0);
+      const totalChecks = fCash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
+      const totalPlanChecks = fCash.reduce((a, c) => a + getDayPlan(c.date).checks, 0);
       const actualAvgCheck = totalChecks > 0 ? Math.round(totalRev / totalChecks) : 0;
-      const targetAvgCheck = state.cash.length ? Math.round(state.cash.reduce((a, c) => a + getDayPlan(c.date).avg, 0) / state.cash.length) : todayPlan.avg;
+      const targetAvgCheck = fCash.length ? Math.round(fCash.reduce((a, c) => a + getDayPlan(c.date).avg, 0) / fCash.length) : todayPlan.avg;
       const revPlanPct = totalPlanRev > 0 ? Math.round((totalRev / totalPlanRev) * 100) : 0;
       const checksPlanPct = totalPlanChecks > 0 ? Math.round((totalChecks / totalPlanChecks) * 100) : 0;
-      const days = state.cash.slice(0,10).reverse();
+      const days = fCash.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(-31);
       const maxRev = Math.max(todayPlan.rev, ...days.map(c => Math.max(c.revenue, getDayPlan(c.date).rev)), 1);
       const todayPlanPct = Math.round((todayPlan.rev / maxRev) * 100);
       root.innerHTML = syncBanner + `
         <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-lbl">Выручка (${state.cash.length} смен)</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Выручка (${fCash.length} смен)</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div>
           <div class="kpi"><div class="kpi-lbl">Чеки и средний чек</div><div class="kpi-val" style="color:${actualAvgCheck>=targetAvgCheck?'var(--good)':'var(--accent)'}">${actualAvgCheck} ₽</div><div class="kpi-meta">Чеков: <b>${totalChecks}</b> / ${totalPlanChecks} (${checksPlanPct}%) · Мин. ср. чек (${todayPlan.day}): ${todayPlan.avg} ₽</div></div>
-          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${state.checklists.length}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">Всего: ${state.incidents.length} · Задач: ${state.tasks.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${fChecklists.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">За период: ${fIncidents.length} · Задач: ${state.tasks.length}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Динамика выручки по индивидуальному плану дня</h2><div class="card-sub">Каждый столбец сравнивается с планом своего дня недели (Пн–Вс) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)} / ${todayPlan.checks} чек. / ≥${todayPlan.avg} ₽</div></div></div>
           <div class="chart-wrap">
             <div class="chart-plan-line" style="bottom:${Math.min(92,Math.max(16,todayPlanPct*0.78))}%"><span class="chart-plan-lbl">План ${todayPlan.day}: ${fmtRub(todayPlan.rev)}</span></div>
-            ${days.map(c => {
+            ${days.length ? days.map(c => {
               const dp = getDayPlan(c.date);
               const avgC = c.checks ? Math.round(c.revenue / c.checks) : 0;
               const hit = c.revenue >= dp.rev;
               const pct = dp.rev > 0 ? Math.round((c.revenue / dp.rev) * 100) : 0;
               const tip = `${dp.day} ${c.date} · Выручка: ${c.revenue} / ${dp.rev} ₽ (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} / ≥${dp.avg} ₽`;
               return `<div class="bar-col" title="${esc(tip)}"><div class="bar-val">${c.revenue}</div><div class="bar-fill ${hit?'hit':''}" style="height:${Math.max(12,Math.round((c.revenue/maxRev)*100))}%"></div><div class="bar-dt">${dp.day} ${c.date.slice(8)}</div></div>`;
-            }).join('')}
+            }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:36px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
           </div>
         </div>
         <div class="card">
@@ -376,7 +493,7 @@ function initTheme(btnId) {
     }
 
     if (tab === 'checklists') {
-      const logs = chkFilter === 'all' ? state.checklists : state.checklists.filter(c=>c.who===chkFilter);
+      const logs = chkFilter === 'all' ? fChecklists : fChecklists.filter(c=>c.who===chkFilter);
       root.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Блоки и окна (${state.blocks.length})</h2><div class="card-sub">Любое изменение сразу прилетает в открытый терминал</div></div><button class="chip-btn accent" id="b-add">+ Новый блок</button></div>
@@ -400,7 +517,7 @@ function initTheme(btnId) {
             <select id="cf" class="chip-btn"><option value="all">Все сотрудники</option>${[...new Set(state.checklists.map(c=>c.who))].map(w=>`<option value="${esc(w)}" ${chkFilter===w?'selected':''}>${esc(w)}</option>`).join('')}</select>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">${/export=download|\.(webm|mp4)/i.test(u)?'🎬':'📷'} ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<a href="${esc(u)}" target="_blank" rel="noopener" class="badge accent" style="text-decoration:none;margin-left:4px;">📷 ${idx+1}</a>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
           </tbody></table></div>
         </div>`;
       document.getElementById('cf').onchange = e => { chkFilter = e.target.value; render(); };
@@ -448,8 +565,156 @@ function initTheme(btnId) {
       return;
     }
 
-    if (tab === 'finances') {
+    if (tab === 'sales') {
+      const salesTotalSum = fSales.reduce((a, s) => a + (Number(s.sum) || 0), 0);
+      const coffeeRows = fSales.filter(s => String(s.kind || '').toLowerCase().includes('кофе') && !String(s.kind || '').toLowerCase().includes('не-кофе'));
+      const coffeeQty = coffeeRows.reduce((a, s) => a + (Number(s.qty) || 0), 0);
+      const otherQty = Math.max(0, salesQtyTotal - coffeeQty);
+      const coffeeShare = salesQtyTotal > 0 ? Math.round((coffeeQty / salesQtyTotal) * 100) : 0;
+      const avgUnitPrice = salesQtyTotal > 0 ? Math.round(salesTotalSum / salesQtyTotal) : 0;
+      const cats = ['all', ...Array.from(new Set(fSales.map(s => s.kind || 'Прочее').filter(Boolean)))];
+      const q = salesQuery.trim().toLowerCase();
+      const filteredSales = fSales.filter(s => (salesCatFilter === 'all' || (s.kind || 'Прочее') === salesCatFilter) && (!q || String(s.name || '').toLowerCase().includes(q) || String(s.barista || '').toLowerCase().includes(q)));
+      const byProduct = {};
+      filteredSales.forEach(s => {
+        const key = s.name + '|' + (s.kind || 'Прочее');
+        if (!byProduct[key]) byProduct[key] = { name: s.name, kind: s.kind || 'Прочее', qty: 0, sum: 0 };
+        byProduct[key].qty += Number(s.qty) || 0;
+        byProduct[key].sum += Number(s.sum) || 0;
+      });
+      const topProducts = Object.values(byProduct).sort((a, b) => b.sum - a.sum || b.qty - a.qty);
+      const denomSum = topProducts.reduce((a, p) => a + p.sum, 0) || 1;
       root.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-lbl">Продано за период</div><div class="kpi-val">${salesQtyTotal} шт.</div><div class="kpi-meta">${esc(rng.label)}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Выручка по продажам</div><div class="kpi-val">${fmtRub(salesTotalSum)}</div><div class="kpi-meta">Позиций в чеках: ${fSales.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Кофе / Не-кофе</div><div class="kpi-val" style="color:var(--accent)">${coffeeQty} / ${otherQty}</div><div class="kpi-meta">Доля кофе: <b>${coffeeShare}%</b></div></div>
+          <div class="kpi"><div class="kpi-lbl">Средняя цена позиции</div><div class="kpi-val">${avgUnitPrice} ₽</div><div class="kpi-meta">Уникальных позиций: ${topProducts.length}</div></div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-head">
+            <div><h2 class="card-title">Топ продаж по номенклатуре (${topProducts.length})</h2><div class="card-sub">Данные листа «Продажи» за период: ${esc(rng.label)}</div></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="sales-q" value="${esc(salesQuery)}" placeholder="Поиск напитка или бариста..." style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;min-width:190px;">
+            </div>
+          </div>
+          <div class="date-pills" style="margin-bottom:12px;">
+            ${cats.map(c => `<button class="date-pill ${salesCatFilter===c?'active':''}" data-sc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th>Позиция</th><th>Категория</th><th>Кол-во</th><th>Выручка</th><th>Доля</th><th>Ср. цена</th></tr></thead><tbody>
+            ${topProducts.length ? topProducts.map(p => `<tr>
+              <td><b>${esc(p.name)}</b></td>
+              <td><span class="badge">${esc(p.kind)}</span></td>
+              <td><b>${p.qty} шт.</b></td>
+              <td><b>${fmtRub(p.sum)}</b></td>
+              <td><span class="badge accent">${Math.round((p.sum / denomSum) * 100)}%</span></td>
+              <td style="color:var(--muted)">${p.qty ? Math.round(p.sum / p.qty) : 0} ₽</td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">Нет детальных продаж за период (${esc(rng.label)}). Загрузите CSV отчёт во вкладке «Финансы» или выберите другой период.</td></tr>`}
+          </tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div><h2 class="card-title">Журнал продаж по дням (${filteredSales.length})</h2><div class="card-sub">Последние записи за выбранный период</div></div></div>
+          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Бариста</th><th>Позиция</th><th>Категория</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody>
+            ${filteredSales.length ? filteredSales.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0, 120).map(s => `<tr>
+              <td><b>${esc(s.date)}</b></td>
+              <td>${esc(s.barista)}</td>
+              <td><b>${esc(s.name)}</b></td>
+              <td><span class="badge">${esc(s.kind)}</span></td>
+              <td>${s.qty} шт.</td>
+              <td><b>${fmtRub(s.sum)}</b></td>
+            </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:14px;">Нет записей за выбранный период</td></tr>`}
+          </tbody></table></div>
+        </div>`;
+      root.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { salesCatFilter = b.dataset.sc; render(); });
+      const sq = document.getElementById('sales-q');
+      if (sq) sq.oninput = (e) => { salesQuery = e.target.value; render(); };
+      return;
+    }
+
+    if (tab === 'warehouse') {
+      const whCats = ['all', ...Array.from(new Set(invAll.map(i => i.category || 'Сырьё')))];
+      const invShown = whCatFilter === 'all' ? invAll : invAll.filter(i => (i.category || 'Сырьё') === whCatFilter);
+      const restockMoves = fInvMoves.filter(m => m.type === 'restock' || m.delta > 0);
+      const writeoffMoves = fInvMoves.filter(m => m.type === 'writeoff' || m.delta < 0);
+      const nowMs = Date.now();
+      const expiringSoon = fExpiry.filter(x => x.status !== 'disposed' && x.expiresAtMs && x.expiresAtMs <= nowMs + 86400000).length;
+      root.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-lbl">Позиций на складе</div><div class="kpi-val">${invAll.length}</div><div class="kpi-meta">Актуальные остатки Google Таблицы</div></div>
+          <div class="kpi"><div class="kpi-lbl">Ниже минимума</div><div class="kpi-val" style="color:${lowStockCount?'var(--bad)':'var(--good)'}">${lowStockCount}</div><div class="kpi-meta">${lowStockCount?'Требуется закупка':'Все позиции в норме'}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Движения за период</div><div class="kpi-val">${fInvMoves.length}</div><div class="kpi-meta">Приход: <b>${restockMoves.length}</b> · Списание: <b>${writeoffMoves.length}</b></div></div>
+          <div class="kpi"><div class="kpi-lbl">Сроки годности</div><div class="kpi-val" style="color:${expiringSoon?'var(--warn)':'var(--good)'}">${fExpiry.length}</div><div class="kpi-meta">Истекают ≤24ч: <b>${expiringSoon}</b> · ${esc(rng.label)}</div></div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-head">
+            <div><h2 class="card-title">Товары и остатки на складе (${invShown.length})</h2><div class="card-sub">Живые остатки с мгновенным пополнением и списанием</div></div>
+            <button class="chip-btn accent" id="wh-add">+ Товар на склад</button>
+          </div>
+          <div class="date-pills" style="margin-bottom:12px;">
+            ${whCats.map(c => `<button class="date-pill ${whCatFilter===c?'active':''}" data-wc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th>Товар</th><th>Категория</th><th>Остаток</th><th>Мин. порог</th><th>Статус</th><th>Обновлено</th><th>Действия</th></tr></thead><tbody>
+            ${invShown.length ? invShown.map(it => {
+              const isLow = Number(it.stock || 0) <= Number(it.minStock || 0);
+              return `<tr>
+                <td><b>${esc(it.name)}</b></td>
+                <td><span class="badge">${esc(it.category || 'Сырьё')}</span></td>
+                <td><b>${it.stock} ${esc(it.unit)}</b></td>
+                <td style="color:var(--muted)">${it.minStock} ${esc(it.unit)}</td>
+                <td><span class="badge ${isLow?'bad':'good'}">${isLow?'⚠️ Мало':'✓ Норма'}</span></td>
+                <td style="color:var(--muted)">${esc(it.updatedAt || '—')}</td>
+                <td style="display:flex;gap:5px;flex-wrap:wrap;">
+                  <button class="chip-btn good" data-wh-in="${esc(it.id)}" style="padding:4px 8px;">+ Приход</button>
+                  <button class="chip-btn warn" data-wh-out="${esc(it.id)}" style="padding:4px 8px;">− Списать</button>
+                  <button class="chip-btn" data-wh-ed="${esc(it.id)}" style="padding:4px 8px;">✏️</button>
+                </td>
+              </tr>`;
+            }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;">Склад пока пуст — нажмите «+ Товар на склад», чтобы добавить молоко, зерно, стаканчики и сиропы.</td></tr>`}
+          </tbody></table></div>
+        </div>
+        <div class="grid-2" style="align-items:start;">
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">Движения склада за период (${fInvMoves.length})</h2><div class="card-sub">${esc(rng.label)}</div></div></div>
+            <div class="stack" style="max-height:300px;overflow-y:auto;">
+              ${fInvMoves.length ? fInvMoves.map(m => `<div class="row-item"><div class="row-main">
+                <div class="row-title">${esc(m.name)} <span class="badge ${m.delta>=0?'good':'bad'}">${m.delta>=0?('+'+m.delta):m.delta} ${esc(m.unit)}</span></div>
+                <div class="row-sub">${esc(m.date)} ${esc(m.time)} · Остаток: <b>${m.stockAfter} ${esc(m.unit)}</b> · ${esc(m.actor)}${m.note?' · '+esc(m.note):''}</div>
+              </div></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет движений склада за выбранный период (${esc(rng.label)})</div>`}
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2 class="card-title">Сроки годности за период (${fExpiry.length})</h2><div class="card-sub">${esc(rng.label)}</div></div></div>
+            <div class="stack" style="max-height:300px;overflow-y:auto;">
+              ${fExpiry.length ? fExpiry.map(x => {
+                const expired = x.expiresAtMs && x.expiresAtMs < nowMs;
+                return `<div class="row-item"><div class="row-main">
+                  <div class="row-title">${esc(x.title)} <span class="badge ${x.status==='disposed'?'':(expired?'bad':'good')}">${x.status==='disposed'?'Списано':(expired?'Просрочено':'Годен')}</span></div>
+                  <div class="row-sub">${esc(x.category)} · Вскрыто: ${esc(x.date||'—')} · До: ${esc(x.expiresDate||'—')}</div>
+                </div></div>`;
+              }).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет записей сроков годности за выбранный период</div>`}
+            </div>
+          </div>
+        </div>`;
+      root.querySelectorAll('[data-wc]').forEach(b => b.onclick = () => { whCatFilter = b.dataset.wc; render(); });
+      document.getElementById('wh-add').onclick = () => guard('Добавить товар на склад', () => openWarehouseModal(null));
+      root.querySelectorAll('[data-wh-ed]').forEach(b => b.onclick = () => guard('Редактировать товар', () => openWarehouseModal(b.dataset.whEd)));
+      root.querySelectorAll('[data-wh-in]').forEach(b => b.onclick = () => guard('Приход на склад', () => openWarehouseMoveModal(b.dataset.whIn, 'restock')));
+      root.querySelectorAll('[data-wh-out]').forEach(b => b.onclick = () => guard('Списание со склада', () => openWarehouseMoveModal(b.dataset.whOut, 'writeoff')));
+      return;
+    }
+
+    if (tab === 'finances') {
+      const finCashSum = fCash.reduce((a, c) => a + (Number(c.cash) || 0), 0);
+      const finCardSum = fCash.reduce((a, c) => a + (Number(c.card) || 0), 0);
+      const finChecks = fCash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
+      const finAvg = finChecks > 0 ? Math.round(totalRev / finChecks) : 0;
+      root.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-lbl">Выручка (${esc(rng.label)})</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">Нал: ${fmtRub(finCashSum)} · Безнал: ${fmtRub(finCardSum)}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Расходы за период</div><div class="kpi-val" style="color:var(--bad)">${fmtRub(totalExp)}</div><div class="kpi-meta">Операций: ${fExpenses.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev - totalExp)}</div><div class="kpi-meta">Закрыто смен: ${fCash.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Средний чек</div><div class="kpi-val">${finAvg} ₽</div><div class="kpi-meta">Всего чеков: ${finChecks}</div></div>
+        </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head">
             <div><h2 class="card-title">Импорт отчётов POS (CSV: Продажи и Транзакции)</h2><div class="card-sub">Выберите один или сразу несколько файлов за смены — система сама распознает номенклатуру, чеки, нал/безнал, бариста и запишет в Google Таблицу (Касса, Продажи, Транзакции) без дублей</div></div>
@@ -458,9 +723,9 @@ function initTheme(btnId) {
           <div id="csv-imp-preview" style="display:none;margin-top:10px;"></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Кассовые смены (${state.cash.length})</h2><div class="card-sub">Автоматическое сравнение каждой смены с планом её дня недели (выручка, чеки, мин. средний чек)</div></div></div>
+          <div class="card-head"><div><h2 class="card-title">Кассовые смены (${fCash.length})</h2><div class="card-sub">Автоматическое сравнение каждой смены с планом её дня недели (выручка, чеки, мин. средний чек)</div></div></div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Выручка / План</th><th>Чеков / План</th><th>Ср. чек / Мин.</th><th>Нал / Безнал</th><th>Бариста</th></tr></thead><tbody>
-            ${state.cash.map(c => {
+            ${fCash.length ? fCash.map(c => {
               const dp = getDayPlan(c.date);
               const avgC = c.checks ? Math.round(c.revenue / c.checks) : 0;
               const revPct = dp.rev > 0 ? Math.round((c.revenue / dp.rev) * 100) : 0;
@@ -472,13 +737,13 @@ function initTheme(btnId) {
                 <td style="color:var(--muted)">${fmtRub(c.cash)} / ${fmtRub(c.card)}</td>
                 <td>${esc(c.barista)}</td>
               </tr>`;
-            }).join('')}
+            }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">Нет смен за период (${esc(rng.label)})</td></tr>`}
           </tbody></table></div>
         </div>
         <div class="grid-2" style="align-items:start;">
           <div class="card">
             <div class="card-head"><div><h2 class="card-title">Расходы (${fmtRub(totalExp)})</h2></div><button class="chip-btn accent" id="e-add">+ Расход</button></div>
-            <div class="stack">${state.expenses.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('')}</div>
+            <div class="stack">${fExpenses.length ? fExpenses.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет расходов за выбранный период</div>`}</div>
           </div>
           <div class="card">
             <div class="card-head"><div><h2 class="card-title">Индивидуальные планы по дням (Пн–Вс)</h2><div class="card-sub">Учитываются в дашборде, графике и сводках</div></div></div>
@@ -581,7 +846,7 @@ function initTheme(btnId) {
     }
 
     if (tab === 'incidents') {
-      const list = incFilter==='all'?state.incidents:(incFilter==='open'?state.incidents.filter(i=>i.status!=='Решена'):state.incidents.filter(i=>i.status==='Решена'));
+      const list = incFilter==='all'?fIncidents:(incFilter==='open'?fIncidents.filter(i=>i.status!=='Решена'):fIncidents.filter(i=>i.status==='Решена'));
       root.innerHTML = `<div class="card"><div class="card-head"><div><h2 class="card-title">Поломки (${list.length})</h2></div><div class="seg"><button class="${incFilter==='open'?'active':''}" data-f="open">Открытые (${openIncs})</button><button class="${incFilter==='resolved'?'active':''}" data-f="resolved">Решённые</button><button class="${incFilter==='all'?'active':''}" data-f="all">Все</button></div></div>
       <div class="stack">${list.map(i=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(i.step)} <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span></div><div class="row-sub">${i.date} ${i.time} · ${esc(i.who)} — ${esc(i.text||'—')}${i.photoUrl?` · <a href="${esc(i.photoUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;">📷 Фото (Диск)</a>`:''}</div></div>${i.status!=='Решена'?`<button class="chip-btn good" data-rs="${esc(i.id)}">✓ Решить</button>`:'<span class="badge good">Решена</span>'}</div>`).join('')}</div></div>`;
       root.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ incFilter=b.dataset.f; render(); });
@@ -593,7 +858,15 @@ function initTheme(btnId) {
       root.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Сотрудники, личные PIN и Telegram ID</h2></div><button class="chip-btn accent" id="s-add">+ Сотрудник</button></div>
-          <div class="stack">${state.staff.map(s=>`<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">PIN: <b>${s.pinIsDefault?'1234 (базовый)':'•••• (личный)'}</b></div></div><button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div>`).join('')}</div>
+          <div class="stack">${state.staff.map(s => {
+            const sCash = fCash.filter(c => String(c.barista || c.who || '').toLowerCase() === String(s.name || '').toLowerCase());
+            const sRev = sCash.reduce((a, c) => a + (Number(c.revenue) || 0), 0);
+            const sChk = fChecklists.filter(c => String(c.who || '').toLowerCase() === String(s.name || '').toLowerCase()).length;
+            const sInc = fIncidents.filter(i => String(i.who || '').toLowerCase() === String(s.name || '').toLowerCase()).length;
+            const pr = (state.staffPresence || {})[s.name];
+            const isOn = !!(pr && pr.status === 'on_shift');
+            return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div>`;
+          }).join('')}</div>
         </div>
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Техкарты ILLY (${state.ttk.length})</h2></div><button class="chip-btn accent" id="k-add">+ Техкарта</button></div>
@@ -609,7 +882,17 @@ function initTheme(btnId) {
     }
 
     if (tab === 'settings') {
+      const lateChks = fChecklists.filter(c => c.isLate).length;
+      const onTimeChks = Math.max(0, fChecklists.length - lateChks);
+      const resolvedIncs = fIncidents.filter(i => i.status === 'Решена').length;
+      const onShiftNow = Object.values(state.staffPresence || {}).filter(p => p && p.status === 'on_shift').length;
       root.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-lbl">Дисциплина чек-листов</div><div class="kpi-val" style="color:var(--good)">${onTimeChks}/${fChecklists.length}</div><div class="kpi-meta">В срок · Опозданий: <b>${lateChks}</b> · ${esc(rng.label)}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Управление поломками</div><div class="kpi-val">${resolvedIncs}/${fIncidents.length}</div><div class="kpi-meta">Решено · Открыто: <b>${openIncs}</b></div></div>
+          <div class="kpi"><div class="kpi-lbl">Сотрудников на смене</div><div class="kpi-val" style="color:var(--accent)">${onShiftNow}</div><div class="kpi-meta">Всего активных: ${state.staff.filter(s=>s.active!==false).length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">События управления</div><div class="kpi-val">${fAudit.length}</div><div class="kpi-meta">Записей аудита за период</div></div>
+        </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Базовые параметры кофейни</h2><div class="card-sub">Используются как запасные; основной расчёт на дашборде идёт по индивидуальным планам Пн–Вс</div></div><button class="chip-btn accent" id="s-open-plans">📅 Планы по дням (Пн–Вс)</button></div>
           <div class="grid-2">
@@ -642,8 +925,8 @@ function initTheme(btnId) {
           </div>
         </div>
         <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Журнал аудита и синхронизации</h2></div></div>
-          <div class="stack" style="max-height:260px;overflow-y:auto;">${(state.auditLog||[]).map(a=>`<div class="card-soft" style="padding:8px 12px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);"><b>${esc(a.actor)} · ${a.time}</b><span class="badge accent">rev #${a.rev}</span></div><div style="font-size:12.5px;margin-top:2px;">${esc(a.text)}</div></div>`).join('')}</div>
+          <div class="card-head"><div><h2 class="card-title">Журнал аудита и управления (${fAudit.length})</h2><div class="card-sub">Фильтр по периоду: ${esc(rng.label)}</div></div></div>
+          <div class="stack" style="max-height:300px;overflow-y:auto;">${fAudit.length ? fAudit.map(a=>`<div class="card-soft" style="padding:8px 12px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);"><b>${esc(a.actor)} · ${a.date ? esc(a.date) + ' ' : ''}${esc(a.time || '')}</b><span class="badge accent">rev #${a.rev || state.rev}</span></div><div style="font-size:12.5px;margin-top:2px;">${esc(a.text)}</div></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет записей управления за выбранный период (${esc(rng.label)})</div>`}</div>
         </div>`;
       const sop = document.getElementById('s-open-plans'); if (sop) sop.onclick = () => { tab = 'finances'; render(); };
       document.getElementById('s-save').onclick = () => guard('Сохранить настройки', () => {
@@ -691,6 +974,73 @@ function initTheme(btnId) {
     }
   }
 
+  function openWarehouseModal(id) {
+    const it = id ? (state.inventory || []).find(x => x.id === id) : null;
+    openModal(it ? ('Товар: ' + it.name) : 'Новый товар на складе', `
+      <div class="field"><label>Название товара</label><input id="wh-nm" value="${it ? esc(it.name) : ''}" placeholder="Например: Зерно Illy 250г / Молоко 3.2%"></div>
+      <div class="grid-2">
+        <div class="field"><label>Категория</label><input id="wh-cat" value="${it ? esc(it.category || 'Сырьё') : 'Сырьё'}" placeholder="Кофе / Молоко / Расходники"></div>
+        <div class="field"><label>Ед. измерения</label><input id="wh-un" value="${it ? esc(it.unit || 'шт') : 'шт'}" placeholder="г / мл / шт / л"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Текущий остаток</label><input id="wh-st" type="number" min="0" value="${it ? Number(it.stock || 0) : 0}"></div>
+        <div class="field"><label>Мин. порог (алерт)</label><input id="wh-min" type="number" min="0" value="${it ? Number(it.minStock || 5) : 5}"></div>
+      </div>
+      <button class="btn-lg primary" id="wh-sv">Сохранить на склад</button>
+    `);
+    document.getElementById('wh-sv').onclick = async () => {
+      const payload = {
+        id: it ? it.id : ('inv_' + Date.now().toString(36)),
+        name: document.getElementById('wh-nm').value.trim(),
+        category: document.getElementById('wh-cat').value.trim() || 'Сырьё',
+        unit: document.getElementById('wh-un').value.trim() || 'шт',
+        stock: Math.max(0, Math.round(Number(document.getElementById('wh-st').value) || 0)),
+        minStock: Math.max(0, Math.round(Number(document.getElementById('wh-min').value) || 0))
+      };
+      if (!payload.name) { showToast('Укажите название товара'); return; }
+      if (window.CoffeeCloudV93) {
+        const res = await window.CoffeeCloudV93.saveInventoryItem(payload);
+        if (res && res.ok) {
+          if (Array.isArray(res.inventory)) state.inventory = res.inventory;
+          if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+        }
+      }
+      if (!state.inventory) state.inventory = [];
+      const ex = state.inventory.find(x => x.id === payload.id);
+      if (ex) Object.assign(ex, payload, { updatedAt: TODAY });
+      else state.inventory.push(Object.assign({}, payload, { updatedAt: TODAY }));
+      saveSharedState(state, 'Администратор', 'Обновлён склад: ' + payload.name + ' (' + payload.stock + ' ' + payload.unit + ')');
+      closeModal(); showToast('✓ Остаток сохранён в Google Таблице'); render();
+    };
+  }
+  function openWarehouseMoveModal(id, kind) {
+    const it = (state.inventory || []).find(x => x.id === id);
+    if (!it) return;
+    const isRestock = kind === 'restock';
+    openModal((isRestock ? 'Приход: ' : 'Списание: ') + it.name, `
+      <div class="card-soft" style="margin-bottom:10px;font-size:12.5px;">Текущий остаток: <b>${it.stock} ${esc(it.unit)}</b></div>
+      <div class="field"><label>Количество (${esc(it.unit)})</label><input id="wm-qty" type="number" min="1" value="1"></div>
+      <div class="field"><label>Комментарий</label><input id="wm-note" placeholder="${isRestock?'Поставка от поставщика':'Использовано / списано'}"></div>
+      <button class="btn-lg primary" id="wm-ok">${isRestock?'+ Зачислить на склад':'− Списать со склада'}</button>
+    `);
+    document.getElementById('wm-ok').onclick = async () => {
+      const qty = Math.max(1, Math.round(Number(document.getElementById('wm-qty').value) || 0));
+      const note = document.getElementById('wm-note').value.trim();
+      if (window.CoffeeCloudV93) {
+        const res = isRestock
+          ? await window.CoffeeCloudV93.restockInventory(it.id, qty, note)
+          : await window.CoffeeCloudV93.writeoffInventory(it.id, qty, note);
+        if (res && res.ok) {
+          if (Array.isArray(res.inventory)) state.inventory = res.inventory;
+          if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+        }
+      }
+      it.stock = Math.max(0, Number(it.stock || 0) + (isRestock ? qty : -qty));
+      it.updatedAt = TODAY;
+      saveSharedState(state, 'Администратор', (isRestock ? 'Приход склада: ' : 'Списание склада: ') + it.name + ' (' + (isRestock ? '+' : '-') + qty + ' ' + it.unit + ')');
+      closeModal(); showToast(isRestock ? '✓ Приход записан' : '✓ Списание записано'); render();
+    };
+  }
   function openTasksModal(blk) {
     const list = blockTasks(blk);
     openModal('Задачи «' + blk + '» (' + list.length + ')', `

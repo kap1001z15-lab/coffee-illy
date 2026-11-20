@@ -319,7 +319,7 @@ function doPost(e) {
           '👤 Сотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100),
           '📝 Описание: ' + escapeTgHtml_(String(x.comment || 'Без описания').slice(0, 700))
         ];
-        if (phUrl) msgLines.push((/export=download|\.(webm|mp4)/i.test(phUrl) ? '🎬 <a href="' + escapeTgHtml_(phUrl) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>'));
+        if (phUrl) msgLines.push('📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>');
         pendingAlerts.push({
           type: 'incident',
           force: true,
@@ -379,7 +379,7 @@ function doPost(e) {
         '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
         '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
       ];
-      if (incPh) incLines.push((/export=download|\.(webm|mp4)/i.test(incPh) ? '🎬 <a href="' + escapeTgHtml_(incPh) + '">Открыть видео на Google Диске</a>' : '📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>'));
+      if (incPh) incLines.push('📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>');
       pendingAlerts.push({
         type: 'incident',
         force: true,
@@ -616,7 +616,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
   if (!dataUri) {
     return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
   }
-  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)*;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm))(?:;[^;]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
   if (!m) {
     return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
   }
@@ -667,7 +667,7 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
         try { lockOpt.releaseLock(); } catch (_) {}
       }
     }
-    return { ok: true, mediaId: file.getId(), fileId: file.getId(), mediaType: /^video\//i.test(mimeType) ? 'video' : 'image', mimeType: mimeType, url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), url: directMediaUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
   } catch (driveErr) {
     return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
   }
@@ -2722,7 +2722,26 @@ function getAdmin_(ss) {
     tgUserBindings: getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {}),
     customNomenclatureRules: getJsonProp_('COFFEE_CUSTOM_NOMENCLATURE_JSON', {}),
     inventory: getJsonProp_('COFFEE_INVENTORY_JSON', []),
+    inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
     expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
+    auditLog: (function() {
+      var shA = ss.getSheetByName('Аудит');
+      if (!shA || shA.getLastRow() <= 1) return [];
+      var aRows = shA.getDataRange().getValues();
+      var outA = [];
+      for (var ai = aRows.length - 1; ai >= 1 && outA.length < 250; ai--) {
+        var ar = aRows[ai];
+        if (!ar[0] && !ar[2] && !ar[3]) continue;
+        outA.push({
+          date: fmtIso_(ar[0]),
+          time: fmtTime_(ar[1]),
+          actor: String(ar[2] || 'Система'),
+          action: String(ar[3] || ''),
+          text: String(ar[3] || '') + (ar[4] ? (' · ' + String(ar[4])) : '')
+        });
+      }
+      return outA;
+    })(),
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
     staffPresence: getStaffPresenceToday_(ss),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
@@ -4165,32 +4184,79 @@ function saveNomenclatureRule_(ss, b) {
 function saveInventory_(ss, b) {
   var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
   if (!Array.isArray(list)) list = [];
+  var moves = getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []);
+  if (!Array.isArray(moves)) moves = [];
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
   var id = String((b && b.id) || ('inv_' + Date.now().toString(36))).trim();
   var idx = -1;
   for (var i = 0; i < list.length; i++) {
     if (list[i] && String(list[i].id) === id) { idx = i; break; }
   }
+  var moveType = 'edit';
+  var moveDelta = 0;
+  var targetItem = null;
   if (idx >= 0) {
+    var prevStock = Number(list[idx].stock) || 0;
     if (b.action === 'restock_inventory' && b.delta != null) {
-      list[idx].stock = Math.max(0, Math.round((Number(list[idx].stock) || 0) + (Number(b.delta) || 0)));
+      moveDelta = Math.abs(Math.round(Number(b.delta) || 0));
+      list[idx].stock = Math.max(0, prevStock + moveDelta);
+      moveType = 'restock';
+    } else if (b.action === 'writeoff_inventory' && b.delta != null) {
+      moveDelta = -Math.abs(Math.round(Number(b.delta) || 0));
+      list[idx].stock = Math.max(0, prevStock + moveDelta);
+      moveType = 'writeoff';
     } else {
       if (b.name) list[idx].name = String(b.name);
+      if (b.category) list[idx].category = String(b.category);
       if (b.unit) list[idx].unit = String(b.unit);
-      if (b.stock != null) list[idx].stock = Math.max(0, Math.round(Number(b.stock) || 0));
+      if (b.stock != null) {
+        var ns = Math.max(0, Math.round(Number(b.stock) || 0));
+        moveDelta = ns - prevStock;
+        list[idx].stock = ns;
+      }
       if (b.minStock != null) list[idx].minStock = Math.max(0, Math.round(Number(b.minStock) || 0));
     }
+    list[idx].updatedAt = today;
+    targetItem = list[idx];
   } else if (b && b.name) {
-    list.push({
+    var initStock = Math.max(0, Math.round(Number(b.stock) || 0));
+    targetItem = {
       id: id,
       name: String(b.name),
       category: String(b.category || 'Сырьё'),
       unit: String(b.unit || 'г'),
-      stock: Math.max(0, Math.round(Number(b.stock) || 0)),
-      minStock: Math.max(0, Math.round(Number(b.minStock) || 0))
+      stock: initStock,
+      minStock: Math.max(0, Math.round(Number(b.minStock) || 0)),
+      updatedAt: today
+    };
+    list.push(targetItem);
+    moveType = 'restock';
+    moveDelta = initStock;
+  }
+  if (targetItem) {
+    moves.unshift({
+      id: 'mv_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1000),
+      itemId: targetItem.id,
+      name: targetItem.name,
+      category: targetItem.category || 'Сырьё',
+      type: moveType,
+      delta: moveDelta,
+      stockAfter: targetItem.stock,
+      unit: targetItem.unit || 'шт',
+      date: today,
+      time: hm,
+      actor: String((b && (b.actor || b.userName)) || 'Администратор'),
+      note: String((b && b.note) || '')
     });
+    if (moves.length > 500) moves = moves.slice(0, 500);
+    setJsonProp_('COFFEE_INVENTORY_MOVES_JSON', moves);
   }
   setJsonProp_('COFFEE_INVENTORY_JSON', list);
-  return { ok: true, inventory: list };
+  bumpDataRev_();
+  return { ok: true, inventory: list, inventoryMoves: moves };
 }
 
 function addExpiryItem_(ss, b) {

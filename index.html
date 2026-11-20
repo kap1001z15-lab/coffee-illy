@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coffee Illy v94.0 — Терминал бариста (Тест с живой синхронизацией)</title>
+<title>Coffee Illy v93.0 — Терминал бариста (Тест с живой синхронизацией)</title>
 <style>
 
 :root {
@@ -102,12 +102,22 @@ body { display:flex; flex-direction:column; min-height:100vh; }
 .bnav button .ico { padding:4px 14px; border-radius:999px; font-size:15px; }
 .bnav button.active { color:var(--ink); }
 .bnav button.active .ico { background:var(--accent-soft); color:var(--accent); }
+
+.kb-done-btn { position:fixed; right:14px; bottom:74px; z-index:95; display:none; padding:8px 14px; border-radius:999px; background:var(--accent); color:#fff; font-size:13px; font-weight:700; box-shadow:0 6px 20px rgba(0,0,0,0.28); border:none; cursor:pointer; }
+.kb-done-btn.show { display:inline-flex; align-items:center; gap:5px; }
+.cat-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.cat-card { background:var(--card); border:1px solid var(--border); border-radius:22px; padding:16px 14px; display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease; }
+.cat-card:active { transform:scale(0.98); }
+.cat-ico { width:40px; height:40px; border-radius:14px; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; font-size:20px; }
+.cat-title { font-size:14.5px; font-weight:800; line-height:1.2; color:var(--ink); }
+.cat-meta { font-size:11.5px; color:var(--muted); }
+.bottom-search-wrap { position:fixed; left:50%; transform:translateX(-50%); bottom:68px; width:100%; max-width:460px; padding:8px 14px; background:var(--bg); border-top:1px solid var(--border); z-index:35; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=92"></script>
-  <script src="js/cloud-sync-v93.js?v=92"></script>
-  <script src="js/camera-v94.js?v=92"></script>
+  <script src="config.js?v=94"></script>
+  <script src="js/cloud-sync-v94.js?v=94"></script>
+  <script src="js/camera-v92.js?v=94"></script>
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -130,10 +140,11 @@ body { display:flex; flex-direction:column; min-height:100vh; }
   <button class="active" data-t="checklists"><span class="ico">✓</span>Чек-листы</button>
   <button data-t="cash"><span class="ico">₽</span>Касса</button>
   <button data-t="ttk"><span class="ico">☕</span>База ТТК</button>
-  <button data-t="issues"><span class="ico">⚠</span>Поломки</button>
+  <button data-t="issues"><span class="ico">📋</span>Задачи</button>
 </nav>
 
 <div class="modal-bg" id="modal-bg"><div class="modal-card"><div class="card-head" style="margin-bottom:10px;"><h3 class="card-title" id="modal-title"></h3><button class="chip-btn" id="modal-close">✕</button></div><div id="modal-body"></div></div></div>
+<button class="kb-done-btn" id="kb-done" type="button">Готово ⌨️</button>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -163,7 +174,7 @@ function freshState() {
     tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
   }));
   s.liveProgress = {}; s.staffPresence = {};
-  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v94.0 на реальных данных Coffee_illy.' }];
+  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.0 на реальных данных Coffee_illy.' }];
   return s;
 }
 function loadSharedState() {
@@ -236,7 +247,10 @@ function initTheme(btnId) {
   let activeBlock = null;
   let stepIdx = 0;
   let stepPhotos = {};
-  let instOpen = false;
+  let instOpen = true;
+  let confirmFinishBlock = null;
+  let justCompletedBlock = null;
+  let ttkCat = null;
   let ttkQ = '';
 
   initTheme('btn-theme');
@@ -247,7 +261,10 @@ function initTheme(btnId) {
 
   function activeStaff() { return state.staff.filter(s=>s.active!==false); }
   function getSt(nm) { return state.staff.find(s=>s.name===nm); }
-  function blockTasks(nm) { return state.tasks.filter(t=>t.block===nm); }
+  function blockTasks(nm) {
+    const raw = state.tasks.filter(t => t.block === nm);
+    return (window.CoffeeCloudV94 && window.CoffeeCloudV94.dedupeTasksList) ? window.CoffeeCloudV94.dedupeTasksList(raw) : raw;
+  }
   function isDoneToday(blk, who) { return state.checklists.some(c=>c.date===TODAY && c.block===blk && c.who===who); }
   function getBlkSt(b) {
     if (b.active===false) return { code:'off', label:'Отключён', cls:'', open:false };
@@ -284,7 +301,6 @@ function initTheme(btnId) {
     welcomeBanner = greetingText || ('Добро пожаловать на смену, ' + staffName + '! Вы отмечены на работе с ' + checkedInAt + '.');
     state.staffPresence = state.staffPresence || {};
     state.staffPresence[staffName] = { staffName: staffName, status: 'on_shift', checkedInAt: checkedInAt, date: TODAY, tgId: tgIdVal || '' };
-    if (window.CoffeeCameraV94) { window.CoffeeCameraV94.primePermission(false); }
     applyDeepLinkIfNeeded();
     saveSharedState(state, staffName, 'Отмечен на работе (' + checkedInAt + ')');
     showToast('🟢 ' + welcomeBanner);
@@ -367,7 +383,6 @@ function initTheme(btnId) {
     uc.innerHTML = `<span class="badge good" style="padding:5px 9px;">🟢 На работе · ${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn" id="b-pin" style="padding:5px 9px;">🔑 ${esc(authed)}</button><button class="chip-btn" id="b-out" style="padding:5px 9px;">Выйти</button>`;
     document.getElementById('b-out').onclick = async () => {
       const prevName = authed;
-      if (window.CoffeeCameraV94) window.CoffeeCameraV94.release();
       if (window.CoffeeCloudV93) await window.CoffeeCloudV93.checkOutStaff(prevName);
       if (state.staffPresence && state.staffPresence[prevName]) state.staffPresence[prevName].status = 'off_shift';
       authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; render();
@@ -389,67 +404,86 @@ function initTheme(btnId) {
     };
 
     if (tab === 'checklists') {
-      const welcomeHtml = welcomeBanner ? `<div class="card-soft" id="welcome-card" style="margin-bottom:12px;border:1px solid var(--good);display:flex;justify-content:space-between;align-items:center;gap:10px;"><div style="font-size:13px;"><b>👋 ${esc(welcomeBanner)}</b></div><button class="chip-btn" id="w-close" style="padding:3px 8px;">✕</button></div>` : '';
+      const welcomeHtml = welcomeBanner ? `<div class="card-soft" id="welcome-card" style="margin-bottom:4px;border:1px solid var(--good);display:flex;justify-content:space-between;align-items:center;gap:10px;"><div style="font-size:13px;"><b>👋 ${esc(welcomeBanner)}</b></div><button class="chip-btn" id="w-close" style="padding:3px 8px;">✕</button></div>` : '';
       const nc = state.blocks.filter(b=>!b.isCash && b.active!==false);
       const doneCnt = nc.filter(b=>isDoneToday(b.name, authed)).length;
-      const curBlk = ensureBlk();
-      let h = `<button class="chip-btn" id="tg-st" style="width:100%;justify-content:space-between;padding:10px 14px;"><span>Этапы смены (${doneCnt}/${nc.length})</span><span>${stagesOpen?'▴ Скрыть':'▾ Показать все'}</span></button>`;
+      const curBlk = justCompletedBlock ? null : ensureBlk();
+      let h = welcomeHtml + `<button class="chip-btn" id="tg-st" style="width:100%;justify-content:space-between;padding:10px 14px;"><span>Таймлайн (${doneCnt}/${nc.length})</span><span style="font-size:15px;line-height:1;">${stagesOpen?'🔼':'🔽'}</span></button>`;
       if (stagesOpen) {
         h += `<div class="stack">` + nc.map(b => {
           const st = getBlkSt(b);
           return `<div class="card-soft" style="display:flex;justify-content:space-between;align-items:center;"><div><b>${esc(b.name)}</b> <span style="font-size:12px;color:var(--muted);">(${blockTasks(b.name).length})</span><div style="font-size:11.5px;color:var(--muted);">${b.openTime}–${b.deadline} · ${st.label}</div></div>${st.open?`<button class="chip-btn accent" data-pk="${esc(b.name)}">Открыть</button>`:`<span class="badge ${st.cls}">${st.code==='done'?'✓':'🔒'}</span>`}</div>`;
         }).join('') + `</div>`;
       }
-      if (!curBlk) {
-        h += `<div class="step-card" style="text-align:center;padding:28px 18px;"><div style="font-size:30px;">☕</div><div class="step-title">Нет открытых чек-листов в ${state.simTime||'13:25'}</div><div style="font-size:13px;color:var(--muted);">Откройте нужный блок в соседнем окне Дашборда — он появится здесь мгновенно.</div></div>`;
+      if (justCompletedBlock) {
+        const nextOpen = nc.find(b => getBlkSt(b).open);
+        h += `<div class="step-card" style="text-align:center;padding:26px 18px;">
+          <div style="font-size:36px;">✅</div>
+          <h3 class="step-title">Чек-лист «${esc(justCompletedBlock)}» завершён!</h3>
+          <div style="font-size:13px;color:var(--muted);">Отчёт и фото отправлены в Google Таблицу и дашборд.</div>
+          ${nextOpen ? `<button class="btn-lg primary" id="b-next-blk">Перейти к «${esc(nextOpen.name)}»</button>` : ''}
+          <button class="chip-btn" id="b-open-tl" style="align-self:center;padding:9px 16px;">Открыть таймлайн</button>
+        </div>`;
+      } else if (!curBlk) {
+        h += `<div class="step-card" style="text-align:center;padding:28px 18px;"><div style="font-size:30px;">☕</div><div class="step-title">Нет открытых чек-листов в ${window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():(state.simTime||'13:25')}</div><div style="font-size:13px;color:var(--muted);">Когда откроется следующее окно по расписанию, чек-лист появится здесь автоматически.</div></div>`;
+      } else if (confirmFinishBlock === curBlk.name) {
+        const tasks = blockTasks(curBlk.name);
+        h += `<div class="step-card" style="text-align:center;padding:24px 18px;">
+          <div class="step-counter"><span>${esc(curBlk.name)}</span><span>Подтверждение</span></div>
+          <div class="pbar"><div style="width:100%"></div></div>
+          <div style="font-size:34px;margin-top:4px;">📋</div>
+          <h3 class="step-title">Вы уверены, что хотите завершить чек-лист?</h3>
+          <div style="font-size:13px;color:var(--muted);">Чек-лист «${esc(curBlk.name)}» · проверено ${tasks.length} из ${tasks.length} пунктов.</div>
+          <button class="btn-lg primary" id="b-confirm-yes">✓ Да, завершить чек-лист</button>
+          <button class="chip-btn" id="b-confirm-no" style="align-self:center;padding:9px 18px;">← Вернуться к проверке</button>
+        </div>`;
       } else {
         const tasks = blockTasks(curBlk.name);
         const idx = Math.min(stepIdx, Math.max(0, tasks.length-1));
         const task = tasks[idx];
         if (!task) h += `<div class="step-card"><div class="step-title">${esc(curBlk.name)}</div><div>Нет задач</div></div>`;
         else {
-          const needPh = !!(task.photo || state.photoAll), pk = curBlk.name+':'+task.id, phObj = stepPhotos[pk];
-          const isUploading = !!(phObj && phObj.uploading);
-          const hasReadyMedia = !!(phObj && !phObj.uploading && (phObj.url || phObj.queued || phObj.preview));
-          const mediaBlocked = needPh && !hasReadyMedia;
-          const previewHtml = (phObj && phObj.preview)
-            ? (phObj.mediaType === 'video'
-              ? '<video src="'+phObj.preview+'" controls playsinline muted style="width:100%;max-height:190px;border-radius:14px;background:#000"></video>'
-              : '<img src="'+phObj.preview+'" alt="Фото шага" style="width:100%;max-height:190px;object-fit:cover;border-radius:14px">')
-            : '';
+          const needPh = !!(task.photo || state.photoAll), pk = curBlk.name+':'+task.id, hasPh = !!stepPhotos[pk];
           h += `<div class="step-card">
             <div class="step-counter"><span>${esc(curBlk.name)}</span><span>Шаг ${idx+1} из ${tasks.length}</span></div>
             <div class="pbar"><div style="width:${Math.round(((idx+1)/tasks.length)*100)}%"></div></div>
             <h3 class="step-title">${esc(task.title)}</h3>
-            <button class="chip-btn" id="b-inst" style="align-self:flex-start;font-size:12px;">${instOpen?'▴ Скрыть инструкцию':'▾ Инструкция и стандарт'}</button>
             ${instOpen?`<div class="step-inst">${esc(task.instruction||'Выполнить по стандарту Coffee Illy.')}</div>`:''}
-            ${needPh?`<div class="photo-box ${hasReadyMedia?'done':''}" style="flex-direction:column;gap:8px">${phObj?(
-              previewHtml +
+            <div style="display:flex;justify-content:center;width:100%;">
+              <button class="chip-btn" id="b-inst" aria-label="Инструкция" style="min-width:64px;justify-content:center;padding:6px 18px;font-size:15px;">${instOpen?'🔼':'🔽'}</button>
+            </div>
+            ${needPh?`<div class="photo-box ${hasPh?'done':''}" style="flex-direction:column;gap:8px">${hasPh?(
+              (typeof stepPhotos[curBlk.name+':'+task.id]==='object'&&stepPhotos[curBlk.name+':'+task.id].preview
+                ? '<img src="'+stepPhotos[curBlk.name+':'+task.id].preview+'" alt="Фото шага" style="width:100%;max-height:180px;object-fit:cover;border-radius:14px">' : '') +
               '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;flex-wrap:wrap">' +
-                '<b>'+(isUploading?'☁ Загрузка на Google Диск…':(phObj.url?(phObj.mediaType==='video'?'✓ Видео сохранено на Google Диск':'✓ Фото сохранено на Google Диск'):'✓ Снято (в очереди синхронизации)'))+'</b>' +
+                '<b>'+(typeof stepPhotos[curBlk.name+':'+task.id]==='object'&&stepPhotos[curBlk.name+':'+task.id].uploading?'☁ Загрузка на Google Диск…':(typeof stepPhotos[curBlk.name+':'+task.id]==='object'&&stepPhotos[curBlk.name+':'+task.id].url?'✓ Сохранено на Google Диск':'✓ Фото снято (в очереди)'))+'</b>' +
                 '<button class="chip-btn" id="b-ph" style="font-size:12px">📸 Переснять</button>' +
               '</div>'
-            ):'<button class="chip-btn accent" id="b-ph">📷 Снять фото / 🎬 видео (до 15с)</button><div style="font-size:11.5px;color:var(--muted)">Обязательно для перехода к следующему шагу · Только живая камера</div>'}</div>`:''}
-            <button class="btn-lg primary" id="b-nx" ${mediaBlocked?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>${mediaBlocked?(isUploading?'☁ Ожидание загрузки медиа…':'🔒 Сначала снимите фото / видео'):(idx===tasks.length-1?'✓ Завершить чек-лист':'✓ Всё в норме → Далее')}</button>
+            ):'<button class="chip-btn accent" id="b-ph">📷 Сделать фото</button>'}</div>`:''}
+            <button class="btn-lg primary" id="b-nx" ${needPh && !hasPh?'disabled':''}>${idx===tasks.length-1?'✓ Завершить чек-лист':'✓ Всё в норме → Далее'}</button>
             <button class="btn-lg danger" id="b-is">⚠ Зафиксировать проблему</button>
           </div>`;
         }
       }
       body.innerHTML = h;
+      const wc = document.getElementById('w-close'); if (wc) wc.onclick = () => { welcomeBanner = ''; render(); };
       document.getElementById('tg-st').onclick = () => { stagesOpen = !stagesOpen; render(); };
-      body.querySelectorAll('[data-pk]').forEach(b=>b.onclick=()=>{ activeBlock=b.dataset.pk; stepIdx=0; stagesOpen=false; render(); });
+      body.querySelectorAll('[data-pk]').forEach(b=>b.onclick=()=>{ justCompletedBlock=null; confirmFinishBlock=null; activeBlock=b.dataset.pk; stepIdx=0; instOpen=true; stagesOpen=false; render(); });
+      const bNextBlk = document.getElementById('b-next-blk');
+      if (bNextBlk) bNextBlk.onclick = () => { justCompletedBlock=null; confirmFinishBlock=null; activeBlock=null; stepIdx=0; instOpen=true; render(); };
+      const bOpenTl = document.getElementById('b-open-tl');
+      if (bOpenTl) bOpenTl.onclick = () => { stagesOpen = true; render(); };
       const bi = document.getElementById('b-inst'); if (bi) bi.onclick = () => { instOpen = !instOpen; render(); };
       const bp = document.getElementById('b-ph'); if (bp && curBlk) { const t = blockTasks(curBlk.name)[Math.min(stepIdx,blockTasks(curBlk.name).length-1)]; bp.onclick = () => {
         const key = curBlk.name + ':' + t.id;
         const isSelfie = /селфи|selfie/i.test(String(t.title || ''));
-        if (window.CoffeeCameraV94) {
-          window.CoffeeCameraV94.open({
-            title: t.title || 'Фото / видео шага',
+        if (window.CoffeeCameraV92) {
+          window.CoffeeCameraV92.open({
+            title: t.title || 'Фото шага',
             preferFront: isSelfie,
-            onCaptured: async (dataUri, meta) => {
-              const mType = (meta && meta.mediaType) || (String(dataUri).startsWith('data:video/') ? 'video' : 'image');
-              stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: true, url: '' };
-              showToast(mType === 'video' ? '☁ Сохраняем видео на Google Диск…' : '☁ Сохраняем фото на Google Диск…');
+            onCaptured: async (dataUri) => {
+              stepPhotos[key] = { preview: dataUri, uploading: true, url: '' };
+              showToast('☁ Сохраняем фото на Google Диск…');
               render();
               if (window.CoffeeCloudV93) {
                 const up = await window.CoffeeCloudV93.uploadPhotoToDrive({
@@ -459,84 +493,60 @@ function initTheme(btnId) {
                   taskId: t.id,
                   kind: 'checklist'
                 });
-                stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', fileId: (up && up.fileId) || '', queued: !!(up && up.queued) };
-                showToast(up && up.url ? (mType === 'video' ? '✓ Видео сохранено на Google Диск!' : '✓ Фото сохранено на Google Диск!') : '✓ Медиа сохранено (в очереди)');
+                stepPhotos[key] = { preview: dataUri, uploading: false, url: (up && up.url) || '', fileId: (up && up.fileId) || '', queued: !!(up && up.queued) };
+                showToast(up && up.url ? '✓ Фото сохранено на Google Диск!' : '✓ Фото сохранено (отправится при синхронизации)');
               } else {
-                stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
+                stepPhotos[key] = { preview: dataUri, uploading: false, url: '' };
               }
               render();
             }
           });
+        } else {
+          stepPhotos[key] = { preview: '', uploading: false, url: '' };
+          render();
         }
       }; }
       const bn = document.getElementById('b-nx'); if (bn && curBlk) bn.onclick = () => {
         const tasks = blockTasks(curBlk.name);
-        const curT = tasks[Math.min(stepIdx, Math.max(0, tasks.length - 1))];
-        if (curT && (curT.photo || state.photoAll)) {
-          const pCheck = stepPhotos[curBlk.name + ':' + curT.id];
-          if (!pCheck || pCheck.uploading || !(pCheck.url || pCheck.queued || pCheck.preview)) {
-            showToast('🔒 Сначала снимите фото или видео (до 15с) на камеру');
-            return;
-          }
-        }
         if (stepIdx < tasks.length-1) {
-          stepIdx++; instOpen=false; state.liveProgress[authed] = { block:curBlk.name, done:stepIdx, total:tasks.length }; if (window.CoffeeCloudV93) window.CoffeeCloudV93.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
+          stepIdx++; instOpen=true; state.liveProgress[authed] = { block:curBlk.name, done:stepIdx, total:tasks.length }; if (window.CoffeeCloudV93 && window.CoffeeCloudV93.sendStepProgress) window.CoffeeCloudV93.sendStepProgress(authed, curBlk.name, stepIdx, tasks.length);
           saveSharedState(state, authed, ''); render();
         } else {
-          const _blkItems = tasks.map(tk => { const p = stepPhotos[curBlk.name+':'+tk.id]; return { id: tk.id, title: tk.title, photo_url: (p && p.url) || '', isIncident: false }; }); const _blkPhotos = _blkItems.map(x=>x.photo_url).filter(Boolean); state.checklists.unshift({ items:_blkItems, photos:_blkPhotos, date:TODAY, time:state.simTime||'13:25', block:curBlk.name, who:authed, problems:0, deadline:curBlk.deadline, status:'Выполнено', isLate:false });
-          state.liveProgress[authed] = { block:curBlk.name, done:tasks.length, total:tasks.length };
-          stepIdx = 0; saveSharedState(state, authed, 'Сдан чек-лист «' + curBlk.name + '»'); showToast('Чек-лист отправлен в дашборд!'); render();
+          confirmFinishBlock = curBlk.name;
+          render();
         }
       };
+      const bYes = document.getElementById('b-confirm-yes');
+      if (bYes && curBlk) bYes.onclick = () => {
+        const tasks = blockTasks(curBlk.name);
+        const _blkItems = tasks.map(tk => { const p = stepPhotos[curBlk.name+':'+tk.id]; return { id: tk.id, title: tk.title, photo_url: (p && p.url) || '', isIncident: false }; });
+        const _blkPhotos = _blkItems.map(x=>x.photo_url).filter(Boolean);
+        const nowTm = window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (state.simTime||'13:25');
+        state.checklists.unshift({ items:_blkItems, photos:_blkPhotos, date:TODAY, time:nowTm, block:curBlk.name, who:authed, problems:0, deadline:curBlk.deadline, status:'Выполнено', isLate:false });
+        state.liveProgress[authed] = { block:curBlk.name, done:tasks.length, total:tasks.length };
+        const finishedName = curBlk.name;
+        confirmFinishBlock = null;
+        justCompletedBlock = finishedName;
+        activeBlock = null;
+        stepIdx = 0;
+        instOpen = true;
+        saveSharedState(state, authed, 'Сдан чек-лист «' + finishedName + '»');
+        showToast('✅ Чек-лист «' + finishedName + '» завершён!');
+        render();
+      };
+      const bNo = document.getElementById('b-confirm-no');
+      if (bNo) bNo.onclick = () => { confirmFinishBlock = null; render(); };
       const bis = document.getElementById('b-is'); if (bis && curBlk) bis.onclick = () => {
         const t = blockTasks(curBlk.name)[Math.min(stepIdx,blockTasks(curBlk.name).length-1)];
-        let incMedia = stepPhotos[curBlk.name+':'+t.id] ? Object.assign({}, stepPhotos[curBlk.name+':'+t.id]) : null;
-        function renderIncModal() {
-          const ready = !!(incMedia && !incMedia.uploading && (incMedia.url || incMedia.queued || incMedia.preview));
-          const prevEl = (incMedia && incMedia.preview)
-            ? (incMedia.mediaType === 'video'
-              ? '<video src="'+incMedia.preview+'" controls playsinline muted style="width:100%;max-height:150px;border-radius:12px;background:#000"></video>'
-              : '<img src="'+incMedia.preview+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:12px">')
-            : '';
-          openModal('Проблема: ' + t.title, `
-            <div class="field"><label>Срочность</label><select id="ip"><option>Критично</option><option>Терпит</option></select></div>
-            <div class="field"><label>Описание</label><textarea id="it" rows="3" placeholder="Опишите поломку или проблему"></textarea></div>
-            <div class="photo-box ${ready?'done':''}" style="flex-direction:column;gap:8px;margin-bottom:10px;">
-              ${prevEl}
-              <button type="button" class="chip-btn accent" id="inc-cam">${incMedia?(incMedia.uploading?'☁ Загрузка на Google Диск…':'📸 Переснять фото / видео'):'📷 Снять фото / 🎬 видео поломки (обязательно)'}</button>
-              <div style="font-size:11.5px;color:var(--muted)">${ready?'✓ Медиа прикреплено (Google Диск)':'🔒 Без живого фото или видео (до 15с) отправить поломку нельзя'}</div>
-            </div>
-            <button class="btn-lg primary" id="is" ${!ready?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>${ready?'Отправить поломку в дашборд':'🔒 Сначала снимите фото / видео'}</button>
-          `);
-          document.getElementById('inc-cam').onclick = () => {
-            if (!window.CoffeeCameraV94) return;
-            window.CoffeeCameraV94.open({
-              title: 'Поломка: ' + t.title,
-              preferFront: false,
-              onCaptured: async (dataUri, meta) => {
-                const mType = (meta && meta.mediaType) || (String(dataUri).startsWith('data:video/') ? 'video' : 'image');
-                incMedia = { preview: dataUri, mediaType: mType, uploading: true, url: '' };
-                renderIncModal();
-                if (window.CoffeeCloudV93) {
-                  const up = await window.CoffeeCloudV93.uploadPhotoToDrive({ dataUri, userName: authed || 'Бариста', block: curBlk.name, taskId: t.id, kind: 'incident' });
-                  incMedia = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', queued: !!(up && up.queued) };
-                } else {
-                  incMedia = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
-                }
-                stepPhotos[curBlk.name+':'+t.id] = incMedia;
-                renderIncModal();
-              }
-            });
-          };
-          document.getElementById('is').onclick = () => {
-            if (!incMedia || incMedia.uploading || !(incMedia.url || incMedia.queued || incMedia.preview)) {
-              showToast('🔒 Снимите фото или видео поломки на живую камеру'); return;
-            }
-            state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:(window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():'13:25'), block:curBlk.name, step:t.title, text:document.getElementById('it').value.trim()||'Проблема', priority:document.getElementById('ip').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:incMedia.url||'' });
-            saveSharedState(state, authed, 'Проблема: ' + t.title); closeModal(); showToast('Поломка с фото/видео отправлена в дашборд и Telegram!'); render();
-          };
-        }
-        renderIncModal();
+        openModal('Проблема: ' + t.title, `
+          <div class="field"><label>Срочность</label><select id="ip"><option>Критично</option><option>Терпит</option></select></div>
+          <div class="field"><label>Описание</label><textarea id="it" rows="3" enterkeyhint="done"></textarea></div>
+          <button class="btn-lg primary" id="is">Отправить</button>
+        `);
+        document.getElementById('is').onclick = () => {
+          const _stepPh = stepPhotos[curBlk.name+':'+t.id]; state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():(state.simTime||'13:25'), block:curBlk.name, step:t.title, text:document.getElementById('it').value.trim()||'Проблема', priority:document.getElementById('ip').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:(_stepPh&&_stepPh.url)||'' });
+          saveSharedState(state, authed, 'Проблема: ' + t.title); closeModal(); showToast('Отправлено администратору!'); render();
+        };
       };
       return;
     }
@@ -545,13 +555,13 @@ function initTheme(btnId) {
       body.innerHTML = `<div class="step-card">
         <div class="step-counter"><span>Закрытие кассы</span><span>${TODAY}</span></div>
         <h3 class="step-title">Отчёт (${esc(authed)})</h3>
-        <div class="grid-2"><div class="field"><label>Наличные (₽)</label><input id="cc" type="number" min="0" value="1500"></div><div class="field"><label>Безнал (₽)</label><input id="cd" type="number" min="0" value="950"></div></div>
-        <div class="grid-2"><div class="field"><label>Чеков</label><input id="ck" type="number" min="0" value="72"></div><div class="field"><label>Списания (₽)</label><input id="cw" type="number" min="0" value="0"></div></div>
-        <div style="margin:8px 0 10px;">
-          <label class="chip-btn accent" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">📥 Загрузить CSV (Продажи / Транзакции)<input id="t-csv-in" type="file" accept=".csv,text/csv" multiple style="display:none;"></label>
+        <div class="grid-2"><div class="field"><label>Наличные (₽)</label><input id="cc" type="number" inputmode="decimal" enterkeyhint="done" min="0" value="1500"></div><div class="field"><label>Безнал (₽)</label><input id="cd" type="number" inputmode="decimal" enterkeyhint="done" min="0" value="950"></div></div>
+        <div class="grid-2"><div class="field"><label>Чеков</label><input id="ck" type="number" inputmode="numeric" enterkeyhint="done" min="0" value="72"></div><div class="field"><label>Списания (₽)</label><input id="cw" type="number" inputmode="decimal" enterkeyhint="done" min="0" value="0"></div></div>
+        <div style="margin:10px 0;display:flex;flex-direction:column;align-items:center;text-align:center;">
+          <label class="chip-btn accent" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 22px;">📥 CSV / Excel<input id="t-csv-in" type="file" accept=".csv,.xls,.xlsx,text/csv" multiple style="display:none;"></label>
           <div id="t-csv-info" style="font-size:12px;color:var(--muted);margin-top:6px;"></div>
         </div>
-        <button class="btn-lg primary" id="cs">Отправить кассу в дашборд</button>
+        <button class="btn-lg primary" id="cs">Сохранить</button>
       </div>`;
       let parsedCashBatch = null;
       const tCsvIn = document.getElementById('t-csv-in');
@@ -597,70 +607,121 @@ function initTheme(btnId) {
     }
 
     if (tab === 'ttk') {
-      const items = state.ttk.filter(k => !ttkQ || k.name.toLowerCase().includes(ttkQ.toLowerCase()));
-      body.innerHTML = `<input id="tq" value="${esc(ttkQ)}" placeholder="Поиск по ТТК..." style="width:100%;padding:10px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);"><div class="stack">${items.map(k=>`<div class="card-soft"><div style="display:flex;justify-content:space-between;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(k.vol)} · ${esc(k.cat)}</div><div style="font-size:12.5px;">${esc(k.recipe)}</div></div>`).join('')}</div>`;
-      document.getElementById('tq').oninput = e => { ttkQ = e.target.value; render(); };
+      const shiftItems = [
+        ...(state.announcements || []).map(a => ({ title: a.title || 'Объявление', sub: a.date || TODAY, text: a.text || a.body || '' })),
+        ...(state.incidents || []).filter(i => i.status !== 'Решена').slice(0, 5).map(i => ({ title: i.step || 'Задача смены', sub: i.priority || '', text: i.text || '' }))
+      ];
+      const goodDeedsItems = [
+        ...(state.goodDeeds || []).map(g => ({ title: g.title || g.name || 'Доброе дело', sub: 'Карта добрых дел', text: g.instruction || g.text || '' })),
+        ...blockTasks('Карта добрых дел').map(t => ({ title: t.title, sub: 'Карта добрых дел', text: t.instruction || '' }))
+      ];
+      const recipeItems = (state.ttk || []).map(k => ({ title: k.name, sub: (k.vol || '') + (k.cat ? ' · ' + k.cat : ''), badge: k.price ? (k.price + ' ₽') : '', text: k.recipe || '' }));
+      const otherItems = (state.blocks || []).filter(b => !b.isCash && b.active !== false).map(b => ({ title: b.name, sub: 'Окно: ' + b.openTime + '–' + b.deadline, text: 'Задач в блоке: ' + blockTasks(b.name).length }));
+
+      const cats = [
+        { id: 'shift', ico: '📌', title: 'Сделать на смене', items: shiftItems },
+        { id: 'deeds', ico: '💛', title: 'Карта добрых дел', items: goodDeedsItems },
+        { id: 'recipes', ico: '☕', title: 'Рецептура', items: recipeItems },
+        { id: 'other', ico: '📂', title: 'Прочее', items: otherItems }
+      ];
+
+      const qLow = (ttkQ || '').trim().toLowerCase();
+      let contentHtml = '';
+      if (qLow) {
+        const allFound = [];
+        cats.forEach(c => {
+          c.items.forEach(it => {
+            if ((it.title + ' ' + it.sub + ' ' + it.text).toLowerCase().includes(qLow)) {
+              allFound.push(Object.assign({ catTitle: c.title }, it));
+            }
+          });
+        });
+        contentHtml = `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Результаты поиска (${allFound.length})</div><div class="stack" style="padding-bottom:66px;">` +
+          (allFound.length ? allFound.map(it => `<div class="card-soft"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${esc(it.title)}</b>${it.badge?`<span class="badge accent">${esc(it.badge)}</span>`:`<span class="badge">${esc(it.catTitle)}</span>`}</div>${it.sub?`<div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(it.sub)}</div>`:''}<div style="font-size:12.5px;white-space:pre-line;">${esc(it.text)}</div></div>`).join('') : `<div class="card-soft" style="text-align:center;color:var(--muted);">Ничего не найдено</div>`) +
+          `</div>`;
+      } else if (!ttkCat) {
+        contentHtml = `<div class="cat-grid" style="padding-bottom:66px;">` + cats.map(c => `
+          <button class="cat-card" data-cat="${c.id}" type="button">
+            <div class="cat-ico">${c.ico}</div>
+            <div class="cat-title">${esc(c.title)}</div>
+            <div class="cat-meta">${c.items.length} поз.</div>
+          </button>`).join('') + `</div>`;
+      } else {
+        const curCat = cats.find(c => c.id === ttkCat) || cats[0];
+        contentHtml = `<button class="chip-btn" id="cat-back" style="align-self:flex-start;">← Все категории</button>
+          <h3 class="step-title" style="margin-top:2px;">${curCat.ico} ${esc(curCat.title)}</h3>
+          <div class="stack" style="padding-bottom:66px;">` +
+          (curCat.items.length ? curCat.items.map(it => `<div class="card-soft"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${esc(it.title)}</b>${it.badge?`<span class="badge accent">${esc(it.badge)}</span>`:''}</div>${it.sub?`<div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(it.sub)}</div>`:''}<div style="font-size:12.5px;white-space:pre-line;">${esc(it.text)}</div></div>`).join('') : `<div class="card-soft" style="text-align:center;color:var(--muted);">Пока пусто</div>`) +
+          `</div>`;
+      }
+
+      body.innerHTML = contentHtml + `<div class="bottom-search-wrap"><input id="tq" value="${esc(ttkQ)}" enterkeyhint="search" placeholder="🔍 Поиск по базе..." style="width:100%;padding:10px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);color:var(--ink);"></div>`;
+      body.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { ttkCat = b.dataset.cat; render(); });
+      const cb = document.getElementById('cat-back'); if (cb) cb.onclick = () => { ttkCat = null; render(); };
+      const tq = document.getElementById('tq');
+      if (tq) {
+        tq.oninput = e => {
+          ttkQ = e.target.value;
+          const pos = e.target.selectionStart || ttkQ.length;
+          render();
+          const tq2 = document.getElementById('tq');
+          if (tq2) { tq2.focus(); try { tq2.setSelectionRange(pos, pos); } catch(_) {} }
+        };
+      }
       return;
     }
 
     if (tab === 'issues') {
-      body.innerHTML = `<button class="btn-lg primary" id="ni">+ Сообщить о поломке</button><div class="stack">${state.incidents.filter(i=>i.status!=='Решена').slice(0,6).map(i=>`<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div>`).join('')}</div>`;
+      body.innerHTML = `<button class="btn-lg primary" id="ni">+ Задача</button><div class="stack">${state.incidents.filter(i=>i.status!=='Решена').slice(0,10).map(i=>`<div class="card-soft"><b>${esc(i.step)}</b> <span class="badge ${i.priority==='Критично'||String(i.priority||'').includes('Срочно')?'bad':'warn'}">${esc(i.priority)}</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${i.date} · ${esc(i.text||'—')}</div></div>`).join('')}</div>`;
       document.getElementById('ni').onclick = () => {
-        let stdMedia = null;
-        let savedZone = EQUIP_ZONES[0], savedPrio = 'Критично', savedTxt = '';
-        function renderStandaloneInc() {
-          const ready = !!(stdMedia && !stdMedia.uploading && (stdMedia.url || stdMedia.queued || stdMedia.preview));
-          const prevEl = (stdMedia && stdMedia.preview)
-            ? (stdMedia.mediaType === 'video'
-              ? '<video src="'+stdMedia.preview+'" controls playsinline muted style="width:100%;max-height:150px;border-radius:12px;background:#000"></video>'
-              : '<img src="'+stdMedia.preview+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:12px">')
-            : '';
-          openModal('Новая поломка', `
-            <div class="field"><label>Оборудование / зона</label><select id="nz">${optList(EQUIP_ZONES, savedZone)}</select></div>
-            <div class="field"><label>Срочность</label><select id="np"><option ${savedPrio==='Критично'?'selected':''}>Критично</option><option ${savedPrio==='Терпит'?'selected':''}>Терпит</option></select></div>
-            <div class="field"><label>Описание</label><textarea id="nt" rows="3" placeholder="Опишите неисправность">${esc(savedTxt)}</textarea></div>
-            <div class="photo-box ${ready?'done':''}" style="flex-direction:column;gap:8px;margin-bottom:10px;">
-              ${prevEl}
-              <button type="button" class="chip-btn accent" id="std-cam">${stdMedia?(stdMedia.uploading?'☁ Загрузка на Google Диск…':'📸 Переснять фото / видео'):'📷 Снять фото / 🎬 видео поломки (обязательно)'}</button>
-              <div style="font-size:11.5px;color:var(--muted)">${ready?'✓ Медиа прикреплено (Google Диск)':'🔒 Без живого фото или видео (до 15с) отправить поломку нельзя'}</div>
-            </div>
-            <button class="btn-lg primary" id="ns" ${!ready?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>${ready?'Отправить поломку':'🔒 Сначала снимите фото / видео'}</button>
-          `);
-          document.getElementById('std-cam').onclick = () => {
-            savedZone = document.getElementById('nz').value;
-            savedPrio = document.getElementById('np').value;
-            savedTxt = document.getElementById('nt').value;
-            if (!window.CoffeeCameraV94) return;
-            window.CoffeeCameraV94.open({
-              title: 'Поломка: ' + savedZone,
-              preferFront: false,
-              onCaptured: async (dataUri, meta) => {
-                const mType = (meta && meta.mediaType) || (String(dataUri).startsWith('data:video/') ? 'video' : 'image');
-                stdMedia = { preview: dataUri, mediaType: mType, uploading: true, url: '' };
-                renderStandaloneInc();
-                if (window.CoffeeCloudV93) {
-                  const up = await window.CoffeeCloudV93.uploadPhotoToDrive({ dataUri, userName: authed || 'Бариста', block: 'Поломка', kind: 'incident' });
-                  stdMedia = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', queued: !!(up && up.queued) };
-                } else {
-                  stdMedia = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
-                }
-                renderStandaloneInc();
-              }
-            });
-          };
-          document.getElementById('ns').onclick = () => {
-            if (!stdMedia || stdMedia.uploading || !(stdMedia.url || stdMedia.queued || stdMedia.preview)) {
-              showToast('🔒 Снимите фото или видео поломки на живую камеру'); return;
-            }
-            const z = document.getElementById('nz').value;
-            state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:(window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():'13:25'), step:z, text:document.getElementById('nt').value.trim()||'Неисправность', priority:document.getElementById('np').value, status:'Новая проблема', who:authed, owner:'Администратор', photoUrl:stdMedia.url||'' });
-            saveSharedState(state, authed, 'Внеплановая поломка: ' + z); closeModal(); showToast('Поломка с фото/видео отправлена в дашборд и Telegram!'); render();
-          };
-        }
-        renderStandaloneInc();
+        openModal('Новая задача', `
+          <div class="field"><label>Зона / оборудование</label><select id="nz">${optList(EQUIP_ZONES, EQUIP_ZONES[0])}</select></div>
+          <div class="field"><label>Срочность</label><select id="np"><option>Критично</option><option>Терпит</option></select></div>
+          <div class="field"><label>Описание задачи</label><textarea id="nt" rows="3" enterkeyhint="done"></textarea></div>
+          <button class="btn-lg primary" id="ns">Создать задачу</button>
+        `);
+        document.getElementById('ns').onclick = () => {
+          const z = document.getElementById('nz').value;
+          state.incidents.unshift({ id:'INC-'+Math.floor(100+Math.random()*899), date:TODAY, time:window.CoffeeCloudV93?window.CoffeeCloudV93.localHHMM():(state.simTime||'13:25'), step:z, text:document.getElementById('nt').value.trim()||'Задача', priority:document.getElementById('np').value, status:'Новая проблема', who:authed, owner:'Администратор' });
+          saveSharedState(state, authed, 'Внеплановая поломка: ' + z); closeModal(); showToast('Задача отправлена администратору!'); render();
+        };
       };
     }
   }
+
+  // iOS / Mobile Keyboard Dismiss Helper (tap outside input, Enter key, or floating "Готово" button)
+  const kbDoneBtn = document.getElementById('kb-done');
+  function hideMobileKeyboard() {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
+    if (kbDoneBtn) kbDoneBtn.classList.remove('show');
+  }
+  if (kbDoneBtn) kbDoneBtn.onclick = hideMobileKeyboard;
+  document.addEventListener('focusin', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') && e.target.type !== 'file') {
+      if (kbDoneBtn) kbDoneBtn.classList.add('show');
+    }
+  });
+  document.addEventListener('focusout', () => {
+    setTimeout(() => {
+      const ae = document.activeElement;
+      if (!ae || (ae.tagName !== 'INPUT' && ae.tagName !== 'TEXTAREA')) {
+        if (kbDoneBtn) kbDoneBtn.classList.remove('show');
+      }
+    }, 120);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    const t = e.target;
+    if (!t) return;
+    if (t.closest && t.closest('input, textarea, select, label, #kb-done')) return;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
+  }, { passive: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT') {
+      e.target.blur();
+    }
+  });
 
   function onRemoteSync() {
     const next = loadSharedState();

@@ -1,9 +1,9 @@
-/* Coffee Illy v94.0 (Release 1.0.0) — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
+/* Coffee Illy v94.0 — Fast Bidirectional Cloud Sync (Google Sheets + Drive Photos + Offline Outbox + Telegram) */
 (function () {
   const CFG = window.COFFEE_CONFIG || {};
   const API_URL = CFG.API_URL || '';
   const OUTBOX_KEY = 'coffee_illy_v94_outbox';
-  const SESSION_KEY = 'coffee_illy_v94_session';
+  const SESSION_KEY = 'coffee_illy_v93_session';
 
   function localISO() {
     const d = new Date();
@@ -159,6 +159,44 @@
     }
   }
 
+
+  function canonicalTaskKey(block, title) {
+    let s = String(title || '').toLowerCase();
+    // Remove emojis, symbols, numbers-only suffixes, and "фото" / "+ холдеры" markers
+    s = s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, ' ');
+    s = s.replace(/\+\s*холдер\S*/g, ' ');
+    s = s.replace(/\b(фото|видео|2-3\s*сек|для\s+гостей|и\s+проверка\s+помола|запас\s*-?\s*\d+\s*шт\.?)\b/g, ' ');
+    s = s.replace(/[^a-zа-яё0-9]+/gi, ' ').trim();
+    if (s.indexOf('санузел') === 0) s = 'санузел';
+    if (s.indexOf('кофемашин') === 0) s = 'кофемашина';
+    if (s.indexOf('гриндер') === 0) s = 'гриндеры';
+    if (s.indexOf('мусор выброшен') === 0) s = 'мусор выброшен';
+    if (s === 'закрытие помещения' || s === 'помещение') s = 'закрытие помещения';
+    return String(block || '').trim().toLowerCase() + '::' + s;
+  }
+
+  function dedupeTasksList(list) {
+    const map = new Map();
+    const out = [];
+    (Array.isArray(list) ? list : []).forEach((t) => {
+      if (!t || !t.title) return;
+      const key = canonicalTaskKey(t.block, t.title);
+      if (map.has(key)) {
+        const prev = map.get(key);
+        // Merge best attributes: keep photo=true if either requires photo, keep longer instruction
+        if (t.photo && !prev.photo) prev.photo = true;
+        if (String(t.instruction || '').length > String(prev.instruction || '').length) {
+          prev.instruction = t.instruction;
+        }
+      } else {
+        const copy = Object.assign({}, t);
+        map.set(key, copy);
+        out.push(copy);
+      }
+    });
+    return out;
+  }
+
   function mergeServerIntoState(state, data) {
     if (!data || typeof data !== 'object') return false;
     let changed = false;
@@ -197,7 +235,7 @@
     if (Array.isArray(data.tasks) && data.tasks.length) {
       const clean = data.tasks.filter((t) => t && t.title && !String(t.id || '').startsWith('__SYS'));
       if (clean.length) {
-        state.tasks = clean.map((t) => ({
+        state.tasks = dedupeTasksList(clean.map((t) => ({
           id: t.id || ('t_' + Math.random().toString(36).slice(2, 6)),
           block: t.block || 'Открытие',
           group: t.groupName || t.group || '',
@@ -206,7 +244,7 @@
           photo: String(t.photo || 'нет').toLowerCase() === 'да' || t.photo === true,
           owner: t.responsible || t.owner || 'Бариста',
           active: String(t.active || 'да').toLowerCase() !== 'нет'
-        }));
+        })));
         changed = true;
       }
     }
@@ -374,22 +412,70 @@
       state.autopilotEnabled = !!data.autopilotEnabled;
       changed = true;
     }
-    if (data.cashReviews && typeof data.cashReviews === 'object') {
-      state.cashReviews = data.cashReviews;
+    if (Array.isArray(data.salesLog)) {
+      state.salesLog = data.salesLog.map((x) => ({
+        date: String(x.date || '').slice(0, 10),
+        shift: x.shift || '',
+        barista: x.barista || 'Бариста',
+        name: x.name || '',
+        kind: x.kind || 'Кофе',
+        price: Number(x.price || 0),
+        qty: Number(x.qty || 0),
+        sum: Number(x.sum || ((Number(x.price || 0)) * (Number(x.qty || 0))))
+      })).filter((x) => x.date && x.name && x.qty > 0);
       changed = true;
     }
     if (Array.isArray(data.inventory)) {
-      state.inventory = data.inventory;
+      state.inventory = data.inventory.map((it, idx) => ({
+        id: it.id || ('inv_' + idx),
+        name: it.name || '',
+        category: it.category || 'Сырьё',
+        unit: it.unit || 'г',
+        stock: Number(it.stock || 0),
+        minStock: Number(it.minStock || 0),
+        updatedAt: String(it.updatedAt || '').slice(0, 10)
+      })).filter((it) => it.name);
       changed = true;
     }
-    if (Array.isArray(data.announcements)) {
-      state.announcements = data.announcements;
+    if (Array.isArray(data.inventoryMoves)) {
+      state.inventoryMoves = data.inventoryMoves.map((m) => ({
+        id: m.id || ('mv_' + Math.random().toString(36).slice(2, 6)),
+        itemId: m.itemId || '',
+        name: m.name || '',
+        category: m.category || 'Сырьё',
+        type: m.type || 'edit',
+        delta: Number(m.delta || 0),
+        stockAfter: Number(m.stockAfter || 0),
+        unit: m.unit || 'шт',
+        date: String(m.date || '').slice(0, 10),
+        time: m.time || '',
+        actor: m.actor || 'Администратор',
+        note: m.note || ''
+      }));
       changed = true;
     }
-    if (data.releaseInfo && typeof data.releaseInfo === 'object') {
-      state.serverRelease = data.releaseInfo;
-      const localRel = (typeof window !== 'undefined' && window.APP_RELEASE) || { api: '1.0', schema: '1.0' };
-      state.versionMismatch = (String(data.releaseInfo.api || '1.0') !== String(localRel.api) || String(data.releaseInfo.schema || '1.0') !== String(localRel.schema));
+    if (Array.isArray(data.expiryItems)) {
+      state.expiryItems = data.expiryItems.map((x) => ({
+        id: x.id || ('exp_' + Math.random().toString(36).slice(2, 6)),
+        title: x.title || x.name || '',
+        category: x.category || 'Бар',
+        openedAtMs: Number(x.openedAtMs || 0),
+        expiresAtMs: Number(x.expiresAtMs || 0),
+        date: String(x.date || (x.openedAtMs ? new Date(Number(x.openedAtMs)).toISOString().slice(0, 10) : '')).slice(0, 10),
+        expiresDate: String(x.expiresDate || (x.expiresAtMs ? new Date(Number(x.expiresAtMs)).toISOString().slice(0, 10) : '')).slice(0, 10),
+        status: x.status || 'active',
+        who: x.who || x.openedBy || ''
+      }));
+      changed = true;
+    }
+    if (Array.isArray(data.auditLog) && data.auditLog.length) {
+      state.auditLog = data.auditLog.map((a) => ({
+        date: String(a.date || '').slice(0, 10),
+        time: a.time || '',
+        actor: a.actor || 'Система',
+        text: a.text || a.action || '',
+        rev: a.rev || state.cloudRev || state.rev || 1
+      }));
       changed = true;
     }
     if (data.serverTime) {
@@ -427,11 +513,7 @@
         cash: Number(last.cash || 0),
         card: Number(last.card || 0),
         checks: Number(last.checks || 0),
-        writeoff: Number(last.writeoff || 0),
-        discrepancy: Number(last.discrepancy || 0),
-        counterStart: last.counterStart != null ? Number(last.counterStart) : null,
-        counterEnd: last.counterEnd != null ? Number(last.counterEnd) : null,
-        photoUrl: last.photoUrl || ''
+        writeoff: Number(last.writeoff || 0)
       });
     } else if (desc.indexOf('Проблема:') === 0 || desc.indexOf('Внеплановая поломка:') === 0) {
       const inc = st.incidents && st.incidents[0];
@@ -732,6 +814,21 @@
   async function runChecklistNotificationsNow(opts) {
     return gasPost('run_checklist_notifications_now', opts || {});
   }
+  async function saveInventoryItem(opts) {
+    return gasPost('save_inventory', opts || {});
+  }
+  async function restockInventory(id, delta, note) {
+    return gasPost('restock_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
+  }
+  async function writeoffInventory(id, delta, note) {
+    return gasPost('writeoff_inventory', { id: id, delta: Math.abs(Number(delta) || 0), note: note || '' });
+  }
+  async function addExpiryItem(opts) {
+    return gasPost('add_expiry_item', opts || {});
+  }
+  async function disposeExpiryItem(id) {
+    return gasPost('dispose_expiry_item', { id: id });
+  }
   async function importPosBatch(days, mergeMode) {
     const res = await gasPost('batch_submit_cash', {
       days: days || [],
@@ -765,21 +862,15 @@
     testTelegramAlert: testTelegramAlert,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
+    saveInventoryItem: saveInventoryItem,
+    restockInventory: restockInventory,
+    writeoffInventory: writeoffInventory,
+    addExpiryItem: addExpiryItem,
+    disposeExpiryItem: disposeExpiryItem,
     importPosBatch: importPosBatch,
     sendStepProgress: function (userName, block, done, total) {
       if (!userName || !block) return;
       enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
-    }
-,
-    reviewCashReport: function (opts) { return gasPost('review_cash_report', opts || {}); },
-    revokeAllSessions: function () { return gasPost('revoke_all_sessions', {}); },
-    saveInventoryItem: function (item) { return gasPost('save_inventory', item || {}); },
-    getSyncBadge: function () {
-      const online = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
-      const pending = readOutbox().length;
-      if (!online) return { text: pending ? ('📡 Офлайн · в очереди: ' + pending) : '📡 Офлайн', cls: 'warn', pending, online };
-      if (pending > 0) return { text: '⏳ В очереди: ' + pending, cls: 'accent', pending, online };
-      return { text: '● Синхр.', cls: 'good', pending: 0, online: true };
     }
   };
   window.CoffeeCloudV94 = API_OBJ;
