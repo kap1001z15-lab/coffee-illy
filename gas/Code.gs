@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v97.15.1';
+var SERVER_VERSION_V97 = 'v97.15.3';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -1605,8 +1605,10 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     }
   });
 
+  var todayIso = isoDate_();
   var filteredChecklists = Array.isArray(full.checklists) ? full.checklists.filter(function(c) {
-    return isAdmin || (c && String(c.who || '').trim() === staffName);
+    if (!c) return false;
+    return isAdmin || String(c.date || '').slice(0, 10) === todayIso || String(c.who || '').trim() === staffName;
   }) : [];
 
   var safeTtk = Array.isArray(full.ttk) ? full.ttk.map(function(t) {
@@ -1630,7 +1632,7 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     ok: true,
     v: full.v || 55,
     rev: getDataRev_(),
-    serverVersion: 'v90', specVersion: '4.0',
+    serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97,
     profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
     location: full.location || 'Кофейня №1',
     photoAll: full.photoAll || 'нет',

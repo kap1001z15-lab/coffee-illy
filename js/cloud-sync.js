@@ -870,12 +870,8 @@
       try {
         const fl = await flushOutbox(!!forceFull);
         if (fl && fl.flushed > 0) _lastServerRev = '';
-        if (fl && fl.pending > 0 && !forceFull) {
-          if (getState) {
-            const stP = getState();
-            stP.pendingSyncCount = fl.pending;
-          }
-          return { changed: false, pending: fl.pending };
+        if (fl && fl.pending > 0 && getState) {
+          getState().pendingSyncCount = fl.pending;
         }
         const seqBefore = _localMutationSeq;
         const t0 = Date.now();
@@ -906,6 +902,10 @@
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         } else if (mode === 'terminal' && sess.staffToken) {
           data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
+          if (data && data.ok === false && /AUTH_REQUIRED|EXPIRED|INVALID_SESSION/i.test(String(data.error || ''))) {
+            setSession({ staffToken: '' });
+            data = await gasGet({ action: 'get_checklists', nocache: '1' });
+          }
         } else {
           data = await gasGet({ action: 'get_checklists', nocache: '1' });
         }
@@ -914,7 +914,8 @@
           _pullPendingForce = true;
           return { skipped: true, reason: 'local_mutation_race' };
         }
-        if (srvRev) _lastServerRev = srvRev;
+        const prevRev = _lastServerRev;
+        if (srvRev && data && data.ok !== false) _lastServerRev = srvRev;
         if (data && getState) {
           const st = getState();
           const changed = mergeServerIntoState(st, data);
@@ -924,7 +925,7 @@
           st.liveConnected = true;
           st.syncError = '';
           st.pendingSyncCount = readOutbox().length;
-          if ((changed || forceFull) && onSynced) onSynced(st, srvRev, _lastRttMs);
+          if ((changed || forceFull || (srvRev && srvRev !== prevRev)) && onSynced) onSynced(st, srvRev, _lastRttMs);
           return { changed: changed, rev: srvRev, rttMs: _lastRttMs };
         }
       } catch (err) {
@@ -948,9 +949,9 @@
     function nextDelay() {
       if (typeof document !== 'undefined' && document.hidden) return 25000;
       const idle = Date.now() - _lastActive;
-      const a = Number(CFG.SYNC_ACTIVE_MS) || 2500;
-      const w = Number(CFG.SYNC_WARM_MS) || 5000;
-      const idl = Number(CFG.SYNC_IDLE_MS) || 12000;
+      const a = Number(CFG.SYNC_ACTIVE_MS) || 2000;
+      const w = Number(CFG.SYNC_WARM_MS) || 4500;
+      const idl = Number(CFG.SYNC_IDLE_MS) || 10000;
       return idle < 120000 ? a : (idle < 600000 ? w : idl);
     }
 

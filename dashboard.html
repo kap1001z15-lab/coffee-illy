@@ -233,7 +233,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.15.1) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.15.3) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -251,11 +251,11 @@ tbody tr { transition: background .14s ease; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.15.1"></script>
-  <script src="js/cloud-sync.js?v=97.15.1"></script>
-<script src="js/pos-csv-parser.js?v=97.15.1"></script>
-  <script src="js/custom-select.js?v=97.15.1" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.15.1">
+  <script src="config.js?v=97.15.3"></script>
+  <script src="js/cloud-sync.js?v=97.15.3"></script>
+<script src="js/pos-csv-parser.js?v=97.15.3"></script>
+  <script src="js/custom-select.js?v=97.15.3" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.15.3">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -505,6 +505,10 @@ function initTheme(btnId) {
   function renderDateBar(rng) {
     const bar = document.getElementById('date-filter-bar');
     if (!bar) return;
+    if (tab === 'warehouse' || tab === 'team' || tab === 'settings') {
+      bar.style.display = 'none';
+      return;
+    }
     bar.style.display = 'flex';
     const presets = [
       { id: 'today', label: 'Сегодня' },
@@ -985,7 +989,7 @@ function initTheme(btnId) {
         const ALL_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
         openModal('Блок «' + blk.name + '»', `
           <div class="field"><label>Название</label><input id="m-blk-name" value="${esc(blk.name)}"></div>
-          <div class="grid-2"><div class="field"><label>Открытие</label><select id="m-blk-open">${optList(TIME_OPTIONS, blk.openTime)}</select></div><div class="field"><label>Дедлайн</label><select id="m-blk-dead">${optList(TIME_OPTIONS, blk.deadline)}</select></div></div>
+          <div class="grid-2"><div class="field"><label>Открытие</label><input id="m-blk-open" class="ios-tp-input" type="text" readonly data-time-picker="1" value="${esc(blk.openTime||'08:00')}"></div><div class="field"><label>Дедлайн</label><input id="m-blk-dead" class="ios-tp-input" type="text" readonly data-time-picker="1" value="${esc(blk.deadline||'22:00')}"></div></div>
           <div class="grid-2">
             <div class="field"><label>Назначен сотруднику</label><select id="m-blk-assignee"><option value="">Все бариста (по графику)</option>${staffNames.map(n => `<option value="${esc(n)}" ${blk.assignee===n?'selected':''}>👤 ${esc(n)}</option>`).join('')}</select></div>
             <div class="field"><label>Статус</label><select id="m-blk-active"><option value="1" ${blk.active!==false?'selected':''}>Активен</option><option value="0" ${blk.active===false?'selected':''}>Отключён</option></select></div>
@@ -1079,7 +1083,7 @@ function initTheme(btnId) {
         const ALL_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
         openModal('Новый блок чек-листа', `
           <div class="field"><label>Название</label><input id="nn" placeholder="Например: Еженедельная ревизия"></div>
-          <div class="grid-2"><div class="field"><label>Открытие</label><select id="no">${optList(TIME_OPTIONS,'07:00')}</select></div><div class="field"><label>Дедлайн</label><select id="nd">${optList(TIME_OPTIONS,'23:59')}</select></div></div>
+          <div class="grid-2"><div class="field"><label>Открытие</label><input id="no" class="ios-tp-input" type="text" readonly data-time-picker="1" value="07:00"></div><div class="field"><label>Дедлайн</label><input id="nd" class="ios-tp-input" type="text" readonly data-time-picker="1" value="23:59"></div></div>
           <div class="grid-2">
             <div class="field"><label>Назначен сотруднику</label><select id="na"><option value="">Все бариста</option>${staffNames.map(n=>`<option value="${esc(n)}">👤 ${esc(n)}</option>`).join('')}</select></div>
             <div class="field"><label>Периодичность</label><select id="nst"><option value="daily">Ежедневно</option><option value="weekly">По дням недели</option><option value="date">На конкретную дату</option></select></div>
@@ -2181,7 +2185,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.15.1"></script>
+  <script src="./js/time-picker.js?v=97.15.3"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2189,7 +2193,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.15.1').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.15.3').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

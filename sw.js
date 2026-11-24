@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.15.1 */
-const CACHE_NAME = 'coffee-illy-v97-15-1';
+/* Coffee Illy ERP & Checklist — Service Worker v97.15.3 */
+const CACHE_NAME = 'coffee-illy-v97-15-3';
 const CORE_ASSETS = [
   './',
   './index.html',
