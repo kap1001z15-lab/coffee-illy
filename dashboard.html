@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F3EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Coffee Illy — Дашборд</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,7 +19,10 @@
   --ink: #1C1613; --muted: #5C5048; --accent: #9A4A24; --accent-soft: rgba(154,74,36,0.12);
   --accent-ink: #FFFFFF; --good: #1F6F4A; --good-soft: rgba(31,111,74,0.12);
   --warn: #9A5B00; --warn-soft: rgba(154,91,0,0.13); --bad: #B83232; --bad-soft: rgba(184,50,50,0.12);
-  --border: rgba(28,22,19,0.09); --shadow: 0 2px 12px rgba(28,22,19,0.05), 0 1px 2px rgba(28,22,19,0.04);
+  color-scheme: light;
+  --topbar-bg: rgba(246,243,239,0.86); --bnav-bg: rgba(255,255,255,0.90);
+  --border: rgba(28,22,19,0.10); --shadow: 0 2px 12px rgba(28,22,19,0.05), 0 1px 2px rgba(28,22,19,0.04);
+  --card-highlight: inset 0 1px 0 rgba(255,255,255,0.85);
   --radius-card: 22px; --radius-pill: 999px;
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
@@ -24,7 +32,10 @@ html[data-theme="dark"] {
   --ink: #F5EFEA; --muted: #B5A89E; --accent: #E29D6C; --accent-soft: rgba(226,157,108,0.16);
   --accent-ink: #1C120B; --good: #7BD4A4; --good-soft: rgba(123,212,164,0.15);
   --warn: #F2BE68; --warn-soft: rgba(242,190,104,0.15); --bad: #F29B9B; --bad-soft: rgba(242,155,155,0.15);
-  --border: rgba(245,239,234,0.09); --shadow: 0 4px 18px rgba(0,0,0,0.34);
+  color-scheme: dark;
+  --topbar-bg: rgba(18,17,16,0.86); --bnav-bg: rgba(25,23,21,0.90);
+  --border: rgba(245,239,234,0.11); --shadow: 0 4px 18px rgba(0,0,0,0.34);
+  --card-highlight: inset 0 1px 0 rgba(255,245,238,0.05);
 }
 * { box-sizing: border-box; }
 html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; line-height:1.45; -webkit-font-smoothing:antialiased; transition:background .2s,color .2s; }
@@ -101,7 +112,7 @@ tr:last-child td { border-bottom:none; }
 .chart-scroll::-webkit-scrollbar { height:6px; }
 .chart-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:999px; }
 .chart-wrap { position:relative; display:flex; flex-wrap:nowrap; align-items:stretch; gap:10px; height:228px; padding:12px 6px 4px; min-width:100%; width:max-content; }
-.chart-plan-line { position:absolute; left:0; right:0; border-top:1.5px dashed rgba(232,184,138,0.65); pointer-events:none; z-index:2; }
+.chart-plan-line { position:absolute; left:0; right:0; border-top:1.5px dashed var(--accent); opacity:0.65; pointer-events:none; z-index:2; }
 .chart-plan-lbl { position:absolute; right:6px; top:-22px; font-size:11px; font-weight:700; color:var(--accent); background:var(--card); border:1px solid var(--border); padding:2px 8px; border-radius:999px; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,0.18); }
 .bar-col { flex:1 0 64px; max-width:108px; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; position:relative; z-index:1; }
 .bar-val { font-size:11px; font-weight:700; color:var(--ink); white-space:nowrap; line-height:1.15; height:15px; display:flex; align-items:center; }
@@ -118,10 +129,10 @@ tr:last-child td { border-bottom:none; }
   .date-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border-radius:16px;background:var(--surface);border:1px solid var(--border);}
   .date-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .date-pill{border:1px solid var(--border);background:transparent;color:var(--muted);padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
-  .date-pill:hover{color:var(--text);border-color:var(--accent);}
-  .date-pill.active{background:var(--accent);color:#1d1510;border-color:var(--accent);}
+  .date-pill:hover{color:var(--ink);border-color:var(--accent);}
+  .date-pill.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
   .date-custom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-  .date-custom input[type="date"]{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:5px 9px;font-size:12.5px;font-family:inherit;}
+  .date-custom input[type="date"]{background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:5px 9px;font-size:12.5px;font-family:inherit;}
   .date-range-lbl{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;}
 
 /* === Coffee Illy v93.1 Responsive System (Phones · Tablets · Desktop) === */
@@ -222,12 +233,16 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Surface Polish (v97.14.2) === */
-body { line-height: 1.5; letter-spacing: -0.005em; }
+/* === Modern Typography & Cross-Platform Surface Polish (v97.14.4) === */
+body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
-.topbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
+.card, .kpi { box-shadow: var(--shadow), var(--card-highlight); }
+.modal-bg { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 tbody tr { transition: background .14s ease; }
-tbody tr:hover { background: var(--surface); }
+@media (hover: hover) and (pointer: fine) {
+  tbody tr:hover { background: var(--surface); }
+}
 .field input:focus, .field select:focus, .field textarea:focus {
   outline: none;
   border-color: var(--accent);
@@ -236,10 +251,10 @@ tbody tr:hover { background: var(--surface); }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.14.2"></script>
-  <script src="js/cloud-sync.js?v=97.14.2"></script>
-<script src="js/pos-csv-parser.js?v=97.14.2"></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.2">
+  <script src="config.js?v=97.14.4"></script>
+  <script src="js/cloud-sync.js?v=97.14.4"></script>
+<script src="js/pos-csv-parser.js?v=97.14.4"></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.4">
 </head>
 <body>
 <header class="topbar">
@@ -2096,7 +2111,7 @@ function initTheme(btnId) {
   if (syncCh) syncCh.onmessage = onRemoteSync;
   window.addEventListener('storage', (e) => { if (e.key === STORE_KEY) onRemoteSync(); });
 
-  document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+  document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); var bd = document.getElementById('body'); if (bd) { bd.classList.remove('tab-enter'); void bd.offsetWidth; bd.classList.add('tab-enter'); } });
   document.getElementById('btn-lock').onclick = async () => { if (adminUnlocked) { if (window.CoffeeCloudV93 && window.CoffeeCloudV93.authLogout) await window.CoffeeCloudV93.authLogout('admin'); adminUnlocked = false; adminAuthNeeded = true; render(); } else guard('Вход', () => {}); };
   let cloudLoop = null;
   document.getElementById('btn-reset').onclick = async () => {
@@ -2158,7 +2173,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.14.2"></script>
+  <script src="./js/time-picker.js?v=97.14.4"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2166,7 +2181,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.14.2').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.4').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

@@ -1,2 +1,2 @@
-window.COFFEE_APP_VERSION = 'v97.14.2';
+window.COFFEE_APP_VERSION = 'v97.14.4';
 window.COFFEE_BUILD_DATE = '2026-11-20';
