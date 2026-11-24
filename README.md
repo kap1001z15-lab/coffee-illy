@@ -1,4 +1,4 @@
-# Coffee Illy ERP & Checklist (v97.15.3)
+# Coffee Illy ERP & Checklist (v97.15.4)
 
 Кроссплатформенная система управления кофейней и чек-листами: **Терминал бариста** (`index.html`) + **Дашборд владельца** (`owner.html`), работающая как **PWA** (Android, iOS, macOS, Windows) и **Telegram Mini App** с серверной частью на **Google Apps Script (V8)** и базой в **Google Sheets + Google Drive**.
 
@@ -10,7 +10,7 @@ coffee-illy/
 ├── owner.html                 # Дашборд владельца (8 вкладок ERP)
 ├── config.js                  # Runtime-конфигурация (без секретов)
 ├── config.example.js          # Шаблон конфигурации
-├── version.js                 # Версия сборки (v97.15.3)
+├── version.js                 # Версия сборки (v97.15.4)
 ├── sw.js                      # Service Worker (офлайн-кэш + автообновление)
 ├── manifest.webmanifest       # PWA-манифест (Android/iOS/macOS/Windows)
 ├── css/
@@ -25,7 +25,7 @@ coffee-illy/
 └── .github/workflows/ci.yml   # CI: синтаксис, автотесты, проверка секретов, релизный пакет
 ```
 
-> Серверная часть (`Code.gs`, `appsscript.json`, `DEPLOY_GAS.md`) поставляется отдельным комплектом `coffee-illy-v97.15.3-gas.zip`.
+> Серверная часть (`Code.gs`, `appsscript.json`, `DEPLOY_GAS.md`) поставляется отдельным комплектом `coffee-illy-v97.15.4-gas.zip`.
 
 ## Быстрый старт (локально и GitHub Pages)
 

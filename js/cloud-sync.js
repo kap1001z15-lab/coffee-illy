@@ -878,6 +878,7 @@
         const revRes = await gasGet({ action: 'get_rev', sinceRev: _lastServerRev });
         _lastRttMs = Math.max(1, Date.now() - t0);
         const srvRev = revRes && (revRes.rev != null ? String(revRes.rev) : '');
+        if (revRes && revRes.serverVersion && getState) { getState().serverVersion = String(revRes.serverVersion); }
         if (!forceFull && srvRev && srvRev === _lastServerRev) {
           if (getState) {
             const stOk = getState();
@@ -1111,8 +1112,8 @@
     const p = Object.assign({}, payload || {});
     try {
       const res = await gasPost('save_staff', p);
-      if (res && res.ok) return res;
-      if (res && res.error && /AUTH_REQUIRED|FORBIDDEN/i.test(String(res.error))) return res;
+      if (res && res.ok) { _lastServerRev = ''; return res; }
+      if (res && res.ok === false) return res;
     } catch (_) {}
     enqueueOp('save_staff', p);
     return { ok: true, queued: true };
@@ -1122,10 +1123,22 @@
     if (renamedBlocks && Object.keys(renamedBlocks).length) p.renamedBlocks = renamedBlocks;
     try {
       const res = await gasPost('save_checklist_blocks', p);
-      if (res && res.ok) return res;
-      if (res && res.error && /AUTH_REQUIRED|FORBIDDEN/i.test(String(res.error))) return res;
+      if (res && res.ok) { _lastServerRev = ''; return res; }
+      if (res && res.ok === false) return res;
     } catch (_) {}
     enqueueOp('save_checklist_blocks', p);
+    return { ok: true, queued: true };
+  }
+  async function extendDeadline(block, clear) {
+    const p = clear
+      ? { date: localISO(), block: block, clear: true }
+      : { date: localISO(), block: block, openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' };
+    try {
+      const res = await gasPost('extend_deadline', p);
+      if (res && res.ok) { _lastServerRev = ''; return res; }
+      if (res && res.ok === false) return res;
+    } catch (_) {}
+    enqueueOp('extend_deadline', p);
     return { ok: true, queued: true };
   }
   async function changeAdminPin(newPin) {
@@ -1283,6 +1296,7 @@
     reorderTasks: reorderTasks,
     saveStaff: saveStaff,
     saveChecklistBlocks: saveChecklistBlocks,
+    extendDeadline: extendDeadline,
     grantPhotoReaderAccess: grantPhotoReaderAccess,
     changeAdminPin: changeAdminPin,
     setupTriggers: setupTriggers,

@@ -1,5 +1,5 @@
 /**
- * Coffee Illy — Apple iOS Liquid Glass Scroll-Wheel 24h Time Picker (v97.15.3)
+ * Coffee Illy — Apple iOS Liquid Glass Scroll-Wheel 24h Time Picker (v97.15.4)
  * Точный выбор времени до минуты (00–23 ч, 00–59 мин) пролистыванием барабанов,
  * тапом по значению, колёсиком мыши или клавиатурой (Esc / Enter).
  */

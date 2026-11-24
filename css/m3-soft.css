@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.3)
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.4)
    Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
@@ -1088,7 +1088,7 @@ body {
   }
 }
 
-/* === v97.15.3 Minimalist Owner Dashboard Liquid Glass Polish === */
+/* === v97.15.4 Minimalist Owner Dashboard Liquid Glass Polish === */
 .dash-topbar {
   padding: max(8px, env(safe-area-inset-top)) 22px 8px !important;
   gap: 10px !important;
@@ -1208,7 +1208,7 @@ td {
   .kpi-val { font-size: clamp(18px, 5vw, 21px) !important; }
 }
 
-/* === v97.15.3 Sticky Desktop Admin Nav & Pinned Mobile "+ Задача" Action === */
+/* === v97.15.4 Sticky Desktop Admin Nav & Pinned Mobile "+ Задача" Action === */
 @media (min-width: 601px) {
   .admin-nav {
     position: sticky !important;
@@ -1243,7 +1243,7 @@ td {
 }
 body.kb-open .bottom-action-wrap { display: none !important; }
 
-/* === v97.15.3 Apple iOS Liquid Glass Scroll-Wheel Time Picker (1-min precision) === */
+/* === v97.15.4 Apple iOS Liquid Glass Scroll-Wheel Time Picker (1-min precision) === */
 .ios-tp-input {
   cursor: pointer;
   font-variant-numeric: tabular-nums;
