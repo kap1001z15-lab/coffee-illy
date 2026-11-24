@@ -223,3 +223,52 @@ test('E2E Multi-Device Sync: POS CSV batch import updates salesLog, auto-deducts
   const capSale = owner.state.salesLog.find((s) => s.name === 'Капучино' && s.date === '2026-11-20');
   assert.ok(capSale && capSale.qty === 10 && capSale.kind === 'Кофе');
 });
+
+test('E2E Full Bidirectional Sync (Windows Dashboard <-> GAS <-> Android Terminal): block edit, disable, unlock & barista checklist submit', { skip: !hasGas }, async () => {
+  const { sandbox } = createLiveGasCluster();
+  const owner = createDeviceClient(sandbox, 'owner');
+  const phone = createDeviceClient(sandbox, 'terminal');
+
+  // 1. Both devices authenticate
+  const ownerAuth = await owner.api.authLogin('admin', { pin: '1234' });
+  assert.equal(ownerAuth.ok, true, 'Owner must login');
+  sandbox.saveStaff_(sandbox.getTargetSpreadsheet_(), { name: 'Соня', role: 'Бариста', pin: '1234', active: 'да' });
+  const staffAuth = await phone.api.authLogin('staff', { name: 'Соня', pin: '1234' });
+  assert.equal(staffAuth.ok, true, 'Barista must login');
+
+  // 2. Initial sync on both devices
+  await owner.loop.pullNow(true);
+  await phone.loop.pullNow(true);
+  assert.ok(owner.state.blocks.length >= 3, 'Owner received initial blocks');
+  assert.ok(phone.state.blocks.length >= 3, 'Phone received initial blocks');
+
+  // 3. Owner edits Закрытие window to 21:00-23:59, disables Открытие, unlocks Закрытие
+  const editedBlocks = owner.state.blocks.map((b) => {
+    if (b.name === 'Закрытие') return Object.assign({}, b, { openTime: '21:00', deadline: '23:59' });
+    if (b.name === 'Открытие') return Object.assign({}, b, { active: false });
+    return b;
+  });
+  const saveBlkRes = await owner.api.saveChecklistBlocks(editedBlocks, {});
+  assert.equal(saveBlkRes.ok, true, 'saveChecklistBlocks must succeed on server');
+  const extRes = await owner.api.extendDeadline('Закрытие', false);
+  assert.equal(extRes.ok, true, 'extendDeadline must succeed on server');
+
+  // 4. Android phone pulls automatically (without forceFull!) via DATA_REV change
+  const phonePull = await phone.loop.pullNow(false);
+  assert.ok(phonePull && phonePull.changed, 'Phone must detect DATA_REV bump automatically');
+  const phoneClose = phone.state.blocks.find((b) => b.name === 'Закрытие');
+  const phoneOpen = phone.state.blocks.find((b) => b.name === 'Открытие');
+  assert.equal(phoneClose.openTime, '21:00', 'Phone must receive updated openTime 21:00');
+  assert.equal(phoneClose.deadline, '23:59', 'Phone must receive updated deadline 23:59');
+  assert.equal(phoneOpen.active, false, 'Phone must receive disabled active:false state');
+  assert.equal(phone.state.extensions['Закрытие'] && phone.state.extensions['Закрытие'].forceOpen, true, 'Phone must receive admin unlock');
+
+  // 5. Android phone submits checklist -> Windows Owner pulls automatically via DATA_REV
+  phone.state.checklists.unshift({ date: phone.api.localISO(), time: '22:15', block: 'Закрытие', who: 'Соня', problems: 0, status: 'В срок', photos: [] });
+  phone.api.dispatchStateChange(phone.state, 'Соня', 'Сдан чек-лист «Закрытие»');
+  await phone.api.flushOutbox(true);
+
+  const ownerPull = await owner.loop.pullNow(false);
+  assert.ok(ownerPull && ownerPull.changed, 'Owner must detect barista submission automatically');
+  assert.ok(owner.state.checklists.some((c) => c.block === 'Закрытие' && c.who === 'Соня'), 'Owner dashboard must immediately show barista completed checklist');
+});

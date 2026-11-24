@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -377,4 +381,21 @@ test('CloudSync saveInventoryItem queues to outbox when offline instead of dropp
   assert.equal(res.ok, true);
   assert.equal(res.queued, true);
   assert.equal(cloud.getPendingCount(), 1);
+});
+
+test('Apple Liquid Retina TimePicker parses & formats manual keyboard inputs (2130, 9:5, 25:99) cleanly', async () => {
+  const tpMod = await import(new URL('../js/time-picker.js', import.meta.url));
+  const TimePicker = tpMod.default || tpMod;
+  assert.equal(TimePicker.formatTimeInput('2130'), '21:30');
+  assert.equal(TimePicker.formatTimeInput('905'), '09:05');
+  assert.equal(TimePicker.formatTimeInput('9:5'), '09:05');
+  assert.equal(TimePicker.formatTimeInput('25:99'), '23:59');
+  assert.equal(TimePicker.formatTimeInput('7'), '07:00');
+});
+
+test('Dashboard pins BOTH #admin-nav and #date-filter-bar in .dash-sticky-dock and uses overflow-x: clip', () => {
+  const dashHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
+  assert.match(dashHtml, /id="dash-sticky-dock"/);
+  assert.match(dashHtml, /body\s*\{\s*overflow-x:\s*clip;/);
+  assert.ok(!dashHtml.includes('readonly data-time-picker="1"'), 'Time inputs must allow direct keyboard typing');
 });
