@@ -39,6 +39,18 @@
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(cur)); } catch (_) {}
     return cur;
   }
+  function getClientId() {
+    const KEY = 'coffee_illy_v97_client_id';
+    try {
+      let cid = localStorage.getItem(KEY);
+      if (cid) return cid;
+      cid = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+      localStorage.setItem(KEY, cid);
+      return cid;
+    } catch (_) {
+      return 'dev_mem';
+    }
+  }
 
   const FAILED_OUTBOX_KEY = 'coffee_illy_v93_failed_outbox';
   const FINANCIAL_ACTIONS = new Set([
@@ -229,7 +241,7 @@
   let _pullPendingForce = false;
 
   function isRetryableServerError(errStr) {
-    return /LOCK|BUSY|RATE_LIMIT|TIMEOUT|TEMPORARY|UNAVAILABLE|PIN_REQUIRED|STAFF_AUTH_REQUIRED|SESSION/i.test(String(errStr || ''));
+    return /LOCK|BUSY|RATE_LIMIT|TIMEOUT|TEMPORARY|UNAVAILABLE/i.test(String(errStr || ''));
   }
 
   async function flushOutbox(forceRetry) {
@@ -247,6 +259,11 @@
         const item = q[i];
         const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
         if (!forceRetry && item.nextRetryAt && Number(item.nextRetryAt) > now) continue;
+        // P1-7: Никогда не отправляем операцию бариста А под токеном бариста Б на общем устройстве
+        const curSess = getSession();
+        if (item.ownerRole === 'staff' && item.ownerName && curSess.staffName && item.ownerName !== curSess.staffName) {
+          continue;
+        }
         try {
           const t0 = Date.now();
           const res = await gasPost(item.action, item.payload);
@@ -304,8 +321,11 @@
     markLocalMutation();
     if (!action) return;
     const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const sessNow = getSession();
+    const ownerRole = ADMIN_ONLY_ACTIONS[action] ? 'admin' : 'staff';
+    const ownerName = ownerRole === 'admin' ? 'Администратор' : String((payload && (payload.userName || payload.staffName || payload.barista)) || sessNow.staffName || '').trim();
     const q = readOutbox();
-    q.push({ action: action, status: 'pending', payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now(), attempts: 0, nextRetryAt: 0 });
+    q.push({ action: action, status: 'pending', ownerRole: ownerRole, ownerName: ownerName, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now(), attempts: 0, nextRetryAt: 0 });
     writeOutbox(q);
     flushOutbox(true).then((res) => {
       if (res && res.flushed > 0) _lastServerRev = '';
@@ -347,7 +367,7 @@
 
   async function authLogin(role, opts) {
     try {
-      const payloadAuth = Object.assign({ role: role }, opts || {});
+      const payloadAuth = Object.assign({ role: role, clientId: getClientId() }, opts || {});
       if (payloadAuth.name) {
         if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name;
         if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name;
@@ -827,7 +847,8 @@
     /* P0.2: смена PIN выполняется только напрямую через changeStaffPin() без локальной очереди */
     } else if (desc.indexOf('Привязан Telegram ID') === 0) {
       const s = (st.staff || []).find((x) => x.name === actor);
-      if (s && s.tgId) enqueueOp('bind_telegram_user', { name: s.name, tgId: s.tgId });
+      const tgCur = getTelegramUser();
+      if (s && s.tgId) enqueueOp('bind_telegram_user', { name: s.name, tgId: s.tgId, initData: (tgCur && tgCur.initData) || '', tgInitData: (tgCur && tgCur.initData) || '' });
     } else if (desc.indexOf('Обновлён сотрудник') === 0) {
       const nm = desc.replace('Обновлён сотрудник ', '').trim();
       const s = (st.staff || []).find((x) => x.name === nm);
@@ -1054,6 +1075,8 @@
           id: 'TG-' + tg.initDataUnsafe.user.id,
           rawId: String(tg.initDataUnsafe.user.id),
           initData: tg.initData || '',
+          tgInitData: tg.initData || '',
+          clientId: getClientId(),
           name: tg.initDataUnsafe.user.first_name || ''
         };
       }
@@ -1094,7 +1117,9 @@
           autoLogin: true,
           tgId: tg.id,
           rawTgId: tg.rawId,
-          initData: tg.initData || ''
+          initData: tg.initData || '',
+          tgInitData: tg.initData || '',
+          clientId: getClientId()
         });
         if (res && res.ok && res.sessionToken) {
           setSession({ staffToken: res.sessionToken, staffName: res.staffName, tgId: res.tgId || tg.id, checkedInAt: res.checkedInAt || localHHMM(), checkedInDate: localISO() });

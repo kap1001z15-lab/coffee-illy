@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v97.15.6';
+var SERVER_VERSION_V97 = 'v97.17.0';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -90,19 +90,19 @@ function logError_(ss, source, err, meta) {
     var sh = targetSs.getSheetByName('Errors');
     if (!sh) {
       sh = targetSs.insertSheet('Errors');
-      sh.appendRow(['Дата', 'Время', 'Источник', 'Сообщение', 'Детали']);
+      sh.appendRow(safeRow_(['Дата', 'Время', 'Источник', 'Сообщение', 'Детали']));
     }
     var tz = Session.getScriptTimeZone() || 'GMT+2';
     var now = new Date();
     var msg = maskSensitiveLogText_((err && err.message) || err || 'Unknown error');
     var details = maskSensitiveLogText_(meta ? (typeof meta === 'string' ? meta : JSON.stringify(meta)) : ((err && err.stack) || ''));
-    sh.appendRow([
+    sh.appendRow(safeRow_([
       Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
       Utilities.formatDate(now, tz, 'HH:mm:ss'),
       String(source || 'server').slice(0, 80),
       msg,
       details
-    ]);
+    ]));
   } catch (_) {}
 }
 
@@ -237,22 +237,31 @@ function getJsonProp_(key, fallback) {
   } catch (_) {}
   return fallback;
 }
+function utf8ByteLength_(str) {
+  var s = String(str || '');
+  try {
+    if (typeof Utilities !== 'undefined' && Utilities.newBlob) {
+      return Utilities.newBlob(s, 'text/plain;charset=utf-8').getBytes().length;
+    }
+  } catch (_) {}
+  try { return unescape(encodeURIComponent(s)).length; } catch (_) { return s.length * 2; }
+}
 function setJsonProp_(key, val) {
   var MAX_BYTES = 8500;
   var cur = val;
   var raw = JSON.stringify(cur);
-  // Защита от жёсткого лимита Google Apps Script (9 КБ на одно свойство PropertiesService)
-  if (raw.length > MAX_BYTES) {
+  // Защита от жёсткого лимита Google Apps Script (9 КБ в UTF-8 байтах на одно свойство PropertiesService)
+  if (utf8ByteLength_(raw) > MAX_BYTES) {
     if (Array.isArray(cur)) {
       cur = cur.slice();
-      while (cur.length > 1 && JSON.stringify(cur).length > MAX_BYTES) {
+      while (cur.length > 1 && utf8ByteLength_(JSON.stringify(cur)) > MAX_BYTES) {
         cur.shift();
       }
       raw = JSON.stringify(cur);
     } else if (cur && typeof cur === 'object') {
       var copy = Object.assign({}, cur);
       var keys = Object.keys(copy);
-      while (keys.length > 1 && JSON.stringify(copy).length > MAX_BYTES) {
+      while (keys.length > 1 && utf8ByteLength_(JSON.stringify(copy)) > MAX_BYTES) {
         delete copy[keys.shift()];
       }
       raw = JSON.stringify(copy);
@@ -303,9 +312,8 @@ function doGet(e) {
     if (action === 'version') return jsonOut_({ ok: true, serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97, baseVersion: 'v94.1', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
     if (action === 'admin' || action === 'dashboard' || action === 'report') return jsonOut_({ ok: false, error: 'METHOD_NOT_ALLOWED: Используйте POST для защищённых запросов (' + action + ')' });
     var ss = getTargetSpreadsheet_();
-    ensureSheets_(ss);
 
-    // 1. Публичный pre-login запрос: только минимальные статические данные для экрана входа (без планов, черновиков, tgId и финансов)
+    // 1. Публичный pre-login запрос: только минимальные статические данные для экрана входа (без ensureSheets_, планов, склада, черновиков, tgId и финансов)
     if (action === 'get_checklists') {
       var pubRes = sanitizePublicChecklists_(getChecklists_(ss), ss, p.sinceTs);
       pubRes.rev = getDataRev_();
@@ -806,9 +814,9 @@ function uploadPhotoToDrive_(ss, body, lockOpt) {
       var shM = ss.getSheetByName('Медиафайлы');
       if (!shM) {
         shM = ss.insertSheet('Медиафайлы');
-        shM.appendRow(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']);
+        shM.appendRow(safeRow_(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']));
       }
-      shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, directMediaUrl]);
+      shM.appendRow(safeRow_([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, directMediaUrl]));
     } finally {
       if (lockedHere && lockOpt) {
         try { lockOpt.releaseLock(); } catch (_) {}
@@ -825,28 +833,42 @@ function setupInitialCredentials_(ss, body) {
   var existingAdminHash = props.getProperty('ADMIN_PIN_HASH') || '';
   if (existingAdminHash) {
     requireAuth_(ss, body, 'admin');
+  } else {
+    // P0-3: Запрещаем анонимный захват свежей установки через публичный API без одноразового кода из ScriptProperties
+    var expectedSetupCode = String(props.getProperty('INITIAL_SETUP_CODE') || '').trim();
+    var providedSetupCode = String((body && body.setupCode) || '').trim();
+    if (!expectedSetupCode || !providedSetupCode || providedSetupCode !== expectedSetupCode) {
+      throw new Error('SETUP_CODE_REQUIRED: Первичная настройка через API требует одноразовый INITIAL_SETUP_CODE в ScriptProperties (или запустите УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ в редакторе Apps Script)');
+    }
   }
   var rawAdminInput = String((body && body.newAdminPin) || '').trim();
   if (!existingAdminHash && !rawAdminInput) {
-    throw new Error('VALIDATION_FAILED: Необходимо задать PIN владельца (4–8 цифр)');
+    throw new Error('VALIDATION_FAILED: Необходимо задать PIN владельца (4–12 цифр)');
   }
   if (rawAdminInput) {
-    var stripped = rawAdminInput.indexOf('sha256:') === 0 ? rawAdminInput.slice(7) : rawAdminInput;
-    var isHex64 = /^[a-f0-9]{64}$/i.test(stripped);
-    if (!isHex64 && stripped.length < 4) {
-      throw new Error('VALIDATION_FAILED: PIN владельца должен содержать минимум 4 цифры');
+    if (!/^\d{4,12}$/.test(rawAdminInput)) {
+      throw new Error('VALIDATION_FAILED: PIN владельца должен содержать только 4–12 цифр (сырой хеш запрещён)');
     }
-    var newAdminHash = normalizePinHash_(rawAdminInput);
+    var newAdminHash = hashPinV2_(rawAdminInput);
     props.setProperty('ADMIN_PIN_HASH', newAdminHash);
+    if (!existingAdminHash) {
+      try { props.deleteProperty('INITIAL_SETUP_CODE'); } catch (_) {}
+    }
     saveSetting_(ss, { id: 'ADMIN_PIN', value: '••' });
   }
   if (body && body.staffPins && typeof body.staffPins === 'object') {
     var shSt = ss ? ss.getSheetByName('Сотрудники') : null;
     var stRows = (shSt && shSt.getLastRow() > 1) ? shSt.getDataRange().getValues() : [];
+    var existingNames = {};
+    for (var si = 1; si < stRows.length; si++) {
+      var nmRow = String(stRows[si][1] || '').trim();
+      if (nmRow) existingNames[nmRow] = true;
+    }
     Object.keys(body.staffPins).forEach(function(sName) {
+      if (!existingNames[sName]) return;
       var pVal = String(body.staffPins[sName] || '').trim();
-      if (pVal) {
-        var normH = normalizePinHash_(pVal);
+      if (pVal && /^\d{4,12}$/.test(pVal)) {
+        var normH = hashPinV2_(pVal);
         props.setProperty('STAFF_PIN_HASH_' + sName, normH);
         props.setProperty('PIN_CHANGE_REQUIRED_' + sName, '0');
         for (var rIdx = 1; rIdx < stRows.length; rIdx++) {
@@ -921,10 +943,12 @@ function consumeStaffResetCode_(name, code) {
   if (!raw) return false;
   try {
     var rec = JSON.parse(raw);
-    if (!rec || rec.used || Date.now() > Number(rec.exp || 0)) return false;
+    if (!rec || rec.used || Date.now() > Number(rec.exp || 0)) {
+      try { props.deleteProperty('RESET_' + name); } catch (_) {}
+      return false;
+    }
     if (sha256Hex_(SALT_V21 + String(code).trim()) !== rec.h) return false;
-    rec.used = true;
-    props.setProperty('RESET_' + name, JSON.stringify(rec));
+    try { props.deleteProperty('RESET_' + name); } catch (_) {}
     return true;
   } catch (_) { return false; }
 }
@@ -1033,13 +1057,15 @@ function verifyPinStored_(stored, candidateRaw) {
   var st = String(stored || '').trim();
   var cand = String(candidateRaw || '').trim();
   if (!st || !cand) return false;
+  // P1-4: Запрещаем передачу сырого 64-hex хеша вместо PIN
+  if (/^(sha256:)?[a-f0-9]{64}$/i.test(cand)) return false;
   if (st.indexOf('v2$') === 0) {
     var parts = st.split('$');
     if (parts.length !== 4) return false;
     var recomputed = hashPinV2_(cand, parts[2]);
     return recomputed === st;
   }
-  return normalizePinHash_(cand) === st;
+  return sha256Hex_(cand) === st;
 }
 
 function normalizePinHash_(val) {
@@ -1128,9 +1154,7 @@ function getConfiguredOwnerPinHash_(ss) {
     saveSetting_(ss, { id: 'ADMIN_PIN', value: '••' });
     return migrated;
   }
-  var tempHash = hashPinV2_('1234');
-  try { props.setProperty('ADMIN_PIN_HASH', tempHash); } catch (_) {}
-  return tempHash;
+  return '';
 }
 
 function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
@@ -1186,39 +1210,58 @@ function handleAuthLogin_(ss, body) {
   var role = String(body.role || 'admin').trim();
   var staffName = String(body.staffName || body.name || (role === 'admin' ? 'Администратор' : '')).trim();
   var tgCand = String(body.tgId || body.rawTgId || '').trim();
+  var clientTag = String(body.clientId || body.deviceId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
   var autoLoggedIn = false;
   var matchedTgId = tgCand;
 
-  if (role === 'admin') {
-    verifyOwnerPinServer_(ss, body.pinHash || body.pin || '', 'admin');
-  } else {
-    // v93.0: Автоматический вход сотрудника по Telegram ID без повторного ввода PIN
-    if ((body.autoLogin || (!body.pin && !body.pinHash)) && tgCand) {
-      var tgStaff = findStaffByTelegramId_(ss, tgCand);
-      if (!tgStaff) {
-        throw new Error('TG_STAFF_NOT_FOUND: Telegram ID ' + tgCand + ' не привязан к активному сотруднику');
-      }
-      staffName = tgStaff.name;
-      matchedTgId = tgStaff.tgId || tgCand;
-      autoLoggedIn = true;
-    } else {
-      if (!staffName) staffName = 'Бариста';
-      var actorKey = role + '_' + staffName;
-      var pinCandidate = body.pinHash || body.pin || '';
-      checkRateLimit_(actorKey);
-      if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
-        throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + staffName + '» необходимо сменить временный PIN-код');
-      }
-      var expectedStaffHash = getStaffPinHash_(ss, staffName);
-      if (!expectedStaffHash) {
-        throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден в штатном расписании или отключён');
-      }
-      if (!pinCandidate || !verifyPinStored_(expectedStaffHash, pinCandidate)) {
-        var left = recordFailedAttempt_(ss, actorKey);
-        throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника «' + staffName + '» (осталось попыток: ' + left + ')');
-      }
-      clearFailedAttempts_(actorKey);
+  var authLock = null;
+  try {
+    if (typeof LockService !== 'undefined' && LockService.getScriptLock) {
+      authLock = LockService.getScriptLock();
+      authLock.tryLock(5000);
     }
+  } catch (_) {}
+
+  try {
+    if (role === 'admin') {
+      var adminKey = clientTag ? ('admin_' + clientTag) : 'admin';
+      verifyOwnerPinServer_(ss, body.pin || '', adminKey);
+    } else {
+      // P0-1: Автоматический вход сотрудника по Telegram требует криптографической проверки HMAC initData
+      if ((body.autoLogin || (!body.pin && !body.pinHash)) && tgCand) {
+        var rawInitData = String(body.initData || body.tgInitData || '').trim();
+        var hmacRes = verifyTelegramInitDataHmac_(rawInitData, false);
+        if (!hmacRes || !hmacRes.ok) {
+          throw new Error('TG_AUTH_INVALID: Подпись Telegram WebApp недействительна (' + String((hmacRes && hmacRes.reason) || 'INVALID') + ')');
+        }
+        if (normTgNumericId_(hmacRes.tgUserId) !== normTgNumericId_(tgCand)) {
+          throw new Error('TG_AUTH_MISMATCH: Telegram ID в запросе не совпадает с подписанным initData');
+        }
+        var tgStaff = findStaffByTelegramId_(ss, hmacRes.tgUserId);
+        if (!tgStaff) {
+          throw new Error('TG_STAFF_NOT_FOUND: Сотрудник с этим Telegram ID не найден или отключён');
+        }
+        staffName = tgStaff.name;
+        matchedTgId = tgStaff.tgId || String(hmacRes.tgUserId);
+        autoLoggedIn = true;
+      } else {
+        if (!staffName) staffName = 'Бариста';
+        var actorKey = role + '_' + staffName + (clientTag ? ('_' + clientTag) : '');
+        var pinCandidate = body.pin || '';
+        checkRateLimit_(actorKey);
+        if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
+          throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + staffName + '» необходимо сменить временный PIN-код');
+        }
+        var expectedStaffHash = getStaffPinHash_(ss, staffName);
+        if (!expectedStaffHash || !pinCandidate || !verifyPinStored_(expectedStaffHash, pinCandidate)) {
+          var left = recordFailedAttempt_(ss, actorKey);
+          throw new Error('PIN_INVALID: Неверный PIN или сотрудник не найден (осталось попыток: ' + left + ')');
+        }
+        clearFailedAttempts_(actorKey);
+      }
+    }
+  } finally {
+    try { if (authLock) authLock.releaseLock(); } catch (_) {}
   }
 
   var token = 'st_' + Utilities.getUuid().replace(/-/g, '') + '_' + sha256Hex_(Utilities.getUuid()).slice(0, 16);
@@ -1552,10 +1595,6 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
     ok: true,
     v: res.v || 55,
     serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97,
-    dailyPlans: (res && res.dailyPlans) || {},
-    shiftRoster: (res && res.shiftRoster) || {},
-    inventory: getSeededInventory_(ss),
-    expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
     location: res.location || 'Кофейня №1',
     staff: safeStaff,
     serverTime: res.serverTime,
@@ -1783,7 +1822,7 @@ function handleDeltaSync_(ss, body, sessOpt) {
   var sh = ss.getSheetByName('ДельтаСинхр');
   if (!sh) {
     sh = ss.insertSheet('ДельтаСинхр');
-    sh.appendRow(['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']);
+    sh.appendRow(safeRow_(['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']));
   }
   var incoming = Array.isArray(body.deltas) ? body.deltas : [];
   var rawRows = sh.getDataRange().getValues();
@@ -1954,7 +1993,7 @@ function getIdempotentResult_(ss, body, actorSess) {
     var sh = ss.getSheetByName('API_OPERATIONS');
     if (!sh) {
       sh = ss.insertSheet('API_OPERATIONS');
-      sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']);
+      sh.appendRow(safeRow_(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']));
     }
     var last = sh.getLastRow();
     if (last >= 2) {
@@ -2005,9 +2044,9 @@ function idempotentJsonOut_(ss, body, result, actorSess) {
         var sh = ss.getSheetByName('API_OPERATIONS');
         if (!sh) {
           sh = ss.insertSheet('API_OPERATIONS');
-          sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']);
+          sh.appendRow(safeRow_(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']));
         }
-        sh.appendRow([id, Date.now(), raw, actorId, actorRole, actName]);
+        sh.appendRow(safeRow_([id, Date.now(), raw, actorId, actorRole, actName]));
         var last = sh.getLastRow();
         if (last > 5001) sh.deleteRows(2, last - 5001);
       } catch (_) {}
@@ -2017,11 +2056,24 @@ function idempotentJsonOut_(ss, body, result, actorSess) {
 }
 
 
+function safeCell_(v) {
+  if (typeof v !== 'string') return v;
+  return /^[\s]*[=+\-@]/.test(v) ? ("'" + v) : v;
+}
+function safeRow_(arr) {
+  return Array.isArray(arr) ? arr.map(safeCell_) : arr;
+}
 function escapeTgHtml_(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function safeTgHref_(u) {
+  var s = String(u || '').trim();
+  return /^https:\/\//i.test(s) ? escapeTgHtml_(s) : '';
 }
 
 function jsonOut_(obj) {
@@ -2090,7 +2142,7 @@ function ensureSheets_(ss) {
     var sh = existing[d[0]];
     if (!sh) {
       sh = ss.insertSheet(d[0]);
-      sh.appendRow(d[1]);
+      sh.appendRow(safeRow_(d[1]));
       seedDefaultSheetRows_(ss, sh, d[0]);
     } else if (sh.getLastRow() <= 1) {
       seedDefaultSheetRows_(ss, sh, d[0]);
@@ -2116,13 +2168,8 @@ function autoMigrateSchemaIfNeeded_(ss, forceOpt) {
 
   var migratedItems = [];
 
-  // 0. Если PIN владельца ещё не задан в ScriptProperties — ставим начальный 1234 (не трогая уже изменённый пароль)
-  try {
-    if (props && !props.getProperty('ADMIN_PIN_HASH')) {
-      props.setProperty('ADMIN_PIN_HASH', hashPinV2_('1234'));
-      migratedItems.push('Начальный PIN владельца (1234)');
-    }
-  } catch (_) {}
+  // 0. P0-2: Не создаём дефолтный PIN 1234 автоматически на непроинициализированной установке.
+  // Первичная настройка выполняется явно через УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ() или setup_initial_credentials.
 
   // 1. Безопасное расширение заголовков «Таймлайн» (6 -> 9 столбцов) без удаления строк пользователя
   try {
@@ -2260,7 +2307,7 @@ function seedDefaultSheetRows_(ss, sh, name) {
       ['TG_CHAT', '', 'ID чата администратора в Telegram'],
       ['ADMIN_PIN', '••', 'Код доступа владельца / администратора']
     ];
-    defSettings.forEach(function(r) { sh.appendRow(r); });
+    defSettings.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Таймлайн') {
     var defBlocks = [
       ['blk_open', 'Открытие', '07:30', '08:30', 'нет', 'да'],
@@ -2270,7 +2317,7 @@ function seedDefaultSheetRows_(ss, sh, name) {
       ['blk_cash', 'Касса', '22:00', '23:59', 'да', 'да'],
       ['blk_good_deeds', 'Карта добрых дел', '11:00', '22:00', 'нет', 'да']
     ];
-    defBlocks.forEach(function(r) { sh.appendRow(r); });
+    defBlocks.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Планы') {
     var defPlans = [
       ['Пн', 2200, 32, 70, 'Соня (07:30–22:30)'],
@@ -2281,7 +2328,7 @@ function seedDefaultSheetRows_(ss, sh, name) {
       ['Сб', 3000, 38, 90, 'Настя + Соня (2 смены, пик)'],
       ['Вс', 2500, 35, 75, 'Соня (07:30–22:30)']
     ];
-    defPlans.forEach(function(r) { sh.appendRow(r); });
+    defPlans.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Сотрудники') {
     var defStaff = [
       ['st1', 'Соня', 'Бариста', 'Кофейня №1', 'да', '••'],
@@ -2290,7 +2337,7 @@ function seedDefaultSheetRows_(ss, sh, name) {
       ['st4', 'Максим', 'Шеф-бариста', 'Кофейня №1', 'да', '••'],
       ['st5', 'Администратор', 'Администратор', 'Кофейня №1', 'да', '••']
     ];
-    defStaff.forEach(function(r) { sh.appendRow(r); });
+    defStaff.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Карта добрых дел') {
     var defGd = [
       ['gd1', '🧊 Разморозка и генеральная мойка холодильника', 'Раз в 2 недели (Вторник 14:00–18:00 — тихий день)', '14:00 – 18:00', 'Бариста', 'Управляющий / Шеф-бариста', 'Выполняется в самый тихий день (вторник с 14:00 до 18:00): отключить холодильник, полностью разморозить, промыть полки и уплотнители и сделать фото с камеры.'],
@@ -2298,7 +2345,7 @@ function seedDefaultSheetRows_(ss, sh, name) {
       ['gd3', '🪑 Подготовка второго зала к открытию (Пт–Сб)', 'Только Пт и Сб (2-й зал / пик)', '07:30 – 08:30', 'Бариста', 'Администратор', 'В пятницу и субботу открывается 2-й зал: включить освещение, проверить посадку, протереть столы.'],
       ['gd4', '🧽 Глубокая замочка холдеров, сеток и питчеров в химии', '2 раза в неделю (Чт, Вс)', '21:30 – 22:30', 'Бариста', 'Шеф-бариста', 'Снять рассекатели и корзины холдеров, замочить в растворе Cafiza на 20 минут, промыть чистой водой и сфотографировать.']
     ];
-    defGd.forEach(function(r) { sh.appendRow(r); });
+    defGd.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Техкарты') {
     var defTtk = [
       ['ttk1', '☕ Капучино ILLY', '250 мл (M)', 'Классика', 19, 4.2, 2.5, 0, 1.3, 'Эспрессо ILLY 18 г зерна → выход 36 г за 25–27 сек. Молоко 3.2% (ТМК) — 180 мл, взбивание до 62 °C.', 'Керамическая чашка 250 мл или крафт-стакан навынос. Доп. сироп 15 мл (+5 руб.).'],
@@ -2310,7 +2357,7 @@ function seedDefaultSheetRows_(ss, sh, name) {
       ['ttk7', '🍫 Какао «Баунти» / Горячий шоколад', '300 мл (M)', 'Авторский / Десертный', 30, 5.0, 3.5, 1.8, 1.4, 'Натуральное какао 22 г + молоко 230 мл + кокосовый сироп 15 мл. Взбить стимером до 65 °C без комочков.', 'По желанию гостя добавить маршмеллоу (+8 руб.).'],
       ['ttk8', '🍰 Чизкейк классический', '120 г (порция)', 'Десерты / Витрина', 40, 22.0, 0, 0, 1.5, 'Проверить срок маркировки на витрине (температура витрины +2…+6 °C). Подавать охлаждённым.', 'Керамическая тарелка с десертной вилкой или крафт-бокс навынос.']
     ];
-    defTtk.forEach(function(r) { sh.appendRow(r); });
+    defTtk.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   }
 }
 
@@ -2650,7 +2697,7 @@ function appendAudit_(ss, actor, action, details) {
     var sh = ss.getSheetByName('Журнал');
     if (!sh) return;
     var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
-    sh.appendRow([isoDate_(), tm, actor || 'Система', action || '', details || '']);
+    sh.appendRow(safeRow_([isoDate_(), tm, actor || 'Система', action || '', details || '']));
   } catch (e) {}
 }
 
@@ -2953,7 +3000,7 @@ function getAdmin_(ss) {
       });
       existingCashDates[lDate] = true;
       try {
-        ss.getSheetByName('Касса').appendRow([lDate, lCashVal, lCardVal, lChecksVal, lWoVal, lHits, lWho, '', '', 0, lCof, lNonCof, lRevw, 0, '[]', JSON.stringify(legShift)]);
+        ss.getSheetByName('Касса').appendRow(safeRow_([lDate, lCashVal, lCardVal, lChecksVal, lWoVal, lHits, lWho, '', '', 0, lCof, lNonCof, lRevw, 0, '[]', JSON.stringify(legShift)]));
       } catch (_) {}
     }
   }
@@ -2989,7 +3036,7 @@ function getAdmin_(ss) {
       var leId = String(lre[0] || ('EXP-LEG-' + le));
       expenses.push({ id: leId, date: leDate, category: leCat, amount: leAmt, comment: leCom });
       existingExpKeys[eKey] = true;
-      try { ss.getSheetByName('Расходы').appendRow([leId, leDate, leCat, leAmt, leCom]); } catch (_) {}
+      try { ss.getSheetByName('Расходы').appendRow(safeRow_([leId, leDate, leCat, leAmt, leCom])); } catch (_) {}
     }
   }
   expenses.sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
@@ -3322,7 +3369,7 @@ function saveSetting_(ss, b) {
       return { ok: true };
     }
   }
-  sh.appendRow([k, b.value]);
+  sh.appendRow(safeRow_([k, b.value]));
   return { ok: true };
 }
 
@@ -3362,7 +3409,7 @@ function syncChecklistBlocksSheet_(ss, blocks) {
 
   var headers = ['ID', 'Название чек-листа', 'Открытие (ЧЧ:ММ)', 'Дедлайн (ЧЧ:ММ)', 'Касса (да/нет)', 'Активен (да/нет)', 'Сотрудник', 'Периодичность', 'Дни / Дата'];
   if (sh.getLastRow() === 0) {
-    sh.appendRow(headers);
+    sh.appendRow(safeRow_(headers));
   } else if (typeof sh.getRange === 'function') {
     try { sh.getRange(1, 1, 1, headers.length).setValues([headers]); } catch (_) {}
   }
@@ -3525,7 +3572,7 @@ function writeDailyPlansSheet_(ss, plans, roster) {
   if (lastRow > 1 && typeof sh.deleteRows === 'function') {
     try { sh.deleteRows(2, lastRow - 1); } catch (_) {}
   }
-  rows.forEach(function(r) { sh.appendRow(r); });
+  rows.forEach(function(r) { sh.appendRow(safeRow_(r)); });
 }
 
 function saveDailyPlans_(ss, b) {
@@ -3605,7 +3652,7 @@ function saveGoodDeed_(ss, b) {
       return { ok: true, id: id };
     }
   }
-  sh.appendRow(rowVals);
+  sh.appendRow(safeRow_(rowVals));
   return { ok: true, id: id };
 }
 
@@ -3637,7 +3684,7 @@ function saveServiceAudit_(ss, b) {
       return { ok: true, id: id };
     }
   }
-  sh.appendRow(rowVals);
+  sh.appendRow(safeRow_(rowVals));
   return { ok: true, id: id };
 }
 
@@ -3736,7 +3783,7 @@ function saveAnnouncement_(ss, b) {
       return { ok: true, id: id };
     }
   }
-  sh.appendRow(rowVals);
+  sh.appendRow(safeRow_(rowVals));
   appendAudit_(ss, 'Администратор', 'Публикация объявления', b.title);
   return { ok: true, id: id };
 }
@@ -3844,7 +3891,7 @@ function saveStaff_(ss, b) {
   if (matchRowIdx >= 1) {
     sh.getRange(matchRowIdx + 1, 1, 1, 7).setValues([[id, staffName, roleVal, shopVal, activeVal, '••', tgIdStr]]);
   } else {
-    sh.appendRow([id, staffName, roleVal, shopVal, activeVal, '••', tgIdStr]);
+    sh.appendRow(safeRow_([id, staffName, roleVal, shopVal, activeVal, '••', tgIdStr]));
   }
   bumpDataRev_();
   try {
@@ -3882,7 +3929,7 @@ function saveTtk_(ss, b) {
       return { ok: true, id: id };
     }
   }
-  sh.appendRow(rowVals);
+  sh.appendRow(safeRow_(rowVals));
   bumpDataRev_();
   return { ok: true, id: id };
 }
@@ -3985,7 +4032,7 @@ function saveTask_(ss, b, sessOpt) {
     }
     b.seedTasks.forEach(function(st) {
       if (!st || !st.id || existingIds[st.id] || st.id === '__SYS_CONFIG_V19__') return;
-      sh.appendRow([
+      sh.appendRow(safeRow_([
         String(st.id).trim(),
         st.block || 'Открытие',
         st.groupName || '',
@@ -3994,7 +4041,7 @@ function saveTask_(ss, b, sessOpt) {
         st.photoMode || st.photo || 'нет',
         st.responsible || 'Администратор',
         st.active || 'да'
-      ]);
+      ]));
       existingIds[st.id] = true;
     });
     rows = sh.getDataRange().getValues();
@@ -4014,7 +4061,7 @@ function saveTask_(ss, b, sessOpt) {
     bumpDataRev_();
     return { ok: true, id: id, row: Number(b.row), rev: getDataRev_() };
   }
-  sh.appendRow(rowVals);
+  sh.appendRow(safeRow_(rowVals));
   bumpDataRev_();
   return { ok: true, id: id };
 }
@@ -4135,7 +4182,7 @@ function syncAllToSheet_(ss, b) {
     if (lastT > 1) shT.deleteRows(2, lastT - 1);
     b.tasks.forEach(function(t) {
       if (!t || t.id === '__SYS_CONFIG_V19__' || t.title === '__SYS_SYNC__') return;
-      shT.appendRow([t.id || '', t.block || 'Открытие', t.groupName || '', t.title || '', t.instruction || '', t.photoMode || t.photo || 'нет', t.responsible || 'Администратор', t.active || 'да']);
+      shT.appendRow(safeRow_([t.id || '', t.block || 'Открытие', t.groupName || '', t.title || '', t.instruction || '', t.photoMode || t.photo || 'нет', t.responsible || 'Администратор', t.active || 'да']));
     });
   }
   if (Array.isArray(b.goodDeeds)) {
@@ -4144,7 +4191,7 @@ function syncAllToSheet_(ss, b) {
     if (lastG > 1) shG.deleteRows(2, lastG - 1);
     b.goodDeeds.forEach(function(g) {
       if (!g) return;
-      shG.appendRow([g.id || '', g.title || '', g.frequency || '', g.window || '', g.responsible || 'Бариста', g.reviewer || 'Управляющий', g.instruction || '']);
+      shG.appendRow(safeRow_([g.id || '', g.title || '', g.frequency || '', g.window || '', g.responsible || 'Бариста', g.reviewer || 'Управляющий', g.instruction || '']));
     });
   }
   if (Array.isArray(b.ttk)) {
@@ -4153,7 +4200,7 @@ function syncAllToSheet_(ss, b) {
     if (lastK > 1) shK.deleteRows(2, lastK - 1);
     b.ttk.forEach(function(k) {
       if (!k) return;
-      shK.appendRow([k.id || '', k.name || '', k.volume || '', k.category || '', Number(k.price) || 0, Number(k.costBeans) || 0, Number(k.costMilk) || 0, Number(k.costSyrup) || 0, Number(k.costCup) || 0, k.recipe || '', k.serving || '']);
+      shK.appendRow(safeRow_([k.id || '', k.name || '', k.volume || '', k.category || '', Number(k.price) || 0, Number(k.costBeans) || 0, Number(k.costMilk) || 0, Number(k.costSyrup) || 0, Number(k.costCup) || 0, k.recipe || '', k.serving || '']));
     });
   }
   if (Array.isArray(b.staff)) {
@@ -4162,7 +4209,7 @@ function syncAllToSheet_(ss, b) {
     if (lastS > 1) shS.deleteRows(2, lastS - 1);
     b.staff.forEach(function(s) {
       if (!s) return;
-      shS.appendRow([s.id || '', s.name || '', s.role || 'Бариста', s.shop || 'Кофейня №1', s.active || 'да', '••']);
+      shS.appendRow(safeRow_([s.id || '', s.name || '', s.role || 'Бариста', s.shop || 'Кофейня №1', s.active || 'да', '••']));
     });
   }
   appendAudit_(ss, 'Администратор', 'Полная выгрузка конфигурации в Google Таблицу', 'Настройки, Таймлайн, Планы, Задачи, Карта добрых дел, Техкарты и Штат синхронизированы');
@@ -4174,7 +4221,7 @@ function submitCash_(ss, b) {
   var shSales = ss.getSheetByName('Продажи');
   if (!shSales) {
     shSales = ss.insertSheet('Продажи');
-    shSales.appendRow(['Дата', 'Смена', 'Бариста', 'Номенклатура', 'Категория', 'Цена', 'Количество', 'Сумма', 'Хэш CSV']);
+    shSales.appendRow(safeRow_(['Дата', 'Смена', 'Бариста', 'Номенклатура', 'Категория', 'Цена', 'Количество', 'Сумма', 'Хэш CSV']));
   }
   var dt = fmtIso_(b.date) || isoDate_();
   var mode = b.mergeMode || (b.action === 'admin_cash' ? 'replace' : 'sum');
@@ -4220,7 +4267,7 @@ function submitCash_(ss, b) {
       duplicateCsvSkipped = true;
       return;
     }
-    shSales.appendRow([dt, pBarista, pBarista, String(p.name).trim(), pKind, pPrice, pQty, pSum, pHash]);
+    shSales.appendRow(safeRow_([dt, pBarista, pBarista, String(p.name).trim(), pKind, pPrice, pQty, pSum, pHash]));
   });
 
   // v93.1: Запись детализированных чеков в лист «Транзакции» с дедупликацией по номеру чека
@@ -4230,7 +4277,7 @@ function submitCash_(ss, b) {
     var shTx = ss.getSheetByName('Транзакции');
     if (!shTx) {
       shTx = ss.insertSheet('Транзакции');
-      shTx.appendRow(['Дата', 'Время', 'Номер чека', 'Способ оплаты', 'Сумма', 'Пользователь POS', 'Бариста', 'Хэш CSV']);
+      shTx.appendRow(safeRow_(['Дата', 'Время', 'Номер чека', 'Способ оплаты', 'Сумма', 'Пользователь POS', 'Бариста', 'Хэш CSV']));
     }
     var shopKey = String((getSettingsMap_(ss).LOCATION) || 'default').trim().toLowerCase();
     var txRows = shTx.getDataRange().getValues();
@@ -4392,13 +4439,13 @@ function submitCash_(ss, b) {
     }
   }
 
-  sh.appendRow([
+  sh.appendRow(safeRow_([
     dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, woRub,
     b.topItems || '', baristaName,
     cStart != null ? cStart : '', cEnd != null ? cEnd : '',
     woShots, coffeeQty, nonCoffeeQty, reviewQty, unaccountedShots,
     JSON.stringify(incomingHashes), JSON.stringify(shiftsArr)
-  ]);
+  ]));
   if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
   bumpDataRev_();
   return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
@@ -4406,9 +4453,26 @@ function submitCash_(ss, b) {
 
 function batchSubmitCash_(ss, b) {
   var sess = requireAdminOrStaffSession_(ss, b);
+  var isAdmin = (sess && sess.role === 'admin');
   var days = Array.isArray(b && b.days) ? b.days : [];
   if (!days.length) {
     throw new Error('VALIDATION_FAILED: Пакет кассовых отчётов пуст (days должен быть непустым массивом)');
+  }
+  if (!isAdmin) {
+    if (days.length > 2) {
+      throw new Error('FORBIDDEN: Сотрудник может отправлять кассу только за сегодня и вчера');
+    }
+    if (String(b && b.mergeMode || 'sum').toLowerCase() === 'replace') {
+      throw new Error('FORBIDDEN: Режим перезаписи (replace) доступен только владельцу');
+    }
+    var todayStr = isoDate_();
+    var yestStr = isoDate_(new Date(Date.now() - 86400000));
+    for (var si = 0; si < days.length; si++) {
+      var dtChk = String((days[si] && days[si].date) || '').slice(0, 10);
+      if (dtChk !== todayStr && dtChk !== yestStr) {
+        throw new Error('FORBIDDEN: Сотрудник может вносить кассу только за сегодня (' + todayStr + ') или вчера (' + yestStr + ')');
+      }
+    }
   }
   if (days.length > 62) {
     throw new Error('VALIDATION_FAILED: Превышен максимальный размер пакета (не более 62 дней за запрос)');
@@ -4481,17 +4545,21 @@ function deleteCash_(ss, b) {
 function addExpense_(ss, b) {
   var sh = ss.getSheetByName('Расходы');
   var id = String(b.id || newId_('EXP')).trim();
-  sh.appendRow([id, b.date || isoDate_(), b.category || 'Прочее', Number(b.amount) || 0, b.comment || '']);
+  sh.appendRow(safeRow_([id, b.date || isoDate_(), b.category || 'Прочее', Number(b.amount) || 0, b.comment || '']));
   bumpDataRev_();
   return { ok: true, id: id };
 }
 
 function updateExpense_(ss, b) {
+  var dt = String((b && b.date) || '').trim();
+  var amt = Number(b && b.amount);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) throw new Error('VALIDATION_FAILED: Некорректная дата расхода');
+  if (!isFinite(amt) || amt <= 0 || amt > 10000000) throw new Error('VALIDATION_FAILED: Некорректная сумма расхода');
   var sh = ss.getSheetByName('Расходы');
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(b.id)) {
-      sh.getRange(i + 1, 2, 1, 4).setValues([[b.date, b.category, Number(b.amount) || 0, b.comment || '']]);
+      sh.getRange(i + 1, 2, 1, 4).setValues([safeRow_([dt, String(b.category || 'Прочее').trim(), amt, String(b.comment || '').trim()])]);
       break;
     }
   }
@@ -4688,7 +4756,7 @@ function submitChecklist_(ss, b) {
     if (finalUrl) phs.push({ step: it.title || '', url: finalUrl, isIncident: !!it.isIncident, comment: it.comment || '' });
   });
 
-  sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, JSON.stringify(phs), b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']);
+  sh.appendRow(safeRow_([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, JSON.stringify(phs), b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']));
   try {
     saveChecklistDraft_(ss, { sessionToken: b.sessionToken, staffPinHash: b.staffPinHash, pinHash: b.pinHash, pin: b.pin, date: dt, userName: b.userName || 'Бариста', block: b.block || 'Открытие', completed: true, updatedAt: Date.now() });
   } catch (_) {}
@@ -4697,7 +4765,7 @@ function submitChecklist_(ss, b) {
   probs.forEach(function(p) {
     var assignedOwner = p.responsible || p.owner || 'Администратор';
     var hist = [{ time: dt + ' ' + tm, actor: b.userName || 'Бариста', status: 'Новая проблема', note: 'Зафиксировано при прохождении чек-листа' }];
-    shI.appendRow([
+    shI.appendRow(safeRow_([
       newId_('INC'),
       dt,
       tm,
@@ -4710,7 +4778,7 @@ function submitChecklist_(ss, b) {
       p.photo_url || '',
       p.incType || 'Поломка оборудования',
       JSON.stringify(hist)
-    ]);
+    ]));
   });
 
   try {
@@ -4761,7 +4829,7 @@ function reportIncident_(ss, b) {
       id = newId_('INC');
     } while (existingIds[id]);
   }
-  shI.appendRow([
+  shI.appendRow(safeRow_([
     id,
     dt,
     tm,
@@ -4774,7 +4842,7 @@ function reportIncident_(ss, b) {
     b.photo || '',
     b.incType || 'Поломка оборудования',
     JSON.stringify(hist)
-  ]);
+  ]));
   appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
   return { ok: true, id: id };
 }
@@ -5168,9 +5236,10 @@ function applySecureDriveFileSharingV82_(file) {
   if (!file) return 'PRIVATE';
   try {
     var props = PropertiesService.getScriptProperties();
-    // По умолчанию открываем доступ читателя по ссылке (ANYONE_WITH_LINK + VIEW), чтобы владелец видел фото без ошибки «нужен доступ читателя»
-    var strictPrivate = props && props.getProperty('STRICT_PRIVATE_DRIVE_PHOTOS') === '1';
-    if (!strictPrivate && typeof DriveApp !== 'undefined' && DriveApp.Access && DriveApp.Permission) {
+    // P1-9: По умолчанию фото и видео на Google Drive приватны (PRIVATE).
+    // Публичный доступ по ссылке включается только явным флагом ALLOW_PUBLIC_LINK_DRIVE_PHOTOS=1.
+    var allowPublic = props && props.getProperty('ALLOW_PUBLIC_LINK_DRIVE_PHOTOS') === '1';
+    if (allowPublic && typeof DriveApp !== 'undefined' && DriveApp.Access && DriveApp.Permission) {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       return 'ANYONE_WITH_LINK';
     }
@@ -5263,7 +5332,7 @@ function verifyTelegramInitDataHmac_(initDataRaw, checkReplayOpt) {
   }
   var authDateSec = Number(authDateMatch[1]);
   var nowSec = Math.floor(Date.now() / 1000);
-  if (!isFinite(authDateSec) || authDateSec <= 0 || (nowSec - authDateSec) > 86400 || authDateSec > (nowSec + 300)) {
+  if (!isFinite(authDateSec) || authDateSec <= 0 || (nowSec - authDateSec) > 7200 || authDateSec > (nowSec + 300)) {
     return { ok: false, reason: 'EXPIRED_INIT_DATA' };
   }
 
@@ -5466,7 +5535,7 @@ function handoverShift_(ss, body, sess) {
   var sh = ss.getSheetByName('ПередачаСмен');
   if (!sh) {
     sh = ss.insertSheet('ПередачаСмен');
-    sh.appendRow(['HandoverID', 'Timestamp', 'BusinessDate', 'FromStaff', 'ToStaff', 'EquipmentState', 'OpenTasksJSON', 'CashStateJSON', 'Notes', 'ConfirmedByBoth']);
+    sh.appendRow(safeRow_(['HandoverID', 'Timestamp', 'BusinessDate', 'FromStaff', 'ToStaff', 'EquipmentState', 'OpenTasksJSON', 'CashStateJSON', 'Notes', 'ConfirmedByBoth']));
   }
   var hid = newId_('HND');
   var ts = new Date().toISOString();
@@ -5476,7 +5545,7 @@ function handoverShift_(ss, body, sess) {
   var cashState = JSON.stringify((body && body.cashState && typeof body.cashState === 'object') ? body.cashState : {});
   var notes = String((body && body.notes) || '').slice(0, 1000);
   var confirmed = !!(body && body.confirmedByReceiver);
-  sh.appendRow([hid, ts, bDate, fromStaff, toStaff, equip, openTasks, cashState, notes, confirmed ? 'да' : 'ожидает']);
+  sh.appendRow(safeRow_([hid, ts, bDate, fromStaff, toStaff, equip, openTasks, cashState, notes, confirmed ? 'да' : 'ожидает']));
   appendAudit_(ss, fromStaff, 'Передача смены', 'ID: ' + hid + ' -> ' + toStaff);
   return { ok: true, handoverId: hid, timestamp: ts, fromStaff: fromStaff, toStaff: toStaff, immutable: true };
 }
@@ -5492,19 +5561,19 @@ function submitWriteoff_(ss, body, sess) {
   var sh = ss.getSheetByName('Списания');
   if (!sh) {
     sh = ss.insertSheet('Списания');
-    sh.appendRow(['WriteoffID', 'Date', 'Timestamp', 'Staff', 'ItemName', 'Qty', 'Reason', 'Comment', 'PhotoURL', 'MediaID', 'Status']);
+    sh.appendRow(safeRow_(['WriteoffID', 'Date', 'Timestamp', 'Staff', 'ItemName', 'Qty', 'Reason', 'Comment', 'PhotoURL', 'MediaID', 'Status']));
   }
   var wid = newId_('WO');
   var dt = String((body && body.date) || isoDate_()).trim();
   if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректная дата списания');
   var ts = new Date().toISOString();
-  sh.appendRow([
+  sh.appendRow(safeRow_([
     wid, dt, ts, staff, itemName.slice(0, 150), qty, reason.slice(0, 200),
     String((body && body.comment) || '').slice(0, 500),
     String((body && body.photoUrl) || '').slice(0, 500),
     String((body && body.mediaId) || '').slice(0, 120),
     'Ожидает проверки'
-  ]);
+  ]));
   appendAudit_(ss, staff, 'Регистрация списания', itemName + ' (' + qty + '), причина: ' + reason);
   return { ok: true, writeoffId: wid, status: 'Ожидает проверки' };
 }
@@ -5520,15 +5589,15 @@ function submitAdjustment_(ss, body, sess) {
   var sh = ss.getSheetByName('Корректировки');
   if (!sh) {
     sh = ss.insertSheet('Корректировки');
-    sh.appendRow(['AdjustmentID', 'Timestamp', 'EntityType', 'TargetID', 'Actor', 'Reason', 'BeforeSummary', 'AfterSummary']);
+    sh.appendRow(safeRow_(['AdjustmentID', 'Timestamp', 'EntityType', 'TargetID', 'Actor', 'Reason', 'BeforeSummary', 'AfterSummary']));
   }
   var aid = newId_('ADJ');
   var ts = new Date().toISOString();
-  sh.appendRow([
+  sh.appendRow(safeRow_([
     aid, ts, entityType, targetId, actor, reason.slice(0, 500),
     JSON.stringify((body && body.beforeSummary) || {}),
     JSON.stringify((body && body.afterSummary) || {})
-  ]);
+  ]));
   appendAudit_(ss, actor, 'Корректировка подтверждённой записи', entityType + ':' + targetId + ' — ' + reason);
   return { ok: true, adjustmentId: aid, appendOnly: true };
 }
@@ -5577,9 +5646,9 @@ function markStaffOnShift_(ss, staffName, tgId, source) {
       var shP = ss.getSheetByName('Посещаемость');
       if (!shP) {
         shP = ss.insertSheet('Посещаемость');
-        shP.appendRow(['Дата', 'Время входа', 'Сотрудник', 'Статус', 'Telegram ID', 'Источник']);
+        shP.appendRow(safeRow_(['Дата', 'Время входа', 'Сотрудник', 'Статус', 'Telegram ID', 'Источник']));
       }
-      shP.appendRow([today, checkedInAt, nm, 'На работе', map[nm].tgId, map[nm].source]);
+      shP.appendRow(safeRow_([today, checkedInAt, nm, 'На работе', map[nm].tgId, map[nm].source]));
     } catch (_) {}
     try { appendAudit_(ss, nm, 'Отмечен на работе (смена открыта)', 'Время: ' + checkedInAt + ' · ' + map[nm].source); } catch (_) {}
   }

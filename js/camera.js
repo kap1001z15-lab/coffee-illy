@@ -1,14 +1,11 @@
 /**
- * Coffee Illy — Cross-Platform Camera Module (v97.0.0)
- * Единый модуль (заменяет дубликаты camera-v92.js и camera-v94.js).
- *
- * Возможности:
- * - Однократный запрос разрешения и prewarm() при открытии чек-листа
- * - Фото (сжатие до 1280px JPEG 0.78) + Видео до 15 сек (MediaRecorder)
- * - Мультисъёмка: несколько фото/видео на один шаг; ЗАГРУЗКА ИЗ ГАЛЕРЕИ ЗАПРЕЩЕНА
- * - Переключение фронтальная/тыловая камера (Android/iOS) + выбор устройства (Windows/macOS с несколькими камерами)
- * - Освобождение ресурсов при сворачивании (visibilitychange) и переинициализация при возврате
- * - Понятные сообщения об ошибках (отказ, нет камеры, занята другим приложением, HTTP вместо HTTPS)
+ * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v97.17.0)
+ * Единый модуль камеры с однократным запросом разрешения при входе в терминал:
+ * - prewarm({ keepAlive: true }) запрашивает доступ 1 раз при входе и держит поток
+ *   в энергосберегающей паузе (track.enabled = false) без повторных запросов getUserMedia
+ *   на каждом шаге чек-листа (Android Telegram WebView / iOS Safari / PWA / Desktop).
+ * - Фото (до 1280px JPEG 0.78) + Видео до 15 сек (MediaRecorder) без галереи.
+ * - Полное освобождение камеры только при выходе из смены / закрытии вкладки.
  */
 (function (global) {
   'use strict';
@@ -16,6 +13,12 @@
   var MAX_VIDEO_SEC = 15;
   var MAX_PHOTO_DIM = 1280;
   var JPEG_QUALITY = 0.78;
+  var CAM_GRANTED_KEY = 'coffee_illy_v97_cam_granted';
+
+  var ICO_CLOSE = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  var ICO_FLIP = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>';
+  var ICO_VIDEO = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="3"/></svg>';
+  var ICO_STOP = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:15px;height:15px;fill:currentColor;"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>';
 
   var state = {
     stream: null,
@@ -23,6 +26,7 @@
     selectedDeviceId: '',
     devices: [],
     prewarmed: false,
+    keepAliveSession: false,
     recording: false,
     mediaRecorder: null,
     recChunks: [],
@@ -59,9 +63,9 @@
   function pickSupportedVideoMime() {
     if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
     var candidates = [
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/mp4;codecs=avc1.42E01E',
       'video/mp4',
       'video/webm'
     ];
@@ -71,6 +75,46 @@
       } catch (_) {}
     }
     return '';
+  }
+
+  function hasLiveStream() {
+    if (!state.stream || typeof state.stream.getTracks !== 'function') return false;
+    var tracks = state.stream.getTracks();
+    if (!tracks || !tracks.length) return false;
+    for (var i = 0; i < tracks.length; i++) {
+      if (tracks[i] && (tracks[i].readyState === 'live' || tracks[i].readyState === undefined)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function pauseStream() {
+    if (state.recTimer) {
+      clearInterval(state.recTimer);
+      state.recTimer = null;
+    }
+    if (state.mediaRecorder && state.recording) {
+      try { state.mediaRecorder.stop(); } catch (_) {}
+    }
+    state.recording = false;
+    if (state.stream && typeof state.stream.getTracks === 'function') {
+      try {
+        state.stream.getTracks().forEach(function (t) {
+          if (t && 'enabled' in t) t.enabled = false;
+        });
+      } catch (_) {}
+    }
+  }
+
+  function resumeStream() {
+    if (state.stream && typeof state.stream.getTracks === 'function') {
+      try {
+        state.stream.getTracks().forEach(function (t) {
+          if (t && 'enabled' in t) t.enabled = true;
+        });
+      } catch (_) {}
+    }
   }
 
   function stopStream() {
@@ -88,6 +132,7 @@
       } catch (_) {}
       state.stream = null;
     }
+    state.prewarmed = false;
   }
 
   async function listVideoDevices() {
@@ -103,9 +148,14 @@
     }
   }
 
-  async function acquireStream(withAudio) {
+  async function acquireStream(withAudio, forceNew) {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('Браузер не поддерживает доступ к камере (MediaDevices API).');
+    }
+    // Если разрешение уже получено и поток живой — мгновенно переиспользуем его без повторного запроса ОС
+    if (!forceNew && !withAudio && hasLiveStream()) {
+      resumeStream();
+      return state.stream;
     }
     stopStream();
 
@@ -123,18 +173,29 @@
         throw err;
       }
     }
+    state.prewarmed = true;
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(CAM_GRANTED_KEY, '1'); } catch (_) {}
     await listVideoDevices();
     return state.stream;
   }
 
-  async function prewarm() {
-    if (state.prewarmed) return { ok: true, prewarmed: true };
+  async function prewarm(opts) {
+    var keepAlive = !!(opts && opts.keepAlive);
+    state.keepAliveSession = keepAlive;
+    if (state.prewarmed && (!keepAlive || hasLiveStream())) {
+      return { ok: true, prewarmed: true, reused: true };
+    }
     try {
-      var s = await acquireStream(false);
-      state.prewarmed = true;
-      // Сразу освобождаем аппаратный сенсор после получения разрешения, чтобы экономить батарею
-      stopStream();
-      return { ok: true, prewarmed: true, tracks: s ? s.getTracks().length : 0 };
+      var s = await acquireStream(false, false);
+      var trackCount = s && typeof s.getTracks === 'function' ? s.getTracks().length : 0;
+      if (keepAlive) {
+        // Оставляем разрешение и поток в тихом standby-режиме: ни одного повторного запроса камеры на шагах чек-листа
+        pauseStream();
+      } else {
+        stopStream();
+        state.prewarmed = true;
+      }
+      return { ok: true, prewarmed: true, keepAlive: keepAlive, tracks: trackCount };
     } catch (err) {
       return { ok: false, error: mapCameraError(err) };
     }
@@ -162,6 +223,13 @@
     };
   }
 
+  // Полное освобождение камеры при закрытии вкладки/приложения
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && !window._coffeeCamLifecycleBound) {
+    window._coffeeCamLifecycleBound = true;
+    window.addEventListener('pagehide', stopStream);
+    window.addEventListener('beforeunload', stopStream);
+  }
+
   function open(opts) {
     opts = opts || {};
     state.multiMode = opts.multi !== false;
@@ -170,7 +238,7 @@
     state.onDone = typeof opts.onCapture === 'function' ? opts.onCapture : null;
     var onCapturedCb = typeof opts.onCaptured === 'function' ? opts.onCaptured : null;
 
-    return new Promise(function (resolve, reject) {
+    return new Promise(function (resolve) {
       var resolved = false;
       function finish(items, cancelled) {
         if (resolved) return;
@@ -199,7 +267,14 @@
 
       function cleanupUi() {
         document.removeEventListener('visibilitychange', onVisibility);
-        stopStream();
+        var vEl = state.overlay && state.overlay.querySelector ? state.overlay.querySelector('video') : null;
+        if (vEl) { try { vEl.srcObject = null; } catch (_) {} }
+        if (state.keepAliveSession) {
+          // Сохраняем разрешение камеры активным в standby для следующего шага чек-листа
+          pauseStream();
+        } else {
+          stopStream();
+        }
         if (state.overlay && state.overlay.parentNode) {
           state.overlay.parentNode.removeChild(state.overlay);
         }
@@ -209,12 +284,12 @@
       async function onVisibility() {
         if (!state.overlay) return;
         if (document.hidden) {
-          stopStream();
+          pauseStream();
         } else {
           try {
             var v = state.overlay.querySelector('video');
             if (v) {
-              var s = await acquireStream(false);
+              var s = await acquireStream(false, false);
               v.srcObject = s;
               await v.play();
             }
@@ -224,26 +299,26 @@
       document.addEventListener('visibilitychange', onVisibility);
 
       var ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:#0d0c0c;color:#fff;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
+      ov.className = 'lg-cam-overlay';
       ov.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;gap:8px;">' +
-          '<button type="button" data-cam="close" style="background:rgba(255,255,255,0.14);color:#fff;border:none;border-radius:999px;padding:8px 14px;font-weight:700;cursor:pointer;">✕ Закрыть</button>' +
-          '<div style="font-size:13px;font-weight:700;text-align:center;flex:1;">' + (opts.title || 'Живая камера (без галереи)') + '</div>' +
-          '<button type="button" data-cam="flip" style="background:rgba(255,255,255,0.14);color:#fff;border:none;border-radius:999px;padding:8px 12px;font-weight:700;cursor:pointer;">🔄</button>' +
+        '<div class="lg-cam-top">' +
+          '<button type="button" class="lg-cam-pill" data-cam="close" aria-label="Закрыть камеру">' + ICO_CLOSE + '<span>Закрыть</span></button>' +
+          '<div class="lg-cam-title">' + (opts.title || 'Живая камера') + '</div>' +
+          '<button type="button" class="lg-cam-icon" data-cam="flip" aria-label="Сменить камеру">' + ICO_FLIP + '</button>' +
         '</div>' +
-        '<div data-cam="devwrap" style="padding:0 14px 8px;display:none;">' +
-          '<select data-cam="devices" style="width:100%;padding:8px 10px;border-radius:10px;background:#23201e;color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:13px;"></select>' +
+        '<div data-cam="devwrap" class="lg-cam-devwrap" style="display:none;">' +
+          '<select data-cam="devices" class="lg-cam-select"></select>' +
         '</div>' +
-        '<div style="position:relative;flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;">' +
-          '<video autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>' +
-          '<div data-cam="err" style="display:none;position:absolute;inset:16px;align-items:center;justify-content:center;text-align:center;background:rgba(0,0,0,0.82);border-radius:16px;padding:20px;font-size:14px;line-height:1.5;"></div>' +
-          '<div data-cam="recbadge" style="display:none;position:absolute;top:14px;left:50%;transform:translateX(-50%);background:#C62828;color:#fff;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:800;">● REC 00:00 / 00:15</div>' +
+        '<div class="lg-cam-stage">' +
+          '<video autoplay playsinline muted class="lg-cam-video"></video>' +
+          '<div data-cam="err" class="lg-cam-err" style="display:none;"></div>' +
+          '<div data-cam="recbadge" class="lg-cam-rec" style="display:none;">● REC 00:00 / 00:15</div>' +
         '</div>' +
-        '<div data-cam="strip" style="display:none;gap:8px;overflow-x:auto;padding:8px 14px;background:#171514;"></div>' +
-        '<div style="display:flex;align-items:center;justify-content:space-around;padding:14px 16px 18px;background:#171514;gap:10px;">' +
-          (state.allowVideo ? '<button type="button" data-cam="video" style="background:rgba(255,255,255,0.14);color:#fff;border:none;border-radius:999px;padding:12px 16px;font-weight:700;cursor:pointer;">🎥 Видео (15с)</button>' : '<span></span>') +
-          '<button type="button" data-cam="shutter" style="width:68px;height:68px;border-radius:50%;background:#fff;border:5px solid #B85C38;cursor:pointer;" aria-label="Сделать фото"></button>' +
-          '<button type="button" data-cam="done" style="background:#B85C38;color:#fff;border:none;border-radius:999px;padding:12px 18px;font-weight:700;cursor:pointer;opacity:0.45;" disabled>Готово (0)</button>' +
+        '<div data-cam="strip" class="lg-cam-strip" style="display:none;"></div>' +
+        '<div class="lg-cam-dock">' +
+          (state.allowVideo ? '<button type="button" class="lg-cam-pill" data-cam="video">' + ICO_VIDEO + '<span>Видео 15с</span></button>' : '<span></span>') +
+          '<button type="button" class="lg-cam-shutter" data-cam="shutter" aria-label="Сделать фото"><span></span></button>' +
+          '<button type="button" class="lg-cam-done" data-cam="done" disabled>Готово (0)</button>' +
         '</div>';
 
       state.overlay = ov;
@@ -261,7 +336,6 @@
         var count = state.capturedItems.length;
         doneBtn.textContent = 'Готово (' + count + ')';
         doneBtn.disabled = count === 0;
-        doneBtn.style.opacity = count === 0 ? '0.45' : '1';
         if (!count) {
           stripEl.style.display = 'none';
           stripEl.innerHTML = '';
@@ -270,10 +344,10 @@
         stripEl.style.display = 'flex';
         stripEl.innerHTML = state.capturedItems.map(function (it, idx) {
           var preview = it.kind === 'video'
-            ? '<div style="width:52px;height:52px;border-radius:10px;background:#2D2424;display:flex;align-items:center;justify-content:center;font-size:18px;">🎥</div>'
-            : '<img src="' + it.dataUrl + '" style="width:52px;height:52px;border-radius:10px;object-fit:cover;">';
-          return '<div style="position:relative;flex:0 0 auto;">' + preview +
-            '<button type="button" data-del="' + idx + '" style="position:absolute;top:-5px;right:-5px;width:20px;height:20px;min-height:20px;border-radius:50%;border:none;background:#C62828;color:#fff;font-size:11px;cursor:pointer;">✕</button></div>';
+            ? '<div class="lg-cam-thumb-vid">' + ICO_VIDEO + '</div>'
+            : '<img src="' + it.dataUrl + '" class="lg-cam-thumb-img">';
+          return '<div class="lg-cam-thumb">' + preview +
+            '<button type="button" class="lg-cam-thumb-del" data-del="' + idx + '" aria-label="Удалить">' + ICO_CLOSE + '</button></div>';
         }).join('');
         stripEl.querySelectorAll('[data-del]').forEach(function (b) {
           b.onclick = function () {
@@ -283,10 +357,10 @@
         });
       }
 
-      async function bootCamera(withAudio) {
+      async function bootCamera(withAudio, forceNew) {
         errEl.style.display = 'none';
         try {
-          var s = await acquireStream(withAudio);
+          var s = await acquireStream(withAudio, forceNew);
           videoEl.srcObject = s;
           await videoEl.play();
           if (state.devices.length > 1) {
@@ -305,17 +379,19 @@
 
       devSel.onchange = function () {
         state.selectedDeviceId = devSel.value;
-        bootCamera(false);
+        bootCamera(false, true);
       };
 
       ov.querySelector('[data-cam="close"]').onclick = function () { finish([], true); };
       ov.querySelector('[data-cam="flip"]').onclick = function () {
         state.selectedDeviceId = '';
         state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
-        bootCamera(false);
+        if (global && global.CoffeeHaptic && global.CoffeeHaptic.select) global.CoffeeHaptic.select();
+        bootCamera(false, true);
       };
       ov.querySelector('[data-cam="shutter"]').onclick = function () {
         if (!state.stream || state.recording) return;
+        if (global && global.CoffeeHaptic && global.CoffeeHaptic.impact) global.CoffeeHaptic.impact('medium');
         var item = capturePhotoFromVideo(videoEl);
         state.capturedItems.push(item);
         if (!state.multiMode) {
@@ -341,7 +417,8 @@
             return;
           }
           try {
-            await bootCamera(true);
+            // Записываем видео с уже открытого видеопотока (без повторного запроса микрофона/камеры)
+            await bootCamera(false, false);
             var mime = pickSupportedVideoMime();
             state.recChunks = [];
             state.mediaRecorder = mime ? new MediaRecorder(state.stream, { mimeType: mime }) : new MediaRecorder(state.stream);
@@ -352,7 +429,7 @@
               state.recording = false;
               clearInterval(state.recTimer);
               recBadge.style.display = 'none';
-              vidBtn.textContent = '🎥 Видео (15с)';
+              vidBtn.innerHTML = ICO_VIDEO + '<span>Видео 15с</span>';
               var blob = new Blob(state.recChunks, { type: mime || 'video/webm' });
               var reader = new FileReader();
               reader.onloadend = function () {
@@ -372,7 +449,7 @@
             state.recording = true;
             recBadge.style.display = 'block';
             recBadge.textContent = '● REC 00:00 / 00:15';
-            vidBtn.textContent = '⏹ Стоп';
+            vidBtn.innerHTML = ICO_STOP + '<span>Стоп</span>';
             state.mediaRecorder.start(250);
             state.recTimer = setInterval(function () {
               state.recSec++;
@@ -388,19 +465,21 @@
         };
       }
 
-      bootCamera(false);
+      bootCamera(false, false);
     });
   }
 
-  // Обратная совместимость с существующими вызовами CoffeeCamera.capture / openCamera
   var api = {
-    version: 'v97.0.0',
+    version: 'v97.17.0',
     MAX_VIDEO_SEC: MAX_VIDEO_SEC,
     prewarm: prewarm,
     open: open,
     capture: open,
     openCamera: open,
+    pauseStream: pauseStream,
     stopStream: stopStream,
+    stop: stopStream,
+    hasLiveStream: hasLiveStream,
     listVideoDevices: listVideoDevices,
     mapCameraError: mapCameraError,
     pickSupportedVideoMime: pickSupportedVideoMime

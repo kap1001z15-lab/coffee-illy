@@ -49,17 +49,21 @@ test('Camera error mapper returns clear Russian guidance', () => {
 
 test('Camera prewarm requests permission once and releases tracks cleanly', async () => {
   let stopped = false;
-  globalThis.navigator = {
-    mediaDevices: {
-      getUserMedia: async () => ({
-        getTracks: () => [{ stop: () => { stopped = true; } }]
-      }),
-      enumerateDevices: async () => [
-        { kind: 'videoinput', deviceId: 'cam1', label: 'Front Camera' },
-        { kind: 'videoinput', deviceId: 'cam2', label: 'Back Camera' }
-      ]
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: {
+      mediaDevices: {
+        getUserMedia: async () => ({
+          getTracks: () => [{ stop: () => { stopped = true; } }]
+        }),
+        enumerateDevices: async () => [
+          { kind: 'videoinput', deviceId: 'cam1', label: 'Front Camera' },
+          { kind: 'videoinput', deviceId: 'cam2', label: 'Back Camera' }
+        ]
+      }
     }
-  };
+  });
   const res = await camera.prewarm();
   assert.equal(res.ok, true);
   assert.equal(stopped, true, 'prewarm should release hardware track after permission check');
@@ -398,4 +402,40 @@ test('Dashboard pins BOTH #admin-nav and #date-filter-bar in .dash-sticky-dock a
   assert.match(dashHtml, /id="dash-sticky-dock"/);
   assert.match(dashHtml, /body\s*\{\s*overflow-x:\s*clip;/);
   assert.ok(!dashHtml.includes('readonly data-time-picker="1"'), 'Time inputs must allow direct keyboard typing');
+});
+
+test('Camera keepAlive prewarm requests OS permission ONCE and reuses standby stream across checklist steps without re-prompting', async () => {
+  let gumCalls = 0;
+  let stopped = false;
+  const fakeTrack = {
+    readyState: 'live',
+    enabled: true,
+    stop: () => { stopped = true; fakeTrack.readyState = 'ended'; }
+  };
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: {
+      mediaDevices: {
+        getUserMedia: async () => {
+          gumCalls++;
+          return { getTracks: () => [fakeTrack] };
+        },
+        enumerateDevices: async () => [{ kind: 'videoinput', deviceId: 'back', label: 'Back Camera' }]
+      }
+    }
+  });
+  camera.stopStream();
+  const r1 = await camera.prewarm({ keepAlive: true });
+  assert.equal(r1.ok, true);
+  assert.equal(gumCalls, 1, 'prewarm({ keepAlive: true }) must call getUserMedia once');
+  assert.equal(stopped, false, 'keepAlive prewarm must pause track instead of stopping it');
+  assert.equal(fakeTrack.enabled, false, 'track must be paused (enabled=false) in standby');
+  assert.equal(camera.hasLiveStream(), true, 'live stream remains ready for next checklist step');
+  // Second prewarm call reuses stream without another OS prompt
+  const r2 = await camera.prewarm({ keepAlive: true });
+  assert.equal(r2.ok, true);
+  assert.equal(gumCalls, 1, 'Repeated prewarm must NOT trigger another OS camera permission prompt');
+  camera.stopStream();
+  assert.equal(stopped, true, 'Explicit stopStream() on logout releases hardware cleanly');
 });

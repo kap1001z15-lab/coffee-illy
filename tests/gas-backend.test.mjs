@@ -167,21 +167,21 @@ function createMockGasSandbox() {
   return { sandbox, mockSs, sheets, propsStore };
 }
 
-test('GAS doGet(get_rev) returns ok:true and v97.15.6 without ReferenceError', { skip: !hasGas }, () => {
+test('GAS doGet(get_rev) returns ok:true and v97.17.0 without ReferenceError', { skip: !hasGas }, () => {
   const { sandbox } = createMockGasSandbox();
   const out = sandbox.doGet({ parameter: { action: 'get_rev' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true, 'doGet(get_rev) must succeed');
-  assert.equal(json.serverVersion, 'v97.15.6');
+  assert.equal(json.serverVersion, 'v97.17.0');
   assert.equal(json.api, 2);
 });
 
-test('GAS doGet(version) returns v97.15.6 and specVersion 5.0', { skip: !hasGas }, () => {
+test('GAS doGet(version) returns v97.17.0 and specVersion 5.0', { skip: !hasGas }, () => {
   const { sandbox } = createMockGasSandbox();
   const out = sandbox.doGet({ parameter: { action: 'version' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true);
-  assert.equal(json.serverVersion, 'v97.15.6');
+  assert.equal(json.serverVersion, 'v97.17.0');
   assert.equal(json.specVersion, '5.0');
 });
 
@@ -308,7 +308,7 @@ test('GAS doGet(get_checklists) executes sanitizePublicChecklists_ cleanly witho
   const out = sandbox.doGet({ parameter: { action: 'get_checklists', nocache: '1' } });
   const json = JSON.parse(out.getContent());
   assert.equal(json.ok, true, 'doGet(get_checklists) must succeed: ' + JSON.stringify(json));
-  assert.equal(json.serverVersion, 'v97.15.6');
+  assert.equal(json.serverVersion, 'v97.17.0');
   assert.ok(Array.isArray(json.staff));
 });
 

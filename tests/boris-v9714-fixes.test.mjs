@@ -192,12 +192,12 @@ test('Boris Fix #2: save_checklist_blocks renames block + updates deadlines atom
   assert.equal(movedTask.block, 'Дневной обход 1', 'Task block must cascade on rename');
 });
 
-test('Boris Fix #3: Drive photos default to ANYONE_WITH_LINK + VIEW and grant_photo_reader_access unlocks existing files', () => {
+test('P1-9 Hardening: Drive photos default to PRIVATE unless ALLOW_PUBLIC_LINK_DRIVE_PHOTOS=1', () => {
   const { sandbox, token, driveSharingCalls } = createBorisGasEnv();
   const mockFile = { setSharing: (a, p) => driveSharingCalls.push({ id: 'new_photo', access: a, perm: p }) };
   const mode = sandbox.applySecureDriveFileSharingV82_(mockFile);
-  assert.equal(mode, 'ANYONE_WITH_LINK');
-  assert.ok(driveSharingCalls.some((c) => c.id === 'new_photo' && c.access === 'ANYONE_WITH_LINK' && c.perm === 'VIEW'));
+  assert.equal(mode, 'PRIVATE');
+  assert.ok(driveSharingCalls.some((c) => c.id === 'new_photo' && c.access === 'PRIVATE' && c.perm === 'NONE'));
 
   const grantRes = JSON.parse(sandbox.doPost({
     postData: { contents: JSON.stringify({ action: 'grant_photo_reader_access', sessionToken: token }) }
@@ -350,7 +350,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   const res = sandbox.autoMigrateSchemaIfNeeded_(ss, false);
   assert.equal(res.ok, true);
   assert.equal(res.migrated, true);
-  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.15.6');
+  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.17.0');
 
   assert.equal(shTl._data[0].length, 9);
   assert.equal(shTl._data[0][6], 'Сотрудник');
@@ -374,7 +374,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   assert.equal(res2.skipped, true);
 });
 
-test('v97.15.6 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
+test('v97.17.0 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
   const dash = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idx = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const cs = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
@@ -401,15 +401,16 @@ test('v97.15.6 Production Hardening (F1-F7): try/finally + rollback on async mod
   assert.ok(idx.includes('activePhotoUploads') && idx.includes('beforeunload'), 'index.html must warn on beforeunload during active photo uploads');
 });
 
-test('Admin PIN 1234 out-of-the-box & in-dashboard change: auto-migration sets 1234 if missing without overwriting custom PIN, and dashboard exposes s-change-pin', () => {
+test('P0-2 Hardening: Uninitialized server rejects anonymous 1234 login (SETUP_REQUIRED) until explicit setup, and preserves custom PIN', () => {
   const { sandbox, ss } = createBorisGasEnv();
   const props = sandbox.PropertiesService.getScriptProperties();
   props.deleteProperty('ADMIN_PIN_HASH');
   props.deleteProperty('SCHEMA_MIGRATED_VERSION');
   sandbox.autoMigrateSchemaIfNeeded_(ss, false);
-  const hash1234 = props.getProperty('ADMIN_PIN_HASH');
-  assert.ok(hash1234, 'ADMIN_PIN_HASH must be auto-initialized');
-  assert.equal(sandbox.verifyPinStored_(hash1234, '1234'), true, 'Initial admin login must work with 1234');
+  assert.equal(props.getProperty('ADMIN_PIN_HASH'), null, 'Auto-migration must NOT silently create default 1234 PIN');
+  const blocked = JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '1234' }) } }).getContent());
+  assert.equal(blocked.ok, false);
+  assert.match(String(blocked.error || ''), /SETUP_REQUIRED/i);
 
   // Changing admin PIN via save_setting preserves custom PIN across future migrations
   sandbox.saveSetting_(ss, { id: 'ADMIN_PIN', value: '5839' });

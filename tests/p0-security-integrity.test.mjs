@@ -138,7 +138,7 @@ test('P0.1/P0.3 Static security audit: no hardcoded PINs, TG IDs, or local auth 
 
 test('P0.4 Code.gs contains no hardcoded spreadsheet ID and throws SETUP_REQUIRED when unconfigured', { skip: !hasGas }, () => {
   const gasSrc = fs.readFileSync(gasPath, 'utf8');
-  assert.equal(gasSrc.includes('1FWFec1EvqeQ_2lnVIftyTgkeYfzIqFmmRWucpAaedqM'), false, 'Code.gs must not hardcode spreadsheet ID');
+  assert.equal(gasSrc.includes('HARDCODED_PROD_SHEET_ID_FORBIDDEN'), false, 'Code.gs must not hardcode spreadsheet ID');
   const { sandbox } = createGasSandbox({ boundSpreadsheet: false });
   assert.throws(() => sandbox.getTargetSpreadsheet_(), /SETUP_REQUIRED/);
 });
@@ -257,4 +257,84 @@ test('P0.1/P0.4/P1.4/P1.5/Sec6/Sec7 Audit Hardening: strict admin/staff session 
 
   // 6. Single canonical SW registration (not duplicated inside cloud-sync.js)
   assert.ok(!cs.includes("navigator.serviceWorker.register('./sw.js')"), 'cloud-sync.js must not duplicate SW registration');
+});
+
+test('P0-1, P1-5, P1-10 Audit v97.17.0: Telegram auto-login requires HMAC, staff batch_submit_cash restricted, public get_checklists minimal', { skip: !hasGas }, () => {
+  const { sandbox } = createGasSandbox();
+  sandbox.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ('SEC_TEST_SHEET');
+  sandbox.saveStaff_(sandbox.getTargetSpreadsheet_(), { name: 'Соня', role: 'Бариста', pin: '1234', active: 'да', tgId: 'TG-99887766' });
+
+  // P0-1: Forged Telegram auto-login without valid HMAC initData MUST fail
+  const forgedTg = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({ action: 'auth_login', role: 'staff', tgId: 'TG-99887766', autoLogin: true }) }
+  }).getContent());
+  assert.equal(forgedTg.ok, false, 'Telegram auto-login without HMAC must be rejected');
+  assert.match(String(forgedTg.error || ''), /TG_AUTH_INVALID/i);
+
+  // P1-5: Staff cannot use replace mode or historical dates in batch_submit_cash
+  const staffLogin = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({ action: 'auth_login', role: 'staff', staffName: 'Соня', pin: '1234' }) }
+  }).getContent());
+  assert.equal(staffLogin.ok, true);
+  const badReplace = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({
+      action: 'batch_submit_cash',
+      sessionToken: staffLogin.sessionToken,
+      mergeMode: 'replace',
+      days: [{ date: '2026-01-01', cash: 100, card: 100, revenue: 200, checks: 5 }]
+    }) }
+  }).getContent());
+  assert.equal(badReplace.ok, false, 'Staff must not be allowed to use replace mode or historical dates');
+  assert.match(String(badReplace.error || ''), /FORBIDDEN/i);
+
+  // P1-10: Public get_checklists must NOT expose inventory, dailyPlans, or shiftRoster
+  const pub = JSON.parse(sandbox.doGet({ parameter: { action: 'get_checklists' } }).getContent());
+  assert.equal(pub.ok, true);
+  assert.equal(pub.inventory, undefined, 'Public get_checklists must not expose inventory');
+  assert.equal(pub.dailyPlans, undefined, 'Public get_checklists must not expose dailyPlans');
+  assert.equal(pub.shiftRoster, undefined, 'Public get_checklists must not expose shiftRoster');
+});
+
+test('P0-3, P2, P3 Audit v97.17.0: setup_initial_credentials requires INITIAL_SETUP_CODE, formula injection neutralized, RESET_ property deleted on use', { skip: !hasGas }, () => {
+  const { sandbox } = createGasSandbox();
+  const props = sandbox.PropertiesService.getScriptProperties();
+  props.setProperty('TARGET_SPREADSHEET_ID', 'SEC_TEST_P03');
+  const ss = sandbox.getTargetSpreadsheet_();
+  sandbox.ensureSheets_(ss);
+
+  // P0-3: Public setup_initial_credentials without INITIAL_SETUP_CODE MUST be blocked
+  const hijack = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({ action: 'setup_initial_credentials', newAdminPin: '9999' }) }
+  }).getContent());
+  assert.equal(hijack.ok, false);
+  assert.match(String(hijack.error || ''), /SETUP_CODE_REQUIRED/i);
+
+  // With INITIAL_SETUP_CODE set, raw 64-hex hash MUST still be rejected
+  props.setProperty('INITIAL_SETUP_CODE', 'ONE_TIME_8842');
+  const hexAttempt = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({ action: 'setup_initial_credentials', setupCode: 'ONE_TIME_8842', newAdminPin: 'a'.repeat(64) }) }
+  }).getContent());
+  assert.equal(hexAttempt.ok, false);
+  assert.match(String(hexAttempt.error || ''), /VALIDATION_FAILED/i);
+
+  // Valid numeric PIN + valid INITIAL_SETUP_CODE succeeds and deletes INITIAL_SETUP_CODE
+  const okSetup = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({ action: 'setup_initial_credentials', setupCode: 'ONE_TIME_8842', newAdminPin: '4829' }) }
+  }).getContent());
+  assert.equal(okSetup.ok, true);
+  assert.equal(props.getProperty('INITIAL_SETUP_CODE'), null, 'One-time setup code must be deleted after use');
+
+  // P2: Formula injection neutralized with leading apostrophe in expenses
+  sandbox.addExpense_(ss, { date: '2026-11-25', category: '=HYPERLINK("https://evil.test","Click")', amount: 150, comment: '+IMPORTXML("https://evil.test","//a")' });
+  const expRows = ss.getSheetByName('Расходы').getDataRange().getValues();
+  const lastExp = expRows[expRows.length - 1];
+  assert.ok(String(lastExp[2]).startsWith("'="), 'Category formula must be neutralized with leading apostrophe');
+  assert.ok(String(lastExp[4]).startsWith("'+"), 'Comment formula must be neutralized with leading apostrophe');
+
+  // P3: Consuming staff PIN reset code deletes RESET_<name> property
+  const gen = sandbox.issueStaffResetCode_(ss, { staffName: 'Соня' });
+  assert.equal(gen.ok, true);
+  assert.ok(props.getProperty('RESET_Соня'), 'RESET_ property exists before use');
+  assert.equal(sandbox.consumeStaffResetCode_('Соня', gen.resetCode), true);
+  assert.equal(props.getProperty('RESET_Соня'), null, 'RESET_ property must be deleted after consumption');
 });

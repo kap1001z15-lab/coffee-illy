@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.6)
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.17.0)
    Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
@@ -1088,7 +1088,7 @@ body {
   }
 }
 
-/* === v97.15.6 Minimalist Owner Dashboard Liquid Glass Polish === */
+/* === v97.17.0 Minimalist Owner Dashboard Liquid Glass Polish === */
 .dash-topbar {
   padding: max(8px, env(safe-area-inset-top)) 22px 8px !important;
   gap: 10px !important;
@@ -1208,7 +1208,7 @@ td {
   .kpi-val { font-size: clamp(18px, 5vw, 21px) !important; }
 }
 
-/* === v97.15.6 Pinned Mobile "+ Задача" Action === */
+/* === v97.17.0 Pinned Mobile "+ Задача" Action === */
 .bottom-action-wrap {
   position: fixed !important;
   left: 0;
@@ -1232,7 +1232,7 @@ td {
 }
 body.kb-open .bottom-action-wrap { display: none !important; }
 
-/* === v97.15.6 Apple iOS Liquid Glass Scroll-Wheel Time Picker (1-min precision) === */
+/* === v97.17.0 Apple iOS Liquid Glass Scroll-Wheel Time Picker (1-min precision) === */
 .ios-tp-input {
   cursor: pointer;
   font-variant-numeric: tabular-nums;
@@ -1373,7 +1373,7 @@ body.kb-open .bottom-action-wrap { display: none !important; }
 }
 
 /* ==========================================================================
-   v97.15.6 Apple Liquid Retina Unification, Sticky Nav+Date Dock & Direct Time Input
+   v97.17.0 Apple Liquid Retina Unification, Sticky Nav+Date Dock & Direct Time Input
    ========================================================================== */
 html, body {
   -webkit-font-smoothing: antialiased;
@@ -1506,4 +1506,374 @@ html[data-theme="dark"] .dash-sticky-dock {
   font-weight: 800;
   color: var(--muted, var(--m3-text-2));
   opacity: 0.75;
+}
+
+/* ==========================================================================
+   v97.17.0 Apple iPhone Liquid Glass — Volumetric Ambient Glow & Visual Hierarchy
+   ========================================================================== */
+:root {
+  --lg-ambient-glow: rgba(154, 74, 36, 0.22);
+  --lg-ambient-glow-soft: rgba(154, 74, 36, 0.09);
+  --lg-pill-glow: 0 6px 22px -2px rgba(154, 74, 36, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.28) inset;
+  --lg-dock-ambient-x: 12%;
+  --lg-bnav-ambient-x: 12.5%;
+}
+html[data-theme="dark"] {
+  --lg-ambient-glow: rgba(226, 157, 108, 0.30);
+  --lg-ambient-glow-soft: rgba(226, 157, 108, 0.11);
+  --lg-pill-glow: 0 8px 26px -2px rgba(226, 157, 108, 0.46), 0 0 14px rgba(226, 157, 108, 0.22), 0 1px 0 rgba(255, 255, 255, 0.36) inset;
+}
+
+/* Volumetric ambient light pool cast behind the active tab onto the frosted glass dock */
+.dash-sticky-dock {
+  position: sticky;
+  isolation: isolate;
+}
+.dash-sticky-dock::before {
+  content: "";
+  position: absolute;
+  inset: -4px 0 -8px;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(240px 74px at var(--lg-dock-ambient-x, 12%) 34%, var(--lg-ambient-glow) 0%, var(--lg-ambient-glow-soft) 48%, transparent 78%);
+  transition: background-position 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
+/* Admin Nav & Date Pills: active tab radiates warm Liquid Glass light; inactive tabs recede quietly */
+.admin-nav {
+  position: relative;
+  overflow-y: visible;
+}
+.admin-nav button {
+  position: relative;
+  color: var(--muted) !important;
+  opacity: 0.78;
+  transition: opacity 160ms ease, color 160ms ease, background 180ms ease, box-shadow 220ms ease, transform 120ms ease !important;
+}
+.admin-nav button:hover:not(.active) {
+  opacity: 1;
+  color: var(--ink) !important;
+  background: var(--lg-surface-hover, rgba(255, 255, 255, 0.06)) !important;
+}
+.admin-nav button.active {
+  opacity: 1 !important;
+  color: var(--accent-ink) !important;
+  background: var(--lg-accent-grad) !important;
+  box-shadow: var(--lg-pill-glow) !important;
+  z-index: 2;
+}
+.admin-nav button.active .badge {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: var(--accent-ink) !important;
+  opacity: 1 !important;
+}
+
+/* Date Filter Bar: quiet secondary pills, luminous active period */
+.date-pill {
+  opacity: 0.74;
+  border-color: transparent !important;
+  background: transparent !important;
+  transition: opacity 150ms ease, color 150ms ease, background 180ms ease, box-shadow 200ms ease !important;
+}
+.date-pill:hover:not(.active) {
+  opacity: 1;
+  background: var(--lg-surface-hover, rgba(255, 255, 255, 0.06)) !important;
+}
+.date-pill.active {
+  opacity: 1 !important;
+  background: var(--lg-accent-grad) !important;
+  color: var(--accent-ink) !important;
+  box-shadow: var(--lg-pill-glow) !important;
+}
+
+/* Terminal Bottom Navigation (.bnav): volumetric Liquid Glass glow gliding under active tab */
+.bnav {
+  isolation: isolate;
+}
+.bnav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(150px 58px at var(--lg-bnav-ambient-x, 12.5%) 50%, var(--lg-ambient-glow) 0%, var(--lg-ambient-glow-soft) 52%, transparent 80%);
+}
+.bnav button {
+  opacity: 0.68;
+  transition: opacity 160ms ease, color 160ms ease, transform 120ms ease !important;
+}
+.bnav button:hover:not(.active) { opacity: 0.92; }
+.bnav button.active {
+  opacity: 1 !important;
+  color: var(--ink) !important;
+}
+.bnav button.active .ico {
+  background: var(--lg-accent-grad) !important;
+  color: var(--accent-ink) !important;
+  box-shadow: var(--lg-pill-glow) !important;
+}
+
+/* Quiet secondary controls so primary actions & active state stand out effortlessly */
+.chip-btn:not(.accent):not(.good):not(.bad):not(.warn) {
+  opacity: 0.80;
+  box-shadow: none !important;
+}
+.chip-btn:not(.accent):not(.good):not(.bad):not(.warn):hover {
+  opacity: 1;
+}
+.btn-lg.primary, .chip-btn.accent {
+  box-shadow: var(--lg-pill-glow) !important;
+}
+
+/* Failed Outbox Alert Pill (P1-6: only visible when an operation failed server validation) */
+.failed-ops-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
+  margin-bottom: 10px;
+  border-radius: 16px;
+  background: var(--bad-soft);
+  border: 1px solid var(--bad);
+  color: var(--bad);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   v97.17.0 Apple iPhone Liquid Glass Camera UI & Complete System Surface Unity
+   ========================================================================== */
+.lg-cam-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background: #0a0909;
+  color: #f7f3ef;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.lg-cam-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(18, 16, 15, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.lg-cam-title {
+  font-family: var(--font-display, inherit);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  flex: 1;
+  color: #f7f3ef;
+  letter-spacing: -0.01em;
+}
+.lg-cam-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, transform 110ms ease;
+}
+.lg-cam-pill:active, .lg-cam-icon:active { transform: scale(0.96); }
+.lg-cam-icon {
+  width: 38px;
+  height: 38px;
+  min-height: 38px !important;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #fff;
+  cursor: pointer;
+}
+.lg-cam-devwrap {
+  padding: 6px 14px 8px;
+  background: rgba(18, 16, 15, 0.72);
+}
+.lg-cam-select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 13px;
+}
+.lg-cam-stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+.lg-cam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lg-cam-err {
+  position: absolute;
+  inset: 16px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: rgba(14, 13, 12, 0.86);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.lg-cam-rec {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(198, 40, 40, 0.92);
+  color: #fff;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 16px rgba(198, 40, 40, 0.45);
+}
+.lg-cam-strip {
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 14px;
+  background: rgba(18, 16, 15, 0.80);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.lg-cam-thumb { position: relative; flex: 0 0 auto; }
+.lg-cam-thumb-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.lg-cam-thumb-vid {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.lg-cam-thumb-del {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 22px;
+  height: 22px;
+  min-height: 22px !important;
+  border-radius: 50%;
+  background: #C62828;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lg-cam-dock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 18px;
+  gap: 12px;
+  background: rgba(18, 16, 15, 0.78);
+  -webkit-backdrop-filter: blur(26px) saturate(185%);
+  backdrop-filter: blur(26px) saturate(185%);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.lg-cam-shutter {
+  width: 70px;
+  height: 70px;
+  min-height: 70px !important;
+  border-radius: 50%;
+  padding: 4px;
+  background: transparent;
+  border: 3.5px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 20px rgba(226, 157, 108, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 110ms ease;
+}
+.lg-cam-shutter > span {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  display: block;
+  transition: transform 110ms ease, background 120ms ease;
+}
+.lg-cam-shutter:active > span {
+  transform: scale(0.88);
+  background: #E29D6C;
+}
+.lg-cam-done {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--lg-accent-grad, linear-gradient(135deg, #E29D6C, #B85C38));
+  color: var(--accent-ink, #1C120B);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: var(--lg-pill-glow);
+  cursor: pointer;
+}
+.lg-cam-done:disabled {
+  opacity: 0.38;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Complete System-Wide Apple Liquid Glass Unity (Modals, Toasts, Cards, Inputs) */
+.modal-card {
+  background: var(--lg-chrome-bg, var(--card)) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--lg-border, var(--border)) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.36), inset 0 1px 0 var(--lg-specular, rgba(255, 255, 255, 0.25)) !important;
+}
+.toast {
+  background: var(--lg-chrome-bg, var(--ink)) !important;
+  color: var(--ink, var(--bg)) !important;
+  border: 1px solid var(--lg-border, var(--border)) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 var(--lg-specular, rgba(255, 255, 255, 0.2)) !important;
+}
+.card, .kpi, .step-card, .cat-card, .row-item {
+  border-color: var(--lg-border, var(--border));
 }

@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.15.6 */
-const CACHE_NAME = 'coffee-illy-v97-15-6';
+/* Coffee Illy ERP & Checklist — Service Worker v97.17.0 */
+const CACHE_NAME = 'coffee-illy-v97-17-0';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,19 @@ const CORE_ASSETS = [
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
+
+function fetchWithSwTimeout(req, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('SW_NET_TIMEOUT')), ms || 4000);
+    fetch(req).then((res) => {
+      clearTimeout(timer);
+      resolve(res);
+    }, (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -47,8 +60,9 @@ self.addEventListener('fetch', (event) => {
   const isCode = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
 
   if (isNav) {
+    const isDash = url.pathname.endsWith('dashboard.html') || url.pathname.endsWith('owner.html');
     event.respondWith(
-      fetch(req)
+      fetchWithSwTimeout(req, 4000)
         .then((res) => {
           if (res && res.status === 200 && res.type === 'basic') {
             const clone = res.clone();
@@ -56,7 +70,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req, { ignoreSearch: true }).then((cached) => cached || caches.match('./index.html')))
+        .catch(() => caches.match(req, { ignoreSearch: true }).then((cached) => cached || caches.match(isDash ? './dashboard.html' : './index.html')))
     );
     return;
   }
@@ -64,7 +78,7 @@ self.addEventListener('fetch', (event) => {
   if (isCode) {
     // Для JS/CSS никогда не возвращаем index.html в качестве фолбэка (иначе SyntaxError)
     event.respondWith(
-      fetch(req)
+      fetchWithSwTimeout(req, 4000)
         .then((res) => {
           if (res && res.status === 200 && res.type === 'basic') {
             const clone = res.clone();
