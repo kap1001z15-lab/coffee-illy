@@ -40,11 +40,91 @@
     return cur;
   }
 
-  function readOutbox() {
-    try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || []; } catch (_) { return []; }
+  const FAILED_OUTBOX_KEY = 'coffee_illy_v93_failed_outbox';
+  const FINANCIAL_ACTIONS = new Set([
+    'submit_cash', 'batch_submit_cash', 'add_expense', 'delete_expense',
+    'save_inventory', 'restock_inventory', 'writeoff_inventory', 'delete_inventory'
+  ]);
+  let _idbDb = null;
+  let _outboxMem = null;
+
+  function openOutboxIdb() {
+    if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+    if (_idbDb) return Promise.resolve(_idbDb);
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open('coffee_illy_outbox_v1', 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        };
+        req.onsuccess = () => { _idbDb = req.result; resolve(_idbDb); };
+        req.onerror = () => resolve(null);
+      } catch (_) { resolve(null); }
+    });
   }
+
+  function persistIdbKey(key, val) {
+    openOutboxIdb().then((db) => {
+      if (!db) return;
+      try {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(val, key);
+      } catch (_) {}
+    }).catch(() => {});
+  }
+
+  // Hydrate memory cache from IndexedDB on startup if available
+  openOutboxIdb().then((db) => {
+    if (!db) return;
+    try {
+      const tx = db.transaction('kv', 'readonly');
+      const req = tx.objectStore('kv').get(OUTBOX_KEY);
+      req.onsuccess = () => {
+        if (Array.isArray(req.result) && req.result.length) {
+          const lsArr = readOutbox();
+          const seen = new Set(lsArr.map((x) => x && x.payload && x.payload.operationId).filter(Boolean));
+          const merged = lsArr.slice();
+          req.result.forEach((it) => {
+            const oid = it && it.payload && it.payload.operationId;
+            if (!oid || !seen.has(oid)) merged.push(it);
+          });
+          _outboxMem = merged;
+        }
+      };
+    } catch (_) {}
+  }).catch(() => {});
+
+  function readOutbox() {
+    if (Array.isArray(_outboxMem)) return _outboxMem.slice();
+    try {
+      const arr = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || [];
+      _outboxMem = Array.isArray(arr) ? arr : [];
+      return _outboxMem.slice();
+    } catch (_) { return []; }
+  }
+
   function writeOutbox(arr) {
-    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify((arr || []).slice(-200))); } catch (_) {}
+    const list = Array.isArray(arr) ? arr.slice() : [];
+    // Никогда не удаляем неподтверждённые финансовые операции автоматически;
+    // при росте > 500 нефинансовых записей обрезаем только старые черновики/прогресс.
+    const safeList = list.length > 500
+      ? list.filter((it, idx) => FINANCIAL_ACTIONS.has(it && it.action) || idx >= list.length - 500)
+      : list;
+    _outboxMem = safeList;
+    persistIdbKey(OUTBOX_KEY, safeList);
+    try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(safeList)); } catch (_) {
+      // При QuotaExceededError в localStorage (например, из-за фото base64) данные сохранены в IndexedDB
+    }
+  }
+
+  function readFailedOutbox() {
+    try { return JSON.parse(localStorage.getItem(FAILED_OUTBOX_KEY) || '[]') || []; } catch (_) { return []; }
+  }
+  function writeFailedOutbox(arr) {
+    const list = (Array.isArray(arr) ? arr : []).slice(-100);
+    persistIdbKey(FAILED_OUTBOX_KEY, list);
+    try { localStorage.setItem(FAILED_OUTBOX_KEY, JSON.stringify(list)); } catch (_) {}
   }
 
   async function gasGet(params) {
@@ -111,7 +191,10 @@
               retryPatches.set(opId, { attempts: attempts, nextRetryAt: Date.now() + computeBackoffMs(attempts), lastError: errMsg });
               continue;
             }
-            // Permanent non-retryable validation error or max attempts exceeded
+            // Не удаляем молча — переносим в очередь проблемных операций для ручной проверки
+            const failedList = readFailedOutbox();
+            failedList.push(Object.assign({}, item, { status: 'failed', attempts: attempts, lastError: errMsg, failedAt: Date.now() }));
+            writeFailedOutbox(failedList);
             doneIds.add(opId);
             continue;
           }
@@ -119,9 +202,12 @@
           flushed++;
         } catch (err) {
           const attempts = (Number(item.attempts) || 0) + 1;
-          if (attempts < 12) {
-            retryPatches.set(opId, { attempts: attempts, nextRetryAt: Date.now() + computeBackoffMs(attempts), lastError: String((err && err.message) || err) });
+          if (attempts < 12 || FINANCIAL_ACTIONS.has(item.action)) {
+            retryPatches.set(opId, { status: 'pending', attempts: attempts, nextRetryAt: Date.now() + computeBackoffMs(attempts), lastError: String((err && err.message) || err) });
           } else {
+            const failedList = readFailedOutbox();
+            failedList.push(Object.assign({}, item, { status: 'failed', attempts: attempts, lastError: String((err && err.message) || err), failedAt: Date.now() }));
+            writeFailedOutbox(failedList);
             doneIds.add(opId);
           }
         }
@@ -151,7 +237,7 @@
     if (!action) return;
     const opId = 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const q = readOutbox();
-    q.push({ action: action, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now(), attempts: 0, nextRetryAt: 0 });
+    q.push({ action: action, status: 'pending', payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now(), attempts: 0, nextRetryAt: 0 });
     writeOutbox(q);
     flushOutbox(true).then((res) => {
       if (res && res.flushed > 0) _lastServerRev = '';
@@ -193,13 +279,56 @@
 
   async function authLogin(role, opts) {
     try {
-      const payloadAuth = Object.assign({ role: role }, opts || {}); if (payloadAuth.name) { if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name; if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name; } const res = await gasPost('auth_login', payloadAuth);
-      if (res && res.ok && res.sessionToken) {
+      const payloadAuth = Object.assign({ role: role }, opts || {});
+      if (payloadAuth.name) {
+        if (!payloadAuth.staffName) payloadAuth.staffName = payloadAuth.name;
+        if (!payloadAuth.userName) payloadAuth.userName = payloadAuth.name;
+      }
+      const res = await gasPost('auth_login', payloadAuth);
+      if (res && res.ok === true && res.sessionToken) {
+        const srvRole = String(res.role || role || '').toLowerCase();
+        if (role === 'admin' && srvRole !== 'admin') {
+          return { ok: false, error: 'FORBIDDEN: Требуются права владельца' };
+        }
         if (role === 'admin') setSession({ adminToken: res.sessionToken });
-        else setSession({ staffToken: res.sessionToken, staffName: (opts && opts.name) || '' });
+        else setSession({ staffToken: res.sessionToken, staffName: res.staffName || (opts && opts.name) || '' });
         if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
       }
-      return res;
+      return res || { ok: false, error: 'Пустой ответ сервера авторизации' };
+    } catch (e) {
+      return { ok: false, offline: true, error: String(e && e.message || e) };
+    }
+  }
+
+  async function authLogout(role) {
+    const cur = getSession();
+    const tok = role === 'admin' ? cur.adminToken : cur.staffToken;
+    try {
+      if (tok && API_URL && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        await gasPost('auth_logout', { role: role || 'staff', sessionToken: tok });
+      }
+    } catch (_) {}
+    if (role === 'admin') setSession({ adminToken: '' });
+    else setSession({ staffToken: '', staffName: '' });
+    return { ok: true };
+  }
+
+  async function changeStaffPin(opts) {
+    const o = opts || {};
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { ok: false, offline: true, error: 'Нет подключения к интернету. Смена PIN требует связи с сервером.' };
+    }
+    try {
+      const res = await gasPost('change_staff_pin', {
+        staffName: o.staffName || o.name || (getSession().staffName || ''),
+        oldPin: o.oldPin || '',
+        newPin: o.newPin || '',
+        resetCode: o.resetCode || ''
+      });
+      if (res && res.ok === true) {
+        setSession({ staffToken: '', staffName: '' });
+      }
+      return res || { ok: false, error: 'Пустой ответ сервера' };
     } catch (e) {
       return { ok: false, offline: true, error: String(e && e.message || e) };
     }
@@ -236,7 +365,11 @@
         openTime: b.openTime || b.start || '08:00',
         deadline: b.deadline || b.end || '22:00',
         isCash: !!(b.isCash || String(b.name || '').toLowerCase() === 'касса'),
-        active: b.active !== false && String(b.active || 'да').toLowerCase() !== 'нет'
+        active: b.active !== false && String(b.active || 'да').toLowerCase() !== 'нет',
+        assignee: String(b.assignee || '').trim(),
+        scheduleType: String(b.scheduleType || 'daily').trim(),
+        scheduleDays: Array.isArray(b.scheduleDays) ? b.scheduleDays.slice() : [],
+        scheduleDate: String(b.scheduleDate || '').trim()
       })).filter((b) => b.name);
       changed = true;
     }
@@ -391,7 +524,7 @@
           name: s.name,
           role: s.role || prev.role || 'Бариста',
           shift: s.shift || prev.shift || '08:00–20:00',
-          tgId: s.tgId || prev.tgId || '',
+          tgId: (s.tgId !== undefined && s.tgId !== null) ? String(s.tgId) : (prev.tgId || ''),
           active: s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет',
           pin: prev.pin || '1234',
           pinIsDefault: prev.pinIsDefault !== false
@@ -599,9 +732,6 @@
     } else if (desc.indexOf('Обновлены настройки точки') === 0) {
       enqueueOp('save_all_settings', { items: [
         { id: 'LOCATION', value: String(st.location || 'Кофейня №1') },
-        { id: 'PLAN', value: String(st.plan || 2200) },
-        { id: 'MIN_AVG_CHECK', value: String(st.minAvgCheck || 35) },
-        { id: 'PLAN_CHECKS', value: String(st.planChecks || 75) },
         { id: 'WO_NORM', value: String(st.woNorm || 15) },
         { id: 'INIT_COUNTER', value: String(st.initCounter || 600) },
         { id: 'PHOTO_ALL', value: st.photoAll ? 'да' : 'нет' }
@@ -622,11 +752,8 @@
         };
         if (p.roster !== undefined) rosterObj[p.day] = String(p.roster || '');
       });
-      enqueueOp('save_daily_plans', { plans: plansObj });
-      enqueueOp('save_shift_roster', { roster: rosterObj });
-    } else if (desc.indexOf('Сменил личный PIN') === 0) {
-      const s = (st.staff || []).find((x) => x.name === actor);
-      if (s && s.pin) enqueueOp('change_staff_pin', { name: s.name, newPin: s.pin });
+      enqueueOp('save_daily_plans', { plans: plansObj, roster: rosterObj });
+    /* P0.2: смена PIN выполняется только напрямую через changeStaffPin() без локальной очереди */
     } else if (desc.indexOf('Привязан Telegram ID') === 0) {
       const s = (st.staff || []).find((x) => x.name === actor);
       if (s && s.tgId) enqueueOp('bind_telegram_user', { name: s.name, tgId: s.tgId });
@@ -634,7 +761,7 @@
       const nm = desc.replace('Обновлён сотрудник ', '').trim();
       const s = (st.staff || []).find((x) => x.name === nm);
       if (s) {
-        enqueueOp('save_staff', { name: s.name, role: s.role, shift: s.shift, tgId: s.tgId || '' });
+        enqueueOp('save_staff', { id: s.id, name: s.name, role: s.role, shop: s.shop || st.location || 'Кофейня №1', active: s.active === false ? 'нет' : 'да', tgId: s.tgId || '' });
         if (s.pin) enqueueOp('save_staff_pins', { pins: [{ name: s.name, pin: s.pin }] });
       }
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
@@ -934,8 +1061,56 @@
   async function saveTelegramSettings(opts) {
     return gasPost('save_telegram_settings', opts || {});
   }
-  async function testTelegramAlert() {
-    return gasPost('test_telegram_alert', {});
+  async function testTelegramAlert(opts) {
+    return gasPost('test_telegram_alert', opts || {});
+  }
+  async function sendTelegramAlert(payload) {
+    return gasPost('send_telegram_alert', payload || {});
+  }
+  async function saveStaff(payload) {
+    const p = Object.assign({}, payload || {});
+    try {
+      const res = await gasPost('save_staff', p);
+      if (res && res.ok) return res;
+      if (res && res.error && /AUTH_REQUIRED|FORBIDDEN/i.test(String(res.error))) return res;
+    } catch (_) {}
+    enqueueOp('save_staff', p);
+    return { ok: true, queued: true };
+  }
+  async function saveChecklistBlocks(blocks, renamedBlocks) {
+    const p = { blocks: Array.isArray(blocks) ? blocks : [] };
+    if (renamedBlocks && Object.keys(renamedBlocks).length) p.renamedBlocks = renamedBlocks;
+    try {
+      const res = await gasPost('save_checklist_blocks', p);
+      if (res && res.ok) return res;
+      if (res && res.error && /AUTH_REQUIRED|FORBIDDEN/i.test(String(res.error))) return res;
+    } catch (_) {}
+    enqueueOp('save_checklist_blocks', p);
+    return { ok: true, queued: true };
+  }
+  async function grantPhotoReaderAccess() {
+    return gasPost('grant_photo_reader_access', {});
+  }
+  async function reorderTasks(block, orderedIds) {
+    const payload = { block: String(block || '').trim(), orderedIds: Array.isArray(orderedIds) ? orderedIds.map(String) : [] };
+    if (!payload.block || !payload.orderedIds.length) return { ok: false, error: 'INVALID_REORDER_PAYLOAD' };
+    try {
+      const res = await gasPost('reorder_tasks', payload);
+      if (res && res.ok) return res;
+      if (res && res.error && /AUTH_REQUIRED|FORBIDDEN/i.test(String(res.error))) return res;
+    } catch (_) {}
+    enqueueOp('reorder_tasks', payload);
+    return { ok: true, queued: true };
+  }
+  async function saveDailyPlans(plansObj, rosterObj) {
+    const payload = { plans: plansObj || {}, roster: rosterObj || {} };
+    try {
+      const res = await gasPost('save_daily_plans', payload);
+      if (res && res.ok) return res;
+      if (res && res.error && /AUTH_REQUIRED|FORBIDDEN/i.test(String(res.error))) return res;
+    } catch (_) {}
+    enqueueOp('save_daily_plans', payload);
+    return { ok: true, queued: true };
   }
   async function setupTriggers() {
     return gasPost('setup_autonomous_triggers', {});
@@ -997,12 +1172,55 @@
     localISO: localISO,
     localHHMM: localHHMM,
     authLogin: authLogin,
+    authLogout: authLogout,
+    changeStaffPin: changeStaffPin,
     enqueueOp: enqueueOp,
     flushOutbox: flushOutbox,
     uploadPhotoToDrive: uploadPhotoToDrive,
     uploadMediaToDrive: uploadPhotoToDrive,
     mergeServerIntoState: mergeServerIntoState,
     dispatchStateChange: dispatchStateChange,
+    dispatchOperation: function (op) {
+      const TYPE_TO_ACTION = {
+        'cash.submit': 'submit_cash',
+        'cash.import': 'batch_submit_cash',
+        'checklist.submit': 'save_checklist',
+        'incident.create': 'report_standalone_incident',
+        'incident.resolve': 'update_incident',
+        'expense.create': 'add_expense',
+        'expense.delete': 'delete_expense',
+        'inventory.save': 'save_inventory',
+        'inventory.restock': 'restock_inventory',
+        'inventory.writeoff': 'writeoff_inventory',
+        'inventory.delete': 'delete_inventory',
+        'staff.update': 'save_staff',
+        'ttk.update': 'save_ttk',
+        'settings.update': 'save_all_settings',
+        'extensions.open': 'extend_deadline',
+        'extensions.clear': 'clear_deadline_extension',
+        'announcement.create': 'save_announcement',
+        'tasks.reorder': 'reorder_tasks'
+      };
+      const act = TYPE_TO_ACTION[op && op.type];
+      if (!act) return { ok: false, error: 'UNKNOWN_OPERATION_TYPE: ' + String(op && op.type) };
+      const p = Object.assign({}, (op && op.payload) || {});
+      if (op && op.actor && !p.userName) p.userName = op.actor;
+      enqueueOp(act, p);
+      return { ok: true, queued: true, action: act };
+    },
+    getFailedOps: readFailedOutbox,
+    retryFailedOps: function () {
+      const failed = readFailedOutbox();
+      if (!failed.length) return { retried: 0 };
+      const q = readOutbox();
+      failed.forEach((it) => {
+        q.push({ action: it.action, status: 'pending', payload: it.payload, ts: Date.now(), attempts: 0, nextRetryAt: 0 });
+      });
+      writeFailedOutbox([]);
+      writeOutbox(q);
+      flushOutbox(true).catch(() => {});
+      return { retried: failed.length };
+    },
     startCloudLoop: startCloudLoop,
     getTelegramUser: getTelegramUser,
     getPendingCount: function () { return readOutbox().length; },
@@ -1014,6 +1232,12 @@
     checkOutStaff: checkOutStaff,
     saveTelegramSettings: saveTelegramSettings,
     testTelegramAlert: testTelegramAlert,
+    sendTelegramAlert: sendTelegramAlert,
+    saveDailyPlans: saveDailyPlans,
+    reorderTasks: reorderTasks,
+    saveStaff: saveStaff,
+    saveChecklistBlocks: saveChecklistBlocks,
+    grantPhotoReaderAccess: grantPhotoReaderAccess,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
     sendDailyDigest: sendDailyDigest,

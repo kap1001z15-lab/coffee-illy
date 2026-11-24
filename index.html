@@ -219,11 +219,12 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.9.0"></script>
-  <script src="js/cloud-sync.js?v=97.9.0"></script>
-  <script src="js/pos-csv-parser.js?v=97.9.0"></script>
-<script src="js/camera.js?v=97.9.0"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+  <script src="config.js?v=97.14.0"></script>
+  <script src="js/cloud-sync.js?v=97.14.0"></script>
+  <script src="js/pos-csv-parser.js?v=97.14.0"></script>
+<script src="js/camera.js?v=97.14.0"></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.0">
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -236,7 +237,7 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
   </div>
   <div class="top-actions">
     <div id="user-ctl"></div>
-    <button class="chip-btn" id="btn-theme">🌓 Авто</button>
+    <button class="chip-btn" id="btn-theme" aria-label="Переключить тему оформления">🌓 Авто</button>
   </div>
 </header>
 
@@ -274,10 +275,10 @@ const EQUIP_ZONES = ['Кофемашина','Кофемолка','Холодил
 function freshState() {
   const s = JSON.parse(JSON.stringify(LIVE_SNAPSHOT));
   s.rev = 1; s.woNorm = 15; s.initCounter = 600; s.photoAll = false; s.simTime = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '13:25');
-  s.adminPin = '1234'; s.extensions = {};
+  s.extensions = {};
   s.staff = s.staff.map(st => Object.assign({}, st, {
-    pin: '1234', pinIsDefault: true,
-    tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
+    pinIsDefault: !!st.pinIsDefault,
+    tgId: ''
   }));
   s.liveProgress = {}; s.staffPresence = {};
   s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.0 на реальных данных Coffee_illy.' }];
@@ -394,8 +395,33 @@ function initTheme(btnId) {
     return out;
   }
   function isDoneToday(blk, who) { return state.checklists.some(c=>c.date===getTodayISO() && c.block===blk && c.who===who); }
+  function isBlockScheduledForBarista(b) {
+    if (!b || b.active === false) return false;
+    const assignee = String(b.assignee || '').trim().toLowerCase();
+    if (assignee && authed && String(authed).trim().toLowerCase() !== assignee && !String(authed).trim().toLowerCase().includes(assignee) && !assignee.includes(String(authed).trim().toLowerCase())) {
+      return false;
+    }
+    const st = String(b.scheduleType || 'daily').trim().toLowerCase();
+    if (st === 'weekly' && Array.isArray(b.scheduleDays) && b.scheduleDays.length) {
+      const wd = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][new Date().getDay()];
+      if (!b.scheduleDays.includes(wd)) return false;
+    }
+    if (st === 'date' && b.scheduleDate) {
+      if (String(b.scheduleDate).slice(0, 10) !== getTodayISO()) return false;
+    }
+    return true;
+  }
   function getBlkSt(b) {
-    if (b.active===false) return { code:'off', label:'Отключён', cls:'', open:false };
+    if (!b || b.active === false) return { code:'off', label:'Отключён', cls:'', open:false };
+    if (!isBlockScheduledForBarista(b)) {
+      const assignee = String(b.assignee || '').trim().toLowerCase();
+      const me = String(authed || '').trim().toLowerCase();
+      const wrongUser = !!(assignee && me && me !== assignee && !me.includes(assignee) && !assignee.includes(me));
+      const lbl = wrongUser
+        ? ('Назначен: ' + b.assignee)
+        : (b.scheduleType === 'date' && b.scheduleDate ? ('На дату ' + b.scheduleDate) : 'Не по графику сегодня');
+      return { open: false, code: 'sched', cls: '', label: lbl };
+    }
     if (authed && isDoneToday(b.name, authed)) return { code:'done', label:'Выполнено', cls:'good', open:false };
     if (state.extensions[b.name] && state.extensions[b.name].forceOpen) return { code:'open', label:'Открыт админом', cls:'good', open:true };
     const now = toMin(window.CoffeeCloudV94 ? window.CoffeeCloudV94.localHHMM() : (state.simTime || '13:25'));
@@ -445,32 +471,64 @@ function initTheme(btnId) {
     }
   }
 
+  let loginPending = false;
+  function formatAuthError(res) {
+    const raw = String((res && res.error) || '');
+    if (res && res.offline) return 'Сервер недоступен — вход невозможен без интернета';
+    if (/RATE_LIMIT/i.test(raw)) return 'Слишком много неверных попыток. Подождите немного';
+    if (/DISABLED|INACTIVE|отключ/i.test(raw)) return 'Сотрудник отключён';
+    if (/PIN_CHANGE_REQUIRED/i.test(raw)) return 'Требуется смена PIN-кода';
+    if (/EXPIRED|INVALID_SESSION|AUTH_REQUIRED/i.test(raw)) return 'Сессия истекла — войдите заново';
+    if (/PIN_INVALID|Неверный PIN/i.test(raw)) return 'Неверный PIN';
+    return raw || 'Ошибка серверной авторизации';
+  }
+
   async function tryLogin() {
+    if (loginPending) return;
     const st = getSt(pickStaff);
-    if (!st || st.active===false) { showToast('Сотрудник отключён'); pinBuf=''; render(); return; }
-    const _tgu = window.CoffeeCloudV93 ? window.CoffeeCloudV93.getTelegramUser() : null;
+    if (!st || st.active === false) { showToast('Сотрудник отключён'); pinBuf = ''; render(); return; }
+    if (!/^\d{4,12}$/.test(pinBuf)) { showToast('Введите PIN (от 4 цифр)'); return; }
+    if (!window.CoffeeCloudV93 || typeof window.CoffeeCloudV93.authLogin !== 'function') {
+      showToast('Сервер авторизации недоступен'); pinBuf = ''; render(); return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      showToast('Нет интернета — локальный вход отключён из соображений безопасности'); pinBuf = ''; render(); return;
+    }
+    const _tgu = window.CoffeeCloudV93.getTelegramUser ? window.CoffeeCloudV93.getTelegramUser() : null;
     const liveTg = _tgu ? _tgu.id : '';
     if (liveTg && st.tgId && st.tgId.replace(/^TG-/i,'') !== liveTg.replace(/^TG-/i,'')) {
-      showToast('⛔ Профиль привязан к другому Telegram ID'); pinBuf=''; render(); return;
+      showToast('⛔ Профиль привязан к другому Telegram ID'); pinBuf = ''; render(); return;
     }
-    if (pinBuf === st.pin) {
-      const enteredPin = pinBuf;
-      pinBuf = '';
-      let srvTime = window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '08:00';
-      let srvMsg = '';
-      if (window.CoffeeCloudV93) {
-        const res = await window.CoffeeCloudV93.authLogin('staff', {
-          name: st.name, pin: enteredPin, tgId: liveTg || st.tgId || '', initData: (_tgu && _tgu.initData) || ''
-        });
-        if (res && res.checkedInAt) srvTime = res.checkedInAt;
-        if (res && res.welcomeMessage) srvMsg = res.welcomeMessage;
+    const enteredPin = pinBuf;
+    pinBuf = '';
+    loginPending = true;
+    render();
+    try {
+      const res = await window.CoffeeCloudV93.authLogin('staff', {
+        name: st.name, pin: enteredPin, tgId: liveTg || st.tgId || '', initData: (_tgu && _tgu.initData) || ''
+      });
+      const srvRole = String((res && res.role) || '').toLowerCase();
+      const srvName = String((res && (res.staffName || res.userName)) || st.name).trim();
+      const roleValid = !srvRole || srvRole === 'staff' || srvRole === 'admin';
+      const nameValid = srvName.toLowerCase() === st.name.toLowerCase();
+      if (!res || res.ok !== true || !res.sessionToken || !roleValid || !nameValid) {
+        showToast(formatAuthError(res));
+        return;
       }
+      const srvTime = (res.checkedInAt) || window.CoffeeCloudV93.localHHMM();
+      const srvMsg = res.welcomeMessage || '';
       if (liveTg && !st.tgId) {
         st.tgId = liveTg;
         saveSharedState(state, st.name, 'Привязан Telegram ID ' + liveTg + ' при входе');
       }
       completeStaffSignIn(st.name, srvTime, srvMsg, liveTg || st.tgId || '');
-    } else { pinBuf = ''; showToast('Неверный PIN'); render(); }
+      if (res.pinChangeRequired) {
+        showToast('Требуется сменить временный PIN-код');
+      }
+    } finally {
+      loginPending = false;
+      render();
+    }
   }
 
   function render() {
@@ -494,15 +552,17 @@ function initTheme(btnId) {
           <div class="step-counter"><span>Вход</span><span>${liveTg?'Telegram':''}</span></div>
           <h2 class="step-title">${bound?'Привет, '+esc(bound.name):'Вход в смену'}</h2>
           <div class="field"><label>Сотрудник</label><select id="st-sel" ${bound?'disabled':''}>${optList(names, pickStaff)}</select></div>
-          <div class="pin-dots">${[0,1,2,3].map(i=>`<span class="pin-dot ${pinBuf.length>i?'filled':''}"></span>`).join('')}</div>
-          <div class="pin-pad">${['1','2','3','4','5','6','7','8','9','⌫','0','✓'].map(k=>`<button class="pin-key" data-k="${k}">${k}</button>`).join('')}</div>
+          <div class="pin-dots">${Array.from({length: Math.max(4, pinBuf.length)}, (_, i) => `<span class="pin-dot ${pinBuf.length>i?'filled':''}"></span>`).join('')}</div>
+          <div style="text-align:center;font-size:12px;color:var(--muted);margin-bottom:8px;">${loginPending ? 'Проверка PIN на сервере...' : 'Введите PIN и нажмите ✓'}</div>
+          <div class="pin-pad">${['1','2','3','4','5','6','7','8','9','⌫','0','✓'].map(k=>`<button class="pin-key" data-k="${k}" ${loginPending?'disabled':''}>${k}</button>`).join('')}</div>
         </div>`;
       const ss = document.getElementById('st-sel'); if (ss) ss.onchange = e => { pickStaff = e.target.value; pinBuf=''; render(); };
       body.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+        if (loginPending) return;
         const k = b.dataset.k;
         if (k==='⌫') { pinBuf = pinBuf.slice(0,-1); render(); return; }
         if (k==='✓') { tryLogin(); return; }
-        if (pinBuf.length < 6) { pinBuf += k; if (cur && pinBuf.length === cur.pin.length) tryLogin(); else render(); }
+        if (pinBuf.length < 12) { pinBuf += k; render(); }
       });
       return;
     }
@@ -513,23 +573,50 @@ function initTheme(btnId) {
     document.getElementById('b-out').onclick = async () => {
       const prevName = authed;
       if (window.CoffeeCameraV94) window.CoffeeCameraV94.stop();
-      if (window.CoffeeCloudV93) await window.CoffeeCloudV93.checkOutStaff(prevName);
+      if (window.CoffeeCloudV93) {
+        try { await window.CoffeeCloudV93.checkOutStaff(prevName); } catch (_) {}
+        if (window.CoffeeCloudV93.authLogout) await window.CoffeeCloudV93.authLogout('staff');
+      }
       if (state.staffPresence && state.staffPresence[prevName]) state.staffPresence[prevName].status = 'off_shift';
       authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; render();
     };
     document.getElementById('b-pin').onclick = () => {
-      const s = getSt(authed);
+      const s = getSt(authed) || { name: authed, tgId: '' };
       openModal('Сменить мой PIN (' + s.name + ')', `
-        <div class="card-soft" style="margin-bottom:10px;font-size:12.5px;">Telegram ID: <b>${s.tgId||'Не привязан'}</b></div>
-        <div class="field"><label>Текущий PIN</label><input id="po" type="password" inputmode="numeric"></div>
-        <div class="field"><label>Новый PIN (4–6 цифр)</label><input id="pn" type="password" inputmode="numeric"></div>
-        <button class="btn-lg primary" id="ps">Сохранить PIN</button>
+        <div class="card-soft" style="margin-bottom:10px;font-size:12.5px;">Telegram ID: <b>${esc(s.tgId||'Не привязан')}</b></div>
+        <div class="field"><label>Текущий PIN</label><input id="po" type="password" inputmode="numeric" autocomplete="current-password" enterkeyhint="next"></div>
+        <div class="field"><label>Новый PIN (4–12 цифр)</label><input id="pn" type="password" inputmode="numeric" autocomplete="new-password" enterkeyhint="next"></div>
+        <div class="field"><label>Повторите новый PIN</label><input id="pn2" type="password" inputmode="numeric" autocomplete="new-password" enterkeyhint="done"></div>
+        <button class="btn-lg primary" id="ps">Сохранить PIN на сервере</button>
       `);
-      document.getElementById('ps').onclick = () => {
-        const o = document.getElementById('po').value.trim(), n = document.getElementById('pn').value.trim();
-        if (o !== s.pin || !/^\d{4,6}$/.test(n)) { showToast('Проверьте текущий и новый PIN'); return; }
-        s.pin = n; s.pinIsDefault = false;
-        saveSharedState(state, s.name, 'Сменил личный PIN'); closeModal(); showToast('Личный PIN обновлён!'); render();
+      document.getElementById('ps').onclick = async () => {
+        const btn = document.getElementById('ps');
+        const o = document.getElementById('po').value.trim();
+        const n = document.getElementById('pn').value.trim();
+        const n2 = document.getElementById('pn2').value.trim();
+        if (!/^\d{4,12}$/.test(o)) { showToast('Введите текущий PIN (от 4 цифр)'); return; }
+        if (!/^\d{4,12}$/.test(n) || /^(\d)\1{3,}$/.test(n)) { showToast('Новый PIN: 4–12 цифр, не из одинаковых цифр'); return; }
+        if (n !== n2) { showToast('Новый PIN и повтор не совпадают'); return; }
+        if (o === n) { showToast('Новый PIN должен отличаться от текущего'); return; }
+        if (!window.CoffeeCloudV93 || !window.CoffeeCloudV93.changeStaffPin) {
+          showToast('Сервер недоступен'); return;
+        }
+        btn.disabled = true; btn.textContent = 'Сохранение...';
+        try {
+          const res = await window.CoffeeCloudV93.changeStaffPin({ staffName: s.name, oldPin: o, newPin: n });
+          if (res && res.ok === true) {
+            closeModal();
+            authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = '';
+            showToast('PIN обновлён на сервере. Войдите заново с новым PIN.');
+            render();
+          } else {
+            showToast(formatAuthError(res));
+            btn.disabled = false; btn.textContent = 'Сохранить PIN на сервере';
+          }
+        } catch (err) {
+          showToast('Ошибка связи с сервером');
+          btn.disabled = false; btn.textContent = 'Сохранить PIN на сервере';
+        }
       };
     };
 
@@ -1112,7 +1199,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.9.0"></script>
+  <script src="./js/time-picker.js?v=97.14.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1120,7 +1207,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.9.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.9.0 */
-const CACHE_NAME = 'coffee-illy-v97-9-0';
+/* Coffee Illy ERP & Checklist — Service Worker v97.14.0 */
+const CACHE_NAME = 'coffee-illy-v97-14-0';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -20,7 +20,7 @@ const CORE_ASSETS = [
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
 });
 
@@ -37,14 +37,15 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Никогда не кэшируем API-запросы Google Apps Script / Google APIs
+  // Никогда не кэшируем API-запросы Google Apps Script / Google APIs / Telegram SDK
   if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com') || url.hostname.includes('telegram.org')) {
     return;
   }
 
-  // Network-first для HTML и config.js (чтобы обновления приходили мгновенно, но офлайн всё открывалось)
-  const isHtmlOrConfig = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
-  if (isHtmlOrConfig) {
+  const isNav = req.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+  const isCode = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+
+  if (isNav) {
     event.respondWith(
       fetch(req)
         .then((res) => {
@@ -54,14 +55,30 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
+        .catch(() => caches.match(req, { ignoreSearch: true }).then((cached) => cached || caches.match('./index.html')))
     );
     return;
   }
 
-  // Stale-while-revalidate для JS/CSS/иконок
+  if (isCode) {
+    // Для JS/CSS никогда не возвращаем index.html в качестве фолбэка (иначе SyntaxError)
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(req, clone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req, { ignoreSearch: true }).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate для иконок и манифеста
   event.respondWith(
-    caches.match(req).then((cached) => {
+    caches.match(req, { ignoreSearch: true }).then((cached) => {
       const fetchPromise = fetch(req).then((res) => {
         if (res && res.status === 200 && res.type === 'basic') {
           const clone = res.clone();

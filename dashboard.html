@@ -212,12 +212,18 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .tbl-wrap table { min-width: 0; }
 }
 
+  th.sortable { cursor:pointer; user-select:none; white-space:nowrap; transition:color .15s ease; }
+  th.sortable:hover { color:var(--accent); }
+  th.sortable.active { color:var(--accent); }
+  .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
+  th.sortable.active .sort-ind { opacity:1; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js?v=97.9.0"></script>
-  <script src="js/cloud-sync.js?v=97.9.0"></script>
-<script src="js/pos-csv-parser.js?v=97.9.0"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+  <script src="config.js?v=97.14.0"></script>
+  <script src="js/cloud-sync.js?v=97.14.0"></script>
+<script src="js/pos-csv-parser.js?v=97.14.0"></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.0">
 </head>
 <body>
 <header class="topbar">
@@ -233,9 +239,9 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   </div>
   <div class="top-actions">
     <span class="chip-btn" id="hdr-clock" style="cursor:default;">🕒 --:--</span>
-    <button class="chip-btn good" id="btn-lock">🔓 Админ-сессия</button>
-    <button class="chip-btn" id="btn-theme">🌓 Авто</button>
-    <button class="chip-btn" id="btn-reset">↻ Обновить</button>
+    <button class="chip-btn good" id="btn-lock" aria-label="Статус сессии владельца">🔓 Админ-сессия</button>
+    <button class="chip-btn" id="btn-theme" aria-label="Переключить тему оформления">🌓 Авто</button>
+    <button class="chip-btn" id="btn-reset" aria-label="Обновить данные из облака">↻ Обновить</button>
   </div>
 </header>
 
@@ -273,7 +279,7 @@ const PLAN_OPTS = [1500,1800,2000,2200,2500,3000,3500,4000,5000];
 const CHECKS_OPTS = [30,40,50,60,70,75,80,90,100,120];
 const AVG_OPTS = [25,28,30,32,35,38,40,45,50];
 const WO_OPTS = [5,10,15,20,25,30];
-const SHIFT_HOURS = ['07:30–22:30','08:00–20:00','08:00–16:00','14:00–22:30','Выходной'];
+const SHIFT_HOURS = ['07:30–22:30','08:00–20:00','08:00–16:00','14:00–22:30','2 смены','2 смены, пик','Выходной'];
 const VOL_OPTS = ['60 мл (S)','150 мл (S)','200 мл (M)','250 мл (M)','350 мл (L)','400 мл (XL)'];
 const CAT_OPTS = ['Классика','Авторские','Холодные','Чай и не-кофе','Выпечка'];
 const EXP_CATS = ['Закупка продуктов','Зарплата','Аренда','Коммунальные','Реклама','Ремонт и оборудование','Прочее'];
@@ -283,10 +289,10 @@ const EQUIP_ZONES = ['Кофемашина','Кофемолка','Холодил
 function freshState() {
   const s = JSON.parse(JSON.stringify(LIVE_SNAPSHOT));
   s.rev = 1; s.woNorm = 15; s.initCounter = 600; s.photoAll = false; s.simTime = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '13:25');
-  s.adminPin = '1234'; s.extensions = {};
+  s.extensions = {};
   s.staff = s.staff.map(st => Object.assign({}, st, {
-    pin: '1234', pinIsDefault: true,
-    tgId: st.name === 'Соня' ? 'TG-518294012' : (st.name === 'Алина' ? 'TG-604912338' : '')
+    pinIsDefault: !!st.pinIsDefault,
+    tgId: ''
   }));
   s.liveProgress = {}; s.staffPresence = {}; s.tgChat = ''; s.webappUrl = ''; s.tgConfiguredOnServer = false; s.autopilotEnabled = false; s.lastSyncAt = ''; s.lastRttMs = 0;
   s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.1 на реальных данных Coffee_illy.' }];
@@ -356,6 +362,41 @@ function initTheme(btnId) {
   let incFilter = 'open';
   let chkFilter = 'all';
   let salesCatFilter = 'all';
+  const sortState = {
+    salesTop: { key: 'sum', dir: 'desc' },
+    salesLog: { key: 'date', dir: 'desc' },
+    finCash: { key: 'date', dir: 'desc' },
+    finExp: { key: 'date', dir: 'desc' },
+    finPlans: { key: 'dayIdx', dir: 'asc' }
+  };
+  function toggleSort(tbl, key, defaultDir) {
+    const cur = sortState[tbl];
+    if (!cur) return;
+    if (cur.key === key) cur.dir = cur.dir === 'desc' ? 'asc' : 'desc';
+    else { cur.key = key; cur.dir = defaultDir || 'desc'; }
+  }
+  function sortTh(tbl, key, label, defaultDir) {
+    const cur = sortState[tbl] || { key: '', dir: 'desc' };
+    const isAct = cur.key === key;
+    const ind = isAct ? (cur.dir === 'desc' ? '↓' : '↑') : '↕';
+    return `<th class="sortable ${isAct ? 'active' : ''}" data-sort-tbl="${tbl}" data-sort-key="${key}" data-sort-def="${defaultDir || 'desc'}">${label}<span class="sort-ind">${ind}</span></th>`;
+  }
+  function bindSortHeaders(container) {
+    container.querySelectorAll('[data-sort-tbl]').forEach(el => {
+      el.onclick = () => {
+        toggleSort(el.dataset.sortTbl, el.dataset.sortKey, el.dataset.sortDef || 'desc');
+        render();
+      };
+    });
+  }
+  function sortList(arr, dir, getter) {
+    const mult = dir === 'asc' ? 1 : -1;
+    return arr.slice().sort((a, b) => {
+      const va = getter(a), vb = getter(b);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mult;
+      return String(va == null ? '' : va).localeCompare(String(vb == null ? '' : vb), 'ru', { numeric: true, sensitivity: 'base' }) * mult;
+    });
+  }
   let salesQuery = '';
   let whCatFilter = 'all';
   const DATE_STORE_KEY = 'coffee_illy_v93_date_range';
@@ -580,20 +621,23 @@ function initTheme(btnId) {
     document.getElementById('p-ok').onclick = async () => {
       const entered = document.getElementById('p-in').value.trim();
       if (!entered) return;
-      if (window.CoffeeCloudV93) {
-        const res = await window.CoffeeCloudV93.authLogin('admin', { pin: entered });
-        if (res && res.ok && res.sessionToken) {
-          adminUnlocked = true; adminAuthNeeded = false; state.adminPin = entered;
-          closeModal(); showToast('🔓 Живая сессия владельца активна');
-          if (cloudLoop && cloudLoop.pullNow) await cloudLoop.pullNow(true);
-          fn(); render();
-          return;
-        }
-        showToast((res && res.error) ? String(res.error).replace(/^[A-Z_]+:\s*/, '') : 'Неверный PIN владельца');
+      if (!window.CoffeeCloudV93 || !window.CoffeeCloudV93.authLogin) {
+        showToast('Сервер авторизации недоступен — вход владельца невозможен');
         return;
       }
-      if (entered === state.adminPin) { adminUnlocked = true; adminAuthNeeded = false; closeModal(); fn(); render(); }
-      else showToast('Неверный PIN');
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        showToast('Нет подключения к интернету — вход владельца требует связи с сервером');
+        return;
+      }
+      const res = await window.CoffeeCloudV93.authLogin('admin', { pin: entered });
+      if (res && res.ok === true && res.sessionToken) {
+        adminUnlocked = true; adminAuthNeeded = false;
+        closeModal(); showToast('🔓 Живая сессия владельца активна');
+        if (cloudLoop && cloudLoop.pullNow) await cloudLoop.pullNow(true);
+        fn(); render();
+        return;
+      }
+      showToast((res && res.offline) ? 'Сервер недоступен' : ((res && res.error) ? String(res.error).replace(/^[A-Z_]+:\s*/, '') : 'Неверный PIN владельца'));
     };
   }
 
@@ -845,12 +889,14 @@ function initTheme(btnId) {
               const st = getBlkSt(b);
               const isExt = !!(state.extensions[b.name] && state.extensions[b.name].forceOpen);
               return `<div class="row-item" style="${b.active===false?'opacity:.55;':''}"><div class="row-main">
-                <div class="row-title">${esc(b.name)} <span class="badge">${b.isCash?'Касса':blockTasks(b.name).length+' задач'}</span></div>
+                <div class="row-title">${esc(b.name)} <span class="badge">${b.isCash?'Касса':blockTasks(b.name).length+' задач'}</span> ${b.assignee?`<span class="badge accent">👤 ${esc(b.assignee)}</span>`:''} ${b.scheduleType==='weekly'&&Array.isArray(b.scheduleDays)&&b.scheduleDays.length?`<span class="badge">📅 ${esc(b.scheduleDays.join(', '))}</span>`:(b.scheduleType==='date'&&b.scheduleDate?`<span class="badge warn">📅 ${esc(b.scheduleDate)}</span>`:'')}</div>
                 <div class="row-sub">Окно: <b>${b.openTime}–${b.deadline}</b> · <span class="badge ${st.cls}">${st.label}</span></div>
               </div><div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <button class="chip-btn" data-eb="${esc(b.id)}">✏️ Окно</button>
-                ${!b.isCash ? `<button class="chip-btn" data-vt="${esc(b.name)}">Задачи</button>`:''}
-                ${b.active!==false && !st.open ? `<button class="chip-btn good" data-un="${esc(b.name)}">🔓 Открыть</button>` : (isExt ? `<button class="chip-btn" data-lk="${esc(b.name)}">Вернуть окно</button>`:'')}
+                <button class="chip-btn" data-vt="${esc(b.name)}">📋 Задачи (${blockTasks(b.name).length})</button>
+                ${isExt
+                  ? `<button class="chip-btn" data-lk="${esc(b.name)}">🔒 Вернуть окно</button>`
+                  : `<button class="chip-btn good" data-un="${esc(b.name)}">${st.open ? '🔓 До 23:59' : '🔓 Открыть'}</button>`}
               </div></div>`;
             }).join('')}
           </div>
@@ -876,34 +922,125 @@ function initTheme(btnId) {
       }));
       root.querySelectorAll('[data-eb]').forEach(b => b.onclick = () => guard('Настроить окно', () => {
         const blk = state.blocks.find(x=>x.id===b.dataset.eb);
+        if (!blk) return;
+        const staffNames = (state.staff || []).filter(s => s && s.active !== false && s.name).map(s => s.name);
+        const curType = blk.scheduleType || 'daily';
+        const curDays = Array.isArray(blk.scheduleDays) ? blk.scheduleDays : [];
+        const curDate = blk.scheduleDate || getTodayISO();
+        const ALL_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
         openModal('Блок «' + blk.name + '»', `
-          <div class="field"><label>Название</label><input id="en" value="${esc(blk.name)}"></div>
-          <div class="grid-2"><div class="field"><label>Открытие</label><select id="eo">${optList(TIME_OPTIONS, blk.openTime)}</select></div><div class="field"><label>Дедлайн</label><select id="ed">${optList(TIME_OPTIONS, blk.deadline)}</select></div></div>
-          <div class="field"><label>Статус</label><select id="ea"><option value="1" ${blk.active!==false?'selected':''}>Активен</option><option value="0" ${blk.active===false?'selected':''}>Отключён</option></select></div>
-          <button class="btn-lg primary" id="es">Сохранить</button>
+          <div class="field"><label>Название</label><input id="m-blk-name" value="${esc(blk.name)}"></div>
+          <div class="grid-2"><div class="field"><label>Открытие</label><select id="m-blk-open">${optList(TIME_OPTIONS, blk.openTime)}</select></div><div class="field"><label>Дедлайн</label><select id="m-blk-dead">${optList(TIME_OPTIONS, blk.deadline)}</select></div></div>
+          <div class="grid-2">
+            <div class="field"><label>Назначен сотруднику</label><select id="m-blk-assignee"><option value="">Все бариста (по графику)</option>${staffNames.map(n => `<option value="${esc(n)}" ${blk.assignee===n?'selected':''}>👤 ${esc(n)}</option>`).join('')}</select></div>
+            <div class="field"><label>Статус</label><select id="m-blk-active"><option value="1" ${blk.active!==false?'selected':''}>Активен</option><option value="0" ${blk.active===false?'selected':''}>Отключён</option></select></div>
+          </div>
+          <div class="field"><label>Периодичность назначения</label><select id="m-blk-sched">
+            <option value="daily" ${curType==='daily'?'selected':''}>Ежедневно</option>
+            <option value="weekly" ${curType==='weekly'?'selected':''}>По дням недели (напр. 1 раз в неделю)</option>
+            <option value="date" ${curType==='date'?'selected':''}>На конкретную дату</option>
+          </select></div>
+          <div class="field" id="m-blk-days-wrap" style="display:${curType==='weekly'?'block':'none'};">
+            <label>Выберите дни недели</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">${ALL_DAYS.map(d => `<label class="chip-btn" style="cursor:pointer;"><input type="checkbox" class="m-blk-day" value="${d}" ${curDays.includes(d)?'checked':''} style="width:auto;margin-right:4px;">${d}</label>`).join('')}</div>
+          </div>
+          <div class="field" id="m-blk-date-wrap" style="display:${curType==='date'?'block':'none'};">
+            <label>Конкретная дата выполнения</label>
+            <input id="m-blk-date" type="date" value="${esc(curDate)}">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-lg primary" id="m-blk-save" style="flex:1;">Сохранить</button>
+            ${!['Открытие','Закрытие','Касса'].includes(blk.name) ? `<button class="chip-btn bad" id="m-blk-del" style="padding:10px 14px;">🗑 Удалить блок</button>` : ''}
+          </div>
         `);
-        document.getElementById('es').onclick = () => {
-          const op = document.getElementById('eo').value, dl = document.getElementById('ed').value, nm = document.getElementById('en').value.trim();
+        const schedSel = document.getElementById('m-blk-sched');
+        schedSel.onchange = () => {
+          document.getElementById('m-blk-days-wrap').style.display = schedSel.value === 'weekly' ? 'block' : 'none';
+          document.getElementById('m-blk-date-wrap').style.display = schedSel.value === 'date' ? 'block' : 'none';
+        };
+        document.getElementById('m-blk-save').onclick = async () => {
+          const btn = document.getElementById('m-blk-save');
+          const op = document.getElementById('m-blk-open').value, dl = document.getElementById('m-blk-dead').value, nm = document.getElementById('m-blk-name').value.trim();
           if (!nm || toMin(op) >= toMin(dl)) { showToast('Открытие должно быть раньше дедлайна'); return; }
-          const old = blk.name; blk.name = nm; blk.openTime = op; blk.deadline = dl; blk.active = document.getElementById('ea').value === '1';
-          if (old !== nm) state.tasks.forEach(t => { if (t.block === old) t.block = nm; });
-          saveSharedState(state, 'Администратор', 'Окно «' + nm + '»: ' + op + '–' + dl); closeModal(); showToast('Синхронизировано!'); render();
+          const stType = document.getElementById('m-blk-sched').value;
+          const selDays = Array.from(document.querySelectorAll('.m-blk-day:checked')).map(el => el.value);
+          const selDate = (document.getElementById('m-blk-date').value || '').trim();
+          if (stType === 'weekly' && !selDays.length) { showToast('Выберите хотя бы один день недели'); return; }
+          if (stType === 'date' && !selDate) { showToast('Укажите конкретную дату'); return; }
+          if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+          const old = blk.name;
+          blk.name = nm; blk.openTime = op; blk.deadline = dl;
+          blk.active = document.getElementById('m-blk-active').value === '1';
+          blk.assignee = document.getElementById('m-blk-assignee').value;
+          blk.scheduleType = stType;
+          blk.scheduleDays = stType === 'weekly' ? selDays : [];
+          blk.scheduleDate = stType === 'date' ? selDate : '';
+          const renamed = {};
+          if (old !== nm) {
+            renamed[old] = nm;
+            state.tasks.forEach(t => { if (t.block === old) t.block = nm; });
+          }
+          saveSharedState(state, 'Администратор', '');
+          let res = { ok: true };
+          if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
+            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+            res = await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, renamed);
+          } else {
+            saveSharedState(state, 'Администратор', 'Окно «' + nm + '»: ' + op + '–' + dl);
+          }
+          closeModal();
+          showToast(res && res.ok ? ('✓ Блок «' + nm + '» сохранён и синхронизирован!') : ('Ошибка сохранения: ' + ((res && res.error) || 'проверьте вход')));
+          render();
+        };
+        const delBlkBtn = document.getElementById('m-blk-del');
+        if (delBlkBtn) delBlkBtn.onclick = async () => {
+          state.blocks = state.blocks.filter(x => x.id !== blk.id);
+          saveSharedState(state, 'Администратор', '');
+          if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
+            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+            await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, {});
+          }
+          closeModal(); showToast('✓ Блок «' + blk.name + '» удалён'); render();
         };
       }));
       root.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => openTasksModal(b.dataset.vt));
       document.getElementById('b-add').onclick = () => guard('Новый блок', () => {
+        const staffNames = (state.staff || []).filter(s => s && s.active !== false && s.name).map(s => s.name);
+        const ALL_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
         openModal('Новый блок чек-листа', `
-          <div class="field"><label>Название</label><input id="nn" placeholder="Например: Вечерняя ревизия"></div>
+          <div class="field"><label>Название</label><input id="nn" placeholder="Например: Еженедельная ревизия"></div>
           <div class="grid-2"><div class="field"><label>Открытие</label><select id="no">${optList(TIME_OPTIONS,'07:00')}</select></div><div class="field"><label>Дедлайн</label><select id="nd">${optList(TIME_OPTIONS,'23:59')}</select></div></div>
+          <div class="grid-2">
+            <div class="field"><label>Назначен сотруднику</label><select id="na"><option value="">Все бариста</option>${staffNames.map(n=>`<option value="${esc(n)}">👤 ${esc(n)}</option>`).join('')}</select></div>
+            <div class="field"><label>Периодичность</label><select id="nst"><option value="daily">Ежедневно</option><option value="weekly">По дням недели</option><option value="date">На конкретную дату</option></select></div>
+          </div>
+          <div class="field" id="n-days-w" style="display:none;"><label>Дни недели</label><div style="display:flex;gap:6px;flex-wrap:wrap;">${ALL_DAYS.map(d=>`<label class="chip-btn" style="cursor:pointer;"><input type="checkbox" class="n-day-cb" value="${d}" style="width:auto;margin-right:4px;">${d}</label>`).join('')}</div></div>
+          <div class="field" id="n-date-w" style="display:none;"><label>Конкретная дата</label><input id="n-date-in" type="date" value="${esc(getTodayISO())}"></div>
           <div class="field"><label>Первая задача</label><input id="nt" placeholder="Проверить остатки молока"></div>
           <button class="btn-lg primary" id="ns">Создать и отправить в терминал</button>
         `);
-        document.getElementById('ns').onclick = () => {
+        const nst = document.getElementById('nst');
+        nst.onchange = () => {
+          document.getElementById('n-days-w').style.display = nst.value === 'weekly' ? 'block' : 'none';
+          document.getElementById('n-date-w').style.display = nst.value === 'date' ? 'block' : 'none';
+        };
+        document.getElementById('ns').onclick = async () => {
           const nm = document.getElementById('nn').value.trim(), op = document.getElementById('no').value, dl = document.getElementById('nd').value;
+          const stType = nst.value;
+          const selDays = Array.from(document.querySelectorAll('.n-day-cb:checked')).map(el => el.value);
+          const selDate = (document.getElementById('n-date-in').value || '').trim();
           if (!nm || toMin(op) >= toMin(dl)) { showToast('Проверьте название и время'); return; }
-          state.blocks.push({ id:'blk_'+Date.now(), name:nm, openTime:op, deadline:dl, isCash:false, active:true });
-          state.tasks.push({ id:'t_'+Date.now(), block:nm, group:nm, title:document.getElementById('nt').value.trim()||'Проверить зону', instruction:'Выполнить по стандарту.', photo:true, owner:'Администратор' });
-          saveSharedState(state, 'Администратор', 'Создан блок «' + nm + '»'); closeModal(); showToast('Блок отправлен в терминал!'); render();
+          if (stType === 'weekly' && !selDays.length) { showToast('Выберите дни недели'); return; }
+          if (stType === 'date' && !selDate) { showToast('Укажите дату'); return; }
+          state.blocks.push({ id:'blk_'+Date.now(), name:nm, openTime:op, deadline:dl, isCash:false, active:true, assignee:document.getElementById('na').value, scheduleType:stType, scheduleDays:stType==='weekly'?selDays:[], scheduleDate:stType==='date'?selDate:'' });
+          const firstTitle = document.getElementById('nt').value.trim() || 'Проверить зону';
+          state.tasks.push({ id:'t_'+Date.now(), block:nm, group:nm, title:firstTitle, instruction:'Выполнить по стандарту.', photo:true, owner:'Администратор' });
+          if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
+            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+            await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, {});
+          }
+          saveSharedState(state, 'Администратор', 'Добавлена задача «' + firstTitle + '»');
+          closeModal(); showToast('✓ Блок «' + nm + '» создан и отправлен в терминал!'); render();
         };
       });
       return;
@@ -926,8 +1063,30 @@ function initTheme(btnId) {
         byProduct[key].qty += Number(s.qty) || 0;
         byProduct[key].sum += Number(s.sum) || 0;
       });
-      const topProducts = Object.values(byProduct).sort((a, b) => b.sum - a.sum || b.qty - a.qty);
-      const denomSum = topProducts.reduce((a, p) => a + p.sum, 0) || 1;
+      const rawTop = Object.values(byProduct);
+      const denomSum = rawTop.reduce((a, p) => a + p.sum, 0) || 1;
+      rawTop.forEach(p => {
+        p.share = (p.sum / denomSum) * 100;
+        p.avgPrice = p.qty ? (p.sum / p.qty) : 0;
+      });
+      const stTop = sortState.salesTop;
+      const topProducts = sortList(rawTop, stTop.dir, p => {
+        if (stTop.key === 'name') return p.name;
+        if (stTop.key === 'kind') return p.kind;
+        if (stTop.key === 'qty') return p.qty;
+        if (stTop.key === 'share') return p.share;
+        if (stTop.key === 'avgPrice') return p.avgPrice;
+        return p.sum;
+      });
+      const stLog = sortState.salesLog;
+      const sortedSalesLog = sortList(filteredSales, stLog.dir, s => {
+        if (stLog.key === 'barista') return s.barista || '';
+        if (stLog.key === 'name') return s.name || '';
+        if (stLog.key === 'kind') return s.kind || '';
+        if (stLog.key === 'qty') return Number(s.qty) || 0;
+        if (stLog.key === 'sum') return Number(s.sum) || 0;
+        return String(s.date || '');
+      });
       root.innerHTML = `
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Продано за период</div><div class="kpi-val">${salesQtyTotal} шт.</div><div class="kpi-meta">${esc(rng.label)}</div></div>
@@ -942,10 +1101,25 @@ function initTheme(btnId) {
               <label class="chip-btn accent" style="cursor:pointer;">📂 Загрузить CSV<input id="sales-csv-in" type="file" accept=".csv,.txt" multiple style="display:none"></label><input id="sales-q" value="${esc(salesQuery)}" placeholder="Поиск напитка или бариста..." style="background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12.5px;min-width:190px;">
             </div>
           </div>
-          <div class="date-pills" style="margin-bottom:12px;">
-            ${cats.map(c => `<button class="date-pill ${salesCatFilter===c?'active':''}" data-sc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <div class="date-pills">
+              ${cats.map(c => `<button class="date-pill ${salesCatFilter===c?'active':''}" data-sc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+            </div>
+            <div class="date-pills" title="Быстрая сортировка позиций">
+              ${[
+                ['sum', '💰 Выручка', 'desc'],
+                ['qty', '📦 Кол-во', 'desc'],
+                ['share', '📊 Доля', 'desc'],
+                ['avgPrice', '🏷 Ср. цена', 'desc'],
+                ['name', '🔤 А–Я', 'asc']
+              ].map(([k, lbl, defD]) => {
+                const act = stTop.key === k;
+                const arrow = act ? (stTop.dir === 'desc' ? ' ↓' : ' ↑') : '';
+                return `<button class="date-pill ${act ? 'active' : ''}" data-sort-tbl="salesTop" data-sort-key="${k}" data-sort-def="${defD}">${lbl}${arrow}</button>`;
+              }).join('')}
+            </div>
           </div>
-          <div class="tbl-wrap"><table><thead><tr><th>Позиция</th><th>Категория</th><th>Кол-во</th><th>Выручка</th><th>Доля</th><th>Ср. цена</th></tr></thead><tbody>
+          <div class="tbl-wrap"><table><thead><tr>${sortTh('salesTop','name','Позиция','asc')}${sortTh('salesTop','kind','Категория','asc')}${sortTh('salesTop','qty','Кол-во','desc')}${sortTh('salesTop','sum','Выручка','desc')}${sortTh('salesTop','share','Доля','desc')}${sortTh('salesTop','avgPrice','Ср. цена','desc')}</tr></thead><tbody>
             ${topProducts.length ? topProducts.map(p => `<tr>
               <td><b>${esc(p.name)}</b></td>
               <td><span class="badge">${esc(p.kind)}</span></td>
@@ -958,8 +1132,8 @@ function initTheme(btnId) {
         </div>
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Журнал продаж по дням (${filteredSales.length})</h2></div></div>
-          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Бариста</th><th>Позиция</th><th>Категория</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody>
-            ${filteredSales.length ? filteredSales.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0, 120).map(s => `<tr>
+          <div class="tbl-wrap"><table><thead><tr>${sortTh('salesLog','date','Дата','desc')}${sortTh('salesLog','barista','Бариста','asc')}${sortTh('salesLog','name','Позиция','asc')}${sortTh('salesLog','kind','Категория','asc')}${sortTh('salesLog','qty','Кол-во','desc')}${sortTh('salesLog','sum','Сумма','desc')}</tr></thead><tbody>
+            ${sortedSalesLog.length ? sortedSalesLog.slice(0, 120).map(s => `<tr>
               <td><b>${esc(s.date)}</b></td>
               <td>${esc(s.barista)}</td>
               <td><b>${esc(s.name)}</b></td>
@@ -969,9 +1143,16 @@ function initTheme(btnId) {
             </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:14px;">Нет записей за выбранный период</td></tr>`}
           </tbody></table></div>
         </div>`;
+      bindSortHeaders(root);
       root.querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { salesCatFilter = b.dataset.sc; render(); });
       const sq = document.getElementById('sales-q');
-      if (sq) sq.oninput = (e) => { salesQuery = e.target.value; render(); };
+      if (sq) sq.oninput = (e) => {
+        const pos = e.target.selectionStart;
+        salesQuery = e.target.value;
+        render();
+        const sq2 = document.getElementById('sales-q');
+        if (sq2) { sq2.focus(); try { sq2.setSelectionRange(pos, pos); } catch (_) {} }
+      };
       const scsv = document.getElementById('sales-csv-in');
       if (scsv) scsv.onchange = async (ev) => {
         const files = Array.from(ev.target.files || []);
@@ -1082,6 +1263,30 @@ function initTheme(btnId) {
       const finCardSum = fCash.reduce((a, c) => a + (Number(c.card) || 0), 0);
       const finChecks = fCash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
       const finAvg = finChecks > 0 ? Math.round(totalRev / finChecks) : 0;
+      const stCash = sortState.finCash;
+      const sortedFinCash = sortList(fCash, stCash.dir, c => {
+        if (stCash.key === 'revenue') return Number(c.revenue) || 0;
+        if (stCash.key === 'checks') return Number(c.checks) || 0;
+        if (stCash.key === 'avgCheck') return c.checks ? (Number(c.revenue || 0) / Number(c.checks)) : 0;
+        if (stCash.key === 'cash') return Number(c.cash) || 0;
+        if (stCash.key === 'barista') return String(c.barista || '');
+        return String(c.date || '');
+      });
+      const stExp = sortState.finExp;
+      const sortedFinExp = sortList(fExpenses, stExp.dir, e => {
+        if (stExp.key === 'amount') return Number(e.amount) || 0;
+        if (stExp.key === 'category') return String(e.category || '');
+        return String(e.date || '');
+      });
+      const stPl = sortState.finPlans;
+      const indexedPlans = (state.plans || []).map((p, idx) => ({ p, idx }));
+      const sortedFinPlans = sortList(indexedPlans, stPl.dir, x => {
+        if (stPl.key === 'rev') return Number(x.p.rev || x.p.revenue || 0);
+        if (stPl.key === 'checks') return Number(x.p.checks || 0);
+        if (stPl.key === 'avg') return Number(x.p.avg || x.p.avgCheck || state.minAvgCheck || 35);
+        if (stPl.key === 'roster') return String(x.p.roster || '');
+        return x.idx;
+      });
       root.innerHTML = `
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Выручка (${esc(rng.label)})</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">Нал: ${fmtRub(finCashSum)} · Безнал: ${fmtRub(finCardSum)}</div></div>
@@ -1100,9 +1305,23 @@ function initTheme(btnId) {
           <div id="csv-imp-preview" style="display:none;margin-top:10px;"></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Кассовые смены (${fCash.length})</h2></div></div>
-          <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Выручка / План</th><th>Чеков / План</th><th>Ср. чек / Мин.</th><th>Нал / Безнал</th><th>Бариста</th></tr></thead><tbody>
-            ${fCash.length ? fCash.map(c => {
+          <div class="card-head">
+            <div><h2 class="card-title">Кассовые смены (${fCash.length})</h2></div>
+            <div class="date-pills" title="Быстрая сортировка смен">
+              ${[
+                ['date', '📅 Дата', 'desc'],
+                ['revenue', '💰 Выручка', 'desc'],
+                ['checks', '🧾 Чеки', 'desc'],
+                ['avgCheck', '🏷 Ср. чек', 'desc']
+              ].map(([k, lbl, defD]) => {
+                const act = stCash.key === k;
+                const arrow = act ? (stCash.dir === 'desc' ? ' ↓' : ' ↑') : '';
+                return `<button class="date-pill ${act ? 'active' : ''}" data-sort-tbl="finCash" data-sort-key="${k}" data-sort-def="${defD}">${lbl}${arrow}</button>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="tbl-wrap"><table><thead><tr>${sortTh('finCash','date','Дата','desc')}${sortTh('finCash','revenue','Выручка / План','desc')}${sortTh('finCash','checks','Чеков / План','desc')}${sortTh('finCash','avgCheck','Ср. чек / Мин.','desc')}${sortTh('finCash','cash','Нал / Безнал','desc')}${sortTh('finCash','barista','Бариста','asc')}</tr></thead><tbody>
+            ${sortedFinCash.length ? sortedFinCash.map(c => {
               const dp = getDayPlan(c.date);
               const avgC = c.checks ? Math.round(c.revenue / c.checks) : 0;
               const revPct = dp.rev > 0 ? Math.round((c.revenue / dp.rev) * 100) : 0;
@@ -1119,16 +1338,31 @@ function initTheme(btnId) {
         </div>
         <div class="grid-2" style="align-items:start;">
           <div class="card">
-            <div class="card-head"><div><h2 class="card-title">Расходы (${fmtRub(totalExp)})</h2></div><button class="chip-btn accent" id="e-add">+ Расход</button></div>
-            <div class="stack">${fExpenses.length ? fExpenses.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет расходов за выбранный период</div>`}</div>
+            <div class="card-head">
+              <div><h2 class="card-title">Расходы (${fmtRub(totalExp)})</h2></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                ${[
+                  ['date', '📅', 'desc'],
+                  ['amount', '💸 Сумма', 'desc'],
+                  ['category', '🏷 Кат.', 'asc']
+                ].map(([k, lbl, defD]) => {
+                  const act = stExp.key === k;
+                  const arrow = act ? (stExp.dir === 'desc' ? ' ↓' : ' ↑') : '';
+                  return `<button class="date-pill ${act ? 'active' : ''}" data-sort-tbl="finExp" data-sort-key="${k}" data-sort-def="${defD}">${lbl}${arrow}</button>`;
+                }).join('')}
+                <button class="chip-btn accent" id="e-add">+ Расход</button>
+              </div>
+            </div>
+            <div class="stack">${sortedFinExp.length ? sortedFinExp.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет расходов за выбранный период</div>`}</div>
           </div>
           <div class="card">
             <div class="card-head"><div><h2 class="card-title">Индивидуальные планы по дням (Пн–Вс)</h2></div></div>
-            <div class="tbl-wrap"><table><thead><tr><th>День</th><th>План выручки</th><th>Чеков</th><th>Мин. ср. чек</th><th>Смена</th><th></th></tr></thead><tbody>
-              ${state.plans.map((p,i)=>`<tr><td><b>${esc(p.day)}</b></td><td><b>${fmtRub(p.rev)}</b></td><td>${p.checks}</td><td><span class="badge accent">${p.avg || p.avgCheck || state.minAvgCheck || 35} ₽</span></td><td style="font-size:12px;color:var(--muted)">${esc(p.roster)}</td><td><button class="chip-btn" data-ep="${i}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
+            <div class="tbl-wrap"><table><thead><tr>${sortTh('finPlans','dayIdx','День','asc')}${sortTh('finPlans','rev','План выручки','desc')}${sortTh('finPlans','checks','Чеков','desc')}${sortTh('finPlans','avg','Мин. ср. чек','desc')}${sortTh('finPlans','roster','Смена','asc')}<th></th></tr></thead><tbody>
+              ${sortedFinPlans.map(({p, idx: i})=>`<tr><td><b>${esc(p.day)}</b></td><td><b>${fmtRub(p.rev)}</b></td><td>${p.checks}</td><td><span class="badge accent">${p.avg || p.avgCheck || state.minAvgCheck || 35} ₽</span></td><td style="font-size:12px;color:var(--muted)">${esc(p.roster)}</td><td><button class="chip-btn" data-ep="${i}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
             </tbody></table></div>
           </div>
         </div>`;
+      bindSortHeaders(root);
       const repBtn = document.getElementById('btn-gen-report');
       if (repBtn) repBtn.onclick = () => openReportModal(fCash, fExpenses, fChecklists, fIncidents, rng.label);
       const csvIn = document.getElementById('csv-imp-in');
@@ -1221,18 +1455,35 @@ function initTheme(btnId) {
       }));
       root.querySelectorAll('[data-ep]').forEach(b => b.onclick = () => guard('План дня', () => {
         const p = state.plans[Number(b.dataset.ep)];
-        const names = state.staff.filter(s=>s.active!==false).map(s=>s.name);
+        if (!p) return;
+        const names = state.staff.filter(s => s && s.active !== false && s.name).map(s => s.name);
+        if (!names.length) names.push('Бариста');
         const curAvg = Number(p.avg || p.avgCheck || state.minAvgCheck || 35);
+        const rawRoster = String(p.roster || '').trim();
+        const isDayOff = /^выходной$/i.test(rawRoster);
+        const hrMatch = rawRoster.match(/\(([^)]+)\)/);
+        const curHr = isDayOff ? 'Выходной' : ((hrMatch && hrMatch[1].trim()) || SHIFT_HOURS[0]);
+        const cleanNames = rawRoster.replace(/\([^)]*\)/g, '').split(/[+,;/]+/).map(x => x.trim()).filter(Boolean);
+        const sel1 = names.find(n => cleanNames[0] && (n.toLowerCase() === cleanNames[0].toLowerCase() || cleanNames[0].toLowerCase().includes(n.toLowerCase()) || n.toLowerCase().includes(cleanNames[0].toLowerCase()))) || names[0];
+        const sel2 = cleanNames[1]
+          ? (names.find(n => n !== sel1 && (n.toLowerCase() === cleanNames[1].toLowerCase() || cleanNames[1].toLowerCase().includes(n.toLowerCase()) || n.toLowerCase().includes(cleanNames[1].toLowerCase()))) || '')
+          : '';
         openModal('Индивидуальный план на ' + p.day, `
           <div class="grid-3">
-            <div class="field"><label>План выручки (₽)</label><input id="pr" type="number" min="100" step="50" value="${Number(p.rev || state.plan || 2200)}"></div>
+            <div class="field"><label>План выручки (₽)</label><input id="pr" type="number" min="100" step="50" value="${Number(p.rev || p.revenue || state.plan || 2200)}"></div>
             <div class="field"><label>План чеков (шт.)</label><input id="pc" type="number" min="1" step="1" value="${Number(p.checks || state.planChecks || 75)}"></div>
             <div class="field"><label>Мин. средний чек (₽)</label><input id="pa" type="number" min="1" step="1" value="${curAvg}"></div>
           </div>
-          <div class="grid-2"><div class="field"><label>Сотрудник</label><select id="ps">${optList(names, names.find(n=>(p.roster||'').includes(n))||names[0])}</select></div><div class="field"><label>Смена</label><select id="ph">${optList(SHIFT_HOURS, SHIFT_HOURS[0])}</select></div></div>
+          <div class="grid-2">
+            <div class="field"><label>Сотрудник 1</label><select id="ps">${optList(names, sel1)}</select></div>
+            <div class="field"><label>Сотрудник 2 (если 2 смены)</label><select id="ps2"><option value="">— Один бариста —</option>${names.map(n => `<option value="${esc(n)}" ${n === sel2 ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+          </div>
+          <div class="field"><label>Смена / график</label><select id="ph">${optList(SHIFT_HOURS, curHr)}</select></div>
           <button class="btn-lg primary" id="psv">Сохранить план на ${esc(p.day)}</button>
         `);
-        document.getElementById('psv').onclick = () => {
+        document.getElementById('psv').onclick = async () => {
+          const btn = document.getElementById('psv');
+          if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
           const rVal = Math.max(100, Number(document.getElementById('pr').value) || 2200);
           const cVal = Math.max(1, Number(document.getElementById('pc').value) || 75);
           const aVal = Math.max(1, Number(document.getElementById('pa').value) || 35);
@@ -1240,9 +1491,42 @@ function initTheme(btnId) {
           p.checks = cVal;
           p.avg = aVal; p.avgCheck = aVal;
           const hr = document.getElementById('ph').value;
-          p.roster = hr==='Выходной'?'Выходной':document.getElementById('ps').value+' ('+hr+')';
-          saveSharedState(state, 'Администратор', 'Обновлён план ' + p.day + ' (' + rVal + ' ₽ / ' + cVal + ' чек. / ≥' + aVal + ' ₽)');
-          closeModal(); showToast('✓ План на ' + p.day + ' обновлён и учтён в дашборде!'); render();
+          const emp1 = document.getElementById('ps').value;
+          const emp2 = document.getElementById('ps2').value;
+          if (hr === 'Выходной') {
+            p.roster = 'Выходной';
+          } else {
+            const whoStr = (emp2 && emp2 !== emp1) ? (emp1 + ' + ' + emp2) : emp1;
+            p.roster = whoStr + ' (' + hr + ')';
+          }
+          const plansObj = {};
+          const rosterObj = {};
+          (state.plans || []).forEach(x => {
+            plansObj[x.day] = {
+              revenue: Number(x.rev || x.revenue || state.plan || 2200),
+              avgCheck: Number(x.avg || x.avgCheck || state.minAvgCheck || 35),
+              checks: Number(x.checks || state.planChecks || 75)
+            };
+            rosterObj[x.day] = String(x.roster || '');
+          });
+          // Локально сохраняем состояние без дублирования очереди
+          saveSharedState(state, 'Администратор', '');
+          let res = { ok: true, queued: true };
+          if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveDailyPlans === 'function') {
+            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+            res = await window.CoffeeCloudV93.saveDailyPlans(plansObj, rosterObj);
+          } else {
+            saveSharedState(state, 'Администратор', 'Обновлён план ' + p.day + ' (' + rVal + ' ₽ / ' + cVal + ' чек. / ≥' + aVal + ' ₽)');
+          }
+          closeModal();
+          if (res && res.ok) {
+            showToast(res.queued
+              ? ('✓ План на ' + p.day + ' сохранён локально (уйдёт в облако при связи)')
+              : ('✓ План на ' + p.day + ' сохранён в Google Таблице!'));
+          } else {
+            showToast('Ошибка сохранения плана: ' + ((res && res.error) || 'проверьте вход по PIN'));
+          }
+          render();
         };
       }));
       return;
@@ -1269,7 +1553,7 @@ function initTheme(btnId) {
             const sInc = fIncidents.filter(i => String(i.who || '').toLowerCase() === String(s.name || '').toLowerCase()).length;
             const pr = (state.staffPresence || {})[s.name];
             const isOn = !!(pr && pr.status === 'on_shift');
-            return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div>`;
+            return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${s.tgId ? `<button class="chip-btn good" data-tg-staff="${esc(s.name)}" title="Отправить личное сообщение в Telegram">📨 TG</button>` : ''}<button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div></div>`;
           }).join('')}</div>
         </div>
         <div class="card">
@@ -1280,6 +1564,30 @@ function initTheme(btnId) {
         </div>`;
       document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
       root.querySelectorAll('[data-es]').forEach(b => b.onclick = () => guard('Изменить сотрудника', () => openStaffModal(b.dataset.es)));
+      root.querySelectorAll('[data-tg-staff]').forEach(b => b.onclick = () => guard('Сообщение в Telegram', () => {
+        const empName = b.dataset.tgStaff;
+        openModal('Личное уведомление в Telegram: ' + empName, `
+          <div class="field"><label>Текст сообщения для ${esc(empName)}</label><textarea id="tg-dm-text" rows="3" placeholder="Например: Не забудь сдать Лайн Чек 1 до 09:30!"></textarea></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-lg primary" id="tg-dm-send" style="flex:1;">📨 Отправить лично</button>
+            <button class="chip-btn" id="tg-dm-test">🧪 Тест связи</button>
+          </div>
+        `);
+        document.getElementById('tg-dm-send').onclick = async () => {
+          const txt = document.getElementById('tg-dm-text').value.trim();
+          if (!txt) { showToast('Введите текст сообщения'); return; }
+          const res = window.CoffeeCloudV93 ? await window.CoffeeCloudV93.sendTelegramAlert({ targetStaffName: empName, text: '💬 <b>Сообщение от владельца</b>\n' + txt, targetPage: 'index.html', buttonText: '▶️ Открыть терминал', buttonType: 'web_app', force: true, skipDedup: true }) : null;
+          closeModal();
+          if (res && res.ok) showToast('📨 Отправлено лично: ' + empName);
+          else showToast('Ошибка отправки: ' + ((res && (res.reason || res.error)) || 'проверьте Telegram ID'));
+        };
+        document.getElementById('tg-dm-test').onclick = async () => {
+          const res = window.CoffeeCloudV93 ? await window.CoffeeCloudV93.testTelegramAlert({ targetStaffName: empName }) : null;
+          closeModal();
+          if (res && res.ok) showToast('✅ Тест доставлен лично: ' + empName);
+          else showToast('Ошибка теста: ' + ((res && res.telegram && (res.telegram.reason || res.telegram.error)) || (res && res.error) || 'проверьте Telegram ID'));
+        };
+      }));
       document.getElementById('k-add').onclick = () => guard('Новая ТТК', () => openTtkModal(null));
       root.querySelectorAll('[data-ek]').forEach(b => b.onclick = () => guard('Изменить ТТК', () => openTtkModal(b.dataset.ek)));
       return;
@@ -1298,34 +1606,46 @@ function initTheme(btnId) {
           <div class="kpi"><div class="kpi-lbl">События управления</div><div class="kpi-val">${fAudit.length}</div><div class="kpi-meta">Записей аудита за период</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Параметры кофейни</h2></div><button class="chip-btn accent" id="s-open-plans">📅 Планы по дням (Пн–Вс)</button></div>
+          <div class="card-head"><div><h2 class="card-title">Параметры кофейни</h2><div style="font-size:12px;color:var(--muted);margin-top:2px;">Планы выручки, чеков и среднего чека настраиваются индивидуально по дням недели (Пн–Вс)</div></div><button class="chip-btn accent" id="s-open-plans">📅 Планы по дням (Пн–Вс)</button></div>
           <div class="grid-2">
             <div class="field"><label>Название точки</label><input id="sl" value="${esc(state.location)}"></div>
-            <div class="field"><label>Дневной план выручки</label><select id="sp">${optList(PLAN_OPTS, state.plan, v=>fmtRub(v))}</select></div>
-          </div>
-          <div class="grid-3">
-            <div class="field"><label>План чеков</label><select id="sc">${optList(CHECKS_OPTS, state.planChecks)}</select></div>
-            <div class="field"><label>Мин. средний чек</label><select id="sa">${optList(AVG_OPTS, state.minAvgCheck, v=>v+' ₽')}</select></div>
             <div class="field"><label>Норма списаний</label><select id="sw">${optList(WO_OPTS, state.woNorm, v=>v+'%')}</select></div>
           </div>
           <div class="grid-2">
             <div class="field"><label>Стартовый счётчик (вручную)</label><input id="sn" type="number" min="0" value="${state.initCounter}"></div>
             <div class="field"><label>Фото обязательно везде</label><select id="sph"><option value="0" ${!state.photoAll?'selected':''}>Нет</option><option value="1" ${state.photoAll?'selected':''}>Да</option></select></div>
           </div>
-          <button class="btn-lg primary" id="s-save">Сохранить</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-lg primary" id="s-save" style="flex:1;">Сохранить</button>
+            <button class="chip-btn good" id="s-grant-photos">🔓 Открыть доступ читателя к фото Drive</button>
+          </div>
         </div>
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Telegram-бот</h2></div><span class="badge ${state.tgConfiguredOnServer?'good':'warn'}">${state.tgConfiguredOnServer?'🤖 Бот подключён':'⚠️ Нужен токен'}</span></div>
+          <div class="card-head"><div><h2 class="card-title">Telegram-бот и авто-уведомления</h2></div><span class="badge ${state.tgConfiguredOnServer?'good':'warn'}">${state.tgConfiguredOnServer?'🤖 Бот подключён':'⚠️ Нужен токен'}</span></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+            <span class="badge accent">⏳ За 15 мин до старта → бариста</span>
+            <span class="badge accent">📋 В момент открытия → бариста</span>
+            <span class="badge warn">⚠️ За 15 мин до дедлайна → бариста</span>
+            <span class="badge bad">⏰ Просрочка → админу и бариста</span>
+          </div>
           <div class="grid-2">
             <div class="field"><label>Токен Telegram-бота (BotFather)</label><input id="tg-tok" type="password" placeholder="${state.tgConfiguredOnServer?'•••••••• (сохранён на сервере)':'123456:ABC-DEF...'}"></div>
-            <div class="field"><label>Chat ID администратора (для поломок)</label><input id="tg-chat" value="${esc(state.tgChat || '')}" placeholder="Например: 518294012"></div>
+            <div class="field"><label>Chat ID администратора (для поломок и просрочек)</label><input id="tg-chat" value="${esc(state.tgChat || '')}" placeholder="Например: 518294012"></div>
           </div>
-          <div class="field"><label>URL веб-приложения (GitHub Pages — для кнопки перехода в чек-лист)</label><input id="tg-url" value="${esc(state.webappUrl || (location.origin + location.pathname.replace(/owner\.html$/i, '')))}" placeholder="https://username.github.io/coffee-illy/"></div>
+          <div class="field"><label>URL веб-приложения (GitHub Pages — для кнопки перехода в чек-лист)</label><input id="tg-url" value="${esc(state.webappUrl || (location.origin + location.pathname.replace(/(dashboard|owner|index)\.html$/i, '')))}" placeholder="https://username.github.io/coffee-illy/"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
             <button class="chip-btn accent" id="tg-save">💾 Сохранить Telegram</button>
             <button class="chip-btn good" id="tg-auto">🔔 Включить авто-уведомления (каждые 5 мин)</button>
             <button class="chip-btn" id="tg-test">📨 Тест админу</button>
             <button class="chip-btn" id="tg-run">▶️ Проверить чек-листы сейчас</button>
+          </div>
+          <div class="card-soft" style="margin-top:14px;padding:12px;">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📨 Отправить уведомление в Telegram (админу или лично бариста)</div>
+            <div class="grid-2">
+              <div class="field"><label>Получатель</label><select id="tg-rcpt"><option value="__admin__">👑 Администратор</option>${(state.staff || []).filter(s => s && s.active !== false).map(s => `<option value="${esc(s.name)}">👤 ${esc(s.name)} ${s.tgId ? '(TG привязан)' : '(⚠️ TG не привязан)'}</option>`).join('')}</select></div>
+              <div class="field"><label>Текст (пусто = тестовое уведомление)</label><input id="tg-direct-msg" placeholder="Например: Проверь витрину перед открытием"></div>
+            </div>
+            <button class="chip-btn accent" id="tg-direct-send">📨 Отправить выбранному получателю</button>
           </div>
         </div>
         <div class="card">
@@ -1335,14 +1655,19 @@ function initTheme(btnId) {
       const sop = document.getElementById('s-open-plans'); if (sop) sop.onclick = () => { tab = 'finances'; render(); };
       document.getElementById('s-save').onclick = () => guard('Сохранить настройки', () => {
         state.location = document.getElementById('sl').value.trim() || state.location;
-        state.plan = Number(document.getElementById('sp').value);
-        state.planChecks = Number(document.getElementById('sc').value);
-        state.minAvgCheck = Number(document.getElementById('sa').value);
         state.woNorm = Number(document.getElementById('sw').value);
         state.initCounter = Math.max(0, Number(document.getElementById('sn').value)||0);
         state.photoAll = document.getElementById('sph').value === '1';
         saveSharedState(state, 'Администратор', 'Обновлены настройки точки («' + state.location + '»)');
-        showToast('✓ Сохранено'); render();
+        showToast('✓ Настройки точки сохранены'); render();
+      });
+      const grpBtn = document.getElementById('s-grant-photos');
+      if (grpBtn) grpBtn.onclick = () => guard('Доступ к фото Drive', async () => {
+        if (!window.CoffeeCloudV93 || !window.CoffeeCloudV93.grantPhotoReaderAccess) return;
+        showToast('⏳ Открываем доступ читателя на Google Drive...');
+        const res = await window.CoffeeCloudV93.grantPhotoReaderAccess();
+        if (res && res.ok) showToast('✓ Доступ читателя открыт (файлов: ' + (res.updated || 0) + ')');
+        else showToast('Ошибка: ' + ((res && res.error) || 'проверьте права DriveApp'));
       });
       document.getElementById('tg-save').onclick = () => guard('Настройки Telegram', async () => {
         if (!window.CoffeeCloudV93) return;
@@ -1373,7 +1698,29 @@ function initTheme(btnId) {
         if (!window.CoffeeCloudV93) return;
         const res = await window.CoffeeCloudV93.runChecklistNotificationsNow({});
         const cnt = (res && Array.isArray(res.sent)) ? res.sent.length : 0;
-        showToast(cnt ? ('📨 Отправлено уведомлений сотрудникам: ' + cnt) : 'Новых открытых чек-листов для отправки нет');
+        showToast(cnt ? ('📨 Отправлено уведомлений бариста: ' + cnt) : 'Сейчас нет чек-листов в окнах (−15 мин / открыт / дедлайн)');
+      });
+      const tgDirBtn = document.getElementById('tg-direct-send');
+      if (tgDirBtn) tgDirBtn.onclick = () => guard('Отправка в Telegram', async () => {
+        if (!window.CoffeeCloudV93) return;
+        const rcpt = document.getElementById('tg-rcpt').value;
+        const msg = document.getElementById('tg-direct-msg').value.trim();
+        let res = null;
+        if (rcpt === '__admin__') {
+          res = msg
+            ? await window.CoffeeCloudV93.sendTelegramAlert({ text: '📣 <b>Уведомление владельцу</b>\n' + msg, targetPage: 'dashboard.html', buttonText: '📊 Открыть дашборд', force: true, skipDedup: true })
+            : await window.CoffeeCloudV93.testTelegramAlert({});
+        } else {
+          res = msg
+            ? await window.CoffeeCloudV93.sendTelegramAlert({ targetStaffName: rcpt, text: '💬 <b>Сообщение от владельца</b>\n' + msg, targetPage: 'index.html', buttonText: '▶️ Открыть терминал', buttonType: 'web_app', force: true, skipDedup: true })
+            : await window.CoffeeCloudV93.testTelegramAlert({ targetStaffName: rcpt });
+        }
+        if (res && res.ok) {
+          document.getElementById('tg-direct-msg').value = '';
+          showToast('📨 Уведомление отправлено: ' + (rcpt === '__admin__' ? 'Администратору' : rcpt));
+        } else {
+          showToast('Ошибка отправки: ' + ((res && res.telegram && (res.telegram.reason || res.telegram.error)) || (res && (res.reason || res.error)) || 'проверьте настройки Telegram'));
+        }
       });
     }
   }
@@ -1461,7 +1808,7 @@ function initTheme(btnId) {
   function openEditTaskModal(taskId, returnBlk) {
     const t = state.tasks.find(x => String(x.id) === String(taskId));
     if (!t) return;
-    const blockNames = state.blocks.filter(b => !b.isCash).map(b => b.name);
+    const blockNames = state.blocks.map(b => b.name);
     openModal('Редактировать задачу', `
       <div class="field"><label>Название шага</label><input id="et-t" value="${esc(t.title)}"></div>
       <div class="field"><label>Инструкция / стандарт</label><textarea id="et-i" rows="3">${esc(t.instruction || '')}</textarea></div>
@@ -1492,15 +1839,40 @@ function initTheme(btnId) {
     });
   }
 
+  function moveTaskInBlock(blk, taskId, delta) {
+    const idxs = [];
+    for (let i = 0; i < state.tasks.length; i++) {
+      if (state.tasks[i] && state.tasks[i].block === blk) idxs.push(i);
+    }
+    const pos = idxs.findIndex(idx => String(state.tasks[idx].id) === String(taskId));
+    const targetPos = pos + delta;
+    if (pos < 0 || targetPos < 0 || targetPos >= idxs.length) return false;
+    const iA = idxs[pos], iB = idxs[targetPos];
+    const tmp = state.tasks[iA];
+    state.tasks[iA] = state.tasks[iB];
+    state.tasks[iB] = tmp;
+    const orderedIds = idxs.map(idx => String(state.tasks[idx].id));
+    saveSharedState(state, 'Администратор', '');
+    if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.reorderTasks === 'function') {
+      window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+      window.CoffeeCloudV93.reorderTasks(blk, orderedIds).then(res => {
+        if (res && res.ok) showToast('✓ Порядок задач сохранён и отправлен в терминал');
+        else showToast('Ошибка сохранения порядка: ' + ((res && res.error) || 'проверьте вход'));
+      });
+    }
+    return true;
+  }
   function openTasksModal(blk) {
     const list = blockTasks(blk);
     openModal('Задачи «' + blk + '» (' + list.length + ')', `
-      <div class="stack" style="margin-bottom:12px;max-height:270px;overflow-y:auto;">${list.map((t,i)=>`<div class="card-soft" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><div style="min-width:0;flex:1;"><b>${i+1}. ${esc(t.title)}</b> ${t.photo?'<span class="badge accent">📷</span>':''}<div style="font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.instruction || 'По стандарту Coffee Illy.')}</div></div><div style="display:flex;gap:4px;flex-shrink:0;"><button class="chip-btn" data-et="${esc(t.id)}" style="padding:4px 8px;" title="Изменить">✏️</button><button class="chip-btn bad" data-dt="${esc(t.id)}" style="padding:4px 8px;" title="Удалить">✕</button></div></div>`).join('')}</div>
+      <div class="stack" style="margin-bottom:12px;max-height:300px;overflow-y:auto;">${list.length ? list.map((t,i)=>`<div class="card-soft" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><div style="min-width:0;flex:1;"><b>${i+1}. ${esc(t.title)}</b> ${t.photo?'<span class="badge accent">📷</span>':''}<div style="font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.instruction || 'По стандарту Coffee Illy.')}</div></div><div style="display:flex;gap:4px;flex-shrink:0;"><button class="chip-btn" data-mv-up="${esc(t.id)}" style="padding:4px 7px;" title="Выше" ${i===0?'disabled':''}>⬆️</button><button class="chip-btn" data-mv-dn="${esc(t.id)}" style="padding:4px 7px;" title="Ниже" ${i===list.length-1?'disabled':''}>⬇️</button><button class="chip-btn" data-et="${esc(t.id)}" style="padding:4px 8px;" title="Изменить">✏️</button><button class="chip-btn bad" data-dt="${esc(t.id)}" style="padding:4px 8px;" title="Удалить">✕</button></div></div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:8px 0;">В этом блоке пока нет задач — добавьте первую ниже.</div>'}</div>
       <div class="field"><label>Новая задача</label><input id="nt-t" placeholder="Название шага"></div>
       <div class="field"><label>Инструкция / стандарт</label><input id="nt-i" placeholder="Что именно нужно проверить или сфотографировать"></div>
       <div class="grid-2"><div class="field"><label>Ответственный</label><select id="nt-o">${optList(OWNERS,'Бариста')}</select></div><div class="field"><label>Фото / видео</label><select id="nt-p"><option value="1">Да</option><option value="0">Нет</option></select></div></div>
       <button class="btn-lg primary" id="nt-s">+ Добавить и синхронизировать</button>
     `);
+    document.querySelectorAll('[data-mv-up]').forEach(b => b.onclick = () => guard('Порядок задач', () => { if (moveTaskInBlock(blk, b.dataset.mvUp, -1)) { openTasksModal(blk); render(); } }));
+    document.querySelectorAll('[data-mv-dn]').forEach(b => b.onclick = () => guard('Порядок задач', () => { if (moveTaskInBlock(blk, b.dataset.mvDn, 1)) { openTasksModal(blk); render(); } }));
     document.querySelectorAll('[data-et]').forEach(b=>b.onclick=()=>openEditTaskModal(b.dataset.et, blk));
     document.querySelectorAll('[data-dt]').forEach(b=>b.onclick=()=>guard('Удалить задачу',()=>{ const delId = b.dataset.dt; state.tasks=state.tasks.filter(x=>String(x.id)!==String(delId)); saveSharedState(state,'Администратор','Удалена задача ' + delId); showToast('✓ Задача удалена и синхронизирована'); openTasksModal(blk); render(); }));
     document.getElementById('nt-s').onclick = () => guard('Добавить задачу', () => {
@@ -1513,17 +1885,42 @@ function initTheme(btnId) {
   function openStaffModal(id) {
     const s = id ? state.staff.find(x=>x.id===id) : null;
     openModal(s ? 'Сотрудник: ' + s.name : 'Новый сотрудник', `
-      <div class="field"><label>Имя</label><input id="sn" value="${s?esc(s.name):''}"></div>
-      <div class="grid-2"><div class="field"><label>Роль</label><select id="sr"><option ${s&&s.role==='Бариста'?'selected':''}>Бариста</option><option ${s&&s.role==='Администратор'?'selected':''}>Администратор</option></select></div><div class="field"><label>Статус</label><select id="sa"><option value="1" ${!s||s.active!==false?'selected':''}>Активен</option><option value="0" ${s&&s.active===false?'selected':''}>Отключён</option></select></div></div>
-      <div class="grid-2"><div class="field"><label>Личный PIN (4–6 цифр)</label><input id="sp" value="${s?esc(s.pin):'1234'}"></div><div class="field"><label>Telegram ID</label><input id="sg" value="${s?esc(s.tgId||''):''}" placeholder="TG-..."></div></div>
-      <button class="btn-lg primary" id="ss">Сохранить</button>
+      <div class="field"><label>Имя</label><input id="m-staff-name" value="${s?esc(s.name):''}" enterkeyhint="next"></div>
+      <div class="grid-2"><div class="field"><label>Роль</label><select id="m-staff-role"><option ${s&&s.role==='Бариста'?'selected':''}>Бариста</option><option ${s&&s.role==='Администратор'?'selected':''}>Администратор</option></select></div><div class="field"><label>Статус</label><select id="m-staff-active"><option value="1" ${!s||s.active!==false?'selected':''}>Активен</option><option value="0" ${s&&s.active===false?'selected':''}>Отключён</option></select></div></div>
+      <div class="grid-2"><div class="field"><label>${s ? 'Новый PIN (пусто — не менять)' : 'Начальный PIN (4–12 цифр)'}</label><input id="m-staff-pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="${s ? 'Без изменений' : 'Например 4829'}"></div><div class="field"><label>Telegram ID</label><input id="m-staff-tg" value="${s?esc(s.tgId||''):''}" placeholder="TG-..."></div></div>
+      <button class="btn-lg primary" id="m-staff-save">Сохранить</button>
     `);
-    document.getElementById('ss').onclick = () => {
-      const nm = document.getElementById('sn').value.trim(), pin = document.getElementById('sp').value.trim(), tg = document.getElementById('sg').value.trim();
-      if (!nm || !/^\d{4,6}$/.test(pin)) { showToast('Проверьте имя и PIN (4–6 цифр)'); return; }
-      if (s) { s.name=nm; s.role=document.getElementById('sr').value; s.active=document.getElementById('sa').value==='1'; s.pin=pin; s.pinIsDefault=(pin==='1234'); s.tgId=tg; }
-      else state.staff.push({ id:'st_'+Date.now(), name:nm, role:document.getElementById('sr').value, shop:state.location, active:true, pin, pinIsDefault:pin==='1234', tgId:tg });
-      saveSharedState(state, 'Администратор', 'Обновлён сотрудник ' + nm); closeModal(); showToast('Синхронизировано!'); render();
+    document.getElementById('m-staff-save').onclick = async () => {
+      const nm = document.getElementById('m-staff-name').value.trim();
+      const pin = document.getElementById('m-staff-pin').value.trim();
+      const tg = document.getElementById('m-staff-tg').value.trim();
+      const roleVal = document.getElementById('m-staff-role').value;
+      const activeVal = document.getElementById('m-staff-active').value === '1';
+      if (!nm) { showToast('Укажите имя сотрудника'); return; }
+      if (!s && !/^\d{4,12}$/.test(pin)) { showToast('Укажите начальный PIN (4–12 цифр)'); return; }
+      if (pin && (!/^\d{4,12}$/.test(pin) || /^(\d)\1{3,}$/.test(pin))) { showToast('PIN: 4–12 цифр, не из одинаковых цифр'); return; }
+      const btn = document.getElementById('m-staff-save');
+      if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+      const oldName = s ? s.name : '';
+      const staffId = s ? s.id : ('st_' + Date.now());
+      if (s) { s.name = nm; s.role = roleVal; s.active = activeVal; s.tgId = tg; }
+      else state.staff.push({ id: staffId, name: nm, role: roleVal, shop: state.location, active: activeVal, pinIsDefault: false, tgId: tg });
+      saveSharedState(state, 'Администратор', '');
+      let res = { ok: true };
+      const payload = { id: staffId, oldName: oldName || undefined, name: nm, role: roleVal, shop: state.location, active: activeVal ? 'да' : 'нет', tgId: tg, pin: pin || undefined };
+      if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveStaff === 'function') {
+        window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+        res = await window.CoffeeCloudV93.saveStaff(payload);
+      } else if (window.CoffeeCloudV93 && window.CoffeeCloudV93.dispatchOperation) {
+        window.CoffeeCloudV93.dispatchOperation({ type: 'staff.update', payload: payload, actor: 'Администратор', description: 'Обновлён сотрудник ' + nm });
+      }
+      closeModal();
+      if (res && res.ok) {
+        showToast(res.queued ? '✓ Сотрудник сохранён локально (уйдёт при связи)' : ('✓ Сотрудник «' + nm + '» обновлён в Google Таблице' + (pin ? ' (PIN изменён)' : '') + '!'));
+      } else {
+        showToast('Ошибка сохранения сотрудника: ' + ((res && res.error) || 'проверьте вход'));
+      }
+      render();
     };
   }
   function openTtkModal(id) {
@@ -1559,7 +1956,7 @@ function initTheme(btnId) {
   window.addEventListener('storage', (e) => { if (e.key === STORE_KEY) onRemoteSync(); });
 
   document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
-  document.getElementById('btn-lock').onclick = () => { if (adminUnlocked) { adminUnlocked = false; render(); } else guard('Вход', () => {}); };
+  document.getElementById('btn-lock').onclick = async () => { if (adminUnlocked) { if (window.CoffeeCloudV93 && window.CoffeeCloudV93.authLogout) await window.CoffeeCloudV93.authLogout('admin'); adminUnlocked = false; adminAuthNeeded = true; render(); } else guard('Вход', () => {}); };
   let cloudLoop = null;
   document.getElementById('btn-reset').onclick = async () => {
     showToast('🔄 Загрузка свежих данных из Google Таблицы...');
@@ -1609,7 +2006,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.9.0"></script>
+  <script src="./js/time-picker.js?v=97.14.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1617,7 +2014,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.9.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

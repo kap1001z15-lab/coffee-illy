@@ -256,3 +256,41 @@ body {
   background: var(--m3-accent);
   color: #fff;
 }
+
+/* === v97.11.0 Unified Cross-Environment Enhancements (320px, Touch 44px, Skeleton) === */
+@keyframes coffeeSkeletonPulse {
+  0% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.45; }
+}
+.skeleton-pulse {
+  background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 75%);
+  border-radius: 12px;
+  animation: coffeeSkeletonPulse 1.3s ease-in-out infinite;
+}
+@media (pointer: coarse) {
+  .chip-btn, .tab-btn, .date-pill, .btn-sm, .admin-nav button, .date-pills button, select, input {
+    min-height: 44px !important;
+  }
+}
+@media (max-width: 380px) {
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .kpi-val, .kpi .val {
+    font-size: clamp(20px, 6.5vw, 26px) !important;
+    word-break: break-word;
+  }
+  .topbar {
+    padding: 8px 10px !important;
+  }
+  .step-card, .card {
+    padding: 12px !important;
+    border-radius: 18px !important;
+  }
+  .pin-key {
+    min-height: 48px !important;
+    font-size: 18px !important;
+  }
+}

@@ -1,3 +1,11 @@
+## v97.11.0 (2026-11-23)
+- Исправлен офлайн-кэш Service Worker (`ignoreSearch: true`, разделение фолбэков HTML и JS/CSS).
+- Устранены коллизии DOM ID в модалках `dashboard.html` и убран остаток `s.pin` в модалке сотрудника.
+- Офлайн-очередь `outbox` переведена на `IndexedDB` с защитой финансовых операций и очередью проблемных записей; добавлен типизированный `dispatchOperation()`.
+- В `Code.gs` добавлена защита от лимита 9 КБ `PropertiesService` и отключены защищённые `GET`-запросы (`admin`, `dashboard`, `report`).
+- Подключён `css/m3-soft.css` с адаптивностью для экранов `<= 380px`, сенсорных кнопок `>= 44px` и скелетон-анимацией; `owner.html` переведён в лёгкий редирект на `dashboard.html`.
+- Добавлен GitHub Actions CI/CD workflow (`.github/workflows/ci-deploy.yml`).
+
 # Changelog
 
 ## [v97.0.0] — 2026-11-20

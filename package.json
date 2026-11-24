@@ -1,11 +1,15 @@
 {
   "name": "coffee-illy-erp",
-  "version": "97.9.0",
+  "version": "97.14.0",
   "description": "Coffee Illy ERP & Checklist — Cross-platform PWA & Telegram Mini App",
   "private": true,
   "scripts": {
+    "lint:syntax": "node tests/check-syntax.mjs",
     "test": "node --test tests/*.test.mjs",
-    "lint:syntax": "node tests/check-syntax.mjs"
+    "test:unit": "node --test tests/pos-csv-parser.test.mjs tests/sync-auth-camera.test.mjs",
+    "test:server": "node --test tests/gas-backend.test.mjs",
+    "test:sync": "node --test tests/e2e-multidevice-sync.test.mjs",
+    "test:full": "npm run lint:syntax && npm test"
   },
   "engines": {
     "node": ">=18.0.0"
