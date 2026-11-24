@@ -233,7 +233,7 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 .center-action-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:8px 0 10px; }
 
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.15.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.15.1) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, .step-title, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -256,7 +256,7 @@ tbody tr { transition: background .14s ease; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* === Compact Terminal Topbar (v97.15.0) — maximizes main screen space === */
+/* === Compact Terminal Topbar (v97.15.1) — maximizes main screen space === */
 .terminal-topbar { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:max(6px, env(safe-area-inset-top)) 12px 7px !important; }
 .topbar-row1 { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
 .terminal-topbar .brand { gap:8px; min-width:0; flex:1; }
@@ -286,12 +286,12 @@ tbody tr { transition: background .14s ease; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.15.0"></script>
-  <script src="js/cloud-sync.js?v=97.15.0"></script>
-  <script src="js/pos-csv-parser.js?v=97.15.0"></script>
-<script src="js/camera.js?v=97.15.0"></script>
-  <script src="js/custom-select.js?v=97.15.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.15.0">
+  <script src="config.js?v=97.15.1"></script>
+  <script src="js/cloud-sync.js?v=97.15.1"></script>
+  <script src="js/pos-csv-parser.js?v=97.15.1"></script>
+<script src="js/camera.js?v=97.15.1"></script>
+  <script src="js/custom-select.js?v=97.15.1" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.15.1">
 </head>
 <body>
 <header class="topbar terminal-topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -638,7 +638,7 @@ function initTheme(btnId) {
 
     nav.style.display = 'grid';
     document.querySelectorAll('#bnav button').forEach(b=>b.classList.toggle('active', b.dataset.t===tab));
-    uc.innerHTML = `<span class="badge good uc-shift"><span class="shift-dot"></span> <span class="hide-xs">На работе · </span>${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn uc-pin" id="b-pin"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6M15.5 7.5 18 10"/></svg> ${esc(authed)}</button><button class="chip-btn uc-out" id="b-out">Выйти</button>`;
+    uc.innerHTML = `<span class="badge good uc-shift"><span class="shift-dot"></span> <span class="hide-xs">На работе · </span>${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn uc-pin" id="b-pin"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6M15.5 7.5 18 10"/></svg> ${esc(authed)}</button><button class="chip-btn uc-out" id="b-out" aria-label="Выйти из смены"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg><span class="out-lbl"> Выйти</span></button>`;
     document.getElementById('b-out').onclick = async () => {
       const prevName = authed;
       if (window.CoffeeCameraV94) window.CoffeeCameraV94.stop();
@@ -749,7 +749,7 @@ function initTheme(btnId) {
               <div class="pbar"><div style="width:${Math.round(((idx+1)/tasks.length)*100)}%"></div></div>
               <h3 class="step-title">${esc(task.title)}</h3>
               <div class="inst-toggle-wrap"><button type="button" class="inst-toggle-btn" id="b-inst" aria-label="Инструкция">${instOpen?'▴':'▾'}</button></div>
-              ${instOpen?`<div class="step-inst">${esc(task.instruction||'Выполнить по стандарту Coffee Illy.')}</div>`:''}
+              ${instOpen?`<div class="step-inst">${esc(String(task.instruction||'').trim()||'Выполнить по стандарту Coffee Illy.')}</div>`:''}
               ${needPh?`<div class="photo-box ${hasPh?'done':''} ${mediaPreviewHtml?'has-media':''}" style="display:flex;flex-direction:column;gap:8px;align-items:center">${hasPh?(
                 mediaPreviewHtml
                   ? '<div class="photo-preview-frame">' + mediaPreviewHtml +
@@ -1293,7 +1293,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.15.0"></script>
+  <script src="./js/time-picker.js?v=97.15.1"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1301,7 +1301,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.15.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.15.1').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

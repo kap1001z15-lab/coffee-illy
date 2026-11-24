@@ -350,7 +350,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   const res = sandbox.autoMigrateSchemaIfNeeded_(ss, false);
   assert.equal(res.ok, true);
   assert.equal(res.migrated, true);
-  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.15.0');
+  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.15.1');
 
   assert.equal(shTl._data[0].length, 9);
   assert.equal(shTl._data[0][6], 'Сотрудник');
@@ -374,7 +374,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   assert.equal(res2.skipped, true);
 });
 
-test('v97.15.0 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
+test('v97.15.1 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
   const dash = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idx = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const cs = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');

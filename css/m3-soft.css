@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.0)
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.1)
    Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
@@ -969,10 +969,11 @@ body {
 @media (max-width: 600px) {
   .terminal-topbar {
     flex-direction: row !important;
+    flex-wrap: nowrap !important;
     align-items: center !important;
     justify-content: space-between !important;
-    gap: 6px !important;
-    padding: max(5px, env(safe-area-inset-top)) 10px 6px !important;
+    gap: 5px !important;
+    padding: max(5px, env(safe-area-inset-top)) 10px 5px !important;
   }
   .terminal-topbar .topbar-row1 {
     width: auto !important;
@@ -1049,10 +1050,13 @@ body {
   }
   .terminal-topbar .uc-out {
     margin-left: 0 !important;
-    padding: 3px 8px !important;
-    font-size: 11px !important;
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    justify-content: center !important;
     min-height: 34px !important;
   }
+  .terminal-topbar .uc-out .out-lbl { display: none !important; }
   /* Slim timeline toggle & tighter vertical rhythm so entire checklist step fits effortlessly */
   .shell {
     padding-top: 7px !important;
@@ -1084,7 +1088,7 @@ body {
   }
 }
 
-/* === v97.15.0 Minimalist Owner Dashboard Liquid Glass Polish === */
+/* === v97.15.1 Minimalist Owner Dashboard Liquid Glass Polish === */
 .dash-topbar {
   padding: max(8px, env(safe-area-inset-top)) 22px 8px !important;
   gap: 10px !important;
