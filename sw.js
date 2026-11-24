@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.14.4 */
-const CACHE_NAME = 'coffee-illy-v97-14-4';
+/* Coffee Illy ERP & Checklist — Service Worker v97.14.6 */
+const CACHE_NAME = 'coffee-illy-v97-14-6';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const CORE_ASSETS = [
   './js/cloud-sync.js',
   './js/pos-csv-parser.js',
   './js/time-picker.js',
+  './js/custom-select.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];

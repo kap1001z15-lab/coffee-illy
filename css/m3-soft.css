@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.14.4)
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.14.6)
    Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
@@ -284,8 +284,11 @@ body {
   animation: coffeeSkeletonPulse 1.3s ease-in-out infinite;
 }
 @media (pointer: coarse) {
-  .chip-btn, .tab-btn, .date-pill, .btn-sm, .admin-nav button, .date-pills button, select, input {
+  .chip-btn, .tab-btn, .date-pill, .btn-sm, .admin-nav button, .date-pills button, select, input, .m3-select-trigger {
     min-height: 44px !important;
+  }
+  .topbar .chip-btn {
+    min-height: 32px !important;
   }
 }
 @media (max-width: 380px) {
@@ -362,6 +365,382 @@ body {
 
 /* 4. Calm Live sync dot breathing */
 .live-dot { animation: coffeeLivePulse 2.4s ease-in-out infinite; }
+
+/* === v97.14.5 Custom Select Sheet (replaces native Android/OS <select> popups) === */
+.m3-select-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+.m3-select-trigger {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface, var(--m3-surface-2));
+  border: 1px solid var(--border, var(--m3-border));
+  color: var(--ink, var(--m3-text));
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease, transform 100ms ease;
+}
+.m3-select-trigger:active { transform: scale(0.99); }
+.m3-select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent, var(--m3-accent));
+  box-shadow: 0 0 0 3px var(--accent-soft, var(--m3-accent-soft));
+}
+.m3-sel-val {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.m3-sel-chev {
+  flex: 0 0 auto;
+  color: var(--muted, var(--m3-text-2));
+  opacity: 0.85;
+}
+.m3-sel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: coffeeFadeIn 150ms ease-out both;
+}
+.m3-sel-sheet {
+  width: 100%;
+  max-width: 400px;
+  max-height: 78dvh;
+  background: var(--card, var(--m3-surface));
+  color: var(--ink, var(--m3-text));
+  border: 1px solid var(--border, var(--m3-border));
+  border-radius: 26px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: coffeeModalPop 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.m3-sel-handle {
+  display: none;
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border, var(--m3-border));
+  margin: 10px auto 2px;
+  opacity: 0.9;
+}
+.m3-sel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border, var(--m3-border));
+}
+.m3-sel-title {
+  font-family: var(--font-display, inherit);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink, var(--m3-text));
+}
+.m3-sel-close {
+  width: 34px;
+  height: 34px;
+  min-height: 34px !important;
+  border-radius: 999px;
+  background: var(--surface, var(--m3-surface-2));
+  border: 1px solid var(--border, var(--m3-border));
+  color: var(--ink, var(--m3-text));
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.m3-sel-list {
+  padding: 10px 12px 14px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.m3-sel-opt {
+  width: 100%;
+  min-height: 48px !important;
+  padding: 11px 14px;
+  border-radius: 15px;
+  background: var(--surface, var(--m3-surface-2));
+  border: 1.5px solid transparent;
+  color: var(--ink, var(--m3-text));
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 90ms ease;
+}
+.m3-sel-opt:active { transform: scale(0.985); }
+.m3-sel-opt.active {
+  background: var(--accent-soft, var(--m3-accent-soft));
+  border-color: var(--accent, var(--m3-accent));
+  color: var(--accent, var(--m3-accent));
+  font-weight: 700;
+}
+.m3-sel-opt-txt {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.m3-sel-opt-chk {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+.m3-sel-opt.active .m3-sel-opt-chk {
+  background: var(--accent, var(--m3-accent));
+  color: var(--accent-ink, var(--m3-accent-ink));
+}
+@media (max-width: 600px) {
+  .m3-sel-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .m3-sel-sheet {
+    max-width: 100%;
+    max-height: 76dvh;
+    border-radius: 26px 26px 0 0;
+    border-bottom: none;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    animation: coffeeSheetUp 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .m3-sel-handle { display: block; }
+  .m3-sel-head { padding: 8px 16px 10px; }
+}
+
+/* ==========================================================================
+   v97.14.6 Apple Liquid Glass Material System (Light & Dark, Cross-OS)
+   Translucent refraction, specular rim highlights, floating pill tab bar,
+   ambient mesh backdrop, 60-120fps GPU-safe blur, reduced-transparency fallback
+   ========================================================================== */
+:root {
+  --lg-canvas-grad:
+    radial-gradient(120% 80% at 10% -10%, rgba(226, 157, 108, 0.16) 0%, transparent 52%),
+    radial-gradient(90% 70% at 95% 15%, rgba(160, 128, 104, 0.11) 0%, transparent 55%),
+    radial-gradient(100% 80% at 50% 110%, rgba(154, 74, 36, 0.09) 0%, transparent 58%);
+  --lg-card-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 251, 247, 0.68) 100%);
+  --lg-surface-bg: rgba(255, 255, 255, 0.56);
+  --lg-surface-hover: rgba(255, 255, 255, 0.78);
+  --lg-chrome-bg: rgba(248, 244, 239, 0.72);
+  --lg-sheet-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.90) 0%, rgba(249, 245, 240, 0.84) 100%);
+  --lg-border: rgba(255, 255, 255, 0.78);
+  --lg-outline: rgba(28, 22, 19, 0.08);
+  --lg-specular: rgba(255, 255, 255, 0.92);
+  --lg-bottom-edge: rgba(28, 22, 19, 0.05);
+  --lg-shadow: 0 8px 28px rgba(28, 22, 19, 0.07), 0 1.5px 4px rgba(28, 22, 19, 0.05);
+  --lg-chrome-shadow: 0 12px 34px rgba(28, 22, 19, 0.12), 0 2px 6px rgba(28, 22, 19, 0.06);
+  --lg-accent-grad: linear-gradient(180deg, #AE572D 0%, #92431E 100%);
+  --lg-accent-shadow: 0 6px 18px rgba(154, 74, 36, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+[data-theme="dark"] {
+  --lg-canvas-grad:
+    radial-gradient(110% 75% at 12% -8%, rgba(226, 157, 108, 0.14) 0%, transparent 54%),
+    radial-gradient(85% 65% at 92% 18%, rgba(126, 148, 178, 0.08) 0%, transparent 56%),
+    radial-gradient(100% 75% at 50% 108%, rgba(226, 157, 108, 0.08) 0%, transparent 60%);
+  --lg-card-bg: linear-gradient(155deg, rgba(38, 35, 32, 0.74) 0%, rgba(23, 21, 19, 0.62) 100%);
+  --lg-surface-bg: rgba(255, 245, 238, 0.055);
+  --lg-surface-hover: rgba(255, 245, 238, 0.10);
+  --lg-chrome-bg: rgba(22, 20, 18, 0.70);
+  --lg-sheet-bg: linear-gradient(165deg, rgba(38, 35, 32, 0.88) 0%, rgba(22, 20, 18, 0.84) 100%);
+  --lg-border: rgba(255, 245, 238, 0.14);
+  --lg-outline: rgba(0, 0, 0, 0.36);
+  --lg-specular: rgba(255, 248, 242, 0.18);
+  --lg-bottom-edge: rgba(0, 0, 0, 0.28);
+  --lg-shadow: 0 10px 30px rgba(0, 0, 0, 0.36), 0 1.5px 4px rgba(0, 0, 0, 0.24);
+  --lg-chrome-shadow: 0 14px 40px rgba(0, 0, 0, 0.50), 0 2px 8px rgba(0, 0, 0, 0.32);
+  --lg-accent-grad: linear-gradient(180deg, #ECAE80 0%, #DA915E 100%);
+  --lg-accent-shadow: 0 6px 20px rgba(226, 157, 108, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+/* Ambient warm mesh canvas behind Liquid Glass surfaces */
+body {
+  background-color: var(--bg, var(--m3-bg));
+  background-image: var(--lg-canvas-grad);
+  background-attachment: fixed;
+}
+
+/* Liquid Glass Cards & Panels */
+.card, .kpi, .step-card, .cat-card {
+  background: var(--lg-card-bg) !important;
+  border: 1px solid var(--lg-border) !important;
+  box-shadow:
+    var(--lg-shadow),
+    0 0 0 0.5px var(--lg-outline),
+    inset 0 1px 0 var(--lg-specular),
+    inset 0 -1px 0 var(--lg-bottom-edge) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(165%);
+  backdrop-filter: blur(14px) saturate(165%);
+}
+
+/* Inner soft glass surfaces */
+.row-item, .card-soft, .date-bar, .step-inst, .photo-box, .pin-key, .m3-select-trigger,
+.field input, .field select, .field textarea {
+  background: var(--lg-surface-bg);
+  border: 1px solid var(--lg-border);
+  box-shadow: inset 0 1px 0 var(--lg-specular), 0 0 0 0.5px var(--lg-outline);
+}
+.photo-box.done {
+  background: var(--good-soft);
+  border-color: var(--good);
+}
+
+/* Liquid Glass Topbar */
+.topbar {
+  background: var(--lg-chrome-bg) !important;
+  border-bottom: 1px solid var(--lg-border) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06), inset 0 -1px 0 var(--lg-bottom-edge);
+  -webkit-backdrop-filter: blur(22px) saturate(185%) !important;
+  backdrop-filter: blur(22px) saturate(185%) !important;
+}
+
+/* Liquid Glass Floating Pill Navigation Bar (phones, tablets & desktop) */
+.bnav {
+  background: var(--lg-chrome-bg) !important;
+  border: 1px solid var(--lg-border) !important;
+  box-shadow:
+    var(--lg-chrome-shadow),
+    0 0 0 0.5px var(--lg-outline),
+    inset 0 1px 0 var(--lg-specular) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+  backdrop-filter: blur(24px) saturate(190%) !important;
+}
+@media (max-width: 600px) {
+  .bnav {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-width: calc(100% - 24px) !important;
+    border-radius: 999px !important;
+    padding: 5px 8px !important;
+  }
+  .bnav button {
+    min-height: 44px !important;
+    padding: 4px 2px !important;
+    border-radius: 999px !important;
+  }
+  .shell {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom)) !important;
+  }
+  .bottom-search-wrap {
+    bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+  .toast {
+    bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+  }
+}
+.bnav button.active .ico {
+  background: var(--accent-soft);
+  box-shadow: inset 0 1px 0 var(--lg-specular);
+}
+
+/* Liquid Glass Modals, Bottom Sheets & Custom Select */
+.modal-card, .m3-sel-sheet, .m3-tp-dialog {
+  background: var(--lg-sheet-bg) !important;
+  border: 1px solid var(--lg-border) !important;
+  box-shadow:
+    var(--lg-chrome-shadow),
+    0 0 0 0.5px var(--lg-outline),
+    inset 0 1px 0 var(--lg-specular) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(190%) !important;
+  backdrop-filter: blur(26px) saturate(190%) !important;
+}
+.m3-sel-opt {
+  background: var(--lg-surface-bg);
+  border: 1px solid var(--lg-border);
+  box-shadow: inset 0 1px 0 var(--lg-specular);
+}
+.m3-sel-opt.active {
+  background: var(--accent-soft, var(--m3-accent-soft));
+  border-color: var(--accent, var(--m3-accent));
+  box-shadow: inset 0 1px 0 var(--lg-specular);
+}
+
+/* Glossy Liquid Glass Pills & Primary Buttons */
+.chip-btn, .admin-nav button, .date-pill, .seg, .chart-gran {
+  background: var(--lg-surface-bg);
+  border: 1px solid var(--lg-border);
+  box-shadow: inset 0 1px 0 var(--lg-specular), 0 0 0 0.5px var(--lg-outline);
+}
+.btn-lg.primary,
+.chip-btn.accent,
+.admin-nav button.active,
+.date-pill.active,
+.seg button.active,
+.chart-gran button.active,
+.brand-dot {
+  background: var(--lg-accent-grad) !important;
+  color: var(--accent-ink, var(--m3-accent-ink)) !important;
+  border-color: transparent !important;
+  box-shadow: var(--lg-accent-shadow) !important;
+}
+.bottom-search-wrap input {
+  background: var(--lg-sheet-bg) !important;
+  border: 1px solid var(--lg-border) !important;
+  box-shadow: var(--lg-shadow), inset 0 1px 0 var(--lg-specular) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+}
+.toast {
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: var(--lg-chrome-shadow);
+}
+
+/* Accessibility fallback for Reduce Transparency (iOS / macOS / Windows) */
+@media (prefers-reduced-transparency: reduce) {
+  .card, .kpi, .step-card, .cat-card, .topbar, .bnav, .modal-card, .m3-sel-sheet, .m3-tp-dialog {
+    background: var(--card, var(--m3-surface)) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

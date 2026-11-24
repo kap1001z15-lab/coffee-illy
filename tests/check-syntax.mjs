@@ -12,7 +12,8 @@ const jsFiles = [
   'js/camera.js',
   'js/cloud-sync.js',
   'js/pos-csv-parser.js',
-  'js/time-picker.js'
+  'js/time-picker.js',
+  'js/custom-select.js'
 ];
 
 for (const rel of jsFiles) {
