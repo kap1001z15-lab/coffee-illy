@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.14.6)
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.14.9)
    Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
@@ -327,8 +327,8 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes coffeeStepFade {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes coffeePinShake {
   0%, 100% { transform: translateX(0); }
@@ -741,6 +741,229 @@ body {
     backdrop-filter: none !important;
   }
 }
+
+/* === v97.14.7 Zero-Scroll Checklist, Pinned Bottom Search & Compact Density === */
+.badge { white-space: nowrap; flex-shrink: 0; }
+.step-actions-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: stretch;
+}
+.step-actions-row .btn-lg.danger {
+  width: auto;
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+.bottom-search-wrap {
+  position: fixed !important;
+  left: 0;
+  right: 0;
+  bottom: calc(74px + env(safe-area-inset-bottom)) !important;
+  z-index: 39 !important;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 4px 12px !important;
+  pointer-events: none;
+}
+.bottom-search-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+.bottom-search-ico {
+  position: absolute;
+  left: 14px;
+  font-size: 14px;
+  opacity: 0.68;
+  pointer-events: none;
+}
+.bottom-search-wrap input {
+  width: 100%;
+  padding: 10px 38px 10px 38px !important;
+  min-height: 44px !important;
+  border-radius: 999px !important;
+  font-size: 15px !important;
+}
+.bottom-search-clear {
+  position: absolute;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px !important;
+  border-radius: 999px;
+  background: var(--surface-2, var(--m3-surface-2));
+  color: var(--ink, var(--m3-text));
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+@media (min-width: 601px) {
+  .bottom-search-wrap { bottom: 84px !important; }
+}
+@media (min-width: 1025px) {
+  .bottom-search-wrap { bottom: 90px !important; max-width: 560px; }
+}
+@media (max-width: 600px) {
+  .step-card {
+    padding: 12px 13px !important;
+    gap: 8px !important;
+    border-radius: 20px !important;
+  }
+  .step-title {
+    font-size: 16.5px !important;
+    line-height: 1.22 !important;
+  }
+  .inst-toggle-wrap { margin: -2px 0; }
+  .inst-toggle-btn {
+    min-height: 26px !important;
+    height: 26px !important;
+    min-width: 48px !important;
+    font-size: 12px !important;
+  }
+  .step-inst {
+    padding: 8px 11px !important;
+    font-size: 12.5px !important;
+    line-height: 1.38 !important;
+    max-height: 84px;
+    overflow-y: auto;
+  }
+  .photo-box {
+    padding: 9px 11px !important;
+    gap: 6px !important;
+    border-radius: 16px !important;
+  }
+  .photo-box img, .photo-box video {
+    max-height: clamp(105px, 19dvh, 148px) !important;
+    border-radius: 12px !important;
+  }
+  .step-card .btn-lg {
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+    font-size: 14px !important;
+  }
+  .card { padding: 11px 13px !important; border-radius: 18px !important; }
+  .card-soft { padding: 10px 12px !important; border-radius: 16px !important; }
+  .field { margin-bottom: 7px !important; gap: 3px !important; }
+  .field input, .field select, .field textarea { min-height: 40px !important; padding: 8px 11px !important; }
+}
+
+/* === v97.14.8 Monochrome SF-Style SVG Icons & Liquid Glass Photo Overlay === */
+.ui-ico {
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  vertical-align: -2.5px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bnav button .ico .ui-ico {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+.shift-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--good, #7BD4A4);
+  box-shadow: 0 0 8px var(--good, #7BD4A4);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.cat-ico-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft, rgba(226,157,108,0.16));
+  color: var(--accent, #E29D6C);
+  border: 1px solid var(--lg-border, rgba(255,255,255,0.14));
+  box-shadow: inset 0 1px 0 var(--lg-specular, rgba(255,255,255,0.2));
+  margin-bottom: 2px;
+}
+.cat-ico-wrap .ui-ico { width: 20px; height: 20px; stroke-width: 1.8; }
+
+/* Full-bleed Liquid Glass Photo Preview Overlay (saves ~42px & looks like iOS Camera) */
+.photo-box.done.has-media {
+  padding: 0 !important;
+  border: 1px solid var(--good, #7BD4A4) !important;
+  overflow: hidden;
+  background: transparent !important;
+}
+.photo-preview-frame {
+  position: relative;
+  width: 100%;
+  border-radius: 15px;
+  overflow: hidden;
+  display: block;
+  background: #0e0d0c;
+}
+.photo-preview-frame img,
+.photo-preview-frame video {
+  display: block;
+  width: 100%;
+  max-height: clamp(135px, 24dvh, 185px) !important;
+  object-fit: cover;
+  border-radius: 0 !important;
+}
+.photo-overlay-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px 10px 8px;
+  background: linear-gradient(180deg, rgba(14, 13, 12, 0) 0%, rgba(14, 13, 12, 0.78) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.photo-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(18, 28, 22, 0.72);
+  border: 1px solid rgba(123, 212, 164, 0.42);
+  color: #E7FFF2;
+  font-size: 11.5px;
+  font-weight: 700;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.photo-retake-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px !important;
+  min-height: 30px !important;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.20) !important;
+  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  color: #FFFFFF !important;
+  font-size: 11.5px !important;
+  font-weight: 700;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
+}
+
+/* === v97.14.9 Unified Dashboard + Terminal Parity === */
+.admin-nav button.active .badge {
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--accent-ink, var(--m3-accent-ink));
+}
+.admin-nav button .ui-ico { width: 14px; height: 14px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

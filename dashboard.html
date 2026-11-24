@@ -233,7 +233,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.14.6) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.14.9) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -251,11 +251,11 @@ tbody tr { transition: background .14s ease; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.14.6"></script>
-  <script src="js/cloud-sync.js?v=97.14.6"></script>
-<script src="js/pos-csv-parser.js?v=97.14.6"></script>
-  <script src="js/custom-select.js?v=97.14.6" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.6">
+  <script src="config.js?v=97.14.9"></script>
+  <script src="js/cloud-sync.js?v=97.14.9"></script>
+<script src="js/pos-csv-parser.js?v=97.14.9"></script>
+  <script src="js/custom-select.js?v=97.14.9" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.9">
 </head>
 <body>
 <header class="topbar">
@@ -270,23 +270,23 @@ tbody tr { transition: background .14s ease; }
     </div>
   </div>
   <div class="top-actions">
-    <span class="chip-btn" id="hdr-clock" style="cursor:default;">🕒 --:--</span>
-    <button class="chip-btn good" id="btn-lock" aria-label="Статус сессии владельца">🔓 Админ-сессия</button>
+    <span class="chip-btn" id="hdr-clock" style="cursor:default;"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> <span id="hdr-clock-txt">--:--</span></span>
+    <button class="chip-btn good" id="btn-lock" aria-label="Статус сессии владельца"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.6"/></svg> Админ-сессия</button>
     <button class="chip-btn" id="btn-theme" aria-label="Переключить тему оформления">🌓 Авто</button>
-    <button class="chip-btn" id="btn-reset" aria-label="Обновить данные из облака">↻ Обновить</button>
+    <button class="chip-btn" id="btn-reset" aria-label="Обновить данные из облака"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg> Обновить</button>
   </div>
 </header>
 
 <main class="wrap">
   <nav class="admin-nav" id="admin-nav">
-    <button class="active" data-tab="overview">Обзор</button>
-    <button data-tab="sales">Продажи <span class="badge" id="cnt-sales">0</span></button>
-    <button data-tab="finances">Финансы <span class="badge" id="cnt-fin">0</span></button>
-    <button data-tab="warehouse">Склад <span class="badge" id="cnt-wh">0</span></button>
-    <button data-tab="checklists">Чек-листы <span class="badge" id="cnt-chk">0</span></button>
-    <button data-tab="incidents">Поломки <span class="badge bad" id="cnt-inc">0</span></button>
-    <button data-tab="team">Команда и ТТК</button>
-    <button data-tab="settings">Управление</button>
+    <button class="active" data-tab="overview"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="2"/><rect width="7" height="5" x="14" y="3" rx="2"/><rect width="7" height="9" x="14" y="12" rx="2"/><rect width="7" height="5" x="3" y="16" rx="2"/></svg> Обзор</button>
+    <button data-tab="sales"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg> Продажи <span class="badge" id="cnt-sales">0</span></button>
+    <button data-tab="finances"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="3"/><path d="M2 10h20"/></svg> Финансы <span class="badge" id="cnt-fin">0</span></button>
+    <button data-tab="warehouse"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Склад <span class="badge" id="cnt-wh">0</span></button>
+    <button data-tab="checklists"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="4"/><path d="m9 12 2 2 4-4"/></svg> Чек-листы <span class="badge" id="cnt-chk">0</span></button>
+    <button data-tab="incidents"><svg class="ui-ico" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg> Поломки <span class="badge bad" id="cnt-inc">0</span></button>
+    <button data-tab="team"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Команда и ТТК</button>
+    <button data-tab="settings"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg> Управление</button>
   </nav>
   <div id="date-filter-bar" class="date-bar"></div>
   <div id="content"></div>
@@ -371,7 +371,7 @@ function optList(arr, sel, fn) {
   return v.map(x => `<option value="${esc(x)}" ${String(x)===String(sel)?'selected':''}>${esc(fn ? fn(x) : x)}</option>`).join('');
 }
 let _tTimer = null;
-function showToast(msg) {
+function showToast(msg) { if (window.CoffeeHaptic) { var _sm = String(msg||''); if (/Неверный|Ошибка|ошибка|⚠|Недоступ|истек/i.test(_sm)) window.CoffeeHaptic.error(); else if (/✓|Сохранено|завершён|активна/i.test(_sm)) window.CoffeeHaptic.success(); } if (/Неверный PIN|PIN_INVALID/i.test(String(msg||''))) { var _pe = document.querySelector('.pin-dots, #ap-in'); if (_pe) { _pe.classList.remove('pin-shake'); void _pe.offsetWidth; _pe.classList.add('pin-shake'); } } 
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
   clearTimeout(_tTimer); _tTimer = setTimeout(() => el.classList.remove('show'), 2600);
@@ -384,7 +384,7 @@ function initTheme(btnId) {
     const eff = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
     document.documentElement.setAttribute('data-theme', eff);
     const b = document.getElementById(btnId);
-    if (b) b.textContent = mode === 'auto' ? '🌓 Авто' : (mode === 'light' ? '☀️ Светлая' : '🌙 Тёмная');
+    if (b) b.innerHTML = mode === 'auto' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg> Авто' : (mode === 'light' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg> Светлая' : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg> Тёмная');
   }
   mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
   window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
@@ -722,9 +722,9 @@ function initTheme(btnId) {
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
     document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'Онлайн' : 'Ожидание') + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '');
-    const _clkEl = document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = '🕒 ' + (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
+    const _clkEl = document.getElementById('hdr-clock-txt') || document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
     const lb = document.getElementById('btn-lock');
-    lb.textContent = adminUnlocked ? '🔓 Админ-сессия' : '🔒 Защищено PIN';
+    lb.innerHTML = adminUnlocked ? '<svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.6"/></svg> Админ-сессия' : '<svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Защищено PIN';
     lb.className = 'chip-btn ' + (adminUnlocked ? 'good' : 'warn');
 
     const rng = getActiveDateRange();
@@ -2112,7 +2112,7 @@ function initTheme(btnId) {
   if (syncCh) syncCh.onmessage = onRemoteSync;
   window.addEventListener('storage', (e) => { if (e.key === STORE_KEY) onRemoteSync(); });
 
-  document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); var bd = document.getElementById('body'); if (bd) { bd.classList.remove('tab-enter'); void bd.offsetWidth; bd.classList.add('tab-enter'); } });
+  document.querySelectorAll('#admin-nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); var bd = document.getElementById('content'); if (bd) { bd.classList.remove('tab-enter'); void bd.offsetWidth; bd.classList.add('tab-enter'); } });
   document.getElementById('btn-lock').onclick = async () => { if (adminUnlocked) { if (window.CoffeeCloudV93 && window.CoffeeCloudV93.authLogout) await window.CoffeeCloudV93.authLogout('admin'); adminUnlocked = false; adminAuthNeeded = true; render(); } else guard('Вход', () => {}); };
   let cloudLoop = null;
   document.getElementById('btn-reset').onclick = async () => {
@@ -2126,8 +2126,8 @@ function initTheme(btnId) {
   render();
 
   setInterval(() => {
-    const _clk = document.getElementById('hdr-clock');
-    if (_clk && window.CoffeeCloudV93) _clk.textContent = '🕒 ' + window.CoffeeCloudV93.localHHMM();
+    const _clk = document.getElementById('hdr-clock-txt') || document.getElementById('hdr-clock');
+    if (_clk && window.CoffeeCloudV93) _clk.textContent = window.CoffeeCloudV93.localHHMM();
   }, 15000);
   if (window.CoffeeCloudV93) {
     cloudLoop = window.CoffeeCloudV93.startCloudLoop({
@@ -2174,7 +2174,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.14.6"></script>
+  <script src="./js/time-picker.js?v=97.14.9"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2182,7 +2182,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.14.6').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.9').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

@@ -233,7 +233,7 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 .center-action-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:8px 0 10px; }
 
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.14.6) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.14.9) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, .step-title, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -256,7 +256,7 @@ tbody tr { transition: background .14s ease; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* === Compact Terminal Topbar (v97.14.6) — maximizes main screen space === */
+/* === Compact Terminal Topbar (v97.14.9) — maximizes main screen space === */
 .terminal-topbar { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:max(6px, env(safe-area-inset-top)) 12px 7px !important; }
 .topbar-row1 { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
 .terminal-topbar .brand { gap:8px; min-width:0; flex:1; }
@@ -286,12 +286,12 @@ tbody tr { transition: background .14s ease; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.14.6"></script>
-  <script src="js/cloud-sync.js?v=97.14.6"></script>
-  <script src="js/pos-csv-parser.js?v=97.14.6"></script>
-<script src="js/camera.js?v=97.14.6"></script>
-  <script src="js/custom-select.js?v=97.14.6" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.6">
+  <script src="config.js?v=97.14.9"></script>
+  <script src="js/cloud-sync.js?v=97.14.9"></script>
+  <script src="js/pos-csv-parser.js?v=97.14.9"></script>
+<script src="js/camera.js?v=97.14.9"></script>
+  <script src="js/custom-select.js?v=97.14.9" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.9">
 </head>
 <body>
 <header class="topbar terminal-topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -311,10 +311,10 @@ tbody tr { transition: background .14s ease; }
 <main class="shell" id="body"></main>
 
 <nav class="bnav" id="bnav">
-  <button class="active" data-t="checklists"><span class="ico">✓</span>Чек-листы</button>
-  <button data-t="cash"><span class="ico">₽</span>Касса</button>
-  <button data-t="ttk"><span class="ico">☕</span>База</button>
-  <button data-t="issues"><span class="ico">✓</span>Задачи</button>
+  <button class="active" data-t="checklists"><span class="ico"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="4"/><path d="m9 12 2 2 4-4"/></svg></span>Чек-листы</button>
+  <button data-t="cash"><span class="ico"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="3"/><path d="M2 10h20"/></svg></span>Касса</button>
+  <button data-t="ttk"><span class="ico"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></span>База</button>
+  <button data-t="issues"><span class="ico"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></span>Задачи</button>
 </nav>
 <div class="kb-done-bar"><button type="button" class="kb-done-btn" id="kb-done-btn">Готово ⌄</button></div>
 
@@ -381,7 +381,7 @@ function optList(arr, sel, fn) {
   return v.map(x => `<option value="${esc(x)}" ${String(x)===String(sel)?'selected':''}>${esc(fn ? fn(x) : x)}</option>`).join('');
 }
 let _tTimer = null;
-function showToast(msg) {
+function showToast(msg) { if (window.CoffeeHaptic) { var _sm = String(msg||''); if (/Неверный|Ошибка|ошибка|⚠|Недоступ|истек/i.test(_sm)) window.CoffeeHaptic.error(); else if (/✓|Сохранено|завершён|активна/i.test(_sm)) window.CoffeeHaptic.success(); } if (/Неверный PIN|PIN_INVALID/i.test(String(msg||''))) { var _pe = document.querySelector('.pin-dots, #ap-in'); if (_pe) { _pe.classList.remove('pin-shake'); void _pe.offsetWidth; _pe.classList.add('pin-shake'); } } 
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
   clearTimeout(_tTimer); _tTimer = setTimeout(() => el.classList.remove('show'), 2600);
@@ -394,7 +394,7 @@ function initTheme(btnId) {
     const eff = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
     document.documentElement.setAttribute('data-theme', eff);
     const b = document.getElementById(btnId);
-    if (b) b.textContent = mode === 'auto' ? '🌓 Авто' : (mode === 'light' ? '☀️ Светлая' : '🌙 Тёмная');
+    if (b) b.innerHTML = mode === 'auto' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg> Авто' : (mode === 'light' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg> Светлая' : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg> Тёмная');
   }
   mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
   window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
@@ -638,7 +638,7 @@ function initTheme(btnId) {
 
     nav.style.display = 'grid';
     document.querySelectorAll('#bnav button').forEach(b=>b.classList.toggle('active', b.dataset.t===tab));
-    uc.innerHTML = `<span class="badge good uc-shift">🟢 <span class="hide-xs">На работе · </span>${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn uc-pin" id="b-pin">🔑 ${esc(authed)}</button><button class="chip-btn uc-out" id="b-out">Выйти</button>`;
+    uc.innerHTML = `<span class="badge good uc-shift"><span class="shift-dot"></span> <span class="hide-xs">На работе · </span>${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn uc-pin" id="b-pin"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6M15.5 7.5 18 10"/></svg> ${esc(authed)}</button><button class="chip-btn uc-out" id="b-out">Выйти</button>`;
     document.getElementById('b-out').onclick = async () => {
       const prevName = authed;
       if (window.CoffeeCameraV94) window.CoffeeCameraV94.stop();
@@ -750,15 +750,23 @@ function initTheme(btnId) {
               <h3 class="step-title">${esc(task.title)}</h3>
               <div class="inst-toggle-wrap"><button type="button" class="inst-toggle-btn" id="b-inst" aria-label="Инструкция">${instOpen?'▴':'▾'}</button></div>
               ${instOpen?`<div class="step-inst">${esc(task.instruction||'Выполнить по стандарту Coffee Illy.')}</div>`:''}
-              ${needPh?`<div class="photo-box ${hasPh?'done':''}" style="display:flex;flex-direction:column;gap:8px;align-items:center">${hasPh?(
-                mediaPreviewHtml +
-                '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;flex-wrap:wrap">' +
-                  '<b style="font-size:13px">'+(mediaObj.uploading?'☁ Загрузка на Google Диск…':(mediaObj.url?(mediaObj.mediaType==='video'?'✓ Видео сохранено на Диск':'✓ Фото сохранено на Диск'):'✓ Снято (в очереди)'))+'</b>' +
-                  '<button class="chip-btn" id="b-ph" style="font-size:12px">📷 Переснять</button>' +
-                '</div>'
-              ):'<button class="chip-btn accent" id="b-ph" style="padding:10px 18px;">📷 Фото / 🎬 Видео (до 15с)</button><div style="font-size:11.5px;color:var(--muted);">Только живая камера · без галереи</div>'}</div>`:''}
-              <button class="btn-lg primary" id="b-nx" ${needPh && !hasPh?'disabled':''}>${idx===tasks.length-1?'✓ Завершить чек-лист':'✓ Далее'}</button>
-              <button class="btn-lg danger" id="b-is">⚠ Проблема</button>
+              ${needPh?`<div class="photo-box ${hasPh?'done':''} ${mediaPreviewHtml?'has-media':''}" style="display:flex;flex-direction:column;gap:8px;align-items:center">${hasPh?(
+                mediaPreviewHtml
+                  ? '<div class="photo-preview-frame">' + mediaPreviewHtml +
+                      '<div class="photo-overlay-bar">' +
+                        '<span class="photo-status-pill">'+(mediaObj.uploading?'Загрузка…':(mediaObj.url?(mediaObj.mediaType==='video'?'✓ Видео сохранено':'✓ Фото сохранено'):'✓ Снято (в очереди)'))+'</span>' +
+                        '<button class="photo-retake-btn" id="b-ph"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> Переснять</button>' +
+                      '</div>' +
+                    '</div>'
+                  : '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;flex-wrap:wrap">' +
+                      '<b style="font-size:13px">'+(mediaObj.uploading?'Загрузка на Диск…':'✓ Снято (в очереди)')+'</b>' +
+                      '<button class="chip-btn" id="b-ph" style="font-size:12px"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> Переснять</button>' +
+                    '</div>'
+              ):'<button class="chip-btn accent" id="b-ph" style="padding:10px 18px;"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> Фото / Видео (до 15с)</button><div style="font-size:11.5px;color:var(--muted);">Только живая камера · без галереи</div>'}</div>`:''}
+              <div class="step-actions-row">
+                <button class="btn-lg primary" id="b-nx" ${needPh && !hasPh?'disabled':''}>${idx===tasks.length-1?'<svg class="ui-ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Завершить':'<svg class="ui-ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Далее'}</button>
+                <button class="btn-lg danger" id="b-is"><svg class="ui-ico" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg> Проблема</button>
+              </div>
             </div>`;
           }
         }
@@ -1111,7 +1119,7 @@ function initTheme(btnId) {
       if (q) {
         const hits = [];
         ttkItems.filter(k => (k.name + ' ' + k.recipe + ' ' + k.cat).toLowerCase().includes(q)).forEach(k => {
-          hits.push(`<div class="card-soft"><div style="display:flex;justify-content:space-between;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px;">Рецептура · ${esc(k.vol)}</div><div style="font-size:12.5px;">${esc(k.recipe)}</div></div>`);
+          hits.push(`<div class="card-soft"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px;">Рецептура · ${esc(k.vol)}</div><div style="font-size:12.5px;">${esc(k.recipe)}</div></div>`);
         });
         deedsItems.filter(d => (d.title + ' ' + d.instruction).toLowerCase().includes(q)).forEach(d => {
           hits.push(`<div class="card-soft"><b>${esc(d.title)}</b><div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px;">Карта добрых дел</div><div style="font-size:12.5px;">${esc(d.instruction)}</div></div>`);
@@ -1122,10 +1130,10 @@ function initTheme(btnId) {
         contentHtml = `<div class="stack" style="padding-bottom:64px;">${hits.length ? hits.join('') : '<div class="card-soft" style="text-align:center;color:var(--muted);">Ничего не найдено</div>'}</div>`;
       } else if (!baseCat) {
         contentHtml = `<div class="cat-grid" style="padding-bottom:64px;">
-          <button type="button" class="cat-card" data-cat="shift"><span class="cat-ico">📋</span><span class="cat-name">Сделать на смене</span><span class="cat-cnt">${shiftItems.length} этапов</span></button>
-          <button type="button" class="cat-card" data-cat="deeds"><span class="cat-ico">💛</span><span class="cat-name">Карта добрых дел</span><span class="cat-cnt">${deedsItems.length} пунктов</span></button>
-          <button type="button" class="cat-card" data-cat="ttk"><span class="cat-ico">☕</span><span class="cat-name">Рецептура</span><span class="cat-cnt">${ttkItems.length} позиций</span></button>
-          <button type="button" class="cat-card" data-cat="other"><span class="cat-ico">📁</span><span class="cat-name">Прочее</span><span class="cat-cnt">${otherItems.length || 'Стандарты'}</span></button>
+          <button type="button" class="cat-card" data-cat="shift"><span class="cat-ico-wrap"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect width="6" height="4" x="9" y="3" rx="1"/><path d="m9 14 2 2 4-4"/></svg></span><span class="cat-name">Сделать на смене</span><span class="cat-cnt">${shiftItems.length} этапов</span></button>
+          <button type="button" class="cat-card" data-cat="deeds"><span class="cat-ico-wrap"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span><span class="cat-name">Карта добрых дел</span><span class="cat-cnt">${deedsItems.length} пунктов</span></button>
+          <button type="button" class="cat-card" data-cat="ttk"><span class="cat-ico-wrap"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/></svg></span><span class="cat-name">Рецептура</span><span class="cat-cnt">${ttkItems.length} позиций</span></button>
+          <button type="button" class="cat-card" data-cat="other"><span class="cat-ico-wrap"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span><span class="cat-name">Прочее</span><span class="cat-cnt">${otherItems.length || 'Стандарты'}</span></button>
         </div>`;
       } else {
         const catTitles = { shift: 'Сделать на смене', deeds: 'Карта добрых дел', ttk: 'Рецептура', other: 'Прочее' };
@@ -1140,7 +1148,7 @@ function initTheme(btnId) {
             ? deedsItems.map(d => `<div class="card-soft"><b>${esc(d.title)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${esc(d.instruction||'')}</div></div>`).join('')
             : '<div class="card-soft" style="color:var(--muted);text-align:center;">Пункты появятся из Google Таблицы</div>';
         } else if (baseCat === 'ttk') {
-          listHtml = ttkItems.map(k => `<div class="card-soft"><div style="display:flex;justify-content:space-between;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(k.vol)} · ${esc(k.cat)}</div><div style="font-size:12.5px;">${esc(k.recipe)}</div></div>`).join('');
+          listHtml = ttkItems.map(k => `<div class="card-soft"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><b>${esc(k.name)}</b><span class="badge accent">${k.price} ₽</span></div><div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px;">${esc(k.vol)} · ${esc(k.cat)}</div><div style="font-size:12.5px;">${esc(k.recipe)}</div></div>`).join('');
         } else {
           listHtml = otherItems.length
             ? otherItems.map(o => `<div class="card-soft"><b>${esc(o.title)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${esc(o.text)}</div></div>`).join('')
@@ -1149,7 +1157,9 @@ function initTheme(btnId) {
         contentHtml = `<div style="display:flex;align-items:center;gap:8px;"><button type="button" class="chip-btn" id="cat-back">← Категории</button><b style="font-size:15px;">${esc(catTitles[baseCat]||'')}</b></div><div class="stack" style="padding-bottom:64px;">${listHtml}</div>`;
       }
 
-      body.innerHTML = contentHtml + `<div class="bottom-search-wrap"><input id="tq" value="${esc(ttkQ)}" placeholder="Поиск..." enterkeyhint="search"></div>`;
+      body.innerHTML = contentHtml + `<div class="bottom-search-wrap"><div class="bottom-search-inner"><span class="bottom-search-ico"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span><input id="tq" value="${esc(ttkQ)}" placeholder="Найти блюдо, рецепт или этап..." enterkeyhint="search">${ttkQ?'<button type="button" class="bottom-search-clear" id="tq-clr" aria-label="Очистить поиск">✕</button>':''}</div></div>`;
+      const tqClr = document.getElementById('tq-clr');
+      if (tqClr) tqClr.onclick = () => { ttkQ = ''; render(); const el = document.getElementById('tq'); if (el) el.focus(); };
       const tq = document.getElementById('tq');
       if (tq) {
         tq.oninput = e => {
@@ -1283,7 +1293,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.14.6"></script>
+  <script src="./js/time-picker.js?v=97.14.9"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1291,7 +1301,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.14.6').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.9').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

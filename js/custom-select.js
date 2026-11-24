@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Custom Select Bottom-Sheet / Dialog (v97.14.6)
+   Coffee Illy ERP & Checklist — Custom Select Bottom-Sheet / Dialog (v97.14.9)
    Replaces ugly native Android/OS <select> popups with a theme-matched
    bottom sheet (phones) / dialog (tablet & desktop) while keeping 100%
    compatibility with underlying <select>.value and change events.
@@ -219,4 +219,50 @@
   } else {
     init();
   }
+})();
+
+/* ==========================================================================
+   Coffee Illy ERP — Native Telegram HapticFeedback Engine (v97.14.9)
+   Zero-dependency, silent fallback outside Telegram Mini App
+   ========================================================================== */
+(function () {
+  'use strict';
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  function getHf() {
+    try { return window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback; }
+    catch (_) { return null; }
+  }
+  var Haptic = {
+    tap: function (style) {
+      var hf = getHf();
+      if (hf && hf.impactOccurred) try { hf.impactOccurred(style || 'light'); } catch (_) {}
+    },
+    select: function () {
+      var hf = getHf();
+      if (hf && hf.selectionChanged) try { hf.selectionChanged(); } catch (_) {}
+    },
+    success: function () {
+      var hf = getHf();
+      if (hf && hf.notificationOccurred) try { hf.notificationOccurred('success'); } catch (_) {}
+    },
+    error: function () {
+      var hf = getHf();
+      if (hf && hf.notificationOccurred) try { hf.notificationOccurred('error'); } catch (_) {}
+    },
+    warn: function () {
+      var hf = getHf();
+      if (hf && hf.notificationOccurred) try { hf.notificationOccurred('warning'); } catch (_) {}
+    }
+  };
+  window.CoffeeHaptic = Haptic;
+
+  document.addEventListener('pointerdown', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('.bnav button, .admin-nav button, .date-pill, .pin-key, .btn-lg, .chip-btn, .cat-card, .m3-sel-opt, .m3-select-trigger') : null;
+    if (!t || t.disabled) return;
+    if (t.matches('.bnav button, .admin-nav button, .date-pill, .m3-sel-opt')) {
+      Haptic.select();
+    } else {
+      Haptic.tap('light');
+    }
+  }, { passive: true });
 })();

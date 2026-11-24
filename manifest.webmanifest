@@ -5,11 +5,14 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#FAF8F6",
-  "theme_color": "#B85C38",
+  "orientation": "any",
+  "background_color": "#F6F3EF",
+  "theme_color": "#9A4A24",
   "lang": "ru",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "./icons/icon-192.png",
@@ -35,13 +38,23 @@
       "name": "Терминал бариста",
       "short_name": "Бариста",
       "url": "./index.html",
-      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "./icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Дашборд владельца",
       "short_name": "Владелец",
       "url": "./dashboard.html",
-      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "./icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
