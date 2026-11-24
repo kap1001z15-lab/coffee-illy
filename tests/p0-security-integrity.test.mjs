@@ -219,3 +219,42 @@ test('P0.5 POS CSV re-import is idempotent for warehouse deduction and uses comp
   const txSheet = sheets.get('Транзакции');
   assert.equal(txSheet.getLastRow(), 3, 'Header + 2 distinct date transactions with receiptNo 101 must be stored');
 });
+
+test('P0.1/P0.4/P1.4/P1.5/Sec6/Sec7 Audit Hardening: strict admin/staff session isolation, submit_checklist contract, honest finance label, single SW registration', () => {
+  const cs = fs.readFileSync(path.join(root, 'js/cloud-sync.js'), 'utf8');
+  const dash = fs.readFileSync(path.join(root, 'dashboard.html'), 'utf8');
+  const gasPath = fs.existsSync(path.join(root, 'gas/Code.gs'))
+    ? path.join(root, 'gas/Code.gs')
+    : path.join(root, '..', 'coffee-illy-gas', 'Code.gs');
+  const gas = fs.readFileSync(gasPath, 'utf8');
+
+  // 1. No blind adminToken || staffToken fallback in gasPost
+  assert.ok(!cs.includes('sess.adminToken || sess.staffToken'), 'gasPost must not blindly mix adminToken and staffToken');
+  assert.ok(cs.includes('resolveTokenForAction'), 'cloud-sync must isolate tokens by action role');
+
+  // 2. Load cloud-sync in VM and verify simultaneous Owner + Barista token isolation
+  const ctx = { window: { COFFEE_CONFIG: { API_URL: 'https://example.com/exec' } }, navigator: { onLine: true }, localStorage: { getItem: () => null, setItem: () => {} }, setTimeout, clearTimeout, console };
+  vm.runInNewContext(cs, ctx);
+  const api = ctx.window.CoffeeCloudV94;
+  const bothSess = { adminToken: 'st_admin_999', staffToken: 'st_staff_111' };
+  assert.equal(api.resolveTokenForAction('submit_cash', {}, bothSess), 'st_staff_111', 'staff action must strictly use staffToken');
+  assert.equal(api.resolveTokenForAction('submit_checklist', {}, bothSess), 'st_staff_111', 'checklist submit must strictly use staffToken');
+  assert.equal(api.resolveTokenForAction('change_staff_pin', {}, bothSess), 'st_staff_111', 'staff PIN change must default to staffToken');
+  assert.equal(api.resolveTokenForAction('save_staff', {}, bothSess), 'st_admin_999', 'admin action must strictly use adminToken');
+  assert.equal(api.resolveTokenForAction('save_checklist_blocks', {}, bothSess), 'st_admin_999', 'block edit must strictly use adminToken');
+  assert.equal(api.resolveTokenForAction('save_staff', {}, { adminToken: '', staffToken: 'st_staff_111' }), '', 'staffToken must NEVER authorize admin action');
+
+  // 3. Server resolveVerifiedStaffSession_ enforces sess.role === 'staff'
+  assert.ok(gas.includes("if (sess && sess.role === 'staff' && sess.staffName)"), 'GAS resolveVerifiedStaffSession_ must enforce role === staff');
+
+  // 4. dispatchOperation maps checklist.submit -> submit_checklist
+  assert.ok(cs.includes("'checklist.submit': 'submit_checklist'"), 'dispatchOperation must map checklist.submit to submit_checklist');
+
+  // 5. Honest finance label & warehouse server error guard
+  assert.ok(!dash.includes('Чистый итог'), 'dashboard must use Остаток после расходов instead of misleading Чистый итог');
+  assert.ok(dash.includes('Остаток после расходов'), 'dashboard must show Остаток после расходов');
+  assert.ok(dash.includes('res.ok === false && !res.queued'), 'warehouse save must abort local mutation on server ok:false');
+
+  // 6. Single canonical SW registration (not duplicated inside cloud-sync.js)
+  assert.ok(!cs.includes("navigator.serviceWorker.register('./sw.js')"), 'cloud-sync.js must not duplicate SW registration');
+});

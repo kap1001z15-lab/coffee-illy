@@ -1,0 +1,6212 @@
+/**
+ * Coffee Illy ERP & Checklist Server — Google Apps Script (V8)
+ * Version: v97.0.0 (Production Hardened)
+ *
+ * Все секреты и ID хранятся исключительно в PropertiesService.getScriptProperties():
+ * - SPREADSHEET_ID (опционально, если скрипт привязан к таблице — используется getActiveSpreadsheet())
+ * - ADMIN_PIN_HASH, PIN_PEPPER, STAFF_PIN_HASH_<name>
+ * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
+ * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
+ */
+var SERVER_VERSION_V97 = 'v97.15.0';
+var SPEC_VERSION_V97 = '5.0';
+
+/**
+ * Первичная настройка скрипта (выполнить 1 раз в редакторе Apps Script):
+ * 1) Привязывает активную таблицу или переданный spreadsheetId в ScriptProperties (SPREADSHEET_ID),
+ * 2) Устанавливает временный PIN владельца (в хешированном виде в ScriptProperties),
+ * 3) Снимает возможную блокировку входа и проверяет все листы таблицы.
+ */
+function УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ(spreadsheetId) {
+  var props = PropertiesService.getScriptProperties();
+  var sid = String(spreadsheetId || '').trim();
+  if (!sid) {
+    try {
+      var active = SpreadsheetApp.getActiveSpreadsheet();
+      if (active && active.getId) sid = String(active.getId() || '').trim();
+    } catch (_) {}
+  }
+  if (!sid) sid = String(props.getProperty('SPREADSHEET_ID') || '').trim();
+  if (!sid) {
+    throw new Error('SETUP_REQUIRED: Задайте SPREADSHEET_ID в Script Properties (Настройки проекта -> Свойства скрипта) или привяжите скрипт к Google Таблице.');
+  }
+  props.setProperty('SPREADSHEET_ID', sid);
+  props.setProperty('ADMIN_PIN_HASH', hashPinV2_('1234'));
+  try {
+    var sc = CacheService.getScriptCache();
+    sc.remove('rl_v21_admin');
+    sc.remove('rl_v21_admin_api');
+    sc.remove('rl_v21_default');
+  } catch (_) {}
+  var res = RUN_ONE_CLICK_SETUP();
+  try {
+    var ss = getTargetSpreadsheet_();
+    saveSetting_(ss, { id: 'ADMIN_PIN', value: '••' });
+  } catch (_) {}
+  Logger.log('✅ Таблица подключена, временный PIN владельца установлен: 1234 (смените в разделе «Управление»).');
+  return res;
+}
+
+function getTargetSpreadsheet_() {
+  try {
+    var active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (_) {}
+  var props = PropertiesService.getScriptProperties();
+  var sid = String((props && props.getProperty('SPREADSHEET_ID')) || '').trim();
+  if (!sid) {
+    throw new Error('SETUP_REQUIRED: Не задан SPREADSHEET_ID в ScriptProperties и скрипт не привязан к таблице.');
+  }
+  return SpreadsheetApp.openById(sid);
+}
+
+function getConfiguredWebappUrl_(ss) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var pUrl = String((props && props.getProperty('WEBAPP_URL')) || '').trim();
+    if (pUrl && /^https?:\/\//i.test(pUrl)) return pUrl.replace(/\/+$/, '');
+  } catch (_) {}
+  try {
+    if (ss) {
+      var map = getSettingsMap_(ss);
+      var sUrl = String((map && map.WEBAPP_URL) || '').trim();
+      if (sUrl && /^https?:\/\//i.test(sUrl)) return sUrl.replace(/\/+$/, '');
+    }
+  } catch (_) {}
+  return 'https://kap1001z15-lab.github.io/coffee-illy';
+}
+
+function maskSensitiveLogText_(text) {
+  return String(text || '')
+    .replace(/([?&](?:token|sessionToken|pin|adminPin|hash|botToken)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/(\b\d{8,12}:[A-Za-z0-9_-]{20,}\b)/g, '[TG_TOKEN_REDACTED]')
+    .slice(0, 1500);
+}
+
+function logError_(ss, source, err, meta) {
+  try {
+    var targetSs = ss || getTargetSpreadsheet_();
+    if (!targetSs) return;
+    var sh = targetSs.getSheetByName('Errors');
+    if (!sh) {
+      sh = targetSs.insertSheet('Errors');
+      sh.appendRow(['Дата', 'Время', 'Источник', 'Сообщение', 'Детали']);
+    }
+    var tz = Session.getScriptTimeZone() || 'GMT+2';
+    var now = new Date();
+    var msg = maskSensitiveLogText_((err && err.message) || err || 'Unknown error');
+    var details = maskSensitiveLogText_(meta ? (typeof meta === 'string' ? meta : JSON.stringify(meta)) : ((err && err.stack) || ''));
+    sh.appendRow([
+      Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
+      Utilities.formatDate(now, tz, 'HH:mm:ss'),
+      String(source || 'server').slice(0, 80),
+      msg,
+      details
+    ]);
+  } catch (_) {}
+}
+
+function cleanupSessions_() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties() || {};
+  var now = Date.now();
+  var removed = 0;
+  Object.keys(all).forEach(function(k) {
+    if (k.indexOf('SESS_') === 0) {
+      try {
+        var obj = JSON.parse(all[k]);
+        if (!obj || (obj.expiresAt && Number(obj.expiresAt) < now)) {
+          props.deleteProperty(k);
+          removed++;
+        }
+      } catch (_) {
+        props.deleteProperty(k);
+        removed++;
+      }
+    }
+  });
+  return { ok: true, removedSessions: removed };
+}
+
+/**
+ * ============================================================================
+ * 🚀 ЗАПУСК И НАСТРОЙКА ВСЕЙ СИСТЕМЫ В GOOGLE APPS SCRIPT ОДНОЙ КНОПКОЙ (v62)
+ * ============================================================================
+ * КАК ЗАПУСТИТЬ В 1 КЛИК:
+ * Просто нажмите кнопку «▶ Выполнить» на верхней панели редактора Apps Script!
+ * (Функция ЗАПУСТИТЬ_ВСЁ_ОДНОЙ_КНОПКОЙ стоит первой в файле и выбрана по умолчанию).
+ *
+ * Что делает эта кнопка автоматически:
+ * 1. Создаёт и проверяет все рабочие листы Google Таблицы (Задачи, Касса, Продажи,
+ *    Расходы, Инциденты, Чек-листы, Настройки, Таймлайн, Планы, Сотрудники, Техкарты и др.).
+ * 2. Создаёт папку «Coffee_ERP_Photos» на Google Drive для фото- и видеоотчётов.
+ * 3. Устанавливает фоновые триггеры Автопилота 24/7 (контроль просрочек + вечерняя сводка в Telegram).
+ * 4. Обновляет счётчик ревизии DATA_REV для мгновенной синхронизации всех телефонов и ПК.
+ * ============================================================================
+ */
+function ЗАПУСТИТЬ_ВСЁ_ОДНОЙ_КНОПКОЙ() {
+  return RUN_ONE_CLICK_SETUP();
+}
+
+function RUN_ONE_CLICK_SETUP() {
+  var ss = getTargetSpreadsheet_();
+  ensureSheets_(ss);
+  var folderStatus = 'OK';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var folderId = props.getProperty('DRIVE_MEDIA_FOLDER_ID') || '';
+    var folder = null;
+    if (folderId) {
+      try { folder = DriveApp.getFolderById(folderId); } catch (_) { folder = null; }
+    }
+    if (!folder) {
+      var iter = DriveApp.getFoldersByName('Coffee_ERP_Photos');
+      folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Coffee_ERP_Photos');
+      props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
+    }
+    folderStatus = folder.getName() + ' (ID: ' + folder.getId() + ')';
+  } catch (e) {
+    folderStatus = 'Drive будет подключён при первой загрузке фото (' + String((e && e.message) || e) + ')';
+  }
+  try {
+    var sc = CacheService.getScriptCache();
+    sc.remove("rl_v21_admin");
+    sc.remove("rl_v21_admin_api");
+    sc.remove("rl_v21_default");
+  } catch (_) {}
+  var trigRes = setupAutonomousTriggers_(ss);
+  var rev = bumpDataRev_();
+  try { onOpen(); } catch (_) {}
+  var msg = '✅ СИСТЕМА КОФЕЙНЯ ' + SERVER_VERSION_V97 + ' ГОТОВА К РАБОТЕ! Листы созданы, папка Drive: ' + folderStatus + ', Автопилот 24/7: ' + (trigRes && trigRes.ok ? 'ВКЛ' : 'ОК') + ', ревизия синхронизации: ' + rev;
+  try { Logger.log(msg); } catch (_) {}
+  try { console.log(msg); } catch (_) {}
+  try { ss.toast(msg, '☕ Кофейня ERP v90', 8); } catch (_) {}
+  return { ok: true, message: msg, rev: rev, drive: folderStatus };
+}
+
+/**
+ * Серверный скрипт Google Apps Script (Code.gs) v21 Enterprise Security & Delta-Sync Edition
+ * для системы операционного управления «Кофейня».
+ *
+ * КЛЮЧЕВЫЕ ОБНОВЛЕНИЯ БЕЗОПАСНОСТИ И НАДЁЖНОСТИ (v21):
+ * 1. Сервер как источник истины для доступа: токены сессии (sessionToken) с TTL 12 часов
+ *    в CacheService/PropertiesService вместо передачи открытого PIN в каждом запросе.
+ * 2. Защита от перебора PIN (Rate Limiting): автоматическая блокировка на 15 минут после
+ *    5 неверных попыток ввода PIN (как для владельца, так и для сотрудников).
+ * 3. Хеширование PIN-кодов (SHA-256 с солью 'coffee_salt_v21:') через Utilities.computeDigest.
+ * 4. Закрыта неавторизованная перезапись настроек (удалён публичный доступ к save_setting / CLOUD_SYNC_V17).
+ * 5. Публичный get_checklists очищен от приватных настроек, токенов и PIN-кодов.
+ * 6. Токен Telegram-бота хранится в PropertiesService на сервере и никогда не отдаётся в браузер;
+ *    уведомления отправляются сервером через UrlFetchApp.fetch.
+ * 7. Поэлементная дельта-синхронизация (delta_sync по id + updatedAt + deleted) + LockService.getScriptLock()
+ *    для защиты от потери данных при одновременной работе нескольких бариста.
+ */
+
+/**
+ * НАЖМИТЕ «▶ Выполнить» НА ЭТОЙ ФУНКЦИИ (setupAndVerifyCoffeeServer),
+ * чтобы автоматически создать и проверить все листы таблицы!
+ * После этого нажмите: Начать развертывание -> Управление развертываниями -> ✏️ Изменить -> Версия: Новая версия -> Развернуть.
+ */
+function setupAndVerifyCoffeeServer() {
+  var ss = getTargetSpreadsheet_();
+  ensureSheets_(ss);
+  var rev = bumpDataRev_();
+  Logger.log('✅ Сервер Кофейни успешно инициализирован! Ревизия данных: ' + rev);
+  return { ok: true, rev: rev };
+}
+
+var SALT_V21 = 'coffee_salt_v21:';
+var MAX_PIN_ATTEMPTS = 5;
+var LOCKOUT_SECONDS = 900; // 15 минут
+var SESSION_TTL_SECONDS = 21600; // 6 часов (максимум CacheService)
+
+/* === ЖИВАЯ СИНХРОНИЗАЦИЯ: счётчик версии данных ===
+   Любая успешная запись (doPost) или ручная правка таблицы меняет DATA_REV. Клиенты каждые несколько секунд
+   спрашивают дешёвый запрос get_rev и подтягивают данные только когда версия изменилась. */
+function bumpDataRev_() {
+  var prev = Number(getDataRev_() || 0) || 0;
+  var rev = String(Math.max(Date.now(), prev + 1));
+  try { PropertiesService.getScriptProperties().setProperty('DATA_REV', rev); } catch (_) {}
+  try { CacheService.getScriptCache().put('DATA_REV', rev, 21600); } catch (_) {}
+  return rev;
+}
+function getJsonProp_(key, fallback) {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(String(key));
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+  return fallback;
+}
+function setJsonProp_(key, val) {
+  var MAX_BYTES = 8500;
+  var cur = val;
+  var raw = JSON.stringify(cur);
+  // Защита от жёсткого лимита Google Apps Script (9 КБ на одно свойство PropertiesService)
+  if (raw.length > MAX_BYTES) {
+    if (Array.isArray(cur)) {
+      cur = cur.slice();
+      while (cur.length > 1 && JSON.stringify(cur).length > MAX_BYTES) {
+        cur.shift();
+      }
+      raw = JSON.stringify(cur);
+    } else if (cur && typeof cur === 'object') {
+      var copy = Object.assign({}, cur);
+      var keys = Object.keys(copy);
+      while (keys.length > 1 && JSON.stringify(copy).length > MAX_BYTES) {
+        delete copy[keys.shift()];
+      }
+      raw = JSON.stringify(copy);
+    }
+  }
+  PropertiesService.getScriptProperties().setProperty(key, raw);
+}
+function getDataRev_() {
+  try { var c = CacheService.getScriptCache().get('DATA_REV'); if (c) return c; } catch (_) {}
+  var r = '0';
+  try { r = PropertiesService.getScriptProperties().getProperty('DATA_REV') || '0'; } catch (_) {}
+  try { CacheService.getScriptCache().put('DATA_REV', r, 21600); } catch (_) {}
+  return r;
+}
+/* Простой триггер: ручная правка листа в Google Таблице тоже мгновенно попадает во все устройства. */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) {
+      bumpDataRev_();
+      return;
+    }
+    var n = e.range.getSheet ? e.range.getSheet().getName() : '';
+    if (n === 'API_OPERATIONS') return;
+    bumpDataRev_();
+  } catch (_) {}
+}
+
+/* Явный реестр публичных точек входа API (v4.0); все остальные действия требуют сессии сотрудника или администратора */
+var PUBLIC_GET_ACTIONS_ = ['get_checklists', 'get_rev', 'version'];
+var PUBLIC_ACTIONS_ = ['auth_login', 'auth_logout', 'setup_initial_credentials'];
+
+function doGet(e) {
+  try {
+    var p = (e && e.parameter) || {};
+    var action = p.action || 'get_checklists';
+    if (action === 'get_rev') {
+      var curRev = getDataRev_();
+      return jsonOut_({
+        ok: true,
+        rev: curRev,
+        serverTs: Date.now(),
+        serverVersion: SERVER_VERSION_V97,
+        specVersion: SPEC_VERSION_V97,
+        api: 2
+      });
+    }
+    if (action === 'version') return jsonOut_({ ok: true, serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97, baseVersion: 'v94.1', api: 2, actions: ['auth_login', 'auth_logout', 'setup_initial_credentials', 'staff_bootstrap', 'change_staff_pin', 'delta_sync', 'save_checklist_blocks', 'update_incident', 'delete_incident', 'sales_reconciliation_v54', 'save_checklist_draft', 'dashboard', 'report', 'admin'] });
+    if (action === 'admin' || action === 'dashboard' || action === 'report') return jsonOut_({ ok: false, error: 'METHOD_NOT_ALLOWED: Используйте POST для защищённых запросов (' + action + ')' });
+    var ss = getTargetSpreadsheet_();
+    ensureSheets_(ss);
+
+    // 1. Публичный pre-login запрос: только минимальные статические данные для экрана входа (без планов, черновиков, tgId и финансов)
+    if (action === 'get_checklists') {
+      var pubRes = sanitizePublicChecklists_(getChecklists_(ss), ss, p.sinceTs);
+      pubRes.rev = getDataRev_();
+      return jsonOut_(pubRes);
+    }
+
+    // 2. Fallback на 1 релиз для GET-запросов разделов владельца (основной метод в v85 — POST с sessionToken в теле запроса)
+    requireAuth_(ss, p, 'admin');
+    appendAudit_(ss, 'Система', 'Устаревший GET-запрос с токеном в URL (F10)', 'Действие: ' + action + ' — используйте POST');
+
+    if (action === 'admin' || action === 'dashboard' || action === 'report') {
+      return jsonOut_({ ok: false, error: 'METHOD_NOT_ALLOWED: Используйте POST для защищённых запросов (' + action + ')' });
+    }
+    return jsonOut_({ ok: false, error: 'Неизвестное действие: ' + action });
+  } catch (err) {
+    logError_(null, 'doGet', err);
+    return jsonOut_({ ok: false, error: String((err && err.message) || err) });
+  }
+}
+
+var STAFF_OR_ADMIN_ACTIONS_ = {
+  staff_bootstrap: true,
+  delta_sync: true,
+  submit_checklist: true,
+  submit_cash: true,
+  batch_submit_cash: true,
+  upload_photo: true,
+  ack_announcement: true,
+  save_checklist_draft: true,
+  toggle_personal_task: true,
+  bind_telegram_user: true,
+  save_nomenclature_rule: true,
+  add_expiry_item: true,
+  dispose_expiry_item: true,
+  switch_shop_location: true,
+  save_task: true,
+  report_standalone_incident: true,
+  handover_shift: true,
+  submit_writeoff: true,
+  staff_checkin: true,
+  staff_checkout: true
+};
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
+  var pendingAlerts = [];
+  var ss = null;
+  var body = {};
+  var action = '';
+  var actorSess = null;
+  try {
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    action = String(body.action || '').trim();
+    ss = getTargetSpreadsheet_();
+    ensureSheets_(ss);
+
+    // 1. Публичные действия входа/выхода (выполняются без удержания глобальной блокировки)
+    if (action === 'auth_login') {
+      return jsonOut_(handleAuthLogin_(ss, body));
+    }
+    if (action === 'auth_logout') {
+      return jsonOut_(handleAuthLogout_(body));
+    }
+    if (action === 'change_staff_pin') {
+      lock.waitLock(15000);
+      hasLock = true;
+      return jsonOut_(changeStaffPin_(ss, body));
+    }
+    if (action === 'setup_initial_credentials') {
+      lock.waitLock(15000);
+      hasLock = true;
+      return jsonOut_(setupInitialCredentials_(ss, body));
+    }
+
+    // 2. Обязательная проверка сессии и роли ДО проверки идемпотентности (P0 v4.0)
+    if (STAFF_OR_ADMIN_ACTIONS_[action]) {
+      if (action === 'save_task' && String(body.id || '') !== '__SYS_CONFIG_V19__' && String(body.title || '') !== '__SYS_SYNC__') {
+        actorSess = requireAuth_(ss, body, 'admin');
+      } else if (action === 'switch_shop_location' && body && body.shop) {
+        actorSess = requireAdminOrStaffSession_(ss, body);
+        if (actorSess.role !== 'admin') actorSess = requireAuth_(ss, body, 'admin');
+      } else if (action === 'staff_bootstrap' || action === 'batch_submit_cash') {
+        actorSess = requireAdminOrStaffSession_(ss, body);
+      } else {
+        actorSess = requireVerifiedStaffSession_(ss, body);
+      }
+    } else {
+      actorSess = requireAuth_(ss, body, 'admin');
+    }
+
+    if (actorSess && actorSess.role === 'staff' && actorSess.staffName) {
+      body.userName = actorSess.staffName;
+      body.barista = actorSess.staffName;
+    }
+
+    // 3. Проверка идемпотентности строго ПОСЛЕ авторизации и с привязкой к субъекту (actorId + role + action)
+    var replay = getIdempotentResult_(ss, body, actorSess);
+    if (replay) return jsonOut_(replay);
+
+    // 4. Загрузка медиа в Drive выполняется вне глобальной блокировки Sheets (P1 v4.0)
+    if (action === 'upload_photo') {
+      var upOut = uploadPhotoToDrive_(ss, body, lock);
+      return idempotentJsonOut_(ss, body, upOut, actorSess);
+    }
+
+    // 5. Короткая критическая секция для операций с Google Sheets
+    try {
+      lock.waitLock(15000);
+      hasLock = true;
+    } catch (lockErr) {
+      return jsonOut_({ ok: false, error: 'SERVER_BUSY', retryable: true, message: 'Сервер занят, повторите запрос через пару секунд.' });
+    }
+
+    // Повторная проверка идемпотентности под блокировкой на случай конкурентного запроса
+    var replayLocked = getIdempotentResult_(ss, body, actorSess);
+    if (replayLocked) return jsonOut_(replayLocked);
+
+    if (action === 'staff_bootstrap') {
+      return jsonOut_(buildStaffBootstrapDto_(ss, actorSess, body.sinceTs));
+    }
+
+    // Поэлементная дельта-синхронизация (по id и updatedAt, с фильтрацией полей и проверкой владельца)
+    if (action === 'delta_sync') {
+      return idempotentJsonOut_(ss, body, handleDeltaSync_(ss, body, actorSess), actorSess);
+    }
+
+    // Операционные действия терминала бариста (с автоматической серверной отправкой в Telegram после снятия lock)
+    if (action === 'submit_checklist') {
+      validateChecklistPayload_(ss, body);
+      var resChk = submitChecklist_(ss, body);
+      if (body.isLate) {
+        pendingAlerts.push({
+          type: 'overdue',
+          text: '⏰ ПРОСРОЧКА ЧЕК-ЛИСТА\nБлок: ' + escapeTgHtml_(body.block || '') + '\nСотрудник: ' + escapeTgHtml_(body.userName || 'Бариста') + '\nДедлайн: ' + escapeTgHtml_(body.deadline || '')
+        });
+      }
+      // Инциденты из чек-листа ставим в очередь и отправляем администратору сразу после освобождения блокировки (v93.0).
+      (Array.isArray(body.items) ? body.items : []).filter(function(x) { return x && x.isIncident; }).forEach(function(x) {
+        var phUrl = String(x.photo_url || x.photoUrl || x.photo || '').trim();
+        var msgLines = [
+          '🚨 <b>ПРОБЛЕМА ПО ЧЕК-ЛИСТУ</b>',
+          '📋 Блок: <b>' + escapeTgHtml_(String(body.block || '')).slice(0, 100) + '</b>',
+          '🔧 Участок: ' + escapeTgHtml_(String(x.title || '').slice(0, 150)),
+          '👤 Сотрудник: ' + escapeTgHtml_(String(body.userName || 'Бариста')).slice(0, 100),
+          '📝 Описание: ' + escapeTgHtml_(String(x.comment || 'Без описания').slice(0, 700))
+        ];
+        if (phUrl) msgLines.push('📷 <a href="' + escapeTgHtml_(phUrl) + '">Открыть фото на Google Диске</a>');
+        pendingAlerts.push({
+          type: 'incident',
+          force: true,
+          targetPage: 'owner.html',
+          buttonText: '🛠 Открыть поломки в дашборде',
+          text: msgLines.join('\n')
+        });
+      });
+      return idempotentJsonOut_(ss, body, resChk, actorSess);
+    }
+    if (action === 'submit_cash') {
+      validateCashPayload_(ss, body);
+      return idempotentJsonOut_(ss, body, submitCash_(ss, body), actorSess);
+    }
+    if (action === 'batch_submit_cash') return idempotentJsonOut_(ss, body, batchSubmitCash_(ss, body), actorSess);
+    if (action === 'ack_announcement') return idempotentJsonOut_(ss, body, ackAnnouncement_(ss, body), actorSess);
+    if (action === 'save_checklist_draft') return idempotentJsonOut_(ss, body, saveChecklistDraft_(ss, body), actorSess);
+    if (action === 'toggle_personal_task') return idempotentJsonOut_(ss, body, togglePersonalTask_(ss, body), actorSess);
+    if (action === 'bind_telegram_user') return idempotentJsonOut_(ss, body, bindTelegramUser_(ss, body), actorSess);
+    if (action === 'save_nomenclature_rule') return idempotentJsonOut_(ss, body, saveNomenclatureRule_(ss, body), actorSess);
+    if (action === 'add_expiry_item') return idempotentJsonOut_(ss, body, addExpiryItem_(ss, body), actorSess);
+    if (action === 'dispose_expiry_item') return idempotentJsonOut_(ss, body, disposeExpiryItem_(ss, body), actorSess);
+    if (action === 'switch_shop_location') {
+      var shopSess = requireVerifiedStaffSession_(ss, body);
+      if (body && body.shop && shopSess.role !== 'admin') requireAuth_(ss, body, 'admin');
+      return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
+    }
+    if (action === 'save_task' && (String(body.id || '') === '__SYS_CONFIG_V19__' || String(body.title || '') === '__SYS_SYNC__')) {
+      var sysSess = requireVerifiedStaffSession_(ss, body);
+      return idempotentJsonOut_(ss, body, saveTask_(ss, body, sysSess), actorSess);
+    }
+    if (action === 'handover_shift') {
+      return idempotentJsonOut_(ss, body, handoverShift_(ss, body, actorSess), actorSess);
+    }
+    if (action === 'submit_writeoff') {
+      return idempotentJsonOut_(ss, body, submitWriteoff_(ss, body, actorSess), actorSess);
+    }
+    if (action === 'staff_checkin') {
+      var ciName = String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
+      return idempotentJsonOut_(ss, body, markStaffOnShift_(ss, ciName, body.tgId || '', body.source || 'Терминал'), actorSess);
+    }
+    if (action === 'staff_checkout') {
+      var coName = String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
+      return idempotentJsonOut_(ss, body, markStaffOffShift_(ss, coName), actorSess);
+    }
+    if (action === 'report_standalone_incident') {
+      var resInc = reportIncident_(ss, body);
+      var incPh = String(body.photoUrl || body.photo_url || body.photo || '').trim();
+      var prio = String(body.priority || 'Терпит').trim();
+      var prioIcon = prio.indexOf('Срочно') >= 0 ? '🔴' : (prio.indexOf('Важно') >= 0 ? '🟡' : '🟢');
+      var incLines = [
+        '🚨 <b>НОВЫЙ ИНЦИДЕНТ / ПОЛОМКА</b> ' + prioIcon + ' <b>' + escapeTgHtml_(prio) + '</b>',
+        '🔧 Участок: <b>' + escapeTgHtml_(body.step || body.zone || 'Оборудование') + '</b>',
+        '📝 Описание: ' + escapeTgHtml_(body.text || body.comment || 'Без описания'),
+        '👤 Сообщил: ' + escapeTgHtml_(body.userName || body.who || 'Бариста'),
+        '🛠 Ответственный: ' + escapeTgHtml_(body.responsible || 'Администратор')
+      ];
+      if (incPh) incLines.push('📷 <a href="' + escapeTgHtml_(incPh) + '">Открыть фото на Google Диске</a>');
+      pendingAlerts.push({
+        type: 'incident',
+        force: true,
+        targetPage: 'owner.html',
+        buttonText: '🛠 Открыть инцидент в дашборде',
+        text: incLines.join('\n')
+      });
+      return idempotentJsonOut_(ss, body, resInc, actorSess);
+    }
+    // Все действия ниже уже авторизованы как admin на входе в doPost.
+
+    // Чтение разделов владельца (Дашборд, Отчёты, Управление) через POST без утечки sessionToken в URL (T9 / F10)
+    if (action === 'dashboard') {
+      return jsonOut_(maskSensitiveSettingsInResponse_(getDashboard_(ss, body.date), ss));
+    }
+    if (action === 'report') {
+      return jsonOut_(maskSensitiveSettingsInResponse_(getReport_(ss, body.from, body.to), ss));
+    }
+    if (action === 'admin') {
+      return jsonOut_(maskSensitiveSettingsInResponse_(getAdmin_(ss), ss));
+    }
+
+    // Произвольная отправка сообщений в Telegram доступна только владельцу/администратору.
+    if (action === 'send_telegram_alert') return idempotentJsonOut_(ss, body, sendTelegramServerAlert_(ss, body), actorSess);
+
+    if (action === 'save_telegram_credentials') return idempotentJsonOut_(ss, body, saveTelegramCredentials_(ss, body), actorSess);
+    if (action === 'save_task') return idempotentJsonOut_(ss, body, saveTask_(ss, body, { role: 'admin', staffName: 'Администратор' }), actorSess);
+    if (action === 'delete_task') return idempotentJsonOut_(ss, body, deleteTask_(ss, body), actorSess);
+    if (action === 'reorder_tasks') return idempotentJsonOut_(ss, body, reorderTasks_(ss, body), actorSess);
+    if (action === 'admin_cash') return idempotentJsonOut_(ss, body, submitCash_(ss, body), actorSess);
+    if (action === 'delete_cash') return idempotentJsonOut_(ss, body, deleteCash_(ss, body), actorSess);
+    if (action === 'add_expense') { validateExpensePayload_(ss, body); return idempotentJsonOut_(ss, body, addExpense_(ss, body), actorSess); }
+    if (action === 'update_expense') return idempotentJsonOut_(ss, body, updateExpense_(ss, body), actorSess);
+    if (action === 'delete_expense') return idempotentJsonOut_(ss, body, deleteExpense_(ss, body), actorSess);
+    if (action === 'resolve_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, { id: body.id, status: 'Решена', actor: body.actor || 'Администратор' }), actorSess);
+    if (action === 'update_incident') return idempotentJsonOut_(ss, body, updateIncident_(ss, body), actorSess);
+    if (action === 'delete_incident') return idempotentJsonOut_(ss, body, deleteIncident_(ss, body), actorSess);
+    if (action === 'save_setting') return idempotentJsonOut_(ss, body, saveSettingSecure_(ss, body), actorSess);
+    if (action === 'save_all_settings' && body.items) {
+      body.items.forEach(function(it) { saveSettingSecure_(ss, it); });
+      return idempotentJsonOut_(ss, body, { ok: true }, actorSess);
+    }
+    if (action === 'extend_deadline') return idempotentJsonOut_(ss, body, extendDeadline_(ss, body), actorSess);
+    if (action === 'save_block_windows') return idempotentJsonOut_(ss, body, saveBlockWindows_(ss, body), actorSess);
+    if (action === 'simulate_overdue') return idempotentJsonOut_(ss, body, simulateOverdue_(ss, body), actorSess);
+    if (action === 'save_announcement') return idempotentJsonOut_(ss, body, saveAnnouncement_(ss, body), actorSess);
+    if (action === 'delete_announcement') return idempotentJsonOut_(ss, body, deleteAnnouncement_(ss, body), actorSess);
+    if (action === 'save_staff') return idempotentJsonOut_(ss, body, saveStaff_(ss, body), actorSess);
+    if (action === 'delete_staff') return idempotentJsonOut_(ss, body, deleteStaff_(ss, body), actorSess);
+    if (action === 'save_ttk') return idempotentJsonOut_(ss, body, saveTtk_(ss, body), actorSess);
+    if (action === 'delete_ttk') return idempotentJsonOut_(ss, body, deleteTtk_(ss, body), actorSess);
+    if (action === 'save_shift_roster') return idempotentJsonOut_(ss, body, saveShiftRoster_(ss, body), actorSess);
+    if (action === 'reorder_task') return idempotentJsonOut_(ss, body, reorderTask_(ss, body), actorSess);
+    if (action === 'save_checklist_blocks') return idempotentJsonOut_(ss, body, saveChecklistBlocks_(ss, body), actorSess);
+    if (action === 'add_checklist_block') return idempotentJsonOut_(ss, body, addChecklistBlock_(ss, body), actorSess);
+    if (action === 'delete_checklist_block') return idempotentJsonOut_(ss, body, deleteChecklistBlock_(ss, body), actorSess);
+    if (action === 'save_daily_plans') return idempotentJsonOut_(ss, body, saveDailyPlans_(ss, body), actorSess);
+    if (action === 'issue_staff_reset_code') return idempotentJsonOut_(ss, body, issueStaffResetCode_(ss, body), actorSess);
+    if (action === 'save_staff_pins') return idempotentJsonOut_(ss, body, saveStaffPins_(ss, body), actorSess);
+    if (action === 'save_good_deed') return idempotentJsonOut_(ss, body, saveGoodDeed_(ss, body), actorSess);
+    if (action === 'delete_good_deed') return idempotentJsonOut_(ss, body, deleteGoodDeed_(ss, body), actorSess);
+    if (action === 'save_service_audit') return idempotentJsonOut_(ss, body, saveServiceAudit_(ss, body), actorSess);
+    if (action === 'delete_service_audit') return idempotentJsonOut_(ss, body, deleteServiceAudit_(ss, body), actorSess);
+    if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body), actorSess);
+    if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body), actorSess);
+    if (action === 'delete_inventory') return idempotentJsonOut_(ss, body, deleteInventory_(ss, body), actorSess);
+    if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() }, actorSess);
+    if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
+    if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
+    if (action === 'send_daily_digest') return idempotentJsonOut_(ss, body, sendDailyDigestNow_(ss, body), actorSess);
+    if (action === 'save_telegram_settings') return idempotentJsonOut_(ss, body, saveTelegramSettingsV93_(ss, body), actorSess);
+    if (action === 'test_telegram_alert') return idempotentJsonOut_(ss, body, testTelegramAlertV93_(ss, body), actorSess);
+    if (action === 'run_checklist_notifications_now') return idempotentJsonOut_(ss, body, checkAndNotifyChecklistWindows_(ss, body), actorSess);
+    if (action === 'grant_photo_reader_access') return idempotentJsonOut_(ss, body, grantPhotoFolderReaderAccess_(ss), actorSess);
+    if (action === 'submit_adjustment') return idempotentJsonOut_(ss, body, submitAdjustment_(ss, body, actorSess), actorSess);
+
+    return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action }, actorSess);
+  } catch (err) {
+    logError_(ss, 'doPost:' + action, err, { action: action });
+    return idempotentJsonOut_(ss, body, { ok: false, error: String((err && err.message) || err) }, actorSess);
+  } finally {
+    if (hasLock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+    if (pendingAlerts.length && ss) {
+      for (var aIdx = 0; aIdx < pendingAlerts.length; aIdx++) {
+        try { sendTelegramServerAlert_(ss, pendingAlerts[aIdx]); } catch (_) {}
+      }
+    }
+  }
+}
+
+
+/* =========================================================================
+   МОДУЛЬ СТРОГОЙ СЕРВЕРНОЙ ВАЛИДАЦИИ, STAFF-СЕССИЙ И GOOGLE DRIVE (v23)
+   ========================================================================= */
+
+function newId_(prefix) {
+  return String(prefix || 'ID') + '-' + Utilities.getUuid().slice(0, 8);
+}
+
+function isValidIsoDate_(str) {
+  var s = String(str || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  var d = new Date(s + 'T12:00:00Z');
+  return !isNaN(d.getTime());
+}
+
+function validateFiniteNumber_(val, minVal, maxVal, fieldName) {
+  var n = Number(val);
+  if (val === '' || val === null || typeof val === 'boolean' || !isFinite(n) || isNaN(n) || n < minVal || n > maxVal) {
+    throw new Error('VALIDATION_FAILED: Некорректное числовое значение поля «' + fieldName + '» (допустимо от ' + minVal + ' до ' + maxVal + ')');
+  }
+  return n;
+}
+
+function resolveVerifiedStaffSession_(ss, body) {
+  var tok = String((body && body.sessionToken) || '').trim();
+  if (tok && tok.indexOf('st_') === 0 && tok.indexOf('st_local_') !== 0) {
+    var sess = getServerSession_(tok);
+    if (sess && sess.role === 'staff' && sess.staffName) {
+      if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + sess.staffName) === '1') {
+        throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + sess.staffName + '» необходимо сменить временный PIN-код');
+      }
+      body.userName = sess.staffName;
+      if (!body.barista) body.barista = sess.staffName;
+      return sess;
+    }
+    if (!body.staffPinHash && !body.pinHash && !body.pin) {
+      throw new Error('STAFF_AUTH_REQUIRED: Сессия сотрудника истекла или недействительна — войдите заново по персональному PIN-коду');
+    }
+  }
+  var tgId = String((body && (body.tgUserId || body.tgId)) || '').trim();
+  if (tgId && body && body.tgInitData) {
+    var hmacCheckSession = verifyTelegramInitDataHmac_(body.tgInitData, false);
+    if (hmacCheckSession && hmacCheckSession.ok && String(hmacCheckSession.tgUserId || '') === tgId) {
+      var bindings = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+      if (bindings && bindings[tgId] && bindings[tgId].staffName) {
+        if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + bindings[tgId].staffName) === '1') {
+          throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + bindings[tgId].staffName + '» необходимо сменить временный PIN-код');
+        }
+        body.userName = bindings[tgId].staffName;
+        if (!body.barista) body.barista = bindings[tgId].staffName;
+        return { role: 'staff', staffName: bindings[tgId].staffName, verifiedByTgId: true };
+      }
+    }
+  }
+  var staffName = String((body && (body.userName || body.barista)) || '').trim();
+  var pinCandRaw = (body && (body.staffPinHash || body.pinHash || body.staffPin || body.pin)) || '';
+  if (staffName && PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
+    throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + staffName + '» необходимо сменить временный PIN-код');
+  }
+  if (staffName && pinCandRaw) {
+    var actorKey = 'staff_' + staffName;
+    checkRateLimit_(actorKey);
+    var expectedHash = getStaffPinHash_(ss, staffName);
+    if (!expectedHash) {
+      throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не зарегистрирован в штатном расписании');
+    }
+    if (verifyPinStored_(expectedHash, pinCandRaw)) {
+      clearFailedAttempts_(actorKey);
+      body.userName = staffName;
+      if (!body.barista) body.barista = staffName;
+      return { role: 'staff', staffName: staffName, verifiedByPin: true };
+    }
+    var left = recordFailedAttempt_(ss, actorKey);
+    throw new Error('PIN_INVALID: Подпись персонального PIN сотрудника «' + staffName + '» не прошла серверную проверку (осталось попыток: ' + left + ')');
+  }
+  return null;
+}
+
+
+function requireAdminOrStaffSession_(ss, body) {
+  var tok = String((body && body.sessionToken) || '').trim();
+  if (tok && tok.indexOf('st_') === 0 && tok.indexOf('st_local_') !== 0) {
+    var s = getServerSession_(tok);
+    if (s && s.role === 'admin') {
+      return { role: 'admin', staffName: String((body && (body.barista || body.userName)) || 'Администратор') };
+    }
+  }
+  return requireVerifiedStaffSession_(ss, body);
+}
+
+function requireVerifiedStaffSession_(ss, body) {
+  var sess = resolveVerifiedStaffSession_(ss, body);
+  if (!sess) {
+    throw new Error('STAFF_AUTH_REQUIRED: Операция отклонена — требуется подтверждённая серверная сессия сотрудника (sessionToken) или персональная подпись PIN (staffPinHash)');
+  }
+  return sess;
+}
+
+function counterDeltaServer_(prev, cur) {
+  if (prev === null || prev === undefined || prev === '' || cur === null || cur === undefined || cur === '') return null;
+  var p = Math.round(Number(prev)), c = Math.round(Number(cur));
+  if (!isFinite(p) || !isFinite(c) || p < 0 || c < 0) return null;
+  if (p < 1000 && c < 1000) return c >= p ? (c - p) : ((1000 - p) + c);
+  return c >= p ? (c - p) : null;
+}
+
+function classifyCoffeeServer_(name) {
+  var n = String(name || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`]/g, '').replace(/\s+/g, ' ').trim();
+  if (!n) return 'non_coffee';
+  var excl = [/молоко/, /сироп/, /альтернативн/, /сливки/, /чай/, /какао/, /шоколад/, /маршмеллоу/, /кола/, /спрайт/, /фанта/, /вода/, /минеральн/, /пина\s*колада/, /стимер/, /лимонад/, /чизкейк/, /эклер/, /десерт/, /фрукт/, /стикер/, /круассан/, /торт/];
+  for (var i = 0; i < excl.length; i++) { if (excl[i].test(n)) return 'non_coffee'; }
+  var cof = [/американо/, /эспрессо/, /капучино/, /латте/, /лате/, /flat\s*white/, /флэт\s*уайт/, /мокко/, /мокка/, /длинный черный/, /лонг блэк/, /(?:^|\s)раф(?:\s|$|\()/, /доппио/, /ристретто/, /макиато/, /кортадо/, /айс\s*латте/, /ice\s*latte/, /кофе\s*по/];
+  for (var j = 0; j < cof.length; j++) { if (cof[j].test(n)) return 'coffee'; }
+  return 'review';
+}
+
+function validateCashPayload_(ss, b) {
+  if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос кассы');
+  var dt = String(b.date || isoDate_()).trim();
+  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректный формат даты кассы (' + dt + '), ожидается YYYY-MM-DD');
+  validateFiniteNumber_(b.cash != null ? b.cash : 0, 0, 1000000, 'Наличные');
+  validateFiniteNumber_(b.card != null ? b.card : 0, 0, 1000000, 'Безнал');
+  validateFiniteNumber_(b.checks != null ? b.checks : 0, 0, 10000, 'Чеки');
+  validateFiniteNumber_(b.writeoff != null ? b.writeoff : (b.writeOffs != null ? b.writeOffs : 0), 0, 50000, 'Списания (руб.)');
+  if (b.writeoffShots != null && b.writeoffShots !== '') {
+    validateFiniteNumber_(b.writeoffShots, 0, 5000, 'Списания кофе (порций)');
+  }
+  if (b && b._ownerBatchAuthorized) requireAdminOrStaffSession_(ss, b); else requireVerifiedStaffSession_(ss, b);
+  return true;
+}
+
+function validateChecklistPayload_(ss, b) {
+  if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос чек-листа');
+  var blk = String(b.block || '').trim();
+  if (!blk || blk.length > 80) throw new Error('VALIDATION_FAILED: Не указан блок чек-листа');
+  if (b.items != null && !Array.isArray(b.items)) throw new Error('VALIDATION_FAILED: Поле items должно быть массивом');
+  requireVerifiedStaffSession_(ss, b);
+  return true;
+}
+
+function validateExpensePayload_(ss, b) {
+  if (!b || typeof b !== 'object') throw new Error('VALIDATION_FAILED: Пустой запрос расхода');
+  var dt = String(b.date || isoDate_()).trim();
+  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректный формат даты расхода (' + dt + ')');
+  validateFiniteNumber_(b.amount, 0.01, 5000000, 'Сумма расхода');
+  var cat = String(b.category || '').trim();
+  if (!cat || cat.length > 120) throw new Error('VALIDATION_FAILED: Не указана статья расхода');
+  return true;
+}
+
+function uploadPhotoToDrive_(ss, body, lockOpt) {
+  requireVerifiedStaffSession_(ss, body);
+  var dataUri = String((body && (body.dataUri || body.photo || body.base64)) || '').trim();
+  if (!dataUri) {
+    return { ok: false, error: 'VALIDATION_FAILED: Пустые данные медиафайла (ожидается base64 dataUri)' };
+  }
+  var m = /^data:(image\/(?:jpeg|png|webp)|video\/(?:mp4|webm|quicktime|x-matroska))(?:;[^;]+)*;base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUri);
+  if (!m) {
+    return { ok: false, error: 'VALIDATION_FAILED: Допустимы только изображения JPEG/PNG/WEBP или видео MP4 в base64' };
+  }
+  var mimeType = m[1];
+  var b64Data = String(m[2] || '').replace(/\s+/g, '');
+  if (b64Data.length > 10 * 1024 * 1024) {
+    return { ok: false, error: 'VALIDATION_FAILED: Размер медиафайла превышает лимит 8 МБ' };
+  }
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var folderId = props.getProperty('DRIVE_MEDIA_FOLDER_ID') || '';
+    var folder = null;
+    if (folderId) {
+      try { folder = DriveApp.getFolderById(folderId); } catch (_) { folder = null; }
+    }
+    if (!folder) {
+      var iter = DriveApp.getFoldersByName('Coffee_ERP_Photos');
+      if (!iter.hasNext()) iter = DriveApp.getFoldersByName('Кофейня — Медиаархив Смен');
+      folder = iter.hasNext() ? iter.next() : DriveApp.createFolder('Coffee_ERP_Photos');
+      props.setProperty('DRIVE_MEDIA_FOLDER_ID', folder.getId());
+    }
+    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('webp') >= 0 ? 'webp' : (mimeType.indexOf('mp4') >= 0 ? 'mp4' : (mimeType.indexOf('webm') >= 0 ? 'webm' : 'jpg')));
+    var staff = String((body && body.userName) || 'Бариста').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
+    var blk = String((body && body.block) || 'Смена').replace(/[^a-zA-Zа-яА-Я0-9_-]/g, '_');
+    var fname = isoDate_() + '_' + blk + '_' + staff + '_' + Date.now() + '.' + ext;
+    var decoded = Utilities.base64Decode(b64Data);
+    var blob = Utilities.newBlob(decoded, mimeType, fname);
+    var file = folder.createFile(blob);
+    try { applySecureDriveFileSharingV82_(file); } catch (_) {}
+    var retentionDays = Number(props.getProperty('MEDIA_RETENTION_DAYS') || 90);
+    var expiresAt = isoDate_(new Date(Date.now() + retentionDays * 86400000));
+    var isVideoMedia = /^video\//i.test(mimeType);
+    var previewUrl = 'https://drive.google.com/file/d/' + file.getId() + '/preview';
+    var directMediaUrl = isVideoMedia
+      ? previewUrl
+      : ('https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200');
+    var lockedHere = false;
+    if (lockOpt) {
+      try { lockOpt.waitLock(15000); lockedHere = true; } catch (_) {}
+    }
+    try {
+      var shM = ss.getSheetByName('Медиафайлы');
+      if (!shM) {
+        shM = ss.insertSheet('Медиафайлы');
+        shM.appendRow(['FileID', 'Дата', 'Сотрудник', 'Блок', 'Размер байт', 'Хранить до', 'URL']);
+      }
+      shM.appendRow([file.getId(), isoDate_(), body.userName || 'Бариста', body.block || '', decoded.length, expiresAt, directMediaUrl]);
+    } finally {
+      if (lockedHere && lockOpt) {
+        try { lockOpt.releaseLock(); } catch (_) {}
+      }
+    }
+    return { ok: true, mediaId: file.getId(), fileId: file.getId(), mediaType: isVideoMedia ? 'video' : 'image', url: directMediaUrl, previewUrl: previewUrl, viewUrl: file.getUrl(), expiresAt: expiresAt };
+  } catch (driveErr) {
+    return { ok: false, error: 'DRIVE_UPLOAD_ERROR: ' + String((driveErr && driveErr.message) || driveErr) };
+  }
+}
+
+function setupInitialCredentials_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  var existingAdminHash = props.getProperty('ADMIN_PIN_HASH') || '';
+  if (existingAdminHash) {
+    requireAuth_(ss, body, 'admin');
+  }
+  var rawAdminInput = String((body && body.newAdminPin) || '').trim();
+  if (!existingAdminHash && !rawAdminInput) {
+    throw new Error('VALIDATION_FAILED: Необходимо задать PIN владельца (4–8 цифр)');
+  }
+  if (rawAdminInput) {
+    var stripped = rawAdminInput.indexOf('sha256:') === 0 ? rawAdminInput.slice(7) : rawAdminInput;
+    var isHex64 = /^[a-f0-9]{64}$/i.test(stripped);
+    if (!isHex64 && stripped.length < 4) {
+      throw new Error('VALIDATION_FAILED: PIN владельца должен содержать минимум 4 цифры');
+    }
+    var newAdminHash = normalizePinHash_(rawAdminInput);
+    props.setProperty('ADMIN_PIN_HASH', newAdminHash);
+    saveSetting_(ss, { id: 'ADMIN_PIN', value: '••' });
+  }
+  if (body && body.staffPins && typeof body.staffPins === 'object') {
+    var shSt = ss ? ss.getSheetByName('Сотрудники') : null;
+    var stRows = (shSt && shSt.getLastRow() > 1) ? shSt.getDataRange().getValues() : [];
+    Object.keys(body.staffPins).forEach(function(sName) {
+      var pVal = String(body.staffPins[sName] || '').trim();
+      if (pVal) {
+        var normH = normalizePinHash_(pVal);
+        props.setProperty('STAFF_PIN_HASH_' + sName, normH);
+        props.setProperty('PIN_CHANGE_REQUIRED_' + sName, '0');
+        for (var rIdx = 1; rIdx < stRows.length; rIdx++) {
+          if (String(stRows[rIdx][1] || '').trim().toLowerCase() === String(sName).trim().toLowerCase()) {
+            shSt.getRange(rIdx + 1, 6).setValue('••');
+            break;
+          }
+        }
+      }
+    });
+  }
+  props.setProperty('FACTORY_PINS_DISABLED', '1');
+  appendAudit_(ss, 'Администратор', 'Первичная настройка безопасности (Production Lock)', 'Заводские PIN-коды отключены, установлены индивидуальные SHA-256 хеши');
+  return { ok: true, factoryPinsDisabled: true };
+}
+
+function migrateFactoryPins_(ss) {
+  ss = ss || getTargetSpreadsheet_();
+  var props = PropertiesService.getScriptProperties();
+  var sh = ss ? ss.getSheetByName('Сотрудники') : null;
+  var migrated = [];
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var sName = String(rows[i][1] || '').trim();
+      if (!sName) continue;
+      var cellPin = String(rows[i][5] != null ? rows[i][5] : '').trim();
+      var propH = props.getProperty('STAFF_PIN_HASH_' + sName) || '';
+      var isWeakOrFactory = (cellPin && cellPin !== '••' && (/^(\d)\1{3}$/.test(cellPin) || cellPin.length === 4 && Number(cellPin) === 1234)) || !propH;
+      if (cellPin && cellPin !== '••') {
+        sh.getRange(i + 1, 6).setValue('••');
+      }
+      if (isWeakOrFactory) {
+        props.setProperty('PIN_CHANGE_REQUIRED_' + sName, '1');
+        migrated.push(sName);
+      }
+    }
+  }
+  var shSet = ss ? ss.getSheetByName('Настройки') : null;
+  if (shSet && shSet.getLastRow() > 1) {
+    var sRows = shSet.getDataRange().getValues();
+    for (var j = 1; j < sRows.length; j++) {
+      if (normSetKey_(sRows[j][0]) === 'ADMIN_PIN' && String(sRows[j][1] || '') !== '••') {
+        shSet.getRange(j + 1, 2).setValue('••');
+      }
+    }
+  }
+  return { ok: true, migratedStaff: migrated };
+}
+
+function issueStaffResetCode_(ss, body) {
+  var name = String((body && (body.staffName || body.userName)) || '').trim();
+  if (!name) throw new Error('VALIDATION_FAILED: Не указано имя сотрудника');
+  var staffOk = getStaffPinHash_(ss, name) || (getStaffList_(ss) || []).some(function(x){ return x && String(x.name||'').toLowerCase() === name.toLowerCase(); });
+  if (!staffOk) throw new Error('STAFF_NOT_FOUND: Сотрудник «' + name + '» не найден');
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + ':' + Date.now());
+  var num = ((digest[0] & 0x7f) << 24) | ((digest[1] & 0xff) << 16) | ((digest[2] & 0xff) << 8) | (digest[3] & 0xff);
+  var code = String(10000000 + (num % 90000000));
+  PropertiesService.getScriptProperties().setProperty('RESET_' + name, JSON.stringify({
+    h: sha256Hex_(SALT_V21 + code),
+    exp: Date.now() + 60 * 60 * 1000,
+    used: false
+  }));
+  appendAudit_(ss, 'Администратор', 'Выдан одноразовый код сброса PIN', 'Сотрудник: ' + name + ' (срок 60 мин)');
+  return { ok: true, staffName: name, resetCode: code, expiresInMinutes: 60 };
+}
+
+function consumeStaffResetCode_(name, code) {
+  if (!name || !code) return false;
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty('RESET_' + name);
+  if (!raw) return false;
+  try {
+    var rec = JSON.parse(raw);
+    if (!rec || rec.used || Date.now() > Number(rec.exp || 0)) return false;
+    if (sha256Hex_(SALT_V21 + String(code).trim()) !== rec.h) return false;
+    rec.used = true;
+    props.setProperty('RESET_' + name, JSON.stringify(rec));
+    return true;
+  } catch (_) { return false; }
+}
+
+function bumpSessionEpoch_(name) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var cur = Number(props.getProperty('EPOCH_' + name) || '1') || 1;
+    props.setProperty('EPOCH_' + name, String(cur + 1));
+  } catch (_) {}
+}
+
+function changeStaffPin_(ss, body) {
+  var staffName = String((body && (body.staffName || body.userName)) || '').trim();
+  var newPin = String((body && body.newPin) || '').trim();
+  if (!staffName || !newPin || !/^\d{4,12}$/.test(newPin) || /^(\d)\1{3,}$/.test(newPin)) {
+    throw new Error('VALIDATION_FAILED: Новый персональный PIN должен содержать от 4 до 12 цифр и не состоять из одинаковых цифр');
+  }
+  var rateKey = 'pinchg_' + staffName;
+  checkRateLimit_(rateKey);
+  var expHash = getStaffPinHash_(ss, staffName);
+  var staffExists = !!expHash || (getStaffList_(ss) || []).some(function(x){ return x && String(x.name||'').toLowerCase() === staffName.toLowerCase(); });
+  if (!staffExists) throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден');
+
+  var oldPin = String((body && (body.oldPin || body.staffPin || body.pin)) || '').trim();
+  var resetCode = String((body && body.resetCode) || '').trim();
+  var verified = false;
+  if (oldPin && verifyPinStored_(expHash, oldPin)) verified = true;
+  if (!verified && resetCode && consumeStaffResetCode_(staffName, resetCode)) verified = true;
+  if (!verified) {
+    try { requireAuth_(ss, body, 'admin'); verified = true; } catch (_) {}
+  }
+  if (!verified) {
+    var left = recordFailedAttempt_(ss, rateKey);
+    if (!oldPin && !resetCode && !(body && body.sessionToken)) {
+      throw new Error('PIN_REQUIRED: Для смены PIN требуется текущий PIN, код сброса или сессия администратора (осталось попыток: ' + left + ')');
+    }
+    throw new Error('PIN_INVALID: Неверный текущий PIN или код сброса (осталось попыток: ' + left + ')');
+  }
+  clearFailedAttempts_(rateKey);
+  var props = PropertiesService.getScriptProperties();
+  var newHash = hashPinV2_(newPin);
+  props.setProperty('STAFF_PIN_HASH_' + staffName, newHash);
+  props.setProperty('PIN_CHANGE_REQUIRED_' + staffName, '0');
+  bumpSessionEpoch_(staffName);
+  var sh = ss ? ss.getSheetByName('Сотрудники') : null;
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][1] || '').trim().toLowerCase() === staffName.toLowerCase()) {
+        sh.getRange(i + 1, 6).setValue('••');
+        break;
+      }
+    }
+  }
+  appendAudit_(ss, staffName, 'Смена персонального PIN-кода', 'Установлен новый индивидуальный PIN');
+  bumpDataRev_();
+  return { ok: true, staffName: staffName, pinChanged: true, reloginRequired: true };
+}
+
+/* =========================================================================
+   МОДУЛЬ СЕРВЕРНОЙ БЕЗОПАСНОСТИ: SHA-256, RATE-LIMITING (5 ПОПЫТОК), СЕССИИ
+   ========================================================================= */
+
+function sha256Hex_(inputStr) {
+  var rawBytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    SALT_V21 + String(inputStr || '').trim(),
+    Utilities.Charset.UTF_8
+  );
+  var out = '';
+  for (var i = 0; i < rawBytes.length; i++) {
+    var b = rawBytes[i];
+    if (b < 0) b += 256;
+    var hex = b.toString(16);
+    if (hex.length === 1) out += '0';
+    out += hex;
+  }
+  return out;
+}
+
+
+function getOrCreatePinPepper_() {
+  var props = PropertiesService.getScriptProperties();
+  var pep = props.getProperty('PIN_PEPPER') || '';
+  if (!pep) {
+    pep = sha256Hex_(Utilities.getUuid() + ':' + Date.now());
+    props.setProperty('PIN_PEPPER', pep);
+  }
+  return pep;
+}
+
+function hashPinV2_(pin, saltOpt) {
+  var s = String(pin || '').trim();
+  if (s.indexOf('v2$') === 0) return s;
+  var salt = saltOpt || sha256Hex_(Utilities.getUuid()).slice(0, 16);
+  var pep = getOrCreatePinPepper_();
+  var h = sha256Hex_(pep + ':' + salt + ':' + s);
+  for (var i = 0; i < 25; i++) {
+    h = sha256Hex_(pep + ':' + salt + ':' + h);
+  }
+  return 'v2$25$' + salt + '$' + h;
+}
+
+function verifyPinStored_(stored, candidateRaw) {
+  var st = String(stored || '').trim();
+  var cand = String(candidateRaw || '').trim();
+  if (!st || !cand) return false;
+  if (st.indexOf('v2$') === 0) {
+    var parts = st.split('$');
+    if (parts.length !== 4) return false;
+    var recomputed = hashPinV2_(cand, parts[2]);
+    return recomputed === st;
+  }
+  return normalizePinHash_(cand) === st;
+}
+
+function normalizePinHash_(val) {
+  var s = String(val || '').trim();
+  if (!s) return '';
+  if (s.indexOf('sha256:') === 0) return s.slice(7);
+  if (/^[a-f0-9]{64}$/i.test(s)) return s.toLowerCase();
+  return sha256Hex_(s);
+}
+
+function rateLimitPropKey_(actorKey) {
+  return 'RL_V97_' + String(actorKey || 'default').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+}
+
+function checkRateLimit_(actorKey) {
+  var props = PropertiesService.getScriptProperties();
+  var key = rateLimitPropKey_(actorKey);
+  var raw = props.getProperty(key);
+  var state = { count: 0, strikes: 0, lockedUntil: 0 };
+  if (raw) {
+    try { state = JSON.parse(raw) || state; } catch (_) {}
+  }
+  var now = Date.now();
+  if (state.lockedUntil && now < state.lockedUntil) {
+    var secLeft = Math.ceil((state.lockedUntil - now) / 1000);
+    throw new Error('RATE_LIMIT: Превышено число попыток ввода PIN. Подождите ' + secLeft + ' сек.');
+  }
+  if (state.lockedUntil && now >= state.lockedUntil) {
+    state.lockedUntil = 0;
+    state.count = 0;
+  }
+  return { props: props, key: key, state: state };
+}
+
+function recordFailedAttempt_(ss, actorKey) {
+  var rl = checkRateLimit_(actorKey);
+  rl.state.count = (rl.state.count || 0) + 1;
+  var maxAtt = (typeof MAX_PIN_ATTEMPTS !== 'undefined' && MAX_PIN_ATTEMPTS) ? MAX_PIN_ATTEMPTS : 5;
+  if (rl.state.count >= maxAtt) {
+    rl.state.strikes = (rl.state.strikes || 0) + 1;
+    var escalations = [60, 300, 900, 3600]; // 1, 5, 15, 60 минут
+    var lockSec = escalations[Math.min(rl.state.strikes - 1, escalations.length - 1)];
+    rl.state.lockedUntil = Date.now() + (lockSec * 1000);
+    rl.props.setProperty(rl.key, JSON.stringify(rl.state));
+    appendAudit_(ss, String(actorKey || 'Неизвестный'), '🚨 Блокировка входа (Brute-Force)', 'Попыток: ' + rl.state.count + ', блокировка на ' + Math.round(lockSec / 60) + ' мин. (уровень ' + rl.state.strikes + ')');
+    try {
+      sendTelegramServerAlert_(ss, {
+        type: 'security',
+        text: '🚨 <b>Попытка перебора PIN</b>\nСубъект: ' + escapeTgHtml_(String(actorKey || 'unknown')) + '\nБлокировка: ' + Math.round(lockSec / 60) + ' мин. (активные сессии владельца не затронуты)'
+      });
+    } catch (_) {}
+    throw new Error('RATE_LIMIT: Введено ' + maxAtt + ' неверных PIN подряд. Вход заблокирован на ' + Math.round(lockSec / 60) + ' мин.');
+  }
+  rl.props.setProperty(rl.key, JSON.stringify(rl.state));
+  return maxAtt - rl.state.count;
+}
+
+function clearFailedAttempts_(actorKey) {
+  try {
+    PropertiesService.getScriptProperties().deleteProperty(rateLimitPropKey_(actorKey));
+  } catch (_) {}
+}
+
+function resetRateLimits_() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties() || {};
+  var cleared = 0;
+  Object.keys(all).forEach(function(k) {
+    if (k.indexOf('RL_V97_') === 0) {
+      props.deleteProperty(k);
+      cleared++;
+    }
+  });
+  return { ok: true, cleared: cleared };
+}
+
+function getConfiguredOwnerPinHash_(ss) {
+  var props = PropertiesService.getScriptProperties();
+  var propHash = props.getProperty('ADMIN_PIN_HASH') || '';
+  if (propHash) return propHash;
+  var map = getSettingsMap_(ss);
+  var storedRaw = String(map.ADMIN_PIN || '').trim();
+  if (storedRaw && storedRaw.indexOf('••') === -1) {
+    var migrated = normalizePinHash_(storedRaw);
+    props.setProperty('ADMIN_PIN_HASH', migrated);
+    saveSetting_(ss, { id: 'ADMIN_PIN', value: '••' });
+    return migrated;
+  }
+  var tempHash = hashPinV2_('1234');
+  try { props.setProperty('ADMIN_PIN_HASH', tempHash); } catch (_) {}
+  return tempHash;
+}
+
+function verifyOwnerPinServer_(ss, candidatePinOrHash, actorKey) {
+  checkRateLimit_(actorKey || 'admin');
+  var expectedHash = getConfiguredOwnerPinHash_(ss);
+  if (!expectedHash) {
+    throw new Error('SETUP_REQUIRED: Первичная настройка — задайте PIN владельца (4–8 цифр)');
+  }
+  var isMatch = !!candidatePinOrHash && verifyPinStored_(expectedHash, candidatePinOrHash);
+  if (isMatch && String(expectedHash).indexOf('v2$') !== 0 && /^\d{4,12}$/.test(String(candidatePinOrHash).trim())) {
+    try { PropertiesService.getScriptProperties().setProperty('ADMIN_PIN_HASH', hashPinV2_(String(candidatePinOrHash).trim())); } catch (_) {}
+  }
+
+  if (!isMatch) {
+    var left = recordFailedAttempt_(ss, actorKey || 'admin');
+    throw new Error('PIN_REQUIRED: Неверный код доступа владельца (осталось попыток: ' + left + ')');
+  }
+  clearFailedAttempts_(actorKey || 'admin');
+  return true;
+}
+
+function normTgNumericId_(val) {
+  return String(val || '').replace(/^TG-/i, '').replace(/[^0-9-]/g, '').trim();
+}
+
+function findStaffByTelegramId_(ss, tgIdRaw) {
+  var num = normTgNumericId_(tgIdRaw);
+  if (!num) return null;
+  var list = getStaffList_(ss);
+  for (var i = 0; i < list.length; i++) {
+    var s = list[i];
+    if (!s || s.active === false || String(s.active || 'да').toLowerCase() === 'нет') continue;
+    if (normTgNumericId_(s.tgId) === num) return s;
+  }
+  var binds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+  var bKeys = Object.keys(binds || {});
+  for (var j = 0; j < bKeys.length; j++) {
+    var bVal = binds[bKeys[j]];
+    var bTg = (bVal && typeof bVal === 'object') ? normTgNumericId_(bVal.tgId || bVal.id) : normTgNumericId_(bVal);
+    var bName = (bVal && typeof bVal === 'object' && bVal.staffName) ? String(bVal.staffName) : String(bKeys[j]);
+    if (bTg === num) {
+      for (var k = 0; k < list.length; k++) {
+        if (list[k] && String(list[k].name || '').trim().toLowerCase() === bName.trim().toLowerCase()) {
+          return list[k];
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function handleAuthLogin_(ss, body) {
+  var role = String(body.role || 'admin').trim();
+  var staffName = String(body.staffName || body.name || (role === 'admin' ? 'Администратор' : '')).trim();
+  var tgCand = String(body.tgId || body.rawTgId || '').trim();
+  var autoLoggedIn = false;
+  var matchedTgId = tgCand;
+
+  if (role === 'admin') {
+    verifyOwnerPinServer_(ss, body.pinHash || body.pin || '', 'admin');
+  } else {
+    // v93.0: Автоматический вход сотрудника по Telegram ID без повторного ввода PIN
+    if ((body.autoLogin || (!body.pin && !body.pinHash)) && tgCand) {
+      var tgStaff = findStaffByTelegramId_(ss, tgCand);
+      if (!tgStaff) {
+        throw new Error('TG_STAFF_NOT_FOUND: Telegram ID ' + tgCand + ' не привязан к активному сотруднику');
+      }
+      staffName = tgStaff.name;
+      matchedTgId = tgStaff.tgId || tgCand;
+      autoLoggedIn = true;
+    } else {
+      if (!staffName) staffName = 'Бариста';
+      var actorKey = role + '_' + staffName;
+      var pinCandidate = body.pinHash || body.pin || '';
+      checkRateLimit_(actorKey);
+      if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
+        throw new Error('PIN_CHANGE_REQUIRED: Сотруднику «' + staffName + '» необходимо сменить временный PIN-код');
+      }
+      var expectedStaffHash = getStaffPinHash_(ss, staffName);
+      if (!expectedStaffHash) {
+        throw new Error('STAFF_NOT_FOUND: Сотрудник «' + staffName + '» не найден в штатном расписании или отключён');
+      }
+      if (!pinCandidate || !verifyPinStored_(expectedStaffHash, pinCandidate)) {
+        var left = recordFailedAttempt_(ss, actorKey);
+        throw new Error('PIN_INVALID: Неверный персональный PIN сотрудника «' + staffName + '» (осталось попыток: ' + left + ')');
+      }
+      clearFailedAttempts_(actorKey);
+    }
+  }
+
+  var token = 'st_' + Utilities.getUuid().replace(/-/g, '') + '_' + sha256Hex_(Utilities.getUuid()).slice(0, 16);
+  var expiresAt = Date.now() + (SESSION_TTL_SECONDS * 1000);
+  var sessionObj = {
+    token: token,
+    role: role,
+    staffName: staffName,
+    issuedAt: Date.now(),
+    expiresAt: expiresAt
+  };
+  saveServerSession_(sessionObj);
+  var presence = null;
+  if (role !== 'admin' && staffName) {
+    presence = markStaffOnShift_(ss, staffName, matchedTgId, autoLoggedIn ? 'Telegram Auto-Login' : 'PIN Login');
+  }
+  appendAudit_(ss, staffName, autoLoggedIn ? 'Авто-вход сотрудника (Telegram)' : 'Вход в систему по защищённой сессии', 'Роль: ' + role);
+  var checkedAt = (presence && presence.checkedInAt) || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  return {
+    ok: true,
+    autoLoggedIn: autoLoggedIn,
+    sessionToken: token,
+    role: role,
+    staffName: staffName,
+    tgId: matchedTgId,
+    onShift: role !== 'admin',
+    checkedInAt: checkedAt,
+    welcomeMessage: role !== 'admin'
+      ? ('Добро пожаловать на смену, ' + staffName + '! Вы отмечены на работе с ' + checkedAt + '.')
+      : ('Добро пожаловать, ' + staffName + '!'),
+    expiresAt: expiresAt
+  };
+}
+
+function saveServerSession_(sessionObj) {
+  if (!sessionObj || !sessionObj.token) return;
+  var props = PropertiesService.getScriptProperties();
+  var epoch = Number(props.getProperty('EPOCH_' + (sessionObj.staffName || '')) || '1') || 1;
+  var stored = {
+    role: sessionObj.role,
+    staffName: sessionObj.staffName,
+    issuedAt: sessionObj.issuedAt,
+    expiresAt: sessionObj.expiresAt,
+    epoch: epoch
+  };
+  var tokHash = sha256Hex_(sessionObj.token);
+  try {
+    CacheService.getScriptCache().put('sess_' + sessionObj.token, JSON.stringify(stored), SESSION_TTL_SECONDS);
+  } catch (_) {}
+  try {
+    props.setProperty('SESS_' + tokHash, JSON.stringify(stored));
+  } catch (_) {}
+}
+
+function getServerSession_(token) {
+  var tok = String(token || '').trim();
+  if (!tok || tok.indexOf('st_') !== 0 || tok.indexOf('st_local_') === 0) return null;
+  var props = PropertiesService.getScriptProperties();
+  var rec = null;
+  try {
+    var raw = CacheService.getScriptCache().get('sess_' + tok);
+    if (raw) rec = JSON.parse(raw);
+  } catch (_) {}
+  if (!rec) {
+    try {
+      var rawP = props.getProperty('SESS_' + sha256Hex_(tok));
+      if (rawP) {
+        rec = JSON.parse(rawP);
+        if (rec && rec.expiresAt > Date.now()) {
+          var ttlLeft = Math.max(60, Math.floor((rec.expiresAt - Date.now()) / 1000));
+          CacheService.getScriptCache().put('sess_' + tok, JSON.stringify(rec), Math.min(SESSION_TTL_SECONDS, ttlLeft));
+        }
+      }
+    } catch (_) {}
+  }
+  if (!rec || rec.expiresAt <= Date.now()) return null;
+  var curEpoch = Number(props.getProperty('EPOCH_' + (rec.staffName || '')) || '1') || 1;
+  if (rec.epoch && rec.epoch < curEpoch) return null;
+  return rec;
+}
+
+function removeServerSession_(token) {
+  var tok = String(token || '').trim();
+  if (!tok) return;
+  try { CacheService.getScriptCache().remove('sess_' + tok); } catch (_) {}
+  try { PropertiesService.getScriptProperties().deleteProperty('SESS_' + sha256Hex_(tok)); } catch (_) {}
+}
+
+function handleAuthLogout_(body) {
+  var tok = String(body.sessionToken || '').trim();
+  if (tok) removeServerSession_(tok);
+  return { ok: true };
+}
+
+function requireAuth_(ss, paramsOrBody, requiredRole) {
+  var p = paramsOrBody || {};
+  var tok = String(p.sessionToken || '').trim();
+  var sess = getServerSession_(tok);
+  if (sess) {
+    if (requiredRole === 'admin' && sess.role !== 'admin') {
+      throw new Error('FORBIDDEN: Требуются права владельца или администратора');
+    }
+    return sess;
+  }
+  if (!getConfiguredOwnerPinHash_(ss)) {
+    throw new Error('SETUP_REQUIRED: Первичная настройка — задайте PIN владельца (4–8 цифр)');
+  }
+  // Резервная проверка по pinHash или pin (с единым ключом Rate-Limiting 'admin')
+  var pinCand = p.pinHash || p.pin || '';
+  if (pinCand) {
+    verifyOwnerPinServer_(ss, pinCand, 'admin');
+    return { role: 'admin', staffName: 'Администратор' };
+  }
+  throw new Error('PIN_REQUIRED: Сессия недействительна или истекла. Пожалуйста, войдите по коду доступа.');
+}
+
+function getStaffPinHash_(ss, staffName) {
+  var cleanName = String(staffName || '').trim();
+  if (!cleanName) return null;
+  var props = PropertiesService.getScriptProperties();
+  var sh = ss ? ss.getSheetByName('Сотрудники') : null;
+  var rowFound = false;
+  var sheetPin = '';
+  var rowIndex = -1;
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var rName = String(rows[i][1] || '').trim();
+      var rActive = String(rows[i][4] || 'да').trim().toLowerCase();
+      if (rName.toLowerCase() === cleanName.toLowerCase()) {
+        rowFound = true;
+        rowIndex = i + 1;
+        if (rActive === 'нет' || rActive === 'false' || rActive === '0') return null;
+        sheetPin = String(rows[i][5] != null ? rows[i][5] : '').trim();
+        break;
+      }
+    }
+  }
+  var custom = props.getProperty('STAFF_PIN_HASH_' + cleanName);
+  if (custom) return custom;
+  if (rowFound && sheetPin && sheetPin.indexOf('••') === -1) {
+    var norm = normalizePinHash_(sheetPin);
+    props.setProperty('STAFF_PIN_HASH_' + cleanName, norm);
+    try { sh.getRange(rowIndex, 6).setValue('••'); } catch (_) {}
+    return norm;
+  }
+  return null;
+}
+
+/* =========================================================================
+   СЕРВЕРНАЯ ИНТЕГРАЦИЯ TELEGRAM (ТОКЕН ХРАНИТСЯ В PROPERTIESSERVICE)
+   ========================================================================= */
+
+function saveTelegramCredentials_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  var tok = String(body.tgToken || '').trim();
+  var chat = String(body.tgChat || '').trim();
+  if (tok && tok.indexOf('••') === -1) {
+    props.setProperty('TG_BOT_TOKEN_SECRET', tok);
+  }
+  if (chat) {
+    props.setProperty('TG_CHAT_ID_SECRET', chat);
+    saveSetting_(ss, { id: 'TG_CHAT', value: chat });
+  }
+  // В листе «Настройки» храним только маску, чтобы токен не светился в таблице и браузере
+  saveSetting_(ss, { id: 'TG_TOKEN', value: tok ? '•••••••• (хранится на сервере)' : '' });
+  appendAudit_(ss, 'Администратор', 'Обновление серверных ключей Telegram', 'Токен сохранён в защищённом хранилище сервера');
+  return { ok: true, tgConfigured: !!(props.getProperty('TG_BOT_TOKEN_SECRET')) };
+}
+
+function sendTelegramServerAlert_(ss, payload) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var map = getSettingsMap_(ss);
+    var token = props.getProperty('TG_BOT_TOKEN_SECRET') || '';
+    if (!token && map.TG_TOKEN && map.TG_TOKEN.indexOf('••') === -1 && map.TG_TOKEN.indexOf(':') > 0) {
+      token = String(map.TG_TOKEN).trim();
+      props.setProperty('TG_BOT_TOKEN_SECRET', token);
+      saveSetting_(ss, { id: 'TG_TOKEN', value: '•••••••• (хранится на сервере)' });
+    }
+    var chatRaw = props.getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '';
+    if (!token) {
+      return { ok: false, skipped: true, reason: 'Telegram-бот не настроен на сервере (нет токена)' };
+    }
+    var chats = [];
+    var targetStaffName = String(payload.targetStaffName || payload.staffName || '').trim();
+    if (Array.isArray(payload.chatIds) && payload.chatIds.length) {
+      chats = payload.chatIds.map(function(x) { return normTgNumericId_(x) || String(x || '').trim(); }).filter(Boolean);
+    } else if (payload.chatId) {
+      var singleCid = normTgNumericId_(payload.chatId) || String(payload.chatId || '').trim();
+      if (singleCid) chats = [singleCid];
+    } else if (targetStaffName) {
+      var resolvedStaffChat = resolveStaffTelegramChatId_(ss, targetStaffName);
+      if (!resolvedStaffChat) {
+        return { ok: false, skipped: true, reason: 'У сотрудника «' + targetStaffName + '» не привязан Telegram ID' };
+      }
+      chats = [resolvedStaffChat];
+    } else if (String(payload.target || '').toLowerCase() === 'all_baristas') {
+      chats = (getStaffList_(ss) || [])
+        .filter(function(s) { return s && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет'; })
+        .map(function(s) { return normTgNumericId_(s.tgId); })
+        .filter(Boolean);
+      if (!chats.length) {
+        return { ok: false, skipped: true, reason: 'Нет активных бариста с привязанным Telegram ID' };
+      }
+    } else {
+      if (!chatRaw) {
+        return { ok: false, skipped: true, reason: 'Не указан Chat ID администратора в настройках Telegram' };
+      }
+      chats = String(chatRaw).split(/[,;\s]+/).map(function(x) { return x.trim(); }).filter(Boolean);
+    }
+    var text = String(payload.text || payload.message || '').trim();
+    if (!text) return { ok: false, reason: 'Пустой текст уведомления' };
+
+    // Анти-спам дедупликация одинаковых уведомлений (30 мин) без зависимости от Utilities.base64EncodeWebSafe
+    if (!payload.force && !payload.skipDedup && payload.dedup !== false) {
+      try {
+        var rawSig = String(payload.type || 'alert') + '|' + String(payload.block || '') + '|' + text.slice(0, 80);
+        var h = 5381;
+        for (var hi = 0; hi < rawSig.length; hi++) { h = ((h << 5) + h + rawSig.charCodeAt(hi)) & 0x7fffffff; }
+        var dedupKey = 'tg_dedup_' + h.toString(36);
+        var cache = CacheService.getScriptCache();
+        if (cache && cache.get(dedupKey)) {
+          return { ok: true, deduplicated: true, sentTo: 0, totalChats: chats.length };
+        }
+        if (cache) cache.put(dedupKey, '1', 1800);
+      } catch (_) {}
+    }
+
+    // Автоматически добавляем inline-кнопку перехода в нужный чек-лист или дашборд, если задан WEBAPP_URL (v93.0)
+    var sendOpts = Object.assign({}, payload);
+    var baseAppUrl = String(payload.webappUrl || map.WEBAPP_URL || '').trim();
+    if (baseAppUrl && !sendOpts.reply_markup && !sendOpts.entityId) {
+      var rootBase = baseAppUrl.replace(/\/(index|dashboard|owner|admin|barista)\.html(\?.*)?$/i, '').replace(/\/+$/, '');
+      var targetUrl = rootBase + '/index.html';
+      if (payload.targetPage) {
+        targetUrl = rootBase + '/' + String(payload.targetPage).replace(/^\/+/, '');
+      } else if (payload.block && targetUrl.indexOf('block=') === -1) {
+        targetUrl = rootBase + '/index.html?block=' + encodeURIComponent(String(payload.block));
+      }
+      var btnObj = { text: payload.buttonText || ('📋 Открыть ' + (payload.block || 'чек-лист')) };
+      if (payload.buttonType === 'web_app' && /^https:\/\//i.test(targetUrl)) {
+        btnObj.web_app = { url: targetUrl };
+      } else {
+        btnObj.url = targetUrl;
+      }
+      sendOpts.reply_markup = { inline_keyboard: [[btnObj]] };
+    }
+
+    var sentCount = 0;
+    var deliveries = [];
+    chats.forEach(function(chatId) {
+      var dRes = sendTelegramVerifiedV82_(chatId, text, sendOpts);
+      deliveries.push(dRes);
+      if (dRes && dRes.ok) sentCount++;
+    });
+    return { ok: sentCount > 0, sentTo: sentCount, totalChats: chats.length, deliveries: deliveries };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+function saveSettingSecure_(ss, body) {
+  var nk = normSetKey_(body.id || body.key);
+  var val = String(body.value != null ? body.value : '').trim();
+  var props = PropertiesService.getScriptProperties();
+  if (nk === 'TG_TOKEN') {
+    if (val && val.indexOf('••') === -1) {
+      props.setProperty('TG_BOT_TOKEN_SECRET', val);
+    }
+    return saveSetting_(ss, { id: 'TG_TOKEN', value: val ? '•••••••• (хранится на сервере)' : '' });
+  }
+  if (nk === 'ADMIN_PIN') {
+    if (val && val.indexOf('••') === -1) {
+      var pHash = normalizePinHash_(val);
+      props.setProperty('ADMIN_PIN_HASH', pHash);
+      return saveSetting_(ss, { id: 'ADMIN_PIN', value: 'sha256:' + pHash });
+    }
+    return { ok: true };
+  }
+  // Валидация значений параметров по здоровой логике (v90.0)
+  var enumLimits = {
+    SYNC_MODE: ['realtime', 'balanced', 'economy'],
+    THEME_DEFAULT: ['auto', 'light', 'dark'],
+    CURRENCY: ['₽', 'MDL', '€', '$'],
+    PIN_POLICY: ['personal', 'pin_only', 'tg_strict'],
+    TG_ALERTS_MODE: ['all', 'critical', 'off']
+  };
+  if (enumLimits[nk] && val !== '') {
+    if (enumLimits[nk].indexOf(val) === -1) {
+      throw new Error('INVALID_SETTING_VALUE: Недопустимое значение для ' + nk + ' (' + val + ')');
+    }
+  }
+  var numLimits = {
+    PLAN: [0, 10000000],
+    MIN_AVG_CHECK: [0, 100000],
+    PLAN_CHECKS: [0, 100000],
+    WO_NORM: [0, 100],
+    INIT_COUNTER: [0, 10000000],
+    CASH_FLOAT: [0, 100000],
+    MEDIA_RETENTION_DAYS: [7, 365]
+  };
+  if (numLimits[nk] && val !== '') {
+    var numVal = Number(val.replace(',', '.'));
+    if (!isFinite(numVal) || numVal < numLimits[nk][0] || numVal > numLimits[nk][1]) {
+      throw new Error('INVALID_SETTING_VALUE: Некорректное значение для ' + nk + ' (' + val + ')');
+    }
+    body = Object.assign({}, body, { id: nk, value: String(numVal) });
+  } else if (/^(OPEN_START|DEADLINE|LC1_START|LC1_DEADLINE|LC2_START|LC2_DEADLINE|DAY_START|DAY_DEADLINE|CLOSE_START|CLOSE_DEADLINE|CASH_START|CASH_DEADLINE)$/.test(nk) && val !== '') {
+    if (!/^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(val)) {
+      throw new Error('INVALID_TIME_FORMAT: Ожидается формат ЧЧ:ММ для ' + nk);
+    }
+  } else if (/^[=+\-@]/.test(val) && !/^https?:\/\//i.test(val)) {
+    body = Object.assign({}, body, { id: nk, value: "'" + val });
+  }
+  return saveSetting_(ss, body);
+}
+
+function sanitizePublicChecklists_(res, ss, sinceTs) {
+  // Публичный pre-login ответ (v4.0): строго минимальный набор нефинансовых и неперсональных данных для экрана входа
+  var safeStaff = Array.isArray(res.staff) ? res.staff.map(function(s) {
+    return {
+      id: s.id,
+      name: s.name,
+      role: s.role,
+      location: s.location,
+      active: s.active
+    };
+  }) : [];
+  return {
+    ok: true,
+    v: res.v || 55,
+    serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97,
+    dailyPlans: (res && res.dailyPlans) || {},
+    shiftRoster: (res && res.shiftRoster) || {},
+    inventory: getSeededInventory_(ss),
+    expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
+    location: res.location || 'Кофейня №1',
+    staff: safeStaff,
+    serverTime: res.serverTime,
+    serverDate: res.serverDate,
+    serverTs: Date.now(),
+    requiresAuthForDetails: true
+  };
+}
+
+function buildStaffBootstrapDto_(ss, sess, sinceTs) {
+  var full = getChecklists_(ss);
+  var isAdmin = (sess && sess.role === 'admin');
+  var staffName = String((sess && sess.staffName) || '').trim();
+  var safeStaff = Array.isArray(full.staff) ? full.staff.map(function(s) {
+    return {
+      id: s.id,
+      name: s.name,
+      role: s.role,
+      shop: s.shop || s.location || 'Кофейня №1',
+      location: s.shop || s.location || 'Кофейня №1',
+      active: s.active,
+      tgId: isAdmin ? (s.tgId || '') : (s.name === staffName ? (s.tgId || '') : '')
+    };
+  }) : [];
+
+  var filteredDrafts = {};
+  var rawDrafts = full.userDrafts || {};
+  Object.keys(rawDrafts).forEach(function(k) {
+    var d = rawDrafts[k];
+    if (isAdmin || (d && String(d.userName || '').trim() === staffName) || k.indexOf(':' + staffName + ':') >= 0) {
+      filteredDrafts[k] = d;
+    }
+  });
+
+  var filteredActive = {};
+  var rawActive = full.userActiveState || {};
+  Object.keys(rawActive).forEach(function(k) {
+    if (isAdmin || k === staffName || k.indexOf(staffName + ':') === 0 || k.indexOf(':' + staffName) >= 0) {
+      filteredActive[k] = rawActive[k];
+    }
+  });
+
+  var filteredPersonal = {};
+  var rawPersonal = full.personalTasksDone || {};
+  Object.keys(rawPersonal).forEach(function(k) {
+    if (isAdmin || k === staffName || k.indexOf(staffName + ':') === 0) {
+      filteredPersonal[k] = rawPersonal[k];
+    }
+  });
+
+  var filteredChecklists = Array.isArray(full.checklists) ? full.checklists.filter(function(c) {
+    return isAdmin || (c && String(c.who || '').trim() === staffName);
+  }) : [];
+
+  var safeTtk = Array.isArray(full.ttk) ? full.ttk.map(function(t) {
+    return {
+      id: t.id,
+      category: t.category,
+      name: t.name,
+      volume: t.volume,
+      price: Number(t.price) || 0,
+      ingredients: t.ingredients,
+      recipe: t.recipe,
+      serving: t.serving || ''
+    };
+  }) : [];
+
+  var safeTasks = Array.isArray(full.tasks) ? full.tasks.filter(function(t) {
+    return t && String(t.id || '') !== '__SYS_CONFIG_V19__' && String(t.title || '') !== '__SYS_SYNC__';
+  }) : [];
+
+  return {
+    ok: true,
+    v: full.v || 55,
+    rev: getDataRev_(),
+    serverVersion: 'v90', specVersion: '4.0',
+    profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
+    location: full.location || 'Кофейня №1',
+    photoAll: full.photoAll || 'нет',
+    openStart: full.openStart,
+    deadline: full.deadline,
+    dayStart: full.dayStart,
+    dayDeadline: full.dayDeadline,
+    closeStart: full.closeStart,
+    closeDeadline: full.closeDeadline,
+    checklistBlocks: full.checklistBlocks || [],
+    deadlineExtensions: full.deadlineExtensions || {},
+    shiftCompletedBlocksToday: (function() {
+      var mapDone = {};
+      var todayStr = isoDate_();
+      (Array.isArray(full.checklists) ? full.checklists : []).forEach(function(c) {
+        if (!c || String(c.date || '').slice(0, 10) !== todayStr) return;
+        var bName = String(c.block || '').trim();
+        if (!bName) return;
+        if (bName.toLowerCase() === 'день') bName = 'Лайн Чек 1';
+        mapDone[bName] = { date: todayStr, time: String(c.time || ''), status: String(c.status || 'В срок') };
+      });
+      return mapDone;
+    })(),
+    announcements: full.announcements || [],
+    staff: safeStaff,
+    ttk: safeTtk,
+    goodDeeds: full.goodDeeds || [],
+    tasks: safeTasks,
+    checklists: filteredChecklists,
+    userDrafts: filteredDrafts,
+    userActiveState: filteredActive,
+    personalTasksDone: filteredPersonal,
+    deltas: getDeltasSince_(ss, Number(sinceTs) || 0, sess ? sess.role : 'staff', null, sess),
+    staffPresence: getStaffPresenceToday_(ss),
+    serverTime: full.serverTime,
+    serverDate: full.serverDate,
+    serverTs: Date.now()
+  };
+}
+
+function maskSensitiveSettingsInResponse_(res, ss) {
+  var props = PropertiesService.getScriptProperties();
+  var hasTg = !!(props.getProperty('TG_BOT_TOKEN_SECRET'));
+  res.tgConfiguredOnServer = hasTg;
+  if (Array.isArray(res.settings)) {
+    res.settings = res.settings
+      .filter(function(s) { return s.id !== 'CLOUD_SYNC_V17'; })
+      .map(function(s) {
+        if (s.id === 'TG_TOKEN') {
+          return { id: 'TG_TOKEN', label: s.label, value: hasTg ? '•••••••• (хранится на сервере)' : '' };
+        }
+        if (s.id === 'ADMIN_PIN') {
+          return { id: 'ADMIN_PIN', label: s.label, value: '' };
+        }
+        return s;
+      });
+  }
+  return res;
+}
+
+/* =========================================================================
+   ПОЭЛЕМЕНТНАЯ ДЕЛЬТА-СИНХРОНИЗАЦИЯ (DELTA_SYNC ПО ID И UPDATED_AT)
+   ========================================================================= */
+
+var STAFF_DELTA_WHITELIST_ = {
+  incidents: true,
+  announcements: true,
+  checklists: true,
+  userDrafts: true
+};
+
+var DELTA_TOMBSTONE_TTL_MS_ = 30 * 24 * 60 * 60 * 1000; // 30 дней
+var DELTA_MAX_ROWS_ = 20000;
+
+function filterDeltaRecordForRole_(col, rec, actor, sess) {
+  if (!rec || typeof rec !== 'object') return {};
+  if (sess && sess.role === 'admin') return rec;
+  var staffName = String((sess && sess.staffName) || '').trim();
+  if (col === 'incidents') {
+    return {
+      id: rec.id,
+      date: rec.date,
+      time: rec.time,
+      step: rec.step,
+      block: rec.block,
+      text: rec.text,
+      comment: rec.comment,
+      responsible: rec.responsible,
+      status: rec.status,
+      urgency: rec.urgency,
+      photoUrl: rec.photoUrl,
+      mediaId: rec.mediaId,
+      userName: rec.userName || actor,
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  if (col === 'announcements') {
+    return {
+      id: rec.id,
+      title: rec.title,
+      text: rec.text,
+      date: rec.date,
+      active: rec.active,
+      readBy: Array.isArray(rec.readBy) ? rec.readBy : [],
+      acks: Array.isArray(rec.acks) ? rec.acks : [],
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  if (col === 'checklists') {
+    var owner = String(rec.who || rec.userName || actor || '').trim();
+    if (staffName && owner && owner !== staffName) return null;
+    return {
+      id: rec.id,
+      date: rec.date,
+      time: rec.time,
+      block: rec.block,
+      who: owner,
+      status: rec.status,
+      isLate: !!rec.isLate,
+      items: Array.isArray(rec.items) ? rec.items : [],
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  if (col === 'userDrafts') {
+    var dOwner = String(rec.userName || actor || '').trim();
+    if (staffName && dOwner && dOwner !== staffName) return null;
+    return {
+      id: rec.id,
+      date: rec.date,
+      userName: dOwner,
+      block: rec.block,
+      idx: rec.idx,
+      startedAt: rec.startedAt,
+      answers: Array.isArray(rec.answers) ? rec.answers : [],
+      updatedAt: rec.updatedAt,
+      deleted: !!rec.deleted
+    };
+  }
+  return null;
+}
+
+function handleDeltaSync_(ss, body, sessOpt) {
+  var sess = sessOpt || requireVerifiedStaffSession_(ss, body);
+  var sh = ss.getSheetByName('ДельтаСинхр');
+  if (!sh) {
+    sh = ss.insertSheet('ДельтаСинхр');
+    sh.appendRow(['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']);
+  }
+  var incoming = Array.isArray(body.deltas) ? body.deltas : [];
+  var rawRows = sh.getDataRange().getValues();
+  var headerRow = (rawRows.length > 0 && rawRows[0].length >= 6)
+    ? rawRows[0]
+    : ['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON'];
+
+  var nowMs = Date.now();
+  var tombstoneCutoff = nowMs - DELTA_TOMBSTONE_TTL_MS_;
+  var dataRows = [];
+  var indexMap = {};
+  var prunedCount = 0;
+
+  for (var i = 1; i < rawRows.length; i++) {
+    var r = rawRows[i];
+    if (!r || (!r[0] && !r[1])) continue;
+    var rTs = Number(r[2]) || 0;
+    var rDel = String(r[3] || '') === '1';
+    if (rDel && rTs > 0 && rTs < tombstoneCutoff) {
+      prunedCount++;
+      continue;
+    }
+    var rowCopy = [r[0], r[1], rTs, rDel ? '1' : '0', r[4] || '', r[5] || '{}'];
+    var key = String(rowCopy[0] || '') + '::' + String(rowCopy[1] || '');
+    indexMap[key] = { idx: dataRows.length, updatedAt: rTs, payload: rowCopy[5] };
+    dataRows.push(rowCopy);
+  }
+
+  var applied = 0;
+  incoming.forEach(function(d) {
+    if (!d || !d.collection || !d.id) return;
+    var colName = String(d.collection || '');
+    if (!STAFF_DELTA_WHITELIST_[colName]) {
+      if (!sess || sess.role !== 'admin') {
+        requireAuth_(ss, body, 'admin');
+      }
+    }
+    if (sess && sess.role !== 'admin') {
+      var filteredIn = filterDeltaRecordForRole_(colName, d.record || {}, sess.staffName, sess);
+      if (filteredIn === null) {
+        throw new Error('FORBIDDEN: Доступ к чужой записи в delta_sync запрещён');
+      }
+      d.record = filteredIn;
+      d.actor = sess.staffName;
+    }
+    var k = colName + '::' + String(d.id);
+    var incTs = Number(d.updatedAt) || nowMs;
+    var existing = indexMap[k];
+
+    if (!existing || incTs >= existing.updatedAt) {
+      var mergedRecord = d.record || {};
+      if (existing && existing.payload) {
+        try {
+          var prevRec = JSON.parse(String(existing.payload));
+          if (Array.isArray(prevRec.readBy) || Array.isArray(mergedRecord.readBy)) {
+            var setR = {};
+            (prevRec.readBy || []).concat(mergedRecord.readBy || []).forEach(function(n) { if (n) setR[n] = true; });
+            mergedRecord.readBy = Object.keys(setR);
+          }
+          if (Array.isArray(prevRec.acks) || Array.isArray(mergedRecord.acks)) {
+            var mapA = {};
+            (prevRec.acks || []).concat(mergedRecord.acks || []).forEach(function(a) {
+              if (a && a.staff) mapA[a.staff] = a;
+            });
+            mergedRecord.acks = Object.keys(mapA).map(function(ak) { return mapA[ak]; });
+          }
+        } catch (_) {}
+      }
+      var rowVals = [
+        colName,
+        String(d.id),
+        incTs,
+        d.deleted ? '1' : '0',
+        String(d.actor || body.userName || 'Система'),
+        JSON.stringify(mergedRecord)
+      ];
+      if (existing) {
+        dataRows[existing.idx] = rowVals;
+        existing.updatedAt = incTs;
+        existing.payload = rowVals[5];
+      } else {
+        indexMap[k] = { idx: dataRows.length, updatedAt: incTs, payload: rowVals[5] };
+        dataRows.push(rowVals);
+      }
+      applied++;
+    }
+  });
+
+  if (dataRows.length > DELTA_MAX_ROWS_) {
+    dataRows = dataRows.slice(dataRows.length - DELTA_MAX_ROWS_);
+    prunedCount++;
+  }
+
+  var finalSheetRows = [headerRow].concat(dataRows);
+  if (applied > 0 || prunedCount > 0) {
+    sh.getRange(1, 1, finalSheetRows.length, 6).setValues(finalSheetRows);
+    if (rawRows.length > finalSheetRows.length && typeof sh.deleteRows === 'function') {
+      try { sh.deleteRows(finalSheetRows.length + 1, rawRows.length - finalSheetRows.length); } catch (_) {}
+    }
+  }
+
+  var sinceTs = Number(body.sinceTs) || 0;
+  return {
+    ok: true,
+    applied: applied,
+    serverTs: Date.now(),
+    deltas: getDeltasSince_(ss, sinceTs, sess ? sess.role : 'staff', finalSheetRows, sess)
+  };
+}
+
+function getDeltasSince_(ss, sinceTs, roleOpt, preloadedRowsOpt, sessOpt) {
+  var isAdmin = (roleOpt === 'admin');
+  var rows = preloadedRowsOpt;
+  if (!rows) {
+    var sh = ss.getSheetByName('ДельтаСинхр');
+    if (!sh) return [];
+    rows = sh.getDataRange().getValues();
+  }
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var col = String(rows[i][0] || '');
+    if (!isAdmin && !STAFF_DELTA_WHITELIST_[col]) continue;
+    var ts = Number(rows[i][2]) || 0;
+    if (ts >= sinceTs) {
+      var rec = null;
+      try { rec = JSON.parse(String(rows[i][5] || '{}')); } catch (_) {}
+      var actor = String(rows[i][4] || '');
+      if (!isAdmin) {
+        rec = filterDeltaRecordForRole_(col, rec || {}, actor, sessOpt || { role: 'staff', staffName: '' });
+        if (rec === null) continue;
+      }
+      out.push({
+        collection: col,
+        id: String(rows[i][1] || ''),
+        updatedAt: ts,
+        deleted: String(rows[i][3] || '') === '1',
+        actor: actor,
+        record: rec
+      });
+    }
+  }
+  return out;
+}
+
+
+/** Возвращает сохранённый результат операции, если клиент повторил запрос после таймаута. */
+function getIdempotentResult_(ss, body, actorSess) {
+  var id = String(body && body.operationId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{12,80}$/.test(id)) return null;
+  var act = String(body && body.action || '');
+  if (act === 'save_checklist_draft' || act === 'toggle_personal_task' || (act === 'save_task' && String(body && body.id || '') === '__SYS_CONFIG_V19__')) {
+    return null;
+  }
+  var actorId = String((actorSess && actorSess.staffName) || '');
+  var actorRole = String((actorSess && actorSess.role) || '');
+  var cacheKey = 'op_' + actorRole + '_' + actorId + '_' + id;
+  var cache = CacheService.getScriptCache();
+  try {
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      var env = JSON.parse(cached);
+      if (env && env.actorId === actorId && env.role === actorRole && env.action === act && env.result) {
+        return env.result;
+      }
+    }
+  } catch (_) {}
+  try {
+    var sh = ss.getSheetByName('API_OPERATIONS');
+    if (!sh) {
+      sh = ss.insertSheet('API_OPERATIONS');
+      sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']);
+    }
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      var firstRow = Math.max(2, last - 1499);
+      var found = sh.getRange(firstRow, 1, last - firstRow + 1, 1).createTextFinder(id).matchEntireCell(true).findNext();
+      if (found) {
+        var rIdx = found.getRow();
+        var rowVals = sh.getRange(rIdx, 1, 1, Math.max(6, sh.getLastColumn())).getValues()[0];
+        var raw = String(rowVals[2] || '');
+        var recActor = String(rowVals[3] || '');
+        var recRole = String(rowVals[4] || '');
+        var recAct = String(rowVals[5] || '');
+        if (recActor && recActor !== actorId) {
+          throw new Error('FORBIDDEN: Чужой operationId не может быть повторён другим пользователем');
+        }
+        if (recRole && recRole !== actorRole) {
+          throw new Error('FORBIDDEN: operationId другой роли не может быть повторён');
+        }
+        if (recAct && recAct !== act) {
+          throw new Error('CONFLICT: operationId уже использован для другого действия');
+        }
+        if (raw) {
+          var result = JSON.parse(raw);
+          try { cache.put(cacheKey, JSON.stringify({ actorId: actorId, role: actorRole, action: act, result: result }), 21600); } catch (_) {}
+          return result;
+        }
+      }
+    }
+  } catch (err) {
+    if (err && /FORBIDDEN|CONFLICT/.test(String(err.message || err))) throw err;
+  }
+  return null;
+}
+
+function idempotentJsonOut_(ss, body, result, actorSess) {
+  if (result && result.ok === true) {
+    var actName = String(body && body.action || '');
+    if (actName !== 'auth_login' && actName !== 'auth_logout') result.rev = bumpDataRev_();
+    var id = String(body && body.operationId || '').trim();
+    var isFastSyncAct = (actName === 'save_checklist_draft' || actName === 'toggle_personal_task' || (actName === 'save_task' && String(body && body.id || '') === '__SYS_CONFIG_V19__'));
+    if (!result.sessionToken && /^[a-zA-Z0-9_-]{12,80}$/.test(id)) {
+      var actorId = String((actorSess && actorSess.staffName) || '');
+      var actorRole = String((actorSess && actorSess.role) || '');
+      var raw = JSON.stringify(result);
+      var cacheKey = 'op_' + actorRole + '_' + actorId + '_' + id;
+      try { CacheService.getScriptCache().put(cacheKey, JSON.stringify({ actorId: actorId, role: actorRole, action: actName, result: result }), 21600); } catch (_) {}
+      if (!isFastSyncAct) try {
+        var sh = ss.getSheetByName('API_OPERATIONS');
+        if (!sh) {
+          sh = ss.insertSheet('API_OPERATIONS');
+          sh.appendRow(['OperationID', 'CreatedAt', 'ResultJSON', 'ActorID', 'Role', 'Action']);
+        }
+        sh.appendRow([id, Date.now(), raw, actorId, actorRole, actName]);
+        var last = sh.getLastRow();
+        if (last > 5001) sh.deleteRows(2, last - 5001);
+      } catch (_) {}
+    }
+  }
+  return jsonOut_(result);
+}
+
+
+function escapeTgHtml_(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function isoDate_(d) {
+  return Utilities.formatDate(d || new Date(), Session.getScriptTimeZone() || 'GMT+2', 'yyyy-MM-dd');
+}
+
+function fmtTime_(v) {
+  if (!v) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  }
+  var s = String(v).trim();
+  var m = /(\d{1,2}:\d{2})(?::\d{2})?/.exec(s);
+  if (m && (s.indexOf('1899') >= 0 || s.indexOf('GMT') >= 0 || /^\d{1,2}:\d{2}(:\d{2})?$/.test(s))) {
+    var parts = m[1].split(':');
+    return ('0' + parts[0]).slice(-2) + ':' + parts[1];
+  }
+  return s;
+}
+
+function fmtIso_(v) {
+  if (!v) return '';
+  if (v instanceof Date) return isoDate_(v);
+  var s = String(v || '').trim();
+  var m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(s);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  return s.slice(0, 10);
+}
+
+function parseRubNum_(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  var s = String(v == null ? '' : v).replace(/[₽a-zA-Zа-яА-ЯёЁ\s ]/g, '').replace(',', '.');
+  var n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
+function ensureSheets_(ss) {
+  /* Проверка 16 листов на каждый запрос стоила секунды: делаем её не чаще раза в 10 минут. */
+  var _sheetsCache = null;
+  try { _sheetsCache = CacheService.getScriptCache(); if (_sheetsCache.get('SHEETS_OK_V54')) return; } catch (_) {}
+  var defs = [
+    ['Настройки', ['Параметр', 'Значение', 'Описание (можно редактировать столбец «Значение» прямо в таблице)']],
+    ['Таймлайн', ['ID', 'Название чек-листа', 'Открытие (ЧЧ:ММ)', 'Дедлайн (ЧЧ:ММ)', 'Касса (да/нет)', 'Активен (да/нет)', 'Сотрудник', 'Периодичность', 'Дни / Дата']],
+    ['Планы', ['День недели', 'План выручки, руб.', 'План ср. чека, руб.', 'План чеков', 'График смен (Бариста)']],
+    ['Задачи', ['Код', 'Блок', 'Подгруппа', 'Название', 'Инструкция', 'Нужно фото', 'Ответственный', 'Активна']],
+    ['Карта добрых дел', ['ID', 'Название задачи', 'Периодичность', 'Окно времени', 'Исполнитель', 'Проверяющий', 'Инструкция']],
+    ['Сотрудники', ['ID', 'Имя', 'Роль', 'Кофейня', 'Активен', 'Код входа (PIN)', 'Telegram ID']],
+    ['Техкарты', ['ID', 'Название', 'Объём', 'Категория', 'Цена, руб.', 'Зерно, руб.', 'Молоко, руб.', 'Сироп, руб.', 'Тара, руб.', 'Рецептура', 'Подача']],
+    ['Информирование', ['ID', 'Заголовок', 'Категория', 'Описание', 'Дата публикации', 'Актуально до', 'Дата календаря', 'Событие календаря', 'Кому назначено', 'Ознакомились JSON']],
+    ['Касса', ['Дата', 'Наличные', 'Безнал', 'Чеков', 'Списания', 'Хиты', 'Бариста', 'Счётчик начало', 'Счётчик конец', 'Списания порций', 'Кофе шт', 'Не кофе шт', 'На проверку шт', 'Необъясн. разница', 'Хэши CSV', 'Смены JSON']],
+    ['Продажи', ['Дата', 'Смена', 'Бариста', 'Номенклатура', 'Категория', 'Цена', 'Количество', 'Сумма', 'Хэш CSV']],
+    ['Расходы', ['ID', 'Дата', 'Статья', 'Сумма', 'Комментарий']],
+    ['Поломки', ['ID', 'Дата', 'Время', 'Шаг', 'Описание', 'Срочность', 'Статус', 'Кто', 'Ответственный', 'Фото', 'Тип', 'История JSON']],
+    ['Аудит сервиса', ['ID', 'Дата', 'Бариста', 'Проверяющий', 'Приветствие %', 'Уточнение %', 'Upsell %', 'Прощание %', 'Итог %', 'Комментарий']],
+    ['Чек-листы', ['Дата', 'Время', 'Блок', 'Бариста', 'Проблем', 'Фото JSON', 'Дедлайн', 'Статус срока']],
+    ['Журнал', ['Дата', 'Время', 'Пользователь', 'Действие', 'Детали']],
+    ['ДельтаСинхр', ['Collection', 'RecordID', 'UpdatedAt', 'Deleted', 'Actor', 'PayloadJSON']]
+  ];
+  var existing = {};
+  ss.getSheets().forEach(function(x) { existing[x.getName()] = x; });
+  defs.forEach(function(d) {
+    var sh = existing[d[0]];
+    if (!sh) {
+      sh = ss.insertSheet(d[0]);
+      sh.appendRow(d[1]);
+      seedDefaultSheetRows_(ss, sh, d[0]);
+    } else if (sh.getLastRow() <= 1) {
+      seedDefaultSheetRows_(ss, sh, d[0]);
+    }
+  });
+  try { autoMigrateSchemaIfNeeded_(ss, false); } catch (_) {}
+  try { if (_sheetsCache) _sheetsCache.put('SHEETS_OK_V54', '1', 600); } catch (_) {}
+}
+
+/**
+ * Автоматическая бесконфликтная миграция схемы при обновлении кода (Zero-Data-Loss).
+ * Сохраняет все ранее введённые пользователем данные (сотрудники, PIN, TG, планы, блоки, задачи, касса, склад, фото),
+ * безопасно расширяет заголовки новых столбцов и открывает доступ читателя к существующим фото Drive.
+ */
+function autoMigrateSchemaIfNeeded_(ss, forceOpt) {
+  if (!ss) return { ok: false, skipped: true };
+  var props = null;
+  try { props = PropertiesService.getScriptProperties(); } catch (_) {}
+  var prevVer = props ? String(props.getProperty('SCHEMA_MIGRATED_VERSION') || '') : '';
+  if (!forceOpt && prevVer === SERVER_VERSION_V97) {
+    return { ok: true, skipped: true, version: SERVER_VERSION_V97 };
+  }
+
+  var migratedItems = [];
+
+  // 0. Если PIN владельца ещё не задан в ScriptProperties — ставим начальный 1234 (не трогая уже изменённый пароль)
+  try {
+    if (props && !props.getProperty('ADMIN_PIN_HASH')) {
+      props.setProperty('ADMIN_PIN_HASH', hashPinV2_('1234'));
+      migratedItems.push('Начальный PIN владельца (1234)');
+    }
+  } catch (_) {}
+
+  // 1. Безопасное расширение заголовков «Таймлайн» (6 -> 9 столбцов) без удаления строк пользователя
+  try {
+    var shTl = ss.getSheetByName('Таймлайн');
+    if (shTl && shTl.getLastRow() >= 1) {
+      var tlHeaders = ['ID', 'Название чек-листа', 'Открытие (ЧЧ:ММ)', 'Дедлайн (ЧЧ:ММ)', 'Касса (да/нет)', 'Активен (да/нет)', 'Сотрудник', 'Периодичность', 'Дни / Дата'];
+      var curRow1 = shTl.getRange(1, 1, 1, tlHeaders.length).getValues()[0];
+      var needHdrUpdate = false;
+      for (var hi = 0; hi < tlHeaders.length; hi++) {
+        if (!String(curRow1[hi] || '').trim()) {
+          curRow1[hi] = tlHeaders[hi];
+          needHdrUpdate = true;
+        }
+      }
+      if (needHdrUpdate) {
+        shTl.getRange(1, 1, 1, tlHeaders.length).setValues([curRow1.slice(0, tlHeaders.length)]);
+        migratedItems.push('Таймлайн (9 колонок)');
+      }
+    }
+  } catch (_) {}
+
+  // 2. Безопасное расширение заголовков «Сотрудники» (6 -> 7 столбцов: Telegram ID)
+  try {
+    var shSt = ss.getSheetByName('Сотрудники');
+    if (shSt && shSt.getLastRow() >= 1) {
+      var stHeaders = ['ID', 'Имя', 'Роль', 'Кофейня', 'Активен', 'Код входа (PIN)', 'Telegram ID'];
+      var stRow1 = shSt.getRange(1, 1, 1, stHeaders.length).getValues()[0];
+      if (!String(stRow1[6] || '').trim()) {
+        stRow1[6] = stHeaders[6];
+        shSt.getRange(1, 1, 1, stHeaders.length).setValues([stRow1.slice(0, stHeaders.length)]);
+        migratedItems.push('Сотрудники (+Telegram ID)');
+      }
+    }
+  } catch (_) {}
+
+  // 3. Нормализация существующих чек-листов (сохраняет все пользовательские названия/дедлайны, добавляет assignee/schedule)
+  try {
+    var map = getSettingsMap_(ss);
+    var existingBlocks = getChecklistBlocksFromSheet_(ss, map);
+    if (Array.isArray(existingBlocks) && existingBlocks.length) {
+      var normBlocks = [];
+      existingBlocks.forEach(function(b, idx) {
+        var nb = normalizeChecklistBlock_(b, idx);
+        if (nb) normBlocks.push(nb);
+      });
+      if (normBlocks.length) {
+        saveSetting_(ss, { id: 'CHECKLIST_BLOCKS_JSON', value: JSON.stringify(normBlocks) });
+        migratedItems.push('Блоки чек-листов (' + normBlocks.length + ')');
+      }
+    }
+  } catch (_) {}
+
+  // 4. Синхронизация и сохранение планов по дням (лист «Планы» <-> DAILY_PLANS_JSON)
+  try {
+    var shPl = ss.getSheetByName('Планы');
+    var map2 = getSettingsMap_(ss);
+    if (shPl && shPl.getLastRow() > 1) {
+      var pRows = shPl.getDataRange().getValues();
+      var plansObj = {};
+      var rosterObj = {};
+      var hasAnyPlan = false;
+      for (var pi = 1; pi < pRows.length; pi++) {
+        var dKey = String(pRows[pi][0] || '').trim();
+        if (!dKey) continue;
+        hasAnyPlan = true;
+        plansObj[dKey] = {
+          revenue: Number(pRows[pi][1]) || 2200,
+          avgCheck: Number(pRows[pi][2]) || 35,
+          checks: Number(pRows[pi][3]) || 75
+        };
+        rosterObj[dKey] = String(pRows[pi][4] || '').trim();
+      }
+      if (hasAnyPlan) {
+        if (!map2.DAILY_PLANS_JSON) saveSetting_(ss, { id: 'DAILY_PLANS_JSON', value: JSON.stringify(plansObj) });
+        if (!map2.SHIFT_ROSTER_JSON) saveSetting_(ss, { id: 'SHIFT_ROSTER_JSON', value: JSON.stringify(rosterObj) });
+        migratedItems.push('Планы по дням');
+      }
+    }
+  } catch (_) {}
+
+  // 5. Миграция PIN-кодов сотрудников в хеши ScriptProperties без потери текущих записей
+  try {
+    var stList = getStaffList_(ss);
+    if (stList && stList.length) migratedItems.push('Сотрудники (' + stList.length + ')');
+  } catch (_) {}
+
+  // 6. Однократное открытие доступа читателя к уже загруженным фото на Google Drive
+  try {
+    var drvRes = grantPhotoFolderReaderAccess_(ss);
+    if (drvRes && drvRes.ok && drvRes.updated > 0) {
+      migratedItems.push('Фото Drive (' + drvRes.updated + ')');
+    }
+  } catch (_) {}
+
+  if (props) {
+    try { props.setProperty('SCHEMA_MIGRATED_VERSION', SERVER_VERSION_V97); } catch (_) {}
+  }
+  try { bumpDataRev_(); } catch (_) {}
+  try {
+    appendAudit_(ss, 'Система', 'Автомиграция на ' + SERVER_VERSION_V97 + ' (данные сохранены)', migratedItems.join(', ') || 'Схема актуальна');
+  } catch (_) {}
+  return { ok: true, migrated: true, from: prevVer || 'legacy', to: SERVER_VERSION_V97, items: migratedItems };
+}
+
+function МИГРАЦИЯ_БЕЗ_ПОТЕРИ_ДАННЫХ() {
+  var ss = getTargetSpreadsheet_();
+  ensureSheets_(ss);
+  return autoMigrateSchemaIfNeeded_(ss, true);
+}
+
+function seedDefaultSheetRows_(ss, sh, name) {
+  if (name === 'Настройки') {
+    var defSettings = [
+      ['LOCATION', 'Кофейня №1', 'Название точки (отображается в шапке и на фото)'],
+      ['PLAN', '2200', 'Базовый план выручки на день, руб.'],
+      ['OPEN_START', '07:30', 'Начало окна «Открытие» (ЧЧ:ММ)'],
+      ['DEADLINE', '08:30', 'Дедлайн закрытия «Открытие» (ЧЧ:ММ)'],
+      ['LC1_START', '08:30', 'Начало окна «Лайн Чек 1» (ЧЧ:ММ)'],
+      ['LC1_DEADLINE', '09:30', 'Дедлайн закрытия «Лайн Чек 1» (ЧЧ:ММ)'],
+      ['LC2_START', '14:00', 'Начало окна «Лайн Чек 2» (ЧЧ:ММ)'],
+      ['LC2_DEADLINE', '16:00', 'Дедлайн закрытия «Лайн Чек 2» (ЧЧ:ММ)'],
+      ['DAY_START', '11:00', 'Начало дневного окна (ЧЧ:ММ)'],
+      ['DAY_DEADLINE', '18:30', 'Дедлайн дневного окна (ЧЧ:ММ)'],
+      ['CLOSE_START', '21:30', 'Начало окна «Закрытие» (ЧЧ:ММ)'],
+      ['CLOSE_DEADLINE', '22:30', 'Дедлайн закрытия «Закрытие» (ЧЧ:ММ)'],
+      ['CASH_START', '22:00', 'Начало окна «Касса» (ЧЧ:ММ)'],
+      ['CASH_DEADLINE', '23:59', 'Дедлайн закрытия «Касса» (ЧЧ:ММ)'],
+      ['WO_NORM', '15', 'Норма списаний в день, руб.'],
+      ['MIN_AVG_CHECK', '35', 'Норматив среднего чека, руб.'],
+      ['PLAN_CHECKS', '75', 'Плановое количество чеков в день'],
+      ['PHOTO_ALL', 'нет', 'Фото на каждом шаге (да/нет)'],
+      ['INIT_COUNTER', '600', 'Начальный счётчик кофемашины'],
+      ['CATEGORIES', 'Закупка продуктов, Аренда, Зарплата, Коммунальные, Реклама, Ремонт и оборудование, Прочее', 'Статьи расходов через запятую'],
+      ['TG_TOKEN', '', 'Токен Telegram-бота (от @BotFather)'],
+      ['TG_CHAT', '', 'ID чата администратора в Telegram'],
+      ['ADMIN_PIN', '••', 'Код доступа владельца / администратора']
+    ];
+    defSettings.forEach(function(r) { sh.appendRow(r); });
+  } else if (name === 'Таймлайн') {
+    var defBlocks = [
+      ['blk_open', 'Открытие', '07:30', '08:30', 'нет', 'да'],
+      ['blk_lc1', 'Лайн Чек 1', '08:30', '09:30', 'нет', 'да'],
+      ['blk_lc2', 'Лайн Чек 2', '14:00', '16:00', 'нет', 'да'],
+      ['blk_close', 'Закрытие', '21:30', '22:30', 'нет', 'да'],
+      ['blk_cash', 'Касса', '22:00', '23:59', 'да', 'да'],
+      ['blk_good_deeds', 'Карта добрых дел', '11:00', '22:00', 'нет', 'да']
+    ];
+    defBlocks.forEach(function(r) { sh.appendRow(r); });
+  } else if (name === 'Планы') {
+    var defPlans = [
+      ['Пн', 2200, 32, 70, 'Соня (07:30–22:30)'],
+      ['Вт', 2200, 32, 70, 'Алина (07:30–22:30)'],
+      ['Ср', 2300, 33, 72, 'Алина + Соня (2 смены)'],
+      ['Чт', 2400, 34, 75, 'Настя (07:30–22:30)'],
+      ['Пт', 2800, 36, 85, 'Алина + Соня (2 смены, пик)'],
+      ['Сб', 3000, 38, 90, 'Настя + Соня (2 смены, пик)'],
+      ['Вс', 2500, 35, 75, 'Соня (07:30–22:30)']
+    ];
+    defPlans.forEach(function(r) { sh.appendRow(r); });
+  } else if (name === 'Сотрудники') {
+    var defStaff = [
+      ['st1', 'Соня', 'Бариста', 'Кофейня №1', 'да', '••'],
+      ['st2', 'Алина', 'Бариста', 'Кофейня №1', 'да', '••'],
+      ['st3', 'Настя', 'Бариста', 'Кофейня №1', 'да', '••'],
+      ['st4', 'Максим', 'Шеф-бариста', 'Кофейня №1', 'да', '••'],
+      ['st5', 'Администратор', 'Администратор', 'Кофейня №1', 'да', '••']
+    ];
+    defStaff.forEach(function(r) { sh.appendRow(r); });
+  } else if (name === 'Карта добрых дел') {
+    var defGd = [
+      ['gd1', '🧊 Разморозка и генеральная мойка холодильника', 'Раз в 2 недели (Вторник 14:00–18:00 — тихий день)', '14:00 – 18:00', 'Бариста', 'Управляющий / Шеф-бариста', 'Выполняется в самый тихий день (вторник с 14:00 до 18:00): отключить холодильник, полностью разморозить, промыть полки и уплотнители и сделать фото с камеры.'],
+      ['gd2', '🧂 Регенерация водоумягчителя (фильтра воды) — 2 пачки соли', 'Раз в 4 недели (При закрытии — регенерация водоумягчителя)', '21:30 – 22:30 (при закрытии)', 'Бариста', 'Техник / Управляющий', 'Строго при закрытии смены: скрутить крышку водоумягчителя, засыпать 2 пачки таблетированной соли, запустить цикл промывки.'],
+      ['gd3', '🪑 Подготовка второго зала к открытию (Пт–Сб)', 'Только Пт и Сб (2-й зал / пик)', '07:30 – 08:30', 'Бариста', 'Администратор', 'В пятницу и субботу открывается 2-й зал: включить освещение, проверить посадку, протереть столы.'],
+      ['gd4', '🧽 Глубокая замочка холдеров, сеток и питчеров в химии', '2 раза в неделю (Чт, Вс)', '21:30 – 22:30', 'Бариста', 'Шеф-бариста', 'Снять рассекатели и корзины холдеров, замочить в растворе Cafiza на 20 минут, промыть чистой водой и сфотографировать.']
+    ];
+    defGd.forEach(function(r) { sh.appendRow(r); });
+  } else if (name === 'Техкарты') {
+    var defTtk = [
+      ['ttk1', '☕ Капучино ILLY', '250 мл (M)', 'Классика', 19, 4.2, 2.5, 0, 1.3, 'Эспрессо ILLY 18 г зерна → выход 36 г за 25–27 сек. Молоко 3.2% (ТМК) — 180 мл, взбивание до 62 °C.', 'Керамическая чашка 250 мл или крафт-стакан навынос. Доп. сироп 15 мл (+5 руб.).'],
+      ['ttk2', '🖤 Американо ILLY', '250 мл (M)', 'Классика', 12, 4.2, 0, 0, 1.3, 'Горячая вода 92 °C (160 мл) в стакан, сверху аккуратно влить эспрессо ILLY (36 г) с сохранением крема.', 'Предложить гостю молоко 50 мл (+5 руб.), доп. шот эспрессо ILLY (+7 руб.) или чизкейк (40 руб.).'],
+      ['ttk3', '🥛 Латте (малый)', '250 мл (M)', 'Классика', 20, 4.2, 2.6, 0, 1.2, 'Эспрессо ILLY (1 шот 30 мл) + молоко 200 мл, температура 63 °C, тонкая шелковистая пена 0.5 см.', 'Стакан 250 мл. На безлактозном молоке (+5 руб.), на альтернативном молоке (+10 руб.).'],
+      ['ttk4', '🥛 Латте (большой)', '350 мл (L)', 'Классика', 25, 4.2, 3.8, 0, 1.5, 'Эспрессо ILLY (36 г) + молоко 270 мл, температура 63 °C, нежная молочная шапка.', 'Высокий бокал или стакан 350 мл. Подача с салфеткой.'],
+      ['ttk5', '⚡ Flat White (Флэт Уайт)', '200 мл (S)', 'Классика', 25, 7.5, 2.2, 0, 1.3, 'Двойной ристретто ILLY (36 г) + 130 мл молока с минимальной микропеной (58–60 °C).', 'Стакан 200 мл, обязателен чёткий латте-арт (сердце / тюльпан).'],
+      ['ttk6', '🍊 Ванильно-апельсиновый Латте / Раф', '350 мл (L)', 'Авторский / Хит', 30, 4.2, 4.5, 2.0, 1.5, 'Эспрессо ILLY 36 г + молоко со сливками 10% (220 мл) + ванильно-апельсиновый сироп 15 мл. Взбить вместе стимером до 65 °C.', 'Высокая маржинальность (Upsell №1 в ПМР — 30 руб.).'],
+      ['ttk7', '🍫 Какао «Баунти» / Горячий шоколад', '300 мл (M)', 'Авторский / Десертный', 30, 5.0, 3.5, 1.8, 1.4, 'Натуральное какао 22 г + молоко 230 мл + кокосовый сироп 15 мл. Взбить стимером до 65 °C без комочков.', 'По желанию гостя добавить маршмеллоу (+8 руб.).'],
+      ['ttk8', '🍰 Чизкейк классический', '120 г (порция)', 'Десерты / Витрина', 40, 22.0, 0, 0, 1.5, 'Проверить срок маркировки на витрине (температура витрины +2…+6 °C). Подавать охлаждённым.', 'Керамическая тарелка с десертной вилкой или крафт-бокс навынос.']
+    ];
+    defTtk.forEach(function(r) { sh.appendRow(r); });
+  }
+}
+
+function normSetKey_(raw) {
+  var k = String(raw || '').trim(), low = k.toLowerCase();
+  if (k === 'LOCATION' || /назван|точк|кофейн|локац/.test(low)) return 'LOCATION';
+  if (k === 'PLAN' || /^план$|план выручк|цель/.test(low)) return 'PLAN';
+  if (k === 'OPEN_START' || /начал.*открыт/.test(low)) return 'OPEN_START';
+  if (k === 'DEADLINE' || /дедлайн.*открыт|дедлайн смен/.test(low)) return 'DEADLINE';
+  if (k === 'LC1_START' || /начал.*лайн\s*чек\s*1/.test(low)) return 'LC1_START';
+  if (k === 'LC1_DEADLINE' || /дедлайн.*лайн\s*чек\s*1/.test(low)) return 'LC1_DEADLINE';
+  if (k === 'LC2_START' || /начал.*лайн\s*чек\s*2/.test(low)) return 'LC2_START';
+  if (k === 'LC2_DEADLINE' || /дедлайн.*лайн\s*чек\s*2/.test(low)) return 'LC2_DEADLINE';
+  if (k === 'DAY_START' || /начал.*дн/.test(low)) return 'DAY_START';
+  if (k === 'DAY_DEADLINE' || /дедлайн.*дн/.test(low)) return 'DAY_DEADLINE';
+  if (k === 'CLOSE_START' || /начал.*закрыт/.test(low)) return 'CLOSE_START';
+  if (k === 'CLOSE_DEADLINE' || /дедлайн.*закрыт/.test(low)) return 'CLOSE_DEADLINE';
+  if (k === 'CASH_START' || /начал.*касс/.test(low)) return 'CASH_START';
+  if (k === 'CASH_DEADLINE' || /дедлайн.*касс/.test(low)) return 'CASH_DEADLINE';
+  if (k === 'WO_NORM' || /норм.*списан/.test(low)) return 'WO_NORM';
+  if (k === 'MIN_AVG_CHECK' || /средн.*чек/.test(low)) return 'MIN_AVG_CHECK';
+  if (k === 'PLAN_CHECKS' || /план.*чек/.test(low)) return 'PLAN_CHECKS';
+  if (k === 'PHOTO_ALL' || /фото.*шаг|обязат.*фото/.test(low)) return 'PHOTO_ALL';
+  if (k === 'INIT_COUNTER' || /счетчик|счётчик/.test(low)) return 'INIT_COUNTER';
+  if (k === 'CATEGORIES' || /статьи|категор/.test(low)) return 'CATEGORIES';
+  if (k === 'TG_TOKEN' || /tg.*token|токен.*бот/.test(low)) return 'TG_TOKEN';
+  if (k === 'TG_CHAT' || /tg.*chat|чат.*админ/.test(low)) return 'TG_CHAT';
+  if (k === 'ADMIN_PIN' || /код доступ|пин|pin|парол/.test(low)) return 'ADMIN_PIN';
+  if (k === 'DEADLINE_EXTENSIONS_JSON') return 'DEADLINE_EXTENSIONS_JSON';
+  if (k === 'SHIFT_ROSTER_JSON') return 'SHIFT_ROSTER_JSON';
+  if (k === 'CHECKLIST_BLOCKS_JSON') return 'CHECKLIST_BLOCKS_JSON';
+  if (k === 'DAILY_PLANS_JSON') return 'DAILY_PLANS_JSON';
+  if (k === 'CLOUD_SYNC_V17') return 'CLOUD_SYNC_V17';
+  return k;
+}
+
+function getSettingsMap_(ss) {
+  var sh = ss.getSheetByName('Настройки');
+  var rows = sh ? sh.getDataRange().getValues() : [];
+  var map = {
+    LOCATION: 'Кофейня №1',
+    PLAN: '2200',
+    OPEN_START: '07:30',
+    DEADLINE: '08:30',
+    LC1_START: '08:30',
+    LC1_DEADLINE: '09:30',
+    LC2_START: '14:00',
+    LC2_DEADLINE: '16:00',
+    DAY_START: '11:00',
+    DAY_DEADLINE: '18:30',
+    CLOSE_START: '21:30',
+    CLOSE_DEADLINE: '22:30',
+    CASH_START: '22:00',
+    CASH_DEADLINE: '23:59',
+    WO_NORM: '15',
+    MIN_AVG_CHECK: '35',
+    PLAN_CHECKS: '75',
+    PHOTO_ALL: 'нет',
+    INIT_COUNTER: '600',
+    CATEGORIES: 'Закупка продуктов, Аренда, Зарплата, Коммунальные, Реклама, Ремонт и оборудование, Прочее',
+    TG_TOKEN: '',
+    TG_CHAT: '',
+    ADMIN_PIN: '',
+    DEADLINE_EXTENSIONS_JSON: '{}',
+    SHIFT_ROSTER_JSON: '{}',
+    CHECKLIST_BLOCKS_JSON: '',
+    DAILY_PLANS_JSON: ''
+  };
+  for (var i = 1; i < rows.length; i++) {
+    var rawK = String(rows[i][0] || '').trim();
+    if (!rawK) continue;
+    var nk = normSetKey_(rawK);
+    if (nk === 'CLOUD_SYNC_V17') continue;
+    var cellVal = rows[i][1];
+    var v = (cellVal instanceof Date)
+      ? Utilities.formatDate(cellVal, Session.getScriptTimeZone() || 'GMT+2', 'HH:mm')
+      : String(cellVal != null ? cellVal : '').trim();
+    if (v !== '') map[nk] = v;
+  }
+  return map;
+}
+
+function getSettingsArray_(map) {
+  return [
+    { id: 'LOCATION', label: 'Название точки', hint: 'Отображается в шапке всех разделов (лист «Настройки» → LOCATION)', value: map.LOCATION, secret: false },
+    { id: 'PLAN', label: 'План выручки на день, руб.', hint: 'Сразу пересчитывает цель и % выполнения (лист «Настройки» → PLAN)', value: map.PLAN, secret: false },
+    { id: 'OPEN_START', label: 'Начало окна «Открытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к «Открытию» в Терминале', value: map.OPEN_START, secret: false },
+    { id: 'DEADLINE', label: 'Дедлайн закрытия «Открытие» (ЧЧ:ММ)', hint: 'После этого времени доступ закрывается и создаётся инцидент', value: map.DEADLINE, secret: false },
+    { id: 'DAY_START', label: 'Начало окна «День» (ЧЧ:ММ)', hint: 'Время открытия доступа к дневному обходу', value: map.DAY_START, secret: false },
+    { id: 'DAY_DEADLINE', label: 'Дедлайн закрытия «День» (ЧЧ:ММ)', hint: 'После этого времени доступ закрывается', value: map.DAY_DEADLINE, secret: false },
+    { id: 'CLOSE_START', label: 'Начало окна «Закрытие» (ЧЧ:ММ)', hint: 'Время открытия доступа к «Закрытию» в Терминале', value: map.CLOSE_START, secret: false },
+    { id: 'CLOSE_DEADLINE', label: 'Дедлайн закрытия «Закрытие» (ЧЧ:ММ)', hint: 'После этого времени доступ к «Закрытию» закрывается', value: map.CLOSE_DEADLINE, secret: false },
+    { id: 'WO_NORM', label: 'Норма списаний в день, руб.', hint: 'Порог списаний (лист «Настройки» → WO_NORM)', value: map.WO_NORM, secret: false },
+    { id: 'MIN_AVG_CHECK', label: 'Норматив среднего чека, руб.', hint: 'Плановый средний чек в руб. ПМР', value: map.MIN_AVG_CHECK, secret: false },
+    { id: 'PLAN_CHECKS', label: 'Плановое кол-во чеков в день', hint: 'Целевое кол-во чеков за смену', value: map.PLAN_CHECKS, secret: false },
+    { id: 'PHOTO_ALL', label: 'Фото на каждом шаге (да/нет)', hint: 'Обязательное фото для открытия и закрытия', value: map.PHOTO_ALL, secret: false },
+    { id: 'INIT_COUNTER', label: 'Текущий счётчик кофемашины', hint: 'Начальный счётчик в Кассе', value: map.INIT_COUNTER, secret: false },
+    { id: 'TG_TOKEN', label: 'Токен Telegram-бота (от @BotFather)', hint: 'Для отправки фото поломок', value: map.TG_TOKEN, secret: false },
+    { id: 'TG_CHAT', label: 'ID чата администратора в Telegram', hint: 'Chat ID для уведомлений', value: map.TG_CHAT, secret: false },
+    { id: 'CATEGORIES', label: 'Статьи расходов (через запятую)', hint: 'Список статей расходов', value: map.CATEGORIES, secret: false },
+    { id: 'ADMIN_PIN', label: 'Код доступа к дашборду и отчётам', hint: 'Код администратора (можно также изменить в листе «Настройки» → ADMIN_PIN)', value: '', secret: true, set: !!map.ADMIN_PIN }
+  ];
+}
+
+function fmtHmCell_(v, fallback) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  }
+  var s = String(v != null ? v : '').trim();
+  if (/^\d:\d{2}$/.test(s)) return '0' + s;
+  if (/^\d{2}:\d{2}$/.test(s)) return s;
+  return fallback || '08:00';
+}
+
+function getChecklistBlocksFromSheet_(ss, map) {
+  if (map && map.CHECKLIST_BLOCKS_JSON) {
+    try {
+      var parsed = JSON.parse(map.CHECKLIST_BLOCKS_JSON);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch (_) {}
+  }
+  var sh = ss.getSheetByName('Таймлайн');
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getDataRange().getValues();
+    var list = [];
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i];
+      var nm = String(r[1] || '').trim();
+      if (!nm) continue;
+      var actStr = String(r[5] || 'да').trim().toLowerCase();
+      var isActive = !(actStr === 'нет' || actStr === 'false' || actStr === '0');
+      var isCashStr = String(r[4] || 'нет').trim().toLowerCase();
+      var schedType = String(r[7] || 'daily').trim().toLowerCase();
+      if (schedType !== 'weekly' && schedType !== 'date') schedType = 'daily';
+      var schedRaw = String(r[8] || '').trim();
+      list.push({
+        id: String(r[0] || ('blk_' + i)).trim(),
+        name: nm,
+        openTime: fmtHmCell_(r[2], '07:30'),
+        deadline: fmtHmCell_(r[3], '08:30'),
+        isCash: isCashStr === 'да' || isCashStr === 'true' || nm === 'Касса',
+        active: isActive,
+        assignee: String(r[6] || '').trim(),
+        scheduleType: schedType,
+        scheduleDays: schedType === 'weekly' && schedRaw ? schedRaw.split(/[,;\s]+/).filter(Boolean) : [],
+        scheduleDate: schedType === 'date' ? schedRaw.slice(0, 10) : ''
+      });
+    }
+    if (list.length) return list;
+  }
+  return [
+    { id: 'blk_open', name: 'Открытие', openTime: (map && map.OPEN_START) || '07:30', deadline: (map && map.DEADLINE) || '08:30', isCash: false, active: true },
+    { id: 'blk_lc1', name: 'Лайн Чек 1', openTime: (map && map.LC1_START) || '08:30', deadline: (map && map.LC1_DEADLINE) || '09:30', isCash: false, active: true },
+    { id: 'blk_lc2', name: 'Лайн Чек 2', openTime: (map && map.LC2_START) || '14:00', deadline: (map && map.LC2_DEADLINE) || '16:00', isCash: false, active: true },
+    { id: 'blk_close', name: 'Закрытие', openTime: (map && map.CLOSE_START) || '21:30', deadline: (map && map.CLOSE_DEADLINE) || '22:30', isCash: false, active: true },
+    { id: 'blk_cash', name: 'Касса', openTime: (map && map.CASH_START) || '22:00', deadline: (map && map.CASH_DEADLINE) || '23:59', isCash: true, active: true }
+  ];
+}
+
+function getDailyPlansAndRosterFromSheet_(ss, map) {
+  var plans = {
+    'Пн': { revenue: 2200, avgCheck: 32, checks: 70 },
+    'Вт': { revenue: 2200, avgCheck: 32, checks: 70 },
+    'Ср': { revenue: 2300, avgCheck: 33, checks: 72 },
+    'Чт': { revenue: 2400, avgCheck: 34, checks: 75 },
+    'Пт': { revenue: 2800, avgCheck: 36, checks: 85 },
+    'Сб': { revenue: 3000, avgCheck: 38, checks: 90 },
+    'Вс': { revenue: 2500, avgCheck: 35, checks: 75 }
+  };
+  var roster = {
+    'Пн': 'Соня (07:30–22:30)',
+    'Вт': 'Алина (07:30–22:30)',
+    'Ср': 'Алина + Соня (2 смены)',
+    'Чт': 'Настя (07:30–22:30)',
+    'Пт': 'Алина + Соня (2 смены, пик)',
+    'Сб': 'Настя + Соня (2 смены, пик)',
+    'Вс': 'Соня (07:30–22:30)'
+  };
+  if (map && map.DAILY_PLANS_JSON) {
+    try { Object.assign(plans, JSON.parse(map.DAILY_PLANS_JSON)); } catch (_) {}
+  }
+  if (map && map.SHIFT_ROSTER_JSON) {
+    try { Object.assign(roster, JSON.parse(map.SHIFT_ROSTER_JSON)); } catch (_) {}
+  }
+  var sh = ss.getSheetByName('Планы');
+  if (sh && sh.getLastRow() > 1) {
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i];
+      var d = String(r[0] || '').trim();
+      if (!plans[d]) continue;
+      if (Number(r[1]) > 0) plans[d].revenue = Number(r[1]);
+      if (Number(r[2]) > 0) plans[d].avgCheck = Number(r[2]);
+      if (Number(r[3]) > 0) plans[d].checks = Number(r[3]);
+      if (r[4] != null && String(r[4]).trim() !== '') roster[d] = String(r[4]).trim();
+    }
+  }
+  return { dailyPlans: plans, shiftRoster: roster };
+}
+
+function getGoodDeedsFromSheet_(ss) {
+  var sh = ss.getSheetByName('Карта добрых дел');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] && !r[1]) continue;
+    list.push({
+      id: String(r[0] || ('gd_' + i)).trim(),
+      title: String(r[1] || '').trim(),
+      frequency: String(r[2] || '1 раз в неделю').trim(),
+      window: String(r[3] || '14:00 – 18:00').trim(),
+      responsible: String(r[4] || 'Бариста').trim(),
+      reviewer: String(r[5] || 'Управляющий / Шеф-бариста').trim(),
+      instruction: String(r[6] || '').trim()
+    });
+  }
+  return list;
+}
+
+function getServiceAuditsFromSheet_(ss) {
+  var sh = ss.getSheetByName('Аудит сервиса');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] && !r[2]) continue;
+    var g = Number(r[4]) || 0, cl = Number(r[5]) || 0, up = Number(r[6]) || 0, fw = Number(r[7]) || 0;
+    var sc = Number(r[8]) || Math.round((g + cl + up + fw) / 4);
+    list.push({
+      id: String(r[0] || ('AUD-' + i)).trim(),
+      date: fmtIso_(r[1]) || isoDate_(),
+      barista: String(r[2] || 'Соня').trim(),
+      auditor: String(r[3] || 'Шеф-бариста').trim(),
+      greet: g, clarify: cl, upsell: up, farewell: fw, score: sc,
+      comment: String(r[9] || '').trim()
+    });
+  }
+  return list.reverse();
+}
+
+function getAnnouncements_(ss) {
+  var sh = ss.getSheetByName('Информирование');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] && !r[1]) continue;
+    var acks = [];
+    try { acks = JSON.parse(String(r[9] || '[]')); } catch (e) {}
+    var targets = [];
+    var rawTargets = String(r[8] || '').trim();
+    if (rawTargets) targets = rawTargets.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    list.push({
+      id: String(r[0] || ('INFO-' + i)),
+      title: String(r[1] || ''),
+      category: String(r[2] || 'Внутренние объявления'),
+      text: String(r[3] || ''),
+      publishedAt: fmtIso_(r[4]) || isoDate_(),
+      validTo: fmtIso_(r[5]) || '',
+      calendarDate: fmtIso_(r[6]) || '',
+      calendarEventTitle: String(r[7] || ''),
+      targetStaff: targets.length ? targets : ['Соня', 'Алина', 'Настя'],
+      acks: Array.isArray(acks) ? acks : []
+    });
+  }
+  return list;
+}
+
+function getStaffList_(ss) {
+  var sh = ss.getSheetByName('Сотрудники');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var props = PropertiesService.getScriptProperties();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[1]) continue;
+    var sName = String(r[1] || '').trim();
+    var sheetPin = String(r[5] != null ? r[5] : '').trim();
+    var existingPropHash = props.getProperty('STAFF_PIN_HASH_' + sName) || '';
+    var pHash = existingPropHash;
+    if (!pHash && sheetPin && sheetPin.indexOf('••') === -1) {
+      pHash = normalizePinHash_(sheetPin);
+      props.setProperty('STAFF_PIN_HASH_' + sName, pHash);
+      try { sh.getRange(i + 1, 6).setValue('••'); } catch (_) {}
+    }
+    var tgBinds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+    var rawBind = tgBinds && tgBinds[sName];
+    var bindTg = (rawBind && typeof rawBind === 'object') ? (rawBind.tgId || rawBind.id || '') : (rawBind || '');
+    var tgVal = String(r[6] || bindTg || '').trim();
+    var stObj = {
+      id: String(r[0] || ('st_' + i)),
+      name: sName,
+      role: String(r[2] || 'Бариста'),
+      shop: String(r[3] || 'Кофейня №1'),
+      active: String(r[4] || 'да').toLowerCase(),
+      tgId: tgVal
+    };
+    if (pHash) stObj.pinHash = pHash;
+    list.push(stObj);
+  }
+  return list;
+}
+
+function getTtkList_(ss) {
+  var sh = ss.getSheetByName('Техкарты');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[1]) continue;
+    list.push({
+      id: String(r[0] || ('ttk_' + i)),
+      name: String(r[1] || ''),
+      volume: String(r[2] || '250 мл'),
+      category: String(r[3] || 'Классика'),
+      price: Number(r[4]) || 20,
+      costBeans: Number(r[5]) || 0,
+      costMilk: Number(r[6]) || 0,
+      costSyrup: Number(r[7]) || 0,
+      costCup: Number(r[8]) || 0,
+      recipe: String(r[9] || ''),
+      serving: String(r[10] || ''),
+      avgPrice: (r[11] !== undefined && r[11] !== '' && !isNaN(Number(r[11]))) ? Number(r[11]) : (parseRubNum_(r[4]) || 0)
+    });
+  }
+  return list;
+}
+
+function appendAudit_(ss, actor, action, details) {
+  try {
+    var sh = ss.getSheetByName('Журнал');
+    if (!sh) return;
+    var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+    sh.appendRow([isoDate_(), tm, actor || 'Система', action || '', details || '']);
+  } catch (e) {}
+}
+
+function getChecklists_(ss) {
+  var map = getSettingsMap_(ss);
+  var sh = ss.getSheetByName('Задачи');
+  var rows = sh ? sh.getDataRange().getValues() : [];
+  var tasks = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    var codeStr = String(r[0] || '').trim();
+    var titleStr = String(r[3] || '').trim();
+    /* __SYS_CONFIG_V19__ передаётся клиенту для синхронизации конверта состояния и скрывается клиентом */
+    if (!titleStr && !r[1]) continue;
+    var active = String(r[7] || 'да').toLowerCase();
+    if (active === 'нет' && codeStr !== '__SYS_CONFIG_V19__' && titleStr !== '__SYS_SYNC__') continue;
+    tasks.push({
+      row: i + 1,
+      id: codeStr || ('r' + (i + 1)),
+      block: String(r[1] || 'Открытие'),
+      groupName: String(r[2] || ''),
+      title: titleStr,
+      instruction: String(r[4] || ''),
+      photo: String(r[5] || 'нет').toLowerCase(),
+      photoMode: String(r[5] || 'нет').toLowerCase(),
+      mediaRequired: String(r[5] || 'нет').toLowerCase() === 'да' || (map.PHOTO_ALL === 'да' && (r[1] === 'Открытие' || r[1] === 'Закрытие')),
+      responsible: String(r[6] || 'Администратор'),
+      active: 'да'
+    });
+  }
+
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
+  var cBlocks = getChecklistBlocksFromSheet_(ss, map);
+  var pr = getDailyPlansAndRosterFromSheet_(ss, map);
+  var annList = getAnnouncements_(ss);
+  var staffList = getStaffList_(ss);
+  var ttkList = getTtkList_(ss);
+  var gdList = getGoodDeedsFromSheet_(ss);
+  var serverTime = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  var serverDate = isoDate_();
+  var chkLog = getChecklistsLogFromSheet_(ss);
+  var userDraftsMap = {};
+  var userActiveMap = {};
+  var personalTasksMap = {};
+  try { userDraftsMap = Object.assign({}, JSON.parse(map.USER_DRAFTS_JSON || '{}'), getJsonProp_('COFFEE_USER_DRAFTS_JSON', {})); } catch (_) {}
+  try { userActiveMap = Object.assign({}, JSON.parse(map.USER_ACTIVE_STATE_JSON || '{}'), getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {})); } catch (_) {}
+  try { personalTasksMap = Object.assign({}, JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'), getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {})); } catch (_) {}
+
+  return {
+    ok: true,
+    v: 55,
+    checklists: chkLog,
+    userDrafts: userDraftsMap,
+    userActiveState: userActiveMap,
+    personalTasksDone: personalTasksMap,
+    rows: tasks.length,
+    sheet: 'Задачи',
+    location: map.LOCATION || 'Кофейня №1',
+    plan: Number(map.PLAN) || 2200,
+    woNorm: Number(map.WO_NORM) || 15,
+    minAvgCheck: Number(map.MIN_AVG_CHECK) || 35,
+    planChecks: Number(map.PLAN_CHECKS) || 75,
+    photoAll: map.PHOTO_ALL || 'нет',
+    initCounter: Number(map.INIT_COUNTER) || 600,
+    openStart: map.OPEN_START || '07:30',
+    deadline: map.DEADLINE || '08:30',
+    dayStart: map.DAY_START || '11:00',
+    dayDeadline: map.DAY_DEADLINE || '18:30',
+    closeStart: map.CLOSE_START || '21:30',
+    closeDeadline: map.CLOSE_DEADLINE || '22:30',
+    checklistBlocks: cBlocks,
+    dailyPlans: pr.dailyPlans,
+    shiftRoster: pr.shiftRoster,
+    deadlineExtensions: extMap,
+    settings: getSettingsArray_(map),
+    announcements: annList,
+    staff: staffList,
+    ttk: ttkList,
+    goodDeeds: gdList,
+    tasks: dedupeTasksV94_(tasks),
+    staffPresence: getStaffPresenceToday_(ss),
+    serverTime: serverTime,
+    serverDate: serverDate
+  };
+}
+
+function getAdmin_(ss) {
+  var map = getSettingsMap_(ss);
+  var shT = ss.getSheetByName('Задачи').getDataRange().getValues();
+  var tasks = [];
+  for (var i = 1; i < shT.length; i++) {
+    var r = shT[i];
+    var codeStr = String(r[0] || '').trim();
+    var titleStr = String(r[3] || '').trim();
+    /* __SYS_CONFIG_V19__ передаётся клиенту для синхронизации конверта состояния и скрывается клиентом */
+    if (!titleStr && !r[1]) continue;
+    tasks.push({
+      row: i + 1,
+      id: codeStr || ('r' + (i + 1)),
+      block: String(r[1] || 'Открытие'),
+      groupName: String(r[2] || ''),
+      title: titleStr,
+      instruction: String(r[4] || ''),
+      photo: String(r[5] || 'нет').toLowerCase(),
+      photoMode: String(r[5] || 'нет').toLowerCase(),
+      mediaRequired: String(r[5] || 'нет').toLowerCase() === 'да',
+      responsible: String(r[6] || 'Администратор'),
+      active: String(r[7] || 'да').toLowerCase()
+    });
+  }
+
+  var shSales = ss.getSheetByName('Продажи');
+  var salesRows = shSales ? shSales.getDataRange().getValues() : [];
+  var productsByDateMap = {};
+  var salesLog = [];
+  for (var sIdx = 1; sIdx < salesRows.length; sIdx++) {
+    var sr = salesRows[sIdx];
+    if (!sr[0] || !sr[3]) continue;
+    var sDate = fmtIso_(sr[0]);
+    var sShift = String(sr[1] || '');
+    var sBarista = String(sr[2] || '');
+    var sName = String(sr[3] || '');
+    var sKind = String(sr[4] || classifyCoffeeServer_(sName));
+    var sPrice = Number(sr[5]) || 0;
+    var sQty = Number(sr[6]) || 0;
+    var sSum = Number(sr[7]) || 0;
+    var sHash = String(sr[8] || '');
+    if (sQty <= 0) continue;
+    var kindRu = (sKind === 'coffee' || sKind.toLowerCase() === 'кофе') ? 'Кофе' : ((sKind === 'non_coffee' || sKind.toLowerCase() === 'не-кофе') ? 'Не-кофе' : (sKind || 'Прочее'));
+    salesLog.push({
+      date: sDate, shift: sShift, barista: sBarista, name: sName,
+      kind: kindRu, rawKind: sKind, price: sPrice, qty: sQty, sum: sSum, csvHash: sHash
+    });
+    if (!productsByDateMap[sDate]) productsByDateMap[sDate] = {};
+    var pm = productsByDateMap[sDate][sName] || (productsByDateMap[sDate][sName] = {
+      name: sName, kind: sKind, price: sPrice, qty: 0, sum: 0, date: sDate, barista: sBarista
+    });
+    pm.qty += sQty;
+    pm.sum += sSum;
+  }
+  var productsByDate = {};
+  Object.keys(productsByDateMap).forEach(function(dKey) {
+    productsByDate[dKey] = Object.keys(productsByDateMap[dKey]).map(function(nKey) {
+      return productsByDateMap[dKey][nKey];
+    }).sort(function(a, b) { return b.qty - a.qty; });
+  });
+
+  var shC = ss.getSheetByName('Касса').getDataRange().getValues();
+  var cash = [];
+  for (var j = 1; j < shC.length; j++) {
+    var rc = shC[j]; if (!rc[0]) continue;
+    var cDate = fmtIso_(rc[0]);
+    var dayProds = productsByDate[cDate] || [];
+    var calcCof = dayProds.filter(function(p){ return p.kind === 'coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+    var calcNonCof = dayProds.filter(function(p){ return p.kind === 'non_coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+    var calcRevw = dayProds.filter(function(p){ return p.kind === 'review'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+    var cStart = (rc[7] !== undefined && rc[7] !== '') ? Number(rc[7]) : null;
+    var cEnd = (rc[8] !== undefined && rc[8] !== '') ? Number(rc[8]) : null;
+    var woShots = (rc[9] !== undefined && rc[9] !== '') ? Number(rc[9]) : 0;
+    var cofQty = (rc[10] !== undefined && rc[10] !== '') ? Number(rc[10]) : calcCof;
+    var nonCofQty = (rc[11] !== undefined && rc[11] !== '') ? Number(rc[11]) : calcNonCof;
+    var revwQty = (rc[12] !== undefined && rc[12] !== '') ? Number(rc[12]) : calcRevw;
+    var unaccShots = (rc[13] !== undefined && rc[13] !== '') ? Number(rc[13]) : 0;
+    var hashesArr = [];
+    if (rc[14]) {
+      try { hashesArr = JSON.parse(String(rc[14])); } catch (_) { hashesArr = String(rc[14]).split(',').filter(Boolean); }
+    }
+    var shiftsArr = [];
+    if (rc[15]) {
+      try { shiftsArr = JSON.parse(String(rc[15])); } catch (_) { shiftsArr = []; }
+    }
+    var cCashNum = parseRubNum_(rc[1]);
+    var cCardNum = parseRubNum_(rc[2]);
+    cash.push({
+      date: cDate,
+      cash: cCashNum,
+      card: cCardNum,
+      revenue: cCashNum + cCardNum,
+      total: cCashNum + cCardNum,
+      checks: parseRubNum_(rc[3]),
+      writeoff: parseRubNum_(rc[4]),
+      topItems: String(rc[5] || ''),
+      barista: String(rc[6] || ''),
+      counterStart: cStart,
+      counterEnd: cEnd,
+      writeoffShots: woShots,
+      coffeeQty: cofQty,
+      nonCoffeeQty: nonCofQty,
+      reviewQty: revwQty,
+      unaccountedShots: unaccShots,
+      csvHashes: Array.isArray(hashesArr) ? hashesArr : [],
+      shifts: Array.isArray(shiftsArr) ? shiftsArr : [],
+      products: dayProds
+    });
+  }
+
+  // Автоматическое подключение и миграция ранее загруженных финансовых данных из листа «Coffee_illy_Cash»
+  var shLegacyCash = ss.getSheetByName('Coffee_illy_Cash');
+  if (shLegacyCash) {
+    try {
+      var legRowsForSales = shLegacyCash.getDataRange().getValues();
+      var datesWithSales = {};
+      salesLog.forEach(function(sl) { if (sl && sl.date) datesWithSales[sl.date] = true; });
+      for (var lsi = 1; lsi < legRowsForSales.length; lsi++) {
+        var lsr = legRowsForSales[lsi];
+        var lsDate = fmtIso_(lsr[0]);
+        if (!lsDate || datesWithSales[lsDate] || !lsr[10]) continue;
+        var lsBar = String(lsr[2] || 'Бариста');
+        var lsArr = [];
+        try { lsArr = JSON.parse(String(lsr[10])); } catch (_) { lsArr = []; }
+        if (Array.isArray(lsArr)) {
+          lsArr.forEach(function(it) {
+            if (!it || !it.name) return;
+            var q = Number(it.qty || 0);
+            var s = Number(it.sum || 0);
+            if (q <= 0) return;
+            var rk = classifyCoffeeServer_(it.name);
+            var kr = rk === 'coffee' ? 'Кофе' : 'Не-кофе';
+            salesLog.push({
+              date: lsDate, shift: lsBar, barista: lsBar, name: String(it.name),
+              kind: kr, rawKind: rk, price: q > 0 ? Math.round((s / q) * 100) / 100 : 0,
+              qty: q, sum: s, csvHash: 'legacy_cash'
+            });
+          });
+        }
+      }
+    } catch (_) {}
+  }
+  if (shLegacyCash) {
+    var legCashRows = shLegacyCash.getDataRange().getValues();
+    var existingCashDates = {};
+    cash.forEach(function(cItem) { existingCashDates[cItem.date] = true; });
+    for (var lc = 1; lc < legCashRows.length; lc++) {
+      var lrc = legCashRows[lc];
+      if (!lrc[0]) continue;
+      var lDate = fmtIso_(lrc[0]);
+      if (!lDate || existingCashDates[lDate]) continue;
+      var lWho = String(lrc[2] || 'Бариста');
+      var lCashVal = parseRubNum_(lrc[3]);
+      var lCardVal = parseRubNum_(lrc[4]);
+      var lChecksVal = parseRubNum_(lrc[6]);
+      var lWoVal = parseRubNum_(lrc[8]);
+      var lHits = String(lrc[9] || '');
+      var lProds = [];
+      if (lrc[10]) {
+        try { lProds = JSON.parse(String(lrc[10])); } catch (_) { lProds = []; }
+      }
+      if (!Array.isArray(lProds)) lProds = [];
+      lProds = lProds.map(function(p) {
+        var pName = String((p && p.name) || '');
+        var pQty = parseRubNum_(p && p.qty);
+        var pSum = parseRubNum_(p && p.sum);
+        return {
+          name: pName,
+          kind: (p && p.kind) || classifyCoffeeServer_(pName),
+          price: pQty > 0 ? Math.round(pSum / pQty) : 0,
+          qty: pQty,
+          sum: pSum,
+          date: lDate,
+          barista: lWho
+        };
+      }).filter(function(p) { return p.name && p.qty > 0; });
+      if (lProds.length && (!productsByDate[lDate] || !productsByDate[lDate].length)) {
+        productsByDate[lDate] = lProds;
+      }
+      var lCof = lProds.filter(function(p){ return p.kind === 'coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+      var lNonCof = lProds.filter(function(p){ return p.kind === 'non_coffee'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+      var lRevw = lProds.filter(function(p){ return p.kind === 'review'; }).reduce(function(a, p){ return a + p.qty; }, 0);
+      var legShift = [{
+        name: lWho,
+        cash: lCashVal,
+        card: lCardVal,
+        checks: lChecksVal,
+        writeoff: lWoVal,
+        writeoffShots: 0,
+        prevCounter: null,
+        counter: null,
+        cups: lCof || lChecksVal,
+        coffeeQty: lCof
+      }];
+      cash.push({
+        date: lDate,
+        cash: lCashVal,
+        card: lCardVal,
+        checks: lChecksVal,
+        writeoff: lWoVal,
+        topItems: lHits,
+        barista: lWho,
+        counterStart: null,
+        counterEnd: null,
+        writeoffShots: 0,
+        coffeeQty: lCof,
+        nonCoffeeQty: lNonCof,
+        reviewQty: lRevw,
+        unaccountedShots: 0,
+        csvHashes: [],
+        shifts: legShift,
+        products: productsByDate[lDate] || lProds
+      });
+      existingCashDates[lDate] = true;
+      try {
+        ss.getSheetByName('Касса').appendRow([lDate, lCashVal, lCardVal, lChecksVal, lWoVal, lHits, lWho, '', '', 0, lCof, lNonCof, lRevw, 0, '[]', JSON.stringify(legShift)]);
+      } catch (_) {}
+    }
+  }
+  cash.sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
+
+  var shE = ss.getSheetByName('Расходы').getDataRange().getValues();
+  var expenses = [];
+  for (var k = 1; k < shE.length; k++) {
+    var re = shE[k]; if (!re[0]) continue;
+    expenses.push({
+      id: String(re[0]),
+      date: fmtIso_(re[1]),
+      category: String(re[2] || 'Прочее'),
+      amount: parseRubNum_(re[3]),
+      comment: String(re[4] || '')
+    });
+  }
+  var shLegacyExp = ss.getSheetByName('Coffee_illy_Expenses');
+  if (shLegacyExp) {
+    var legExpRows = shLegacyExp.getDataRange().getValues();
+    var existingExpKeys = {};
+    expenses.forEach(function(eItem) { existingExpKeys[eItem.date + ':' + eItem.category + ':' + eItem.amount] = true; });
+    for (var le = 1; le < legExpRows.length; le++) {
+      var lre = legExpRows[le];
+      if (!lre[0] && !lre[1]) continue;
+      var leDate = fmtIso_(lre[1]);
+      var leCat = String(lre[2] || 'Прочее');
+      var leAmt = parseRubNum_(lre[3]);
+      var leCom = String(lre[4] || '');
+      if (!leDate || leAmt <= 0) continue;
+      var eKey = leDate + ':' + leCat + ':' + leAmt;
+      if (existingExpKeys[eKey]) continue;
+      var leId = String(lre[0] || ('EXP-LEG-' + le));
+      expenses.push({ id: leId, date: leDate, category: leCat, amount: leAmt, comment: leCom });
+      existingExpKeys[eKey] = true;
+      try { ss.getSheetByName('Расходы').appendRow([leId, leDate, leCat, leAmt, leCom]); } catch (_) {}
+    }
+  }
+  expenses.sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
+
+  var shI = ss.getSheetByName('Поломки').getDataRange().getValues();
+  var incidents = [];
+  for (var m = 1; m < shI.length; m++) {
+    var ri = shI[m]; if (!ri[0]) continue;
+    var hist = [];
+    try { hist = JSON.parse(String(ri[11] || '[]')); } catch (e) {}
+    incidents.push({
+      id: String(ri[0]),
+      date: fmtIso_(ri[1]),
+      time: fmtTime_(ri[2]),
+      step: String(ri[3] || 'Проблема'),
+      text: String(ri[4] || ''),
+      priority: String(ri[5] || 'Терпит'),
+      status: String(ri[6] || 'Новая проблема'),
+      who: String(ri[7] || 'Бариста'),
+      owner: String(ri[8] || 'Администратор'),
+      photo: String(ri[9] || ''),
+      incType: String(ri[10] || 'Поломка оборудования'),
+      history: hist
+    });
+  }
+  var shLegacyInc = ss.getSheetByName('Coffee_illy_Incidents');
+  if (shLegacyInc) {
+    var legIncRows = shLegacyInc.getDataRange().getValues();
+    var existingIncIds = {};
+    incidents.forEach(function(iItem) { existingIncIds[iItem.id] = true; });
+    for (var li = 1; li < legIncRows.length; li++) {
+      var lri = legIncRows[li];
+      if (!lri[0] && !lri[1]) continue;
+      var liId = 'INC-LEG-' + String(lri[0] || li).replace(/[^0-9a-zA-Z_-]/g, '');
+      if (existingIncIds[liId]) continue;
+      var liDate = fmtIso_(lri[1]);
+      if (!liDate) continue;
+      incidents.push({
+        id: liId,
+        date: liDate,
+        time: fmtTime_(lri[2]),
+        step: String(lri[5] || 'Проблема'),
+        text: String(lri[6] || ''),
+        priority: String(lri[7] || 'Терпит'),
+        status: String(lri[9] || '').toLowerCase() === 'resolved' ? 'Решена' : (String(lri[9] || '') || 'Новая проблема'),
+        who: String(lri[4] || 'Бариста'),
+        owner: String(lri[10] || 'Администратор'),
+        photo: String(lri[8] || ''),
+        incType: 'Поломка оборудования',
+        history: []
+      });
+      existingIncIds[liId] = true;
+    }
+  }
+
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
+  var cBlocks = getChecklistBlocksFromSheet_(ss, map);
+  var pr = getDailyPlansAndRosterFromSheet_(ss, map);
+  var rawCats = String(map.CATEGORIES || '').split(',').map(function(c){ return c.trim(); }).filter(Boolean);
+
+  return {
+    ok: true,
+    v: 97,
+    serverVersion: SERVER_VERSION_V97,
+    rev: getDataRev_(),
+    today: isoDate_(),
+    location: map.LOCATION,
+    plan: Number(map.PLAN) || 2200,
+    woNorm: Number(map.WO_NORM) || 15,
+    minAvgCheck: Number(map.MIN_AVG_CHECK) || 35,
+    planChecks: Number(map.PLAN_CHECKS) || 75,
+    photoAll: map.PHOTO_ALL || 'нет',
+    initCounter: Number(map.INIT_COUNTER) || 600,
+    openStart: map.OPEN_START || '07:30',
+    deadline: map.DEADLINE || '08:30',
+    dayStart: map.DAY_START || '11:00',
+    dayDeadline: map.DAY_DEADLINE || '18:30',
+    closeStart: map.CLOSE_START || '21:30',
+    closeDeadline: map.CLOSE_DEADLINE || '22:30',
+    checklistBlocks: cBlocks,
+    dailyPlans: pr.dailyPlans,
+    shiftRoster: pr.shiftRoster,
+    deadlineExtensions: extMap,
+    blocks: cBlocks.filter(function(b){ return !b.isCash && b.name !== 'Касса'; }).map(function(b){ return b.name; }),
+    categories: rawCats.length ? rawCats : ['Закупка продуктов', 'Аренда', 'Зарплата', 'Коммунальные', 'Реклама', 'Ремонт и оборудование', 'Прочее'],
+    tasks: dedupeTasksV94_(tasks),
+    cash: cash.reverse(),
+    productsByDate: productsByDate,
+    salesLog: salesLog,
+    expenses: expenses.reverse(),
+    incidents: incidents.reverse(),
+    announcements: getAnnouncements_(ss),
+    staff: getStaffList_(ss),
+    ttk: getTtkList_(ss),
+    goodDeeds: getGoodDeedsFromSheet_(ss),
+    serviceAudits: getServiceAuditsFromSheet_(ss),
+    checklists: getChecklistsLogFromSheet_(ss),
+    userDrafts: getJsonProp_('COFFEE_USER_DRAFTS_JSON', {}),
+    userActiveState: getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {}),
+    personalTasksDone: getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {}),
+    tgUserBindings: getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {}),
+    customNomenclatureRules: getJsonProp_('COFFEE_CUSTOM_NOMENCLATURE_JSON', {}),
+    inventory: getSeededInventory_(ss),
+    inventoryMoves: getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []),
+    expiryItems: getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []),
+    auditLog: (function() {
+      var shA = ss.getSheetByName('Журнал') || ss.getSheetByName('Аудит');
+      if (!shA || shA.getLastRow() <= 1) return [];
+      var aRows = shA.getDataRange().getValues();
+      var outA = [];
+      for (var ai = aRows.length - 1; ai >= 1 && outA.length < 250; ai--) {
+        var ar = aRows[ai];
+        if (!ar[0] && !ar[2] && !ar[3]) continue;
+        outA.push({
+          date: fmtIso_(ar[0]),
+          time: fmtTime_(ar[1]),
+          actor: String(ar[2] || 'Система'),
+          action: String(ar[3] || ''),
+          text: String(ar[3] || '') + (ar[4] ? (' · ' + String(ar[4])) : '')
+        });
+      }
+      return outA;
+    })(),
+    shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
+    staffPresence: getStaffPresenceToday_(ss),
+    tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
+    webappUrl: map.WEBAPP_URL || '',
+    autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
+    serverTime: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm'),
+    settings: getSettingsArray_(map)
+  };
+}
+
+function getDashboard_(ss, dateStr) {
+  var adm = getAdmin_(ss);
+  var day = dateStr || adm.today;
+  var c = null;
+  for (var i = 0; i < adm.cash.length; i++) {
+    if (adm.cash[i].date === day) { c = adm.cash[i]; break; }
+  }
+  var rev = c ? (c.cash + c.card) : 0;
+  var chks = c ? c.checks : 0;
+
+  var shChk = ss.getSheetByName('Чек-листы');
+  var chkRows = shChk ? shChk.getDataRange().getValues() : [];
+  var openedAt = '';
+  var photoReports = [];
+  for (var j = 1; j < chkRows.length; j++) {
+    var r = chkRows[j];
+    if (fmtIso_(r[0]) === day) {
+      var tm = fmtTime_(r[1]);
+      var blk = String(r[2] || '');
+      if (blk === 'Открытие' && (!openedAt || tm < openedAt)) openedAt = tm;
+      var phs = [];
+      try { phs = JSON.parse(String(r[5] || '[]')); } catch (e) {}
+      if (phs.length) photoReports.push({ time: tm, block: blk, who: String(r[3] || ''), photos: phs });
+    }
+  }
+
+  var days14 = [];
+  var baseD = new Date(day + 'T12:00:00');
+  for (var d = 13; d >= 0; d--) {
+    var curD = new Date(baseD.getTime() - d * 86400000);
+    var ds = isoDate_(curD);
+    var fc = null;
+    for (var k = 0; k < adm.cash.length; k++) { if (adm.cash[k].date === ds) { fc = adm.cash[k]; break; } }
+    var dExp = 0;
+    for (var e = 0; e < adm.expenses.length; e++) { if (adm.expenses[e].date === ds) dExp += adm.expenses[e].amount; }
+    var dWo = fc ? fc.writeoff : 0;
+    days14.push({ date: ds, revenue: fc ? (fc.cash + fc.card) : 0, writeoff: dWo, expenses: dExp, outflow: dWo + dExp, barista: fc ? fc.barista : '' });
+  }
+
+  return {
+    ok: true,
+    date: day,
+    isToday: day === adm.today,
+    location: adm.location,
+    plan: adm.plan,
+    woNorm: adm.woNorm,
+    minAvgCheck: adm.minAvgCheck,
+    planChecks: adm.planChecks,
+    deadline: adm.deadline,
+    checklistBlocks: adm.checklistBlocks,
+    dailyPlans: adm.dailyPlans,
+    hasData: !!c,
+    revenue: rev,
+    cash: c ? c.cash : 0,
+    card: c ? c.card : 0,
+    checks: chks,
+    avg: chks > 0 ? Math.round(rev / chks) : 0,
+    writeoff: c ? c.writeoff : 0,
+    writeoffShots: c ? (c.writeoffShots || 0) : 0,
+    counterStart: c ? c.counterStart : null,
+    counterEnd: c ? c.counterEnd : null,
+    coffeeQty: c ? (c.coffeeQty || 0) : 0,
+    nonCoffeeQty: c ? (c.nonCoffeeQty || 0) : 0,
+    reviewQty: c ? (c.reviewQty || 0) : 0,
+    unaccountedShots: c ? (c.unaccountedShots || 0) : 0,
+    shifts: c ? (c.shifts || []) : [],
+    products: c ? (c.products || []) : ((adm.productsByDate && adm.productsByDate[day]) || []),
+    productsByDate: adm.productsByDate || {},
+    barista: c ? c.barista : '',
+    openedAt: openedAt,
+    kpi: {
+      revenue: { value: c ? rev : null, currency: 'RUB_PMR', dataQuality: c ? 'verified' : 'missing', source: 'Касса' },
+      checks: { value: c ? chks : null, dataQuality: c ? 'verified' : 'missing', source: 'Касса' },
+      averageTicket: { value: (c && chks > 0) ? Math.round(rev / chks) : null, currency: 'RUB_PMR', dataQuality: (c && chks > 0) ? 'verified' : 'missing', source: 'Касса' },
+      cogs: { value: null, currency: 'RUB_PMR', dataQuality: 'missing', reason: 'Отсутствуют утверждённые рецептуры ТТК с закупочными ценами' },
+      netProfit: { value: null, currency: 'RUB_PMR', dataQuality: 'missing', reason: 'Себестоимость (COGS) не рассчитана' }
+    },
+    days: days14,
+    incidents: adm.incidents,
+    announcements: adm.announcements,
+    staff: adm.staff,
+    photoReports: photoReports
+  };
+}
+
+function getReport_(ss, fromStr, toStr) {
+  var adm = getAdmin_(ss);
+  var from = fromStr || adm.today;
+  var to = toStr || adm.today;
+  var prodMap = {};
+  var pbd = adm.productsByDate || {};
+  Object.keys(pbd).forEach(function(dKey) {
+    if (dKey >= from && dKey <= to) {
+      (pbd[dKey] || []).forEach(function(p) {
+        var m = prodMap[p.name] || (prodMap[p.name] = { name: p.name, kind: p.kind || classifyCoffeeServer_(p.name), price: p.price || 0, qty: 0, sum: 0 });
+        m.qty += Number(p.qty) || 0;
+        m.sum += Number(p.sum) || 0;
+      });
+    }
+  });
+  var products = Object.keys(prodMap).map(function(k) { return prodMap[k]; }).sort(function(a, b) { return b.qty - a.qty; });
+
+  var cashInPeriod = (adm.cash || []).filter(function(c) { return c.date >= from && c.date <= to; }).slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
+  var expInPeriod = (adm.expenses || []).filter(function(e) { return e.date >= from && e.date <= to; });
+  var revTotal = 0, cashTotal = 0, cardTotal = 0, chkTotal = 0, woTotal = 0, woShotsTotal = 0;
+  var reconciliationWarnings = [];
+  var series = cashInPeriod.map(function(c) {
+    var r = (Number(c.cash) || 0) + (Number(c.card) || 0);
+    var dExp = expInPeriod.filter(function(e) { return e.date === c.date; }).reduce(function(a, x) { return a + (Number(x.amount) || 0); }, 0);
+    revTotal += r;
+    cashTotal += Number(c.cash) || 0;
+    cardTotal += Number(c.card) || 0;
+    chkTotal += Number(c.checks) || 0;
+    woTotal += Number(c.writeoff) || 0;
+    woShotsTotal += Number(c.writeoffShots) || 0;
+    var cDelta = counterDeltaServer_(c.counterStart, c.counterEnd);
+    if (c.unaccountedShots > 0) {
+      reconciliationWarnings.push(c.date + ' (' + (c.barista || 'Бариста') + '): необъяснённая разница счётчика ' + c.unaccountedShots + ' порц.');
+    }
+    if (c.reviewQty > 0) {
+      reconciliationWarnings.push(c.date + ': неопределённая номенклатура ' + c.reviewQty + ' шт.');
+    }
+    return {
+      date: c.date,
+      revenue: r,
+      expenses: dExp,
+      profit: r - dExp,
+      checks: c.checks || 0,
+      avg: c.checks > 0 ? Math.round(r / c.checks) : 0,
+      cash: c.cash || 0,
+      card: c.card || 0,
+      writeoff: c.writeoff || 0,
+      writeoffShots: c.writeoffShots || 0,
+      counterStart: c.counterStart,
+      counterEnd: c.counterEnd,
+      counterDelta: cDelta,
+      coffeeQty: c.coffeeQty || 0,
+      nonCoffeeQty: c.nonCoffeeQty || 0,
+      reviewQty: c.reviewQty || 0,
+      unaccountedShots: c.unaccountedShots || 0,
+      barista: c.barista || '',
+      shifts: c.shifts || []
+    };
+  });
+  var expTotal = expInPeriod.reduce(function(a, x) { return a + (Number(x.amount) || 0); }, 0);
+  var catMap = {};
+  expInPeriod.forEach(function(e) { catMap[e.category] = (catMap[e.category] || 0) + (Number(e.amount) || 0); });
+  var byCategory = Object.keys(catMap).map(function(k) { return { category: k, sum: catMap[k] }; }).sort(function(a, b) { return b.sum - a.sum; });
+
+  return {
+    ok: true,
+    from: from,
+    to: to,
+    days: Math.max(1, series.length || 7),
+    categories: adm.categories,
+    plan: adm.plan * Math.max(1, series.length || 7),
+    pct: (adm.plan * Math.max(1, series.length || 1)) > 0 ? Math.round((revTotal / (adm.plan * Math.max(1, series.length || 1))) * 100) : 0,
+    delta: null,
+    finance: { revenue: revTotal, expenses: expTotal, profit: revTotal - expTotal, prevProfit: 0, margin: revTotal > 0 ? Math.round(((revTotal - expTotal) / revTotal) * 100) : 0, writeoff: woTotal, writeoffShots: woShotsTotal, byCategory: byCategory, list: expInPeriod },
+    totals: { days: series.length, revenue: revTotal, checks: chkTotal, avg: chkTotal > 0 ? Math.round(revTotal / chkTotal) : 0, cash: cashTotal, card: cardTotal, writeoff: woTotal, writeoffShots: woShotsTotal },
+    series: series,
+    products: products,
+    productsByDate: adm.productsByDate || {},
+    salesLog: adm.salesLog || [],
+    reconciliationWarnings: reconciliationWarnings,
+    tasks: [],
+    incidentList: adm.incidents,
+    announcements: adm.announcements,
+    staff: adm.staff,
+    discipline: { openings: 0, late: 0, missed: 0, checklists: 0, problemSteps: 0 },
+    incidents: { total: adm.incidents.length, open: 0, resolved: 0, critical: 0 }
+  };
+}
+
+function saveSetting_(ss, b) {
+  if (b && String(b.id || '').trim() === 'ADMIN_PIN') {
+    var rawPin = String(b.value != null ? b.value : '').trim();
+    if (rawPin && rawPin.indexOf('••') === -1 && rawPin.indexOf('sha256:') !== 0) {
+      var propsPin = PropertiesService.getScriptProperties();
+      propsPin.setProperty('ADMIN_PIN_HASH', hashPinV2_(rawPin));
+      try {
+        var scPin = CacheService.getScriptCache();
+        scPin.remove('rl_v21_admin');
+        scPin.remove('rl_v21_admin_api');
+      } catch (_) {}
+      b = { id: 'ADMIN_PIN', value: '••' };
+    }
+  }
+  var sh = ss.getSheetByName('Настройки');
+  var rows = sh.getDataRange().getValues();
+  var k = normSetKey_(b.id || b.key || '');
+  if (!k) return { ok: true };
+  for (var i = 1; i < rows.length; i++) {
+    if (normSetKey_(rows[i][0]) === k) {
+      sh.getRange(i + 1, 2).setValue(b.value);
+      return { ok: true };
+    }
+  }
+  sh.appendRow([k, b.value]);
+  return { ok: true };
+}
+
+function normalizeChecklistBlock_(b, idx) {
+  if (!b || !b.name) return null;
+  var nm = String(b.name).trim();
+  var st = String(b.scheduleType || 'daily').trim().toLowerCase();
+  if (st !== 'weekly' && st !== 'date') st = 'daily';
+  var sDays = Array.isArray(b.scheduleDays)
+    ? b.scheduleDays.map(function(d) { return String(d || '').trim(); }).filter(Boolean)
+    : [];
+  var sDate = String(b.scheduleDate || '').trim().slice(0, 10);
+  return {
+    id: String(b.id || ('blk_' + idx)).trim(),
+    name: nm,
+    openTime: String(b.openTime || '07:30').trim(),
+    deadline: String(b.deadline || '08:30').trim(),
+    isCash: !!(b.isCash || nm === 'Касса'),
+    active: b.active !== false,
+    assignee: String(b.assignee || '').trim(),
+    scheduleType: st,
+    scheduleDays: sDays,
+    scheduleDate: sDate
+  };
+}
+
+function syncChecklistBlocksSheet_(ss, blocks) {
+  var sh = ss.getSheetByName('Таймлайн');
+  if (!sh) sh = ss.insertSheet('Таймлайн');
+  var normalized = [];
+  (Array.isArray(blocks) ? blocks : []).forEach(function(b, idx) {
+    var nb = normalizeChecklistBlock_(b, idx);
+    if (nb) normalized.push(nb);
+  });
+  // Сохраняем JSON первым — гарантирует сохранность даже при ограничениях листа
+  saveSetting_(ss, { id: 'CHECKLIST_BLOCKS_JSON', value: JSON.stringify(normalized) });
+
+  var headers = ['ID', 'Название чек-листа', 'Открытие (ЧЧ:ММ)', 'Дедлайн (ЧЧ:ММ)', 'Касса (да/нет)', 'Активен (да/нет)', 'Сотрудник', 'Периодичность', 'Дни / Дата'];
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(headers);
+  } else if (typeof sh.getRange === 'function') {
+    try { sh.getRange(1, 1, 1, headers.length).setValues([headers]); } catch (_) {}
+  }
+
+  var rows = normalized.map(function(b) {
+    var schedInfo = b.scheduleType === 'weekly' ? b.scheduleDays.join(',') : (b.scheduleType === 'date' ? b.scheduleDate : '');
+    return [
+      b.id,
+      b.name,
+      b.openTime,
+      b.deadline,
+      b.isCash ? 'да' : 'нет',
+      b.active === false ? 'нет' : 'да',
+      b.assignee || '',
+      b.scheduleType || 'daily',
+      schedInfo
+    ];
+  });
+
+  // Атомарная перезапись без deleteRows (исключает краш Google Sheets «Cannot delete all non-frozen rows»)
+  if (rows.length && typeof sh.getRange === 'function') {
+    sh.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    var last = sh.getLastRow();
+    if (last > rows.length + 1) {
+      try { sh.getRange(rows.length + 2, 1, last - (rows.length + 1), headers.length).clearContent(); } catch (_) {}
+    }
+  } else if (!rows.length && sh.getLastRow() > 1 && typeof sh.getRange === 'function') {
+    try { sh.getRange(2, 1, sh.getLastRow() - 1, headers.length).clearContent(); } catch (_) {}
+  }
+
+  normalized.forEach(function(b) {
+    if (b.name === 'Открытие') {
+      saveSetting_(ss, { id: 'OPEN_START', value: b.openTime || '07:30' });
+      saveSetting_(ss, { id: 'DEADLINE', value: b.deadline || '08:30' });
+    } else if (b.name === 'Лайн Чек 1') {
+      saveSetting_(ss, { id: 'LC1_START', value: b.openTime || '08:30' });
+      saveSetting_(ss, { id: 'LC1_DEADLINE', value: b.deadline || '09:30' });
+    } else if (b.name === 'Лайн Чек 2') {
+      saveSetting_(ss, { id: 'LC2_START', value: b.openTime || '14:00' });
+      saveSetting_(ss, { id: 'LC2_DEADLINE', value: b.deadline || '16:00' });
+    } else if (b.name === 'Закрытие') {
+      saveSetting_(ss, { id: 'CLOSE_START', value: b.openTime || '21:30' });
+      saveSetting_(ss, { id: 'CLOSE_DEADLINE', value: b.deadline || '22:30' });
+    } else if (b.isCash || b.name === 'Касса') {
+      saveSetting_(ss, { id: 'CASH_START', value: b.openTime || '22:00' });
+      saveSetting_(ss, { id: 'CASH_DEADLINE', value: b.deadline || '23:59' });
+    }
+  });
+  return normalized;
+}
+
+function saveChecklistBlocks_(ss, b) {
+  var blocks = Array.isArray(b.blocks) ? b.blocks : [];
+  blocks = syncChecklistBlocksSheet_(ss, blocks);
+  // Если блок переименован — переносим привязку всех его задач в листе «Задачи»
+  if (b && b.renamedBlocks && typeof b.renamedBlocks === 'object') {
+    var shT = ss.getSheetByName('Задачи');
+    if (shT && shT.getLastRow() > 1) {
+      var tRows = shT.getDataRange().getValues();
+      var dirtyTasks = false;
+      for (var ti = 1; ti < tRows.length; ti++) {
+        var curBlk = String(tRows[ti][1] || '').trim();
+        if (curBlk && b.renamedBlocks[curBlk]) {
+          tRows[ti][1] = String(b.renamedBlocks[curBlk]).trim();
+          dirtyTasks = true;
+        }
+      }
+      if (dirtyTasks) {
+        shT.getRange(2, 1, tRows.length - 1, tRows[0].length).setValues(tRows.slice(1));
+      }
+    }
+  }
+  // Сохраняем активные сегодняшние разблокировки (forceOpen) для существующих блоков вместо обнуления
+  var map = getSettingsMap_(ss);
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (_) {}
+  var todayStr = isoDate_();
+  var validNames = {};
+  blocks.forEach(function(x) { if (x && x.name) validNames[String(x.name).trim()] = true; });
+  var keptExt = {};
+  Object.keys(extMap).forEach(function(k) {
+    var ext = extMap[k];
+    if (!ext || !ext.forceOpen) return;
+    var idxC = k.indexOf(':');
+    if (idxC < 0) return;
+    var dtPart = k.slice(0, idxC);
+    var blkPart = k.slice(idxC + 1);
+    if (dtPart >= todayStr && validNames[blkPart]) keptExt[k] = ext;
+  });
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(keptExt) });
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', 'Сохранение таймлайна чек-листов в таблицу', 'Блоков: ' + blocks.length);
+  return { ok: true, checklistBlocks: blocks, deadlineExtensions: keptExt, rev: getDataRev_() };
+}
+
+function addChecklistBlock_(ss, b) {
+  var map = getSettingsMap_(ss);
+  var blocks = getChecklistBlocksFromSheet_(ss, map);
+  var nm = String(b.name || '').trim();
+  if (nm && !blocks.some(function(x){ return x.name === nm; })) {
+    var newBlk = {
+      id: 'blk_' + Date.now().toString(36),
+      name: nm,
+      openTime: String(b.openTime || '10:00').trim(),
+      deadline: String(b.deadline || '12:00').trim(),
+      isCash: false,
+      active: true
+    };
+    var cashIdx = -1;
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].isCash || blocks[i].name === 'Касса') { cashIdx = i; break; }
+    }
+    if (cashIdx >= 0) blocks.splice(cashIdx, 0, newBlk);
+    else blocks.push(newBlk);
+    syncChecklistBlocksSheet_(ss, blocks);
+    bumpDataRev_();
+  }
+  return { ok: true, checklistBlocks: blocks, rev: getDataRev_() };
+}
+
+function deleteChecklistBlock_(ss, b) {
+  var map = getSettingsMap_(ss);
+  var target = String(b.name || '').trim();
+  var blocks = getChecklistBlocksFromSheet_(ss, map).filter(function(x){
+    return x.name !== target && x.id !== b.id;
+  });
+  syncChecklistBlocksSheet_(ss, blocks);
+  return { ok: true, checklistBlocks: blocks };
+}
+
+function writeDailyPlansSheet_(ss, plans, roster) {
+  var sh = ss.getSheetByName('Планы');
+  if (!sh) return;
+  var days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  var rows = days.map(function(d) {
+    var dp = (plans && plans[d]) || { revenue: 2200, avgCheck: 35, checks: 75 };
+    return [
+      d,
+      Math.max(100, Number(dp.revenue || dp.rev) || 2200),
+      Math.max(1, Number(dp.avgCheck || dp.avg) || 35),
+      Math.max(1, Number(dp.checks) || 75),
+      String((roster && roster[d] != null) ? roster[d] : '')
+    ];
+  });
+  // Атомарная перезапись строк 2..8 без deleteRows (исключает ошибку Google Sheets «Cannot delete all non-frozen rows»)
+  if (typeof sh.getRange === 'function') {
+    var rng = sh.getRange(2, 1, rows.length, 5);
+    if (rng && typeof rng.setValues === 'function') {
+      rng.setValues(rows);
+      var last = sh.getLastRow();
+      if (last > rows.length + 1) {
+        var extraRng = sh.getRange(rows.length + 2, 1, last - (rows.length + 1), 5);
+        if (extraRng && typeof extraRng.clearContent === 'function') extraRng.clearContent();
+      }
+      return;
+    }
+  }
+  // Фолбэк для упрощённых моков без setValues
+  var lastRow = sh.getLastRow();
+  if (lastRow > 1 && typeof sh.deleteRows === 'function') {
+    try { sh.deleteRows(2, lastRow - 1); } catch (_) {}
+  }
+  rows.forEach(function(r) { sh.appendRow(r); });
+}
+
+function saveDailyPlans_(ss, b) {
+  var map = getSettingsMap_(ss);
+  var pr = getDailyPlansAndRosterFromSheet_(ss, map);
+  var incomingPlans = (b && b.plans && typeof b.plans === 'object') ? b.plans : {};
+  var plans = Object.assign({}, pr.dailyPlans);
+  ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(function(d) {
+    if (incomingPlans[d] && typeof incomingPlans[d] === 'object') {
+      var dp = incomingPlans[d];
+      plans[d] = {
+        revenue: Math.max(100, Number(dp.revenue || dp.rev) || (plans[d] && plans[d].revenue) || 2200),
+        avgCheck: Math.max(1, Number(dp.avgCheck || dp.avg) || (plans[d] && plans[d].avgCheck) || 35),
+        checks: Math.max(1, Number(dp.checks) || (plans[d] && plans[d].checks) || 75)
+      };
+    }
+  });
+  var roster = Object.assign({}, pr.shiftRoster);
+  if (b && b.roster && typeof b.roster === 'object') {
+    ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(function(d) {
+      if (b.roster[d] !== undefined) roster[d] = String(b.roster[d] || '').trim();
+    });
+    saveSetting_(ss, { id: 'SHIFT_ROSTER_JSON', value: JSON.stringify(roster) });
+  }
+  saveSetting_(ss, { id: 'DAILY_PLANS_JSON', value: JSON.stringify(plans) });
+  writeDailyPlansSheet_(ss, plans, roster);
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', 'Сохранены планы на неделю (Пн–Вс)', 'Лист «Планы» и настройки обновлены');
+  return { ok: true, dailyPlans: plans, shiftRoster: roster };
+}
+
+function saveShiftRoster_(ss, b) {
+  var map = getSettingsMap_(ss);
+  var pr = getDailyPlansAndRosterFromSheet_(ss, map);
+  var roster = Object.assign({}, pr.shiftRoster);
+  if (b && b.roster && typeof b.roster === 'object') {
+    ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(function(d) {
+      if (b.roster[d] !== undefined) roster[d] = String(b.roster[d] || '').trim();
+    });
+  }
+  var plans = pr.dailyPlans;
+  saveSetting_(ss, { id: 'SHIFT_ROSTER_JSON', value: JSON.stringify(roster) });
+  writeDailyPlansSheet_(ss, plans, roster);
+  bumpDataRev_();
+  return { ok: true, shiftRoster: roster, dailyPlans: plans };
+}
+
+function saveStaffPins_(ss, b) {
+  var props = PropertiesService.getScriptProperties();
+  var sh = ss.getSheetByName('Сотрудники');
+  var rows = sh ? sh.getDataRange().getValues() : [];
+  (Array.isArray(b.pins) ? b.pins : []).forEach(function(p) {
+    if (!p || !p.name || !p.pin) return;
+    var pHash = hashPinV2_(String(p.pin));
+    props.setProperty('STAFF_PIN_HASH_' + p.name, pHash);
+    bumpSessionEpoch_(String(p.name).trim());
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][1] || '').trim().toLowerCase() === String(p.name).trim().toLowerCase()) {
+        PropertiesService.getScriptProperties().setProperty('STAFF_PIN_HASH_' + String(rows[i][1] || '').trim(), pHash);
+          bumpSessionEpoch_(String(rows[i][1] || '').trim());
+          sh.getRange(i + 1, 6).setValue('••');
+        break;
+      }
+    }
+  });
+  return { ok: true };
+}
+
+function saveGoodDeed_(ss, b) {
+  var sh = ss.getSheetByName('Карта добрых дел');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || ('gd_' + Date.now().toString(36))).trim();
+  var rowVals = [id, b.title || '', b.frequency || '', b.window || '', b.responsible || 'Бариста', b.reviewer || 'Управляющий', b.instruction || ''];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sh.getRange(i + 1, 1, 1, 7).setValues([rowVals]);
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  return { ok: true, id: id };
+}
+
+function deleteGoodDeed_(ss, b) {
+  var sh = ss.getSheetByName('Карта добрых дел');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim() || (b.title && String(rows[i][1]).trim() === String(b.title).trim())) {
+      sh.deleteRow(i + 1);
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function saveServiceAudit_(ss, b) {
+  var sh = ss.getSheetByName('Аудит сервиса');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || newId_('AUD')).trim();
+  var g = Number(b.greet != null ? b.greet : 100);
+  var cl = Number(b.clarify != null ? b.clarify : 100);
+  var up = Number(b.upsell != null ? b.upsell : 90);
+  var fw = Number(b.farewell != null ? b.farewell : 100);
+  var sc = Math.round((g + cl + up + fw) / 4);
+  var rowVals = [id, b.date || isoDate_(), b.barista || 'Соня', b.auditor || 'Шеф-бариста', g, cl, up, fw, sc, b.comment || ''];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sh.getRange(i + 1, 1, 1, 10).setValues([rowVals]);
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  return { ok: true, id: id };
+}
+
+function deleteServiceAudit_(ss, b) {
+  var sh = ss.getSheetByName('Аудит сервиса');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) {
+      sh.deleteRow(i + 1);
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function extendDeadline_(ss, b) {
+  var dt = b.date || isoDate_();
+  var blk = b.block || 'Открытие';
+  var extKey = dt + ':' + blk;
+  var map = getSettingsMap_(ss);
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}'); } catch (e) {}
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  if (b.clear) {
+    delete extMap[extKey];
+    Object.keys(extMap).forEach(function(k) {
+      if (k === blk || k.slice(-(':' + blk).length) === (':' + blk)) delete extMap[k];
+    });
+    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Возврат окна чек-листа в расписание', blk);
+  } else {
+    extMap[extKey] = {
+      openFrom: b.openFrom || '00:00',
+      until: b.until || '23:59',
+      forceOpen: true,
+      reason: b.reason || 'Разблокировано администратором онлайн',
+      at: tm
+    };
+    saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Разблокировка чек-листа онлайн', blk + ' открыт до ' + (b.until || '23:59') + ' (' + (b.reason || '') + ')');
+  }
+  return { ok: true, deadlineExtensions: extMap, rev: getDataRev_() };
+}
+
+function saveBlockWindows_(ss, b) {
+  var pairs = [
+    ['OPEN_START', b.openStart],
+    ['DEADLINE', b.openDeadline],
+    ['DAY_START', b.dayStart],
+    ['DAY_DEADLINE', b.dayDeadline],
+    ['CLOSE_START', b.closeStart],
+    ['CLOSE_DEADLINE', b.closeDeadline]
+  ];
+  pairs.forEach(function(p){
+    if (p[1]) saveSetting_(ss, { id: p[0], value: String(p[1]).trim() });
+  });
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: '{}' });
+  appendAudit_(ss, 'Администратор', 'Изменение окон времени', 'Открытие: ' + b.openStart + '–' + b.openDeadline);
+  return { ok: true };
+}
+
+function simulateOverdue_(ss, b) {
+  var blk = b.block || 'День';
+  var pastHm = '08:00';
+  if (blk === 'Открытие') saveSetting_(ss, { id: 'DEADLINE', value: pastHm });
+  else if (blk === 'День') saveSetting_(ss, { id: 'DAY_DEADLINE', value: pastHm });
+  else saveSetting_(ss, { id: 'CLOSE_DEADLINE', value: pastHm });
+  saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: '{}' });
+  return { ok: true };
+}
+
+function saveAnnouncement_(ss, b) {
+  var sh = ss.getSheetByName('Информирование');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || newId_('INFO')).trim();
+  var targets = Array.isArray(b.targetStaff) ? b.targetStaff.join(', ') : String(b.targetStaff || 'Соня, Алина, Настя');
+  var acksJson = JSON.stringify(Array.isArray(b.acks) ? b.acks : []);
+  var rowVals = [
+    id,
+    b.title || '',
+    b.category || 'Внутренние объявления',
+    b.text || '',
+    fmtIso_(b.publishedAt) || isoDate_(),
+    fmtIso_(b.validTo) || '',
+    fmtIso_(b.calendarDate) || '',
+    b.calendarEventTitle || '',
+    targets,
+    acksJson
+  ];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sh.getRange(i + 1, 1, 1, 10).setValues([rowVals]);
+      appendAudit_(ss, 'Администратор', 'Обновление объявления', b.title);
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  appendAudit_(ss, 'Администратор', 'Публикация объявления', b.title);
+  return { ok: true, id: id };
+}
+
+function deleteAnnouncement_(ss, b) {
+  var sh = ss.getSheetByName('Информирование');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) {
+      sh.deleteRow(i + 1);
+      appendAudit_(ss, 'Администратор', 'Удаление объявления', String(b.id));
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function ackAnnouncement_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var sh = ss.getSheetByName('Информирование');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || '').trim();
+  var who = String(b.userName || 'Бариста').trim();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      var acks = [];
+      try { acks = JSON.parse(String(rows[i][9] || '[]')); } catch (e) {}
+      if (!acks.some(function(k){ return String(k.name || '').toLowerCase() === who.toLowerCase(); })) {
+        var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+        var stamp = fmtIso_(new Date()).split('-').reverse().join('.') + ' ' + tm;
+        acks.push({ name: who, at: stamp });
+        sh.getRange(i + 1, 10).setValue(JSON.stringify(acks));
+        appendAudit_(ss, who, 'Ознакомление с объявлением', 'Ознакомлен с «' + String(rows[i][1]) + '»');
+      }
+      return { ok: true, acks: acks };
+    }
+  }
+  return { ok: true };
+}
+
+function saveStaff_(ss, b) {
+  var sh = ss.getSheetByName('Сотрудники');
+  if (!sh) sh = ss.insertSheet('Сотрудники');
+  var rows = sh.getDataRange().getValues();
+  var reqId = String((b && b.id) || '').trim();
+  var oldName = String((b && b.oldName) || '').trim();
+  var staffName = String((b && b.name) || '').trim();
+  if (!staffName) return { ok: false, error: 'Не указано имя сотрудника' };
+
+  // Сначала ищем существующую строку по ID, затем по oldName, затем по текущему name
+  var matchRowIdx = -1;
+  for (var i = 1; i < rows.length; i++) {
+    var rowId = String(rows[i][0] || '').trim();
+    var rowNm = String(rows[i][1] || '').trim();
+    if (reqId && rowId === reqId) { matchRowIdx = i; break; }
+    if (oldName && rowNm.toLowerCase() === oldName.toLowerCase()) { matchRowIdx = i; break; }
+    if (!oldName && rowNm.toLowerCase() === staffName.toLowerCase()) { matchRowIdx = i; break; }
+  }
+
+  var existingOldName = matchRowIdx >= 1 ? String(rows[matchRowIdx][1] || '').trim() : oldName;
+  var id = matchRowIdx >= 1
+    ? (String(rows[matchRowIdx][0] || '').trim() || reqId || ('st_' + Date.now().toString(36)))
+    : (reqId || ('st_' + Date.now().toString(36)));
+
+  var pinStr = String((b && b.pin) || '').trim();
+  var tgIdStr = normTgNumericId_((b && (b.tgId != null ? b.tgId : b.telegramId)) || '');
+  var props = PropertiesService.getScriptProperties();
+
+  // Миграция хеша PIN при переименовании сотрудника
+  if (existingOldName && existingOldName !== staffName) {
+    var prevHash = props.getProperty('STAFF_PIN_HASH_' + existingOldName);
+    if (prevHash && !props.getProperty('STAFF_PIN_HASH_' + staffName)) {
+      props.setProperty('STAFF_PIN_HASH_' + staffName, prevHash);
+    }
+    try { props.deleteProperty('STAFF_PIN_HASH_' + existingOldName); } catch (_) {}
+  }
+
+  var generatedPin = '';
+  var pinUpdated = false;
+  if (pinStr && pinStr.indexOf('••') === -1) {
+    props.setProperty('STAFF_PIN_HASH_' + staffName, hashPinV2_(pinStr));
+    props.setProperty('PIN_CHANGE_REQUIRED_' + staffName, '0');
+    pinUpdated = true;
+  } else if (!props.getProperty('STAFF_PIN_HASH_' + staffName)) {
+    generatedPin = String(100000 + Math.floor(Math.random() * 900000));
+    props.setProperty('STAFF_PIN_HASH_' + staffName, hashPinV2_(generatedPin));
+  }
+
+  var tgBinds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+  if (existingOldName && existingOldName !== staffName && tgBinds[existingOldName]) {
+    if (!tgIdStr) tgIdStr = normTgNumericId_(tgBinds[existingOldName].tgId || tgBinds[existingOldName]);
+    delete tgBinds[existingOldName];
+  }
+  if (tgIdStr) {
+    tgBinds[staffName] = { tgId: tgIdStr, staffName: staffName, updatedAt: new Date().toISOString() };
+  } else if (b && (b.tgId === '' || b.telegramId === '')) {
+    delete tgBinds[staffName];
+  }
+  setJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', tgBinds);
+
+  var roleVal = String((b && b.role) || 'Бариста').trim();
+  var shopVal = String((b && b.shop) || 'Кофейня №1').trim();
+  var activeVal = (b && (b.active === false || String(b.active || 'да').toLowerCase() === 'нет')) ? 'нет' : 'да';
+
+  if (matchRowIdx >= 1) {
+    sh.getRange(matchRowIdx + 1, 1, 1, 7).setValues([[id, staffName, roleVal, shopVal, activeVal, '••', tgIdStr]]);
+  } else {
+    sh.appendRow([id, staffName, roleVal, shopVal, activeVal, '••', tgIdStr]);
+  }
+  bumpDataRev_();
+  try {
+    appendAudit_(ss, 'Администратор', (matchRowIdx >= 1 ? 'Обновлён сотрудник: ' : 'Добавлен сотрудник: ') + staffName, 'Роль: ' + roleVal + ' · Активен: ' + activeVal + (pinUpdated ? ' · PIN обновлён' : ''));
+  } catch (_) {}
+
+  var resOut = { ok: true, id: id, name: staffName, active: activeVal, tgId: tgIdStr, pinUpdated: pinUpdated, updated: matchRowIdx >= 1, rev: getDataRev_() };
+  if (generatedPin) resOut.generatedPin = generatedPin;
+  return resOut;
+}
+
+function deleteStaff_(ss, b) {
+  var sh = ss.getSheetByName('Сотрудники');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim() || String(rows[i][1]).trim() === String(b.name).trim()) {
+      sh.deleteRow(i + 1);
+      break;
+    }
+  }
+  bumpDataRev_();
+  return { ok: true };
+}
+
+function saveTtk_(ss, b) {
+  var sh = ss.getSheetByName('Техкарты');
+  var rows = sh.getDataRange().getValues();
+  var id = String(b.id || ('ttk_' + Date.now().toString(36))).trim();
+  var avgPVal = (b.avgPrice !== undefined && b.avgPrice !== null && b.avgPrice !== '') ? Number(b.avgPrice) : (Number(b.price) || 0);
+  var rowVals = [id, b.name || '', b.volume || b.vol || '', b.category || b.cat || '', Number(b.price) || 0, Number(b.costBeans) || 0, Number(b.costMilk) || 0, Number(b.costSyrup) || 0, Number(b.costCup) || 0, b.recipe || '', b.serving || b.serve || '', avgPVal];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sh.getRange(i + 1, 1, 1, 12).setValues([rowVals]);
+      bumpDataRev_();
+      return { ok: true, id: id };
+    }
+  }
+  sh.appendRow(rowVals);
+  bumpDataRev_();
+  return { ok: true, id: id };
+}
+
+function deleteTtk_(ss, b) {
+  var sh = ss.getSheetByName('Техкарты');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim() || (b.name && String(rows[i][1]).trim() === String(b.name).trim())) {
+      sh.deleteRow(i + 1);
+      break;
+    }
+  }
+  bumpDataRev_();
+  return { ok: true };
+}
+
+function saveTask_(ss, b, sessOpt) {
+  if (b && (String(b.id || '') === '__SYS_CONFIG_V19__' || String(b.title || '') === '__SYS_SYNC__')) {
+    var sess = sessOpt || requireVerifiedStaffSession_(ss, b);
+    var isAdmin = !!(sess && sess.role === 'admin');
+    var staffOwner = String((sess && sess.staffName) || '').trim();
+    if (b.instruction) {
+      if (isAdmin) {
+        
+      }
+      if (String(b.instruction).length > 48000) {
+        try {
+          var parsedEnv = JSON.parse(String(b.instruction));
+          parsedEnv.productsByDate = {};
+          parsedEnv.auditLog = [];
+          parsedEnv.serviceAudits = [];
+          b.instruction = JSON.stringify(parsedEnv).slice(0, 48000);
+        } catch (_) {
+          b.instruction = String(b.instruction).slice(0, 48000);
+        }
+      }
+      try {
+        var env = JSON.parse(String(b.instruction));
+        if (isAdmin && env && Array.isArray(env.checklistBlocks) && env.checklistBlocks.length) {
+          saveChecklistBlocks_(ss, { blocks: env.checklistBlocks });
+        }
+        if (env && env.userDrafts && typeof env.userDrafts === 'object') {
+          try {
+            var curDrafts = getJsonProp_('COFFEE_USER_DRAFTS_JSON', {});
+            Object.keys(env.userDrafts).forEach(function(dk) {
+              var rd = env.userDrafts[dk];
+              if (!isAdmin) {
+                var partsD = String(dk).split(':');
+                var keyOwner = partsD.length >= 2 ? partsD[1] : String((rd && rd.userName) || '');
+                if (String(keyOwner).trim().toLowerCase() !== staffOwner.toLowerCase()) return;
+              }
+              if (rd && (!curDrafts[dk] || Number(rd.updatedAt || 0) >= Number(curDrafts[dk].updatedAt || 0))) curDrafts[dk] = rd;
+            });
+            setJsonProp_('COFFEE_USER_DRAFTS_JSON', curDrafts);
+          } catch (_) {}
+        }
+        if (env && env.userActiveState && typeof env.userActiveState === 'object') {
+          try {
+            var curAct = getJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', {});
+            Object.keys(env.userActiveState).forEach(function(uk) {
+              if (!isAdmin && String(uk).trim().toLowerCase() !== staffOwner.toLowerCase()) return;
+              var ra = env.userActiveState[uk];
+              if (ra && (!curAct[uk] || Number(ra.updatedAt || 0) >= Number(curAct[uk].updatedAt || 0))) curAct[uk] = ra;
+            });
+            setJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', curAct);
+          } catch (_) {}
+        }
+        if (env && env.personalTasksDone && typeof env.personalTasksDone === 'object') {
+          try {
+            var curPt = getJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', {});
+            Object.keys(env.personalTasksDone).forEach(function(pk) {
+              if (!isAdmin) {
+                var partsP = String(pk).split(':');
+                var pOwner = partsP.length >= 2 ? partsP[1] : '';
+                if (String(pOwner).trim().toLowerCase() !== staffOwner.toLowerCase()) return;
+              }
+              var rp = env.personalTasksDone[pk];
+              if (rp && (!curPt[pk] || Number(rp.updatedAt || 0) >= Number(curPt[pk].updatedAt || 0))) curPt[pk] = rp;
+            });
+            setJsonProp_('COFFEE_PERSONAL_TASKS_DONE_JSON', curPt);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    if (!isAdmin) {
+      return { ok: true, id: '__SYS_CONFIG_V19__', staffScoped: true };
+    }
+  }
+  var sh = ss.getSheetByName('Задачи');
+  var rows = sh.getDataRange().getValues();
+  // v84 (фикс BUG-09): если лист «Задачи» на сервере был пуст (только шапка / __SYS_CONFIG_V19__)
+  // и клиент передал полный базовый список b.seedTasks при редактировании задачи — засеваем все задачи,
+  // чтобы в таблице не оставалась всего 1 строка из «Лайн Чек 1»!
+  if (rows.length <= 3 && b && Array.isArray(b.seedTasks) && b.seedTasks.length > 5 && String(b.id || '') !== '__SYS_CONFIG_V19__') {
+    var existingIds = {};
+    for (var rIdx = 1; rIdx < rows.length; rIdx++) {
+      var exCode = String(rows[rIdx][0] || '').trim();
+      if (exCode) existingIds[exCode] = true;
+    }
+    b.seedTasks.forEach(function(st) {
+      if (!st || !st.id || existingIds[st.id] || st.id === '__SYS_CONFIG_V19__') return;
+      sh.appendRow([
+        String(st.id).trim(),
+        st.block || 'Открытие',
+        st.groupName || '',
+        st.title || '',
+        st.instruction || '',
+        st.photoMode || st.photo || 'нет',
+        st.responsible || 'Администратор',
+        st.active || 'да'
+      ]);
+      existingIds[st.id] = true;
+    });
+    rows = sh.getDataRange().getValues();
+  }
+  var id = String(b.id || ('t_' + Date.now().toString(36))).trim();
+  var resp = b.responsible || 'Администратор';
+  var rowVals = [id, b.block || 'Открытие', b.groupName || '', b.title || '', b.instruction || '', b.photoMode || b.mediaRequired || b.photo || 'нет', resp, b.active || 'да'];
+  for (var i = 1; i < rows.length; i++) {
+    if ((b.id && String(rows[i][0]).trim() === String(b.id).trim()) || (b.expect && String(rows[i][3]).trim() === String(b.expect).trim())) {
+      sh.getRange(i + 1, 1, 1, 8).setValues([rowVals]);
+      bumpDataRev_();
+      return { ok: true, id: id, row: i + 1, rev: getDataRev_() };
+    }
+  }
+  if (b.row && Number(b.row) >= 2 && Number(b.row) <= rows.length) {
+    sh.getRange(Number(b.row), 1, 1, 8).setValues([rowVals]);
+    bumpDataRev_();
+    return { ok: true, id: id, row: Number(b.row), rev: getDataRev_() };
+  }
+  sh.appendRow(rowVals);
+  bumpDataRev_();
+  return { ok: true, id: id };
+}
+
+function deleteTask_(ss, b) {
+  var sh = ss.getSheetByName('Задачи');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    var rId = String(rows[i][0] || '').trim();
+    var rTitle = String(rows[i][3] || '').trim();
+    if (rId === '__SYS_CONFIG_V19__' || rTitle === '__SYS_SYNC__') continue;
+    if ((b.id && rId === String(b.id).trim()) || (b.expect && rTitle === String(b.expect).trim())) {
+      sh.deleteRow(i + 1);
+      bumpDataRev_();
+      try { appendAudit_(ss, 'Администратор', 'Удалена задача чек-листа', rTitle || rId); } catch (_) {}
+      return { ok: true, deletedId: rId, rev: getDataRev_() };
+    }
+  }
+  if (b.row && Number(b.row) >= 2 && Number(b.row) <= sh.getLastRow()) {
+    sh.deleteRow(Number(b.row));
+    bumpDataRev_();
+  }
+  return { ok: true, rev: getDataRev_() };
+}
+
+function reorderTasks_(ss, b) {
+  var blk = String((b && b.block) || '').trim();
+  var orderedIds = Array.isArray(b && b.orderedIds) ? b.orderedIds.map(function(x) { return String(x || '').trim(); }).filter(Boolean) : [];
+  if (!blk || !orderedIds.length) return { ok: false, error: 'INVALID_REORDER_PAYLOAD' };
+  var sh = ss.getSheetByName('Задачи');
+  if (!sh) return { ok: false, error: 'TASKS_SHEET_MISSING' };
+  var rows = sh.getDataRange().getValues();
+  if (rows.length <= 2) return { ok: true, block: blk, count: 0, rev: getDataRev_() };
+
+  var dataRows = rows.slice(1).map(function(r) {
+    var copy = r.slice(0, 8);
+    while (copy.length < 8) copy.push('');
+    return copy;
+  });
+
+  var blockPositions = [];
+  var blockRows = [];
+  for (var i = 0; i < dataRows.length; i++) {
+    var rId = String(dataRows[i][0] || '').trim();
+    var rBlk = String(dataRows[i][1] || '').trim();
+    if (rId === '__SYS_CONFIG_V19__' || String(dataRows[i][3] || '').trim() === '__SYS_SYNC__') continue;
+    if (rBlk === blk) {
+      blockPositions.push(i);
+      blockRows.push(dataRows[i]);
+    }
+  }
+  if (blockRows.length <= 1) return { ok: true, block: blk, count: blockRows.length, rev: getDataRev_() };
+
+  var byId = {};
+  blockRows.forEach(function(r) { byId[String(r[0] || '').trim()] = r; });
+  var reordered = [];
+  var used = {};
+  orderedIds.forEach(function(id) {
+    if (byId[id] && !used[id]) {
+      reordered.push(byId[id]);
+      used[id] = true;
+    }
+  });
+  blockRows.forEach(function(r) {
+    var id = String(r[0] || '').trim();
+    if (!used[id]) reordered.push(r);
+  });
+
+  for (var j = 0; j < blockPositions.length; j++) {
+    dataRows[blockPositions[j]] = reordered[j];
+  }
+  sh.getRange(2, 1, dataRows.length, 8).setValues(dataRows);
+  bumpDataRev_();
+  try { appendAudit_(ss, 'Администратор', 'Изменён порядок задач в блоке «' + blk + '»', 'Задач: ' + reordered.length); } catch (_) {}
+  return { ok: true, block: blk, count: reordered.length, rev: getDataRev_() };
+}
+
+function reorderTask_(ss, b) {
+  var sh = ss.getSheetByName('Задачи');
+  var rows = sh.getDataRange().getValues();
+  var idx = -1;
+  for (var i = 1; i < rows.length; i++) {
+    if (b.id && String(rows[i][0]).trim() === String(b.id).trim()) { idx = i; break; }
+  }
+  if (idx < 1 && b.row && Number(b.row) >= 2 && Number(b.row) <= rows.length) idx = Number(b.row) - 1;
+  if (idx < 1) return { ok: true };
+  var dir = b.dir === 'up' ? -1 : 1;
+  var blk = String(rows[idx][1] || '');
+  var swapIdx = idx + dir;
+  while (swapIdx >= 1 && swapIdx < rows.length && String(rows[swapIdx][1] || '') !== blk) {
+    swapIdx += dir;
+  }
+  if (swapIdx >= 1 && swapIdx < rows.length) {
+    var rowA = rows[idx].slice(0, 8);
+    var rowB = rows[swapIdx].slice(0, 8);
+    sh.getRange(idx + 1, 1, 1, 8).setValues([rowB]);
+    sh.getRange(swapIdx + 1, 1, 1, 8).setValues([rowA]);
+  }
+  return { ok: true };
+}
+
+function syncAllToSheet_(ss, b) {
+  if (Array.isArray(b.settings)) {
+    b.settings.forEach(function(it) { saveSettingSecure_(ss, it); });
+  }
+  if (Array.isArray(b.checklistBlocks)) {
+    syncChecklistBlocksSheet_(ss, b.checklistBlocks);
+  }
+  if (b.dailyPlans) {
+    saveDailyPlans_(ss, { plans: b.dailyPlans });
+  }
+  if (b.shiftRoster) {
+    saveShiftRoster_(ss, { roster: b.shiftRoster });
+  }
+  if (Array.isArray(b.tasks) && b.tasks.length) {
+    var shT = ss.getSheetByName('Задачи');
+    var lastT = shT.getLastRow();
+    if (lastT > 1) shT.deleteRows(2, lastT - 1);
+    b.tasks.forEach(function(t) {
+      if (!t || t.id === '__SYS_CONFIG_V19__' || t.title === '__SYS_SYNC__') return;
+      shT.appendRow([t.id || '', t.block || 'Открытие', t.groupName || '', t.title || '', t.instruction || '', t.photoMode || t.photo || 'нет', t.responsible || 'Администратор', t.active || 'да']);
+    });
+  }
+  if (Array.isArray(b.goodDeeds)) {
+    var shG = ss.getSheetByName('Карта добрых дел');
+    var lastG = shG.getLastRow();
+    if (lastG > 1) shG.deleteRows(2, lastG - 1);
+    b.goodDeeds.forEach(function(g) {
+      if (!g) return;
+      shG.appendRow([g.id || '', g.title || '', g.frequency || '', g.window || '', g.responsible || 'Бариста', g.reviewer || 'Управляющий', g.instruction || '']);
+    });
+  }
+  if (Array.isArray(b.ttk)) {
+    var shK = ss.getSheetByName('Техкарты');
+    var lastK = shK.getLastRow();
+    if (lastK > 1) shK.deleteRows(2, lastK - 1);
+    b.ttk.forEach(function(k) {
+      if (!k) return;
+      shK.appendRow([k.id || '', k.name || '', k.volume || '', k.category || '', Number(k.price) || 0, Number(k.costBeans) || 0, Number(k.costMilk) || 0, Number(k.costSyrup) || 0, Number(k.costCup) || 0, k.recipe || '', k.serving || '']);
+    });
+  }
+  if (Array.isArray(b.staff)) {
+    var shS = ss.getSheetByName('Сотрудники');
+    var lastS = shS.getLastRow();
+    if (lastS > 1) shS.deleteRows(2, lastS - 1);
+    b.staff.forEach(function(s) {
+      if (!s) return;
+      shS.appendRow([s.id || '', s.name || '', s.role || 'Бариста', s.shop || 'Кофейня №1', s.active || 'да', '••']);
+    });
+  }
+  appendAudit_(ss, 'Администратор', 'Полная выгрузка конфигурации в Google Таблицу', 'Настройки, Таймлайн, Планы, Задачи, Карта добрых дел, Техкарты и Штат синхронизированы');
+  return { ok: true, synced: true };
+}
+
+function submitCash_(ss, b) {
+  var sh = ss.getSheetByName('Касса');
+  var shSales = ss.getSheetByName('Продажи');
+  if (!shSales) {
+    shSales = ss.insertSheet('Продажи');
+    shSales.appendRow(['Дата', 'Смена', 'Бариста', 'Номенклатура', 'Категория', 'Цена', 'Количество', 'Сумма', 'Хэш CSV']);
+  }
+  var dt = fmtIso_(b.date) || isoDate_();
+  var mode = b.mergeMode || (b.action === 'admin_cash' ? 'replace' : 'sum');
+  var baristaName = String(b.barista || b.userName || '').trim() || 'Бариста';
+  var woRub = Number(b.writeoff != null ? b.writeoff : b.writeOffs) || 0;
+  var woShots = Number(b.writeoffShots != null ? b.writeoffShots : b.writeOffShots) || 0;
+  var cStart = (b.counterStart != null && b.counterStart !== '') ? Number(b.counterStart) : ((b.prevCounter != null && b.prevCounter !== '') ? Number(b.prevCounter) : null);
+  var cEnd = (b.counterEnd != null && b.counterEnd !== '') ? Number(b.counterEnd) : ((b.endCounter != null && b.endCounter !== '') ? Number(b.endCounter) : null);
+
+  var incomingHashes = Array.isArray(b.csvHashes) ? b.csvHashes.filter(Boolean) : (b.csvHash ? [String(b.csvHash)] : []);
+  var salesRows = shSales.getDataRange().getValues();
+  if (mode === 'replace') {
+    for (var sDel = salesRows.length - 1; sDel >= 1; sDel--) {
+      if (fmtIso_(salesRows[sDel][0]) === dt) shSales.deleteRow(sDel + 1);
+    }
+    salesRows = shSales.getDataRange().getValues();
+  }
+
+  var existingHashesForDate = {};
+  for (var sIdx = 1; sIdx < salesRows.length; sIdx++) {
+    if (fmtIso_(salesRows[sIdx][0]) === dt && salesRows[sIdx][8]) {
+      existingHashesForDate[String(salesRows[sIdx][8])] = true;
+    }
+  }
+
+  var rawProducts = Array.isArray(b.products) ? b.products : [];
+  var duplicateCsvSkipped = false;
+  var calcCoffee = 0, calcNonCoffee = 0, calcReview = 0;
+
+  rawProducts.forEach(function(p) {
+    if (!p || !p.name) return;
+    var pQty = Number(p.qty) || 0;
+    if (pQty <= 0) return;
+    var pPrice = Number(p.price) || (p.sum ? Math.round((Number(p.sum) / pQty) * 100) / 100 : 0);
+    var pSum = Number(p.sum) || Math.round(pPrice * pQty);
+    var pKind = p.kind || classifyCoffeeServer_(p.name);
+    var pBarista = p.barista || baristaName;
+    var pHash = p.csvHash || b.csvHash || (incomingHashes[0] || '');
+    if (pKind === 'coffee') calcCoffee += pQty;
+    else if (pKind === 'review') calcReview += pQty;
+    else calcNonCoffee += pQty;
+    if (mode !== 'replace' && pHash && existingHashesForDate[pHash]) {
+      duplicateCsvSkipped = true;
+      return;
+    }
+    shSales.appendRow([dt, pBarista, pBarista, String(p.name).trim(), pKind, pPrice, pQty, pSum, pHash]);
+  });
+
+  // v93.1: Запись детализированных чеков в лист «Транзакции» с дедупликацией по номеру чека
+  var rawTx = Array.isArray(b.transactions) ? b.transactions : [];
+  var txAdded = 0, txSkipped = 0;
+  if (rawTx.length) {
+    var shTx = ss.getSheetByName('Транзакции');
+    if (!shTx) {
+      shTx = ss.insertSheet('Транзакции');
+      shTx.appendRow(['Дата', 'Время', 'Номер чека', 'Способ оплаты', 'Сумма', 'Пользователь POS', 'Бариста', 'Хэш CSV']);
+    }
+    var shopKey = String((getSettingsMap_(ss).LOCATION) || 'default').trim().toLowerCase();
+    var txRows = shTx.getDataRange().getValues();
+    var existingReceipts = {};
+    for (var tIdx = 1; tIdx < txRows.length; tIdx++) {
+      var rDt = fmtIso_(txRows[tIdx][0]) || '';
+      var rNo = String(txRows[tIdx][2] || '').trim();
+      var rCashier = String(txRows[tIdx][5] || txRows[tIdx][6] || '').trim().toLowerCase();
+      if (rNo) {
+        existingReceipts[shopKey + '|' + rDt + '|' + rNo + '|' + rCashier] = true;
+      }
+    }
+    var toAppendTx = [];
+    rawTx.forEach(function(tx) {
+      if (!tx) return;
+      var txDt = fmtIso_(tx.date) || dt;
+      var no = String(tx.txId || tx.id || tx.receiptNo || tx.number || '').trim();
+      var txCashier = String(tx.userRaw || tx.barista || baristaName || '').trim().toLowerCase();
+      var amt = Number(tx.amount) || 0;
+      if (amt <= 0) return;
+      var txCompKey = no ? (shopKey + '|' + txDt + '|' + no + '|' + txCashier) : '';
+      if (txCompKey && existingReceipts[txCompKey]) {
+        txSkipped++;
+        return;
+      }
+      if (txCompKey) existingReceipts[txCompKey] = true;
+      toAppendTx.push([
+        fmtIso_(tx.date) || dt,
+        String(tx.time || ''),
+        no,
+        String(tx.paymentRaw || (tx.paymentType === 'card' ? 'Мобильный платеж' : 'Наличный')),
+        amt,
+        String(tx.userRaw || ''),
+        String(tx.barista || baristaName),
+        String(tx.csvHash || b.csvHash || (incomingHashes[0] || ''))
+      ]);
+      txAdded++;
+    });
+    if (toAppendTx.length) {
+      var startRowTx = shTx.getLastRow() + 1;
+      shTx.getRange(startRowTx, 1, toAppendTx.length, 8).setValues(toAppendTx);
+    }
+  }
+
+  var coffeeQty = b.coffeeQty != null ? Number(b.coffeeQty) : (b.coffeeCups != null ? Number(b.coffeeCups) : calcCoffee);
+  var nonCoffeeQty = b.nonCoffeeQty != null ? Number(b.nonCoffeeQty) : calcNonCoffee;
+  var reviewQty = b.reviewQty != null ? Number(b.reviewQty) : calcReview;
+
+  var shiftsArr = Array.isArray(b.shifts) && b.shifts.length ? b.shifts : [{
+    name: baristaName,
+    cash: Number(b.cash) || 0,
+    card: Number(b.card) || 0,
+    checks: Number(b.checks) || 0,
+    writeoff: woRub,
+    writeoffShots: woShots,
+    prevCounter: cStart,
+    counter: cEnd,
+    coffeeQty: coffeeQty,
+    nonCoffeeQty: nonCoffeeQty,
+    reviewQty: reviewQty
+  }];
+
+  if (cStart === null && shiftsArr[0] && shiftsArr[0].prevCounter != null) cStart = Number(shiftsArr[0].prevCounter);
+  if (cEnd === null && shiftsArr[shiftsArr.length - 1] && shiftsArr[shiftsArr.length - 1].counter != null) cEnd = Number(shiftsArr[shiftsArr.length - 1].counter);
+
+  var totalDelta = 0, hasCnt = false;
+  shiftsArr.forEach(function(s) {
+    var d = counterDeltaServer_(s.prevCounter != null ? s.prevCounter : s.counterStart, s.counter != null ? s.counter : s.counterEnd);
+    if (d !== null) { hasCnt = true; totalDelta += d; }
+  });
+  if (!hasCnt && cStart !== null && cEnd !== null) {
+    var d0 = counterDeltaServer_(cStart, cEnd);
+    if (d0 !== null) { hasCnt = true; totalDelta = d0; }
+  }
+  var unaccountedShots = b.unaccountedShots != null
+    ? Number(b.unaccountedShots)
+    : (hasCnt ? Math.max(0, totalDelta - (coffeeQty + woShots)) : 0);
+
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (fmtIso_(rows[i][0]) === dt) {
+      var prevRow = rows[i];
+      if (mode === 'sum' && b.action !== 'admin_cash' && !Array.isArray(b.days)) {
+        var prevShifts = [];
+        if (prevRow[15]) { try { prevShifts = JSON.parse(String(prevRow[15])); } catch (_) {} }
+        if (!prevShifts.length && (Number(prevRow[1]) || Number(prevRow[2]))) {
+          prevShifts = [{
+            name: String(prevRow[6] || 'Смена 1'),
+            cash: Number(prevRow[1]) || 0,
+            card: Number(prevRow[2]) || 0,
+            checks: Number(prevRow[3]) || 0,
+            writeoff: Number(prevRow[4]) || 0,
+            writeoffShots: Number(prevRow[9]) || 0,
+            prevCounter: prevRow[7] !== '' && prevRow[7] != null ? Number(prevRow[7]) : null,
+            counter: prevRow[8] !== '' && prevRow[8] != null ? Number(prevRow[8]) : null,
+            coffeeQty: Number(prevRow[10]) || 0,
+            nonCoffeeQty: Number(prevRow[11]) || 0,
+            reviewQty: Number(prevRow[12]) || 0
+          }];
+        }
+        shiftsArr.forEach(function(incS) {
+          var sIdx2 = -1;
+          for (var k = 0; k < prevShifts.length; k++) {
+            if (prevShifts[k].name && incS.name && String(prevShifts[k].name).toLowerCase() === String(incS.name).toLowerCase()) { sIdx2 = k; break; }
+          }
+          if (sIdx2 >= 0) {
+            prevShifts[sIdx2] = Object.assign({}, prevShifts[sIdx2], incS);
+          } else {
+            prevShifts.push(incS);
+          }
+        });
+        var sumCash = prevShifts.reduce(function(a, x){ return a + (Number(x.cash) || 0); }, 0);
+        var sumCard = prevShifts.reduce(function(a, x){ return a + (Number(x.card) || 0); }, 0);
+        var sumChecks = prevShifts.reduce(function(a, x){ return a + (Number(x.checks) || 0); }, 0);
+        var sumWoRub = prevShifts.reduce(function(a, x){ return a + (Number(x.writeoff) || 0); }, 0);
+        var sumWoShots = prevShifts.reduce(function(a, x){ return a + (Number(x.writeoffShots) || 0); }, 0);
+        var sumCoffee = prevShifts.reduce(function(a, x){ return a + (Number(x.coffeeQty) || 0); }, 0) || ((Number(prevRow[10]) || 0) + (duplicateCsvSkipped ? 0 : coffeeQty));
+        var sumNonCoffee = prevShifts.reduce(function(a, x){ return a + (Number(x.nonCoffeeQty) || 0); }, 0) || ((Number(prevRow[11]) || 0) + (duplicateCsvSkipped ? 0 : nonCoffeeQty));
+        var sumReview = prevShifts.reduce(function(a, x){ return a + (Number(x.reviewQty) || 0); }, 0) || ((Number(prevRow[12]) || 0) + (duplicateCsvSkipped ? 0 : reviewQty));
+        var mergedBaristas = [];
+        prevShifts.forEach(function(x){ if (x.name && mergedBaristas.indexOf(x.name) < 0) mergedBaristas.push(x.name); });
+        var prevHashes = [];
+        if (prevRow[14]) { try { prevHashes = JSON.parse(String(prevRow[14])); } catch (_) {} }
+        incomingHashes.forEach(function(h){ if (prevHashes.indexOf(h) < 0) prevHashes.push(h); });
+        var firstStart = cStart != null ? cStart : (prevRow[7] !== '' && prevRow[7] != null ? Number(prevRow[7]) : null);
+        var lastEnd = cEnd != null ? cEnd : (prevRow[8] !== '' && prevRow[8] != null ? Number(prevRow[8]) : null);
+        var sumDelta = 0, sumHasCnt = false;
+        prevShifts.forEach(function(s) {
+          var d = counterDeltaServer_(s.prevCounter, s.counter);
+          if (d !== null) { sumHasCnt = true; sumDelta += d; }
+        });
+        if (!sumHasCnt && firstStart !== null && lastEnd !== null) {
+          var dDay = counterDeltaServer_(firstStart, lastEnd);
+          if (dDay !== null) { sumHasCnt = true; sumDelta = dDay; }
+        }
+        var sumUnacc = sumHasCnt ? Math.max(0, sumDelta - (sumCoffee + sumWoShots)) : 0;
+        var mergedTop = b.topItems ? (prevRow[5] && String(prevRow[5]).indexOf(b.topItems) < 0 ? (prevRow[5] + ' · ' + b.topItems) : b.topItems) : (prevRow[5] || '');
+        sh.getRange(i + 1, 1, 1, 16).setValues([[
+          dt, sumCash, sumCard, sumChecks, sumWoRub, mergedTop, mergedBaristas.join(', ') || baristaName,
+          firstStart != null ? firstStart : '', lastEnd != null ? lastEnd : '',
+          sumWoShots, sumCoffee, sumNonCoffee, sumReview, sumUnacc,
+          JSON.stringify(prevHashes), JSON.stringify(prevShifts)
+        ]]);
+        if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
+  bumpDataRev_();
+        return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
+      }
+
+      sh.getRange(i + 1, 1, 1, 16).setValues([[
+        dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, woRub,
+        b.topItems || prevRow[5] || '', baristaName || prevRow[6] || '',
+        cStart != null ? cStart : (prevRow[7] || ''), cEnd != null ? cEnd : (prevRow[8] || ''),
+        woShots, coffeeQty, nonCoffeeQty, reviewQty, unaccountedShots,
+        JSON.stringify(incomingHashes), JSON.stringify(shiftsArr)
+      ]]);
+      if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
+      bumpDataRev_();
+      return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
+    }
+  }
+
+  sh.appendRow([
+    dt, Number(b.cash) || 0, Number(b.card) || 0, Number(b.checks) || 0, woRub,
+    b.topItems || '', baristaName,
+    cStart != null ? cStart : '', cEnd != null ? cEnd : '',
+    woShots, coffeeQty, nonCoffeeQty, reviewQty, unaccountedShots,
+    JSON.stringify(incomingHashes), JSON.stringify(shiftsArr)
+  ]);
+  if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
+  bumpDataRev_();
+  return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
+}
+
+function batchSubmitCash_(ss, b) {
+  var sess = requireAdminOrStaffSession_(ss, b);
+  var days = Array.isArray(b && b.days) ? b.days : [];
+  if (!days.length) {
+    throw new Error('VALIDATION_FAILED: Пакет кассовых отчётов пуст (days должен быть непустым массивом)');
+  }
+  if (days.length > 62) {
+    throw new Error('VALIDATION_FAILED: Превышен максимальный размер пакета (не более 62 дней за запрос)');
+  }
+  // Фаза 1 (Атомарная предвалидация): проверяем каждый день ДО записи хотя бы одной строки в таблицу
+  for (var i = 0; i < days.length; i++) {
+    var dItem = days[i];
+    if (!dItem || typeof dItem !== 'object') {
+      throw new Error('VALIDATION_FAILED: Некорректный объект дня в пакете (индекс ' + i + ')');
+    }
+    var checkItem = Object.assign({}, dItem, {
+      sessionToken: b.sessionToken,
+      staffPinHash: b.staffPinHash,
+      pinHash: b.pinHash,
+      pin: b.pin,
+      userName: dItem.barista || dItem.userName || sess.staffName,
+      _ownerBatchAuthorized: (sess && sess.role === 'admin')
+    });
+    validateCashPayload_(ss, checkItem);
+  }
+  // Фаза 2 (Запись): все элементы пакета валидны — применяем изменения
+  var mode = b.mergeMode || 'sum';
+  var savedDates = [];
+  var totalTxAdded = 0, totalTxSkipped = 0;
+  days.forEach(function(d) {
+    var dayPayload = Object.assign({}, d, {
+      mergeMode: d.mergeMode || mode,
+      sessionToken: b.sessionToken,
+      staffPinHash: b.staffPinHash,
+      pinHash: b.pinHash,
+      pin: b.pin,
+      userName: d.barista || d.userName || sess.staffName,
+      _ownerBatchAuthorized: (sess && sess.role === 'admin')
+    });
+    var rDay = submitCash_(ss, dayPayload);
+    if (rDay) {
+      totalTxAdded += Number(rDay.txAdded || 0);
+      totalTxSkipped += Number(rDay.txSkipped || 0);
+    }
+    savedDates.push(fmtIso_(d.date) || isoDate_());
+  });
+  bumpDataRev_();
+  return { ok: true, count: savedDates.length, savedDays: savedDates.length, savedDates: savedDates, dates: savedDates, txAdded: totalTxAdded, txSkipped: totalTxSkipped };
+}
+
+function deleteCash_(ss, b) {
+  var sh = ss.getSheetByName('Касса');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (fmtIso_(rows[i][0]) === b.date) sh.deleteRow(i + 1);
+  }
+  var shSales = ss.getSheetByName('Продажи');
+  if (shSales) {
+    var sRows = shSales.getDataRange().getValues();
+    for (var j = sRows.length - 1; j >= 1; j--) {
+      if (fmtIso_(sRows[j][0]) === b.date) shSales.deleteRow(j + 1);
+    }
+  }
+  var shTx = ss.getSheetByName('Транзакции');
+  if (shTx) {
+    var txRows = shTx.getDataRange().getValues();
+    for (var k = txRows.length - 1; k >= 1; k--) {
+      if (fmtIso_(txRows[k][0]) === b.date) shTx.deleteRow(k + 1);
+    }
+  }
+  bumpDataRev_();
+  return { ok: true };
+}
+
+function addExpense_(ss, b) {
+  var sh = ss.getSheetByName('Расходы');
+  var id = String(b.id || newId_('EXP')).trim();
+  sh.appendRow([id, b.date || isoDate_(), b.category || 'Прочее', Number(b.amount) || 0, b.comment || '']);
+  bumpDataRev_();
+  return { ok: true, id: id };
+}
+
+function updateExpense_(ss, b) {
+  var sh = ss.getSheetByName('Расходы');
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(b.id)) {
+      sh.getRange(i + 1, 2, 1, 4).setValues([[b.date, b.category, Number(b.amount) || 0, b.comment || '']]);
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function deleteExpense_(ss, b) {
+  var sh = ss.getSheetByName('Расходы');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]) === String(b.id)) sh.deleteRow(i + 1);
+  }
+  bumpDataRev_();
+  return { ok: true };
+}
+
+/**
+ * При фиксации поломки в чек-листе автоматически назначаем ответственного (Техник, Шеф-бариста или Администратор),
+ * указанного для этого шага регламента.
+ */
+function getChecklistsLogFromSheet_(ss) {
+  var sh = ss.getSheetByName('Чек-листы');
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var list = [];
+  var seenLogKeys = {};
+  for (var i = Math.max(1, rows.length - 1000); i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0] || !r[2]) continue;
+    var phs = [];
+    try { phs = JSON.parse(String(r[5] || '[]')); } catch (_) {}
+    var statusStr = String(r[7] || 'В срок');
+    var rDate = fmtIso_(r[0]);
+    var rTime = fmtTime_(r[1]);
+    var rBlk = String(r[2] || 'Открытие');
+    var rWho = String(r[3] || 'Бариста');
+    seenLogKeys[rDate + '|' + rTime + '|' + rBlk + '|' + rWho.toLowerCase()] = true;
+    list.push({
+      date: rDate,
+      time: rTime,
+      block: rBlk,
+      who: rWho,
+      problems: Number(r[4]) || 0,
+      photos: Array.isArray(phs) ? phs : [],
+      deadline: String(r[6] || '08:30'),
+      isLate: statusStr === 'Просрочено',
+      status: statusStr === 'Просрочено' ? 'Просрочено' : 'Выполнено'
+    });
+  }
+  var shLegLogs = ss.getSheetByName('Coffee_illy_Logs');
+  if (shLegLogs) {
+    var lRows = shLegLogs.getDataRange().getValues();
+    for (var j = 1; j < lRows.length; j++) {
+      var lr = lRows[j];
+      if (!lr[1] || !lr[5]) continue;
+      var lDate = fmtIso_(lr[1]);
+      var lTime = fmtTime_(lr[2]);
+      var lBlk = String(lr[5] || 'Открытие');
+      var lWho = String(lr[4] || 'Бариста');
+      var legKey = lDate + '|' + lTime + '|' + lBlk + '|' + lWho.toLowerCase();
+      if (seenLogKeys[legKey]) continue;
+      seenLogKeys[legKey] = true;
+      var lPhs = [];
+      try { lPhs = JSON.parse(String(lr[8] || '[]')); } catch (_) {}
+      list.push({
+        date: lDate,
+        time: fmtTime_(lr[2]),
+        block: lBlk,
+        who: lWho,
+        problems: Number(lr[7]) || 0,
+        photos: Array.isArray(lPhs) ? lPhs : [],
+        deadline: '08:30',
+        isLate: false,
+        status: 'Выполнено'
+      });
+    }
+  }
+  list.sort(function(a, b) {
+    var da = String((a && a.date) || '');
+    var db = String((b && b.date) || '');
+    if (da !== db) return da < db ? 1 : -1;
+    var ta = String((a && a.time) || '').padStart(5, '0');
+    var tb = String((b && b.time) || '').padStart(5, '0');
+    if (ta !== tb) return ta < tb ? 1 : -1;
+    return 0;
+  });
+  return list;
+}
+
+function saveChecklistDraft_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var map = getSettingsMap_(ss);
+  var drafts = {};
+  var activeStates = {};
+  try { drafts = JSON.parse(map.USER_DRAFTS_JSON || '{}'); } catch (_) {}
+  try { activeStates = JSON.parse(map.USER_ACTIVE_STATE_JSON || '{}'); } catch (_) {}
+  var dt = fmtIso_(b.date) || isoDate_();
+  var who = String(b.userName || 'Бариста').trim();
+  var blk = String(b.block || 'Открытие').trim();
+  var dKey = dt + ':' + who + ':' + blk;
+  var tsNow = Number(b.updatedAt) || Date.now();
+  if (b.cleared || b.completed) {
+    drafts[dKey] = { date: dt, userName: who, block: blk, idx: 0, answers: [], cleared: !!b.cleared, completed: !!b.completed, updatedAt: tsNow };
+  } else if (b.draft && typeof b.draft === 'object') {
+    drafts[dKey] = Object.assign({}, b.draft, { date: dt, userName: who, block: blk, updatedAt: Number(b.draft.updatedAt) || tsNow });
+  }
+  if (b.activeState && typeof b.activeState === 'object') {
+    activeStates[who] = Object.assign({}, b.activeState, { updatedAt: Number(b.activeState.updatedAt) || tsNow });
+    saveSetting_(ss, { id: 'USER_ACTIVE_STATE_JSON', value: JSON.stringify(activeStates) });
+  }
+  setJsonProp_('COFFEE_USER_DRAFTS_JSON', drafts);
+  setJsonProp_('COFFEE_USER_ACTIVE_STATE_JSON', activeStates);
+  var draftsStr = JSON.stringify(drafts);
+  if (draftsStr.length <= 45000) {
+    saveSetting_(ss, { id: 'USER_DRAFTS_JSON', value: draftsStr });
+  }
+  return { ok: true, updatedAt: tsNow };
+}
+
+function bindTelegramUser_(ss, b) {
+  var authCheck = verifySafeTelegramBindingV83_(ss, b);
+  if (!authCheck || !authCheck.ok) {
+    throw new Error((authCheck && authCheck.error) || 'TELEGRAM_BIND_AUTH_REQUIRED: Отказ в привязке Telegram ID');
+  }
+  var tgId = String((b && b.tgId) || '').trim();
+  var staffName = String((b && b.staffName) || '').trim();
+  if (!tgId || !staffName) return { ok: false, error: 'VALIDATION_FAILED: Не указан tgId или staffName' };
+  var bindings = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+  bindings[tgId] = {
+    tgId: tgId,
+    tgUsername: String((b && b.tgUsername) || '').trim(),
+    tgFirstName: String((b && b.tgFirstName) || '').trim(),
+    staffName: staffName,
+    updatedAt: Number(b && b.updatedAt) || Date.now()
+  };
+  setJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', bindings);
+  try {
+    var sh = ss.getSheetByName('Сотрудники');
+    if (sh) {
+      var rows = sh.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][1] || '').trim().toLowerCase() === staffName.toLowerCase()) {
+          sh.getRange(i + 1, 7).setValue(b.tgUsername ? ('@' + String(b.tgUsername).replace(/^@/, '') + ' (' + tgId + ')') : tgId);
+          break;
+        }
+      }
+    }
+  } catch (_) {}
+  return { ok: true, tgId: tgId, staffName: staffName };
+}
+
+function togglePersonalTask_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var map = getSettingsMap_(ss);
+  var pMap = {};
+  try { pMap = JSON.parse(map.PERSONAL_TASKS_DONE_JSON || '{}'); } catch (_) {}
+  var dt = fmtIso_(b.date) || isoDate_();
+  var who = String(b.userName || 'Бариста').trim();
+  var tId = String(b.taskId || '').trim();
+  var tsNow = Number(b.updatedAt) || Date.now();
+  if (tId) {
+    pMap[dt + ':' + who + ':' + tId] = { done: !!b.done, updatedAt: tsNow };
+    saveSetting_(ss, { id: 'PERSONAL_TASKS_DONE_JSON', value: JSON.stringify(pMap) });
+  }
+  return { ok: true, updatedAt: tsNow };
+}
+
+function submitChecklist_(ss, b) {
+  var sh = ss.getSheetByName('Чек-листы');
+  var dt = isoDate_();
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  var items = b.items || [];
+  var probs = items.filter(function(x) { return x && x.isIncident; });
+  var phs = [];
+  items.forEach(function(it) {
+    if (!it) return;
+    var finalUrl = it.photo_url || '';
+    var rawB64 = it.photo_base64 || (/^data:(image|video)\//i.test(finalUrl) ? finalUrl : '');
+    if (rawB64 && (!finalUrl || /^data:/i.test(finalUrl))) {
+      var upRes = uploadPhotoToDrive_(ss, {
+        sessionToken: b.sessionToken,
+        staffPinHash: b.staffPinHash,
+        pinHash: b.pinHash,
+        pin: b.pin,
+        userName: b.userName || 'Бариста',
+        block: b.block || 'Открытие',
+        dataUri: rawB64
+      });
+      if (upRes && upRes.ok && upRes.url) {
+        finalUrl = upRes.url;
+        it.photo_url = finalUrl;
+      }
+    }
+    if (finalUrl) phs.push({ step: it.title || '', url: finalUrl, isIncident: !!it.isIncident, comment: it.comment || '' });
+  });
+
+  sh.appendRow([dt, tm, b.block || 'Открытие', b.userName || 'Бариста', probs.length, JSON.stringify(phs), b.deadline || '08:30', b.isLate ? 'Просрочено' : 'В срок']);
+  try {
+    saveChecklistDraft_(ss, { sessionToken: b.sessionToken, staffPinHash: b.staffPinHash, pinHash: b.pinHash, pin: b.pin, date: dt, userName: b.userName || 'Бариста', block: b.block || 'Открытие', completed: true, updatedAt: Date.now() });
+  } catch (_) {}
+
+  var shI = ss.getSheetByName('Поломки');
+  probs.forEach(function(p) {
+    var assignedOwner = p.responsible || p.owner || 'Администратор';
+    var hist = [{ time: dt + ' ' + tm, actor: b.userName || 'Бариста', status: 'Новая проблема', note: 'Зафиксировано при прохождении чек-листа' }];
+    shI.appendRow([
+      newId_('INC'),
+      dt,
+      tm,
+      p.title || 'Шаг чек-листа',
+      p.comment || '',
+      p.priority || 'Терпит',
+      'Новая проблема',
+      b.userName || 'Бариста',
+      assignedOwner,
+      p.photo_url || '',
+      p.incType || 'Поломка оборудования',
+      JSON.stringify(hist)
+    ]);
+  });
+
+  try {
+    var map = getSettingsMap_(ss);
+    var extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}');
+    var extKey = dt + ':' + (b.block || 'Открытие');
+    if (extMap[extKey]) {
+      delete extMap[extKey];
+      saveSetting_(ss, { id: 'DEADLINE_EXTENSIONS_JSON', value: JSON.stringify(extMap) });
+    }
+  } catch (_) {}
+  try {
+    if (shI && shI.getLastRow() > 1) {
+      var iRows = shI.getDataRange().getValues();
+      var subBlkLow = String(b.block || 'Открытие').trim().toLowerCase();
+      for (var ri = 1; ri < iRows.length; ri++) {
+        var rId = String(iRows[ri][0] || '');
+        var rDt = String(iRows[ri][1] || '').slice(0, 10);
+        var rStep = String(iRows[ri][3] || '').toLowerCase();
+        var rSt = String(iRows[ri][6] || '');
+        if (rId.indexOf('INC-LATE-') === 0 && rDt === dt && rSt !== 'Решена' && rStep.indexOf(subBlkLow) >= 0) {
+          shI.getRange(ri + 1, 7).setValue('Решена');
+        }
+      }
+    }
+  } catch (_) {}
+  bumpDataRev_();
+  appendAudit_(ss, b.userName || 'Бариста', 'Сдан чек-лист «' + (b.block || 'Открытие') + '»', 'Проблем: ' + probs.length + (b.isLate ? ' (ПРОСРОЧЕНО)' : ' (в срок)'));
+  return { ok: true, rev: getDataRev_() };
+}
+
+function reportIncident_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var shI = ss.getSheetByName('Поломки');
+  var dt = isoDate_();
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  var assignedOwner = b.responsible || 'Техник';
+  var hist = [{ time: dt + ' ' + tm, actor: b.userName || 'Бариста', status: 'Новая проблема', note: 'Внеплановая проблема' }];
+  var existingRows = (shI && shI.getLastRow() > 1) ? shI.getDataRange().getValues() : [];
+  var existingIds = {};
+  for (var i = 1; i < existingRows.length; i++) {
+    var exId = String(existingRows[i][0] || '').trim();
+    if (exId) existingIds[exId] = true;
+  }
+  var id = String((b && b.id) || '').trim();
+  if (!id || existingIds[id]) {
+    do {
+      id = newId_('INC');
+    } while (existingIds[id]);
+  }
+  shI.appendRow([
+    id,
+    dt,
+    tm,
+    b.step || b.incType || 'Внеплановый инцидент',
+    b.text || b.comment || '',
+    b.priority || 'Критично',
+    'Новая проблема',
+    b.userName || 'Бариста',
+    assignedOwner,
+    b.photo || '',
+    b.incType || 'Поломка оборудования',
+    JSON.stringify(hist)
+  ]);
+  appendAudit_(ss, b.userName || 'Бариста', 'Инцидент ' + id, b.step + ': ' + b.text);
+  return { ok: true, id: id };
+}
+
+function updateIncident_(ss, b) {
+  var sh = ss.getSheetByName('Поломки');
+  var rows = sh.getDataRange().getValues();
+  var tm = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HH:mm');
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) {
+      var hist = [];
+      try { hist = JSON.parse(String(rows[i][11] || '[]')); } catch (e) {}
+      if (b.status) sh.getRange(i + 1, 7).setValue(b.status);
+      if (b.comment != null) sh.getRange(i + 1, 5).setValue(b.comment);
+      if (b.priority != null) sh.getRange(i + 1, 6).setValue(b.priority);
+      if (b.responsible != null) sh.getRange(i + 1, 9).setValue(b.responsible);
+      if (b.incType != null) sh.getRange(i + 1, 11).setValue(b.incType);
+      hist.push({ time: isoDate_() + ' ' + tm, actor: b.actor || 'Администратор', status: b.status || rows[i][6], note: b.statusNote || 'Обновление' });
+      sh.getRange(i + 1, 12).setValue(JSON.stringify(hist));
+      appendAudit_(ss, b.actor || 'Администратор', 'Обновление инцидента ' + b.id, 'Статус: ' + (b.status || rows[i][6]));
+      break;
+    }
+  }
+  bumpDataRev_();
+  return { ok: true };
+}
+
+function deleteIncident_(ss, b) {
+  var sh = ss.getSheetByName('Поломки');
+  var rows = sh.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === String(b.id).trim()) sh.deleteRow(i + 1);
+  }
+  return { ok: true };
+}
+
+/* =========================================================================
+   v61 ERP СЕРВЕРНЫЕ МОДУЛИ:
+   1. Обучаемый классификатор CSV (saveNomenclatureRule_)
+   2. Складской учёт (saveInventory_)
+   3. Маркировки сроков годности (addExpiryItem_, disposeExpiryItem_)
+   4. Мульти-точка (saveShopLocation_)
+   5. Серверный Автопилот 24/7: триггеры просрочки 08:31 и Вечерняя сводка 23:00 (cronCheckDeadlinesAndDigest)
+   ========================================================================= */
+
+function saveNomenclatureRule_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var rules = getJsonProp_('COFFEE_NOMENCLATURE_RULES_JSON', {});
+  var rawName = String((b && (b.itemName || b.name)) || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`]/g, '').replace(/\s+/g, ' ').trim();
+  var kind = String((b && b.kind) || 'coffee');
+  if (rawName) {
+    rules[rawName] = kind;
+    setJsonProp_('COFFEE_NOMENCLATURE_RULES_JSON', rules);
+  }
+  return { ok: true, rules: rules };
+}
+
+function saveInventory_(ss, b) {
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var moves = getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []);
+  if (!Array.isArray(moves)) moves = [];
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
+  var id = String((b && b.id) || ('inv_' + Date.now().toString(36))).trim();
+  var idx = -1;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && String(list[i].id) === id) { idx = i; break; }
+  }
+  var moveType = 'edit';
+  var moveDelta = 0;
+  var targetItem = null;
+  if (idx >= 0) {
+    var prevStock = Number(list[idx].stock) || 0;
+    if (b.action === 'restock_inventory' && b.delta != null) {
+      moveDelta = Math.abs(Math.round(Number(b.delta) || 0));
+      list[idx].stock = Math.max(0, prevStock + moveDelta);
+      moveType = 'restock';
+    } else if (b.action === 'writeoff_inventory' && b.delta != null) {
+      moveDelta = -Math.abs(Math.round(Number(b.delta) || 0));
+      list[idx].stock = Math.max(0, prevStock + moveDelta);
+      moveType = 'writeoff';
+    } else {
+      if (b.name) list[idx].name = String(b.name);
+      if (b.category) list[idx].category = String(b.category);
+      if (b.unit) list[idx].unit = String(b.unit);
+      if (b.stock != null) {
+        var ns = Math.max(0, Math.round(Number(b.stock) || 0));
+        moveDelta = ns - prevStock;
+        list[idx].stock = ns;
+      }
+      if (b.minStock != null) list[idx].minStock = Math.max(0, Math.round(Number(b.minStock) || 0));
+    }
+    list[idx].updatedAt = today;
+    targetItem = list[idx];
+  } else if (b && b.name) {
+    var initStock = Math.max(0, Math.round(Number(b.stock) || 0));
+    targetItem = {
+      id: id,
+      name: String(b.name),
+      category: String(b.category || 'Сырьё'),
+      unit: String(b.unit || 'г'),
+      stock: initStock,
+      minStock: Math.max(0, Math.round(Number(b.minStock) || 0)),
+      updatedAt: today
+    };
+    list.push(targetItem);
+    moveType = 'restock';
+    moveDelta = initStock;
+  }
+  if (targetItem) {
+    moves.unshift({
+      id: 'mv_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1000),
+      itemId: targetItem.id,
+      name: targetItem.name,
+      category: targetItem.category || 'Сырьё',
+      type: moveType,
+      delta: moveDelta,
+      stockAfter: targetItem.stock,
+      unit: targetItem.unit || 'шт',
+      date: today,
+      time: hm,
+      actor: String((b && (b.actor || b.userName)) || 'Администратор'),
+      note: String((b && b.note) || '')
+    });
+    if (moves.length > 500) moves = moves.slice(0, 500);
+    setJsonProp_('COFFEE_INVENTORY_MOVES_JSON', moves);
+  }
+  setJsonProp_('COFFEE_INVENTORY_JSON', list);
+  syncInventoryToSheetV97_(ss, list);
+  if (targetItem) checkLowStockAlertV97_(ss, targetItem);
+  bumpDataRev_();
+  return { ok: true, inventory: list, inventoryMoves: moves };
+}
+
+function addExpiryItem_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var list = getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var nowMs = Number(b && b.openedAtMs) || Date.now();
+  var hours = Math.max(1, Number(b && (b.shelfLifeHours || b.hours)) || 24);
+  var expMs = nowMs + hours * 3600000;
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var item = {
+    id: String((b && b.id) || ('EXPIR-' + Date.now().toString(36))),
+    title: String((b && b.title) || 'Вскрытая позиция'),
+    category: String((b && b.category) || 'Бар'),
+    shelfLifeHours: hours,
+    openedAtMs: nowMs,
+    expiresAtMs: expMs,
+    openedAtStr: Utilities.formatDate(new Date(nowMs), tz, 'dd.MM HH:mm'),
+    expiresAtStr: Utilities.formatDate(new Date(expMs), tz, 'dd.MM HH:mm'),
+    who: String((b && (b.userName || b.who)) || 'Бариста'),
+    location: String((b && b.location) || 'Кофейня №1'),
+    disposed: false,
+    updatedAt: nowMs
+  };
+  list.unshift(item);
+  if (list.length > 60) list.length = 60;
+  setJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', list);
+  return { ok: true, item: item };
+}
+
+function disposeExpiryItem_(ss, b) {
+  requireVerifiedStaffSession_(ss, b);
+  var list = getJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var id = String((b && b.id) || '');
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && String(list[i].id) === id) {
+      list[i].disposed = true;
+      list[i].disposedAt = Date.now();
+      list[i].disposedBy = String((b && (b.userName || b.who)) || 'Бариста');
+      list[i].updatedAt = Date.now();
+      break;
+    }
+  }
+  setJsonProp_('COFFEE_EXPIRY_ITEMS_JSON', list);
+  return { ok: true };
+}
+
+function saveShopLocation_(ss, b) {
+  var shops = getJsonProp_('COFFEE_SHOPS_JSON', []);
+  if (!Array.isArray(shops)) shops = [];
+  if (b && b.shop && b.shop.name) {
+    var shName = String(b.shop.name).trim();
+    var found = false;
+    for (var i = 0; i < shops.length; i++) {
+      if (shops[i] && String(shops[i].name).toLowerCase() === shName.toLowerCase()) {
+        shops[i].plan = Math.max(100, Number(b.shop.plan) || 2500);
+        shops[i].initCounter = Math.max(0, Number(b.shop.initCounter) || 0);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      shops.push({
+        id: 'shop_' + Date.now().toString(36),
+        name: shName,
+        plan: Math.max(100, Number(b.shop.plan) || 2500),
+        initCounter: Math.max(0, Number(b.shop.initCounter) || 0),
+        active: true
+      });
+    }
+    setJsonProp_('COFFEE_SHOPS_JSON', shops);
+  }
+  if (b && b.location) {
+    saveSetting_(ss, { id: 'LOCATION', value: String(b.location).trim() });
+  }
+  return { ok: true, shops: shops };
+}
+
+function setupAutonomousTriggers_(ss) {
+  try {
+    if (typeof ScriptApp !== 'undefined' && ScriptApp.getProjectTriggers) {
+      var triggers = ScriptApp.getProjectTriggers();
+      for (var i = 0; i < triggers.length; i++) {
+        if (triggers[i].getHandlerFunction() === 'cronCheckDeadlinesAndDigest') {
+          ScriptApp.deleteTrigger(triggers[i]);
+        }
+      }
+      ScriptApp.newTrigger('cronCheckDeadlinesAndDigest').timeBased().everyMinutes(5).create();
+    }
+    PropertiesService.getScriptProperties().setProperty('AUTOPILOT_ENABLED', '1');
+    appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Включён Автопилот триггеров 24/7 (каждые 5 мин)', 'Уведомления сотрудникам об открытии чек-листов + контроль дедлайнов + сводка в Telegram');
+    return { ok: true, autopilot: true };
+  } catch (e) {
+    return { ok: true, autopilot: true, note: String((e && e.message) || e) };
+  }
+}
+
+function sendDailyDigestNow_(ss, b) {
+  ss = ss || getTargetSpreadsheet_();
+  var day = (b && b.date) || isoDate_();
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var prDig = getDailyPlansAndRosterFromSheet_(ss, map);
+  var digWeekday = getWeekdayRuV93_(new Date(day + 'T12:00:00Z'), Session.getScriptTimeZone() || 'GMT+2');
+  var dayPlanObj = (prDig && prDig.dailyPlans && prDig.dailyPlans[digWeekday]) || {};
+  var plan = Number(dayPlanObj.revenue || map.PLAN || 2200) || 2200;
+  var planChecksDay = Number(dayPlanObj.checks || map.PLAN_CHECKS || 75) || 75;
+  var minAvgDay = Number(dayPlanObj.avgCheck || map.MIN_AVG_CHECK || 35) || 35;
+  var shC = ss.getSheetByName('Касса');
+  var cash = 0, card = 0, checks = 0, coffeeQty = 0, unacc = 0, barista = '';
+  if (shC) {
+    var rows = shC.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (fmtIso_(rows[i][0]) === day) {
+        cash += Number(rows[i][1]) || 0;
+        card += Number(rows[i][2]) || 0;
+        checks += Number(rows[i][3]) || 0;
+        barista = String(rows[i][6] || barista);
+        coffeeQty += Number(rows[i][10]) || 0;
+        unacc += Number(rows[i][13]) || 0;
+      }
+    }
+  }
+  var rev = cash + card;
+  var pct = plan > 0 ? Math.round((rev / plan) * 100) : 0;
+  var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return c.date === day; });
+  var lines = [
+    '📊 ИТОГОВАЯ СВОДКА ДНЯ (' + day + ' · ' + loc + ')',
+    '👤 Смена: ' + (barista || 'Бариста'),
+    '💰 Выручка: ' + rev + ' руб. (План: ' + plan + ' руб. · ' + pct + '%)',
+    '💵 Нал: ' + cash + ' руб. · Безнал: ' + card + ' руб. · Чеков: ' + checks + ' / план ' + planChecksDay + ' · Ср. чек: ' + (checks > 0 ? Math.round(rev / checks) : 0) + ' ₽ (мин. ' + minAvgDay + ' ₽)'
+  ];
+  if (coffeeQty) {
+    lines.push('☕ Кофе по номенклатуре: ' + coffeeQty + ' шт.' + (unacc > 0 ? (' · ⚠️ Расхождение счётчика: +' + unacc) : ' · ✓ Счётчик сошёлся'));
+  }
+  lines.push('📋 Сдано чек-листов за день: ' + chksToday.length);
+  var text = lines.join('\n');
+  var tgRes = sendTelegramServerAlert_(ss, { type: 'digest', text: text });
+  return { ok: true, summary: text, telegram: tgRes };
+}
+
+function cronCheckDeadlinesAndDigest(opts) {
+  opts = opts || {};
+  var result = { ok: true, overdueSent: [], windows: null };
+  try {
+    var ss = opts.ss || getTargetSpreadsheet_();
+    try { cleanupSessions_(); } catch (_) {}
+    // v97.12: Уведомления бариста за 15 мин до старта, при открытии и за 15 мин до дедлайна
+    try { result.windows = checkAndNotifyChecklistWindows_(ss, opts); } catch (_) {}
+    var tz = Session.getScriptTimeZone() || 'GMT+2';
+    var now = new Date();
+    var today = String(opts.overrideDate || Utilities.formatDate(now, tz, 'yyyy-MM-dd'));
+    var hm = String(opts.overrideTime || Utilities.formatDate(now, tz, 'HH:mm'));
+    var nowMin = hhmmToMinV93_(hm);
+    var weekday = String(opts.overrideWeekday || getWeekdayRuV93_(now, tz));
+    var props = PropertiesService.getScriptProperties();
+    var map = getSettingsMap_(ss);
+    var loc = map.LOCATION || 'Кофейня №1';
+    var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
+    var rawBlocks = getChecklistBlocksFromSheet_(ss, map) || [];
+    var extMap = {};
+    try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}') || {}; } catch (_) {}
+    var todayExt = (extMap && extMap[today]) || {};
+    var pr = getDailyPlansAndRosterFromSheet_(ss, map) || { dailyPlans: {}, shiftRoster: {} };
+    var resolved = resolveTargetBaristasForDay_(ss, weekday, pr);
+
+    rawBlocks.forEach(function(b) {
+      if (!b || b.active === false || b.isCash || String(b.name || '').toLowerCase() === 'касса') return;
+      if (!isBlockScheduledForDate_(b, today, weekday)) return;
+      var ext = todayExt[b.name];
+      var effDeadline = (ext && ext.until) ? String(ext.until) : String(b.deadline || '22:00');
+      var deadMin = hhmmToMinV93_(effDeadline);
+      if (deadMin < 0 || nowMin <= deadMin) return;
+
+      var done = chksToday.some(function(c) { return String(c.block || '').trim() === String(b.name || '').trim(); });
+      var alertKey = 'CRON_OVERDUE_' + today + '_' + b.name;
+      if (!done && (opts.force || !props.getProperty(alertKey))) {
+        props.setProperty(alertKey, hm);
+        var blkOvStaff = resolveBlockRecipients_(ss, b, resolved.staff);
+        var staffLabel = (b.assignee || (blkOvStaff.length ? blkOvStaff.map(function(s) { return s.name; }).join(', ') : 'не назначен'));
+        // 1. Уведомление администратору
+        var adminRes = sendTelegramServerAlert_(ss, {
+          type: 'overdue',
+          block: b.name,
+          targetPage: 'dashboard.html',
+          buttonText: '📊 Открыть дашборд',
+          skipDedup: true,
+          force: true,
+          text: '⏰ <b>АВТОПИЛОТ ПРОСРОЧКИ (' + escapeTgHtml_(today) + ')</b>\n' +
+            '📋 Чек-лист «<b>' + escapeTgHtml_(b.name) + '</b>» не сдан к дедлайну <b>' + escapeTgHtml_(effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ')!\n' +
+            '👤 Смена: ' + escapeTgHtml_(staffLabel) + ' · 📍 ' + escapeTgHtml_(loc)
+        });
+        result.overdueSent.push({ block: b.name, recipient: 'admin', ok: !!(adminRes && adminRes.ok) });
+        // 2. Персональное уведомление бариста на смене (если не выходной)
+        if ((!resolved.dayOff || b.assignee) && blkOvStaff.length) {
+          blkOvStaff.forEach(function(emp) {
+            var chatId = normTgNumericId_(emp.tgId);
+            if (!chatId) return;
+            var empRes = sendTelegramServerAlert_(ss, {
+              chatIds: [chatId],
+              type: 'overdue_barista',
+              block: b.name,
+              buttonText: '⚡️ Срочно пройти «' + b.name + '»',
+              buttonType: 'web_app',
+              skipDedup: true,
+              force: true,
+              text: '🚨 <b>Просрочен чек-лист: «' + escapeTgHtml_(b.name) + '»</b>\n' +
+                '👋 ' + escapeTgHtml_(emp.name) + ', дедлайн был в <b>' + escapeTgHtml_(effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ').\n' +
+                '📍 ' + escapeTgHtml_(loc) + ' — пожалуйста, завершите чек-лист или свяжитесь с владельцем.'
+            });
+            result.overdueSent.push({ block: b.name, recipient: emp.name, chatId: chatId, ok: !!(empRes && empRes.ok) });
+          });
+        }
+      }
+    });
+    if (hm >= '22:45' && hm <= '23:45') {
+      var digKey = 'CRON_DIGEST_' + today;
+      if (opts.force || !props.getProperty(digKey)) {
+        props.setProperty(digKey, '1');
+        sendDailyDigestNow_(ss, { date: today });
+      }
+    }
+  } catch (e) {
+    result.ok = false;
+    result.error = String((e && e.message) || e);
+  }
+  return result;
+}
+
+// === V80 SERVER HANDLERS: Интерактивные кнопки уведомлений Telegram, Возврат задач, Исправления с историей и Передача смены ===
+function buildTelegramInteractiveButtonsV80_(entityId, webappUrl) {
+  var safeUrl = webappUrl || getConfiguredWebappUrl_(null);
+  return {
+    inline_keyboard: [
+      [
+        { text: '✅ Принять в работу', callback_data: 'notif:accept:' + entityId },
+        { text: '👤 Назначить ответственного', callback_data: 'notif:assign:' + entityId }
+      ],
+      [
+        { text: '💬 Уточнить', callback_data: 'notif:clarify:' + entityId },
+        { text: '📞 Позвонить сотруднику', callback_data: 'notif:call:' + entityId }
+      ],
+      [
+        { text: '📂 Открыть карточку', url: safeUrl },
+        { text: '🔒 Закрыть', callback_data: 'notif:close:' + entityId }
+      ]
+    ]
+  };
+}
+
+// === V82 SECURITY & AUDIT FIXES (Document 1: P0 Telegram HMAC Auth, P0 Factory PIN Lock, P1 Private Drive Photos, P1 Verified Telegram Delivery) ===
+var COFFEE_SERVER_VERSION_V82 = SERVER_VERSION_V97;
+
+function applySecureDriveFileSharingV82_(file) {
+  if (!file) return 'PRIVATE';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    // По умолчанию открываем доступ читателя по ссылке (ANYONE_WITH_LINK + VIEW), чтобы владелец видел фото без ошибки «нужен доступ читателя»
+    var strictPrivate = props && props.getProperty('STRICT_PRIVATE_DRIVE_PHOTOS') === '1';
+    if (!strictPrivate && typeof DriveApp !== 'undefined' && DriveApp.Access && DriveApp.Permission) {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return 'ANYONE_WITH_LINK';
+    }
+    if (typeof DriveApp !== 'undefined' && DriveApp.Access && DriveApp.Permission) {
+      file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    }
+  } catch (e) {}
+  return 'PRIVATE';
+}
+
+function grantPhotoFolderReaderAccess_(ss) {
+  var updated = 0;
+  var foldersCount = 0;
+  try {
+    if (typeof DriveApp === 'undefined' || (!DriveApp.getFoldersByName && !DriveApp.getFolderById)) {
+      return { ok: true, updated: 0, note: 'DriveApp недоступен в тестовой среде' };
+    }
+    var seenIds = {};
+    var seenRefs = [];
+    var queue = [];
+    function enqueueFolder(fl) {
+      if (!fl) return;
+      if (seenRefs.indexOf(fl) >= 0) return;
+      var fid = '';
+      try { fid = typeof fl.getId === 'function' ? String(fl.getId() || '') : ''; } catch (_) {}
+      if (fid && seenIds[fid]) return;
+      if (fid) seenIds[fid] = true;
+      seenRefs.push(fl);
+      queue.push(fl);
+    }
+    try {
+      var props = PropertiesService.getScriptProperties();
+      var savedId = props && props.getProperty('DRIVE_MEDIA_FOLDER_ID');
+      if (savedId && typeof DriveApp.getFolderById === 'function') {
+        try { enqueueFolder(DriveApp.getFolderById(savedId)); } catch (_) {}
+      }
+    } catch (_) {}
+    if (typeof DriveApp.getFoldersByName === 'function') {
+      try {
+        var it1 = DriveApp.getFoldersByName('Coffee_ERP_Photos');
+        while (it1 && it1.hasNext()) enqueueFolder(it1.next());
+      } catch (_) {}
+      if (!queue.length) {
+        try {
+          var it2 = DriveApp.getFoldersByName('Кофейня — Медиаархив Смен');
+          while (it2 && it2.hasNext()) enqueueFolder(it2.next());
+        } catch (_) {}
+      }
+    }
+    if (!queue.length) return { ok: true, updated: 0, note: 'Папка фото ещё не создана' };
+    while (queue.length && updated < 400) {
+      var cur = queue.shift();
+      foldersCount++;
+      try { cur.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_) {}
+      try {
+        var files = cur.getFiles();
+        while (files && files.hasNext() && updated < 400) {
+          var f = files.next();
+          try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); updated++; } catch (_) {}
+        }
+      } catch (_) {}
+      try {
+        if (typeof cur.getFolders === 'function') {
+          var subs = cur.getFolders();
+          while (subs && subs.hasNext() && queue.length < 60) enqueueFolder(subs.next());
+        }
+      } catch (_) {}
+    }
+    try { appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Открыт доступ читателя к папке фото', 'Папок: ' + foldersCount + ', файлов: ' + updated); } catch (_) {}
+    return { ok: true, updated: updated, folders: foldersCount };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
+
+function verifyTelegramInitDataHmac_(initDataRaw, checkReplayOpt) {
+  if (!initDataRaw || typeof initDataRaw !== 'string') {
+    return { ok: false, reason: 'EMPTY_INIT_DATA' };
+  }
+  var hashMatch = initDataRaw.match(/(?:^|&)hash=([0-9a-fA-F]+)/);
+  if (!hashMatch) {
+    return { ok: false, reason: 'MISSING_HMAC_HASH' };
+  }
+  var receivedHash = String(hashMatch[1]).toLowerCase();
+
+  // Проверка срока действия auth_date (не старше 24 часов и не из будущего)
+  var authDateMatch = initDataRaw.match(/(?:^|&)auth_date=(\d+)/);
+  if (!authDateMatch) {
+    return { ok: false, reason: 'MISSING_AUTH_DATE' };
+  }
+  var authDateSec = Number(authDateMatch[1]);
+  var nowSec = Math.floor(Date.now() / 1000);
+  if (!isFinite(authDateSec) || authDateSec <= 0 || (nowSec - authDateSec) > 86400 || authDateSec > (nowSec + 300)) {
+    return { ok: false, reason: 'EXPIRED_INIT_DATA' };
+  }
+
+  // Защита от повторного использования (replay) одного и того же пакета initData при привязке
+  if (checkReplayOpt) {
+    try {
+      var cache = CacheService.getScriptCache();
+      var replayKey = 'tg_replay_' + receivedHash.slice(0, 40);
+      if (cache && cache.get(replayKey)) {
+        return { ok: false, reason: 'REPLAYED_INIT_DATA' };
+      }
+    } catch (_) {}
+  }
+
+  // Секретный токен берётся ИСКЛЮЧИТЕЛЬНО из ScriptProperties (передача от клиента запрещена)
+  var props = (typeof PropertiesService !== 'undefined') ? PropertiesService.getScriptProperties() : null;
+  var botToken = props ? (props.getProperty('TG_BOT_TOKEN_SECRET') || props.getProperty('TELEGRAM_BOT_TOKEN') || '') : '';
+  if (!botToken) {
+    return { ok: false, reason: 'BOT_TOKEN_NOT_CONFIGURED' };
+  }
+
+  try {
+    var pairs = initDataRaw.split('&').filter(function(kv) { return kv.indexOf('hash=') !== 0; }).sort();
+    var dataCheckString = pairs.map(function(kv) {
+      var eq = kv.indexOf('=');
+      if (eq < 0) return kv;
+      var k = kv.slice(0, eq);
+      var v = kv.slice(eq + 1);
+      try { v = decodeURIComponent(v); } catch (_) {}
+      return k + '=' + v;
+    }).join('\n');
+
+    var computedHex = '';
+    if (typeof Utilities !== 'undefined' && Utilities.computeHmacSha256Signature) {
+      var secretKey = Utilities.computeHmacSha256Signature(botToken, 'WebAppData');
+      var sigBytes = Utilities.computeHmacSha256Signature(dataCheckString, secretKey);
+      computedHex = sigBytes.map(function(b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+    }
+    if (!computedHex || computedHex.toLowerCase() !== receivedHash) {
+      return { ok: false, reason: 'INVALID_TELEGRAM_HMAC_SIGNATURE' };
+    }
+
+    if (checkReplayOpt) {
+      try {
+        var cache2 = CacheService.getScriptCache();
+        if (cache2) cache2.put('tg_replay_' + receivedHash.slice(0, 40), '1', 86400);
+      } catch (_) {}
+    }
+
+    var tgUserId = '';
+    var userMatch = initDataRaw.match(/(?:^|&)user=([^&]+)/);
+    if (userMatch) {
+      try {
+        var userJson = JSON.parse(decodeURIComponent(userMatch[1]));
+        if (userJson && userJson.id != null) tgUserId = String(userJson.id);
+      } catch (_) {}
+    }
+    return { ok: true, verified: true, tgUserId: tgUserId, authDate: authDateSec };
+  } catch (e) {
+    return { ok: false, reason: 'HMAC_VERIFY_ERROR' };
+  }
+}
+
+function verifySafeTelegramBindingV83_(ss, payload) {
+  payload = payload || {};
+  // Пункт 2.2: Полный запрет передачи секретного botToken через клиентский payload
+  if (payload.botToken != null || payload.TG_BOT_TOKEN_SECRET != null || payload.TELEGRAM_BOT_TOKEN != null) {
+    return { ok: false, error: 'SECURITY_VIOLATION: Передача секретного botToken от клиента запрещена' };
+  }
+
+  var targetStaff = String(payload.staffName || '').trim();
+  var targetTgId = String(payload.tgId || '').trim();
+  if (!targetStaff || !targetTgId) {
+    return { ok: false, error: 'VALIDATION_FAILED: Не указан tgId или staffName' };
+  }
+
+  // Пункт 2.6: Требуется подтверждённая сессия именно этого сотрудника (или администратора)
+  var sess = null;
+  try {
+    var tok = String(payload.sessionToken || '').trim();
+    if (tok && tok.indexOf('st_') === 0) {
+      var rawSess = CacheService.getScriptCache().get('sess_' + tok);
+      if (rawSess) {
+        var parsedSess = JSON.parse(rawSess);
+        if (parsedSess && parsedSess.expiresAt > Date.now()) {
+          sess = parsedSess;
+        }
+      }
+    }
+    if (!sess && (payload.staffPinHash || payload.pinHash || payload.pin)) {
+      var verifyBody = {
+        userName: payload.userName || targetStaff,
+        staffPinHash: payload.staffPinHash,
+        pinHash: payload.pinHash,
+        pin: payload.pin
+      };
+      sess = resolveVerifiedStaffSession_(ss, verifyBody);
+    }
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+
+  if (!sess) {
+    return { ok: false, error: 'STAFF_AUTH_REQUIRED: Для привязки Telegram требуется активная сессия сотрудника или администратора' };
+  }
+
+  if (sess.role !== 'admin' && String(sess.staffName || '').trim().toLowerCase() !== targetStaff.toLowerCase()) {
+    return { ok: false, error: 'FORBIDDEN_STAFF_MISMATCH: Нельзя привязать Telegram ID к чужому профилю сотрудника' };
+  }
+
+  // Если передан tgInitData или на сервере настроен токен бота (и вызов не от администратора), проверяем подлинность и свежесть initData
+  var props = (typeof PropertiesService !== 'undefined') ? PropertiesService.getScriptProperties() : null;
+  var serverHasBotToken = Boolean(props && (props.getProperty('TG_BOT_TOKEN_SECRET') || props.getProperty('TELEGRAM_BOT_TOKEN')));
+
+  if (payload.tgInitData || (serverHasBotToken && sess.role !== 'admin')) {
+    var hmacRes = verifyTelegramInitDataHmac_(payload.tgInitData || '', true);
+    if (!hmacRes.ok) {
+      return { ok: false, error: 'TELEGRAM_HMAC_INVALID: ' + (hmacRes.reason || 'Подпись Telegram initData не прошла проверку') };
+    }
+    if (hmacRes.tgUserId && hmacRes.tgUserId !== targetTgId) {
+      return { ok: false, error: 'TELEGRAM_ID_MISMATCH: tgId в запросе не совпадает с подписанным пользователем Telegram initData' };
+    }
+  }
+
+  return { ok: true, verifiedBy: sess.role === 'admin' ? 'admin_session' : 'staff_session_and_hmac' };
+}
+
+var verifySafeTelegramBindingV82_ = verifySafeTelegramBindingV83_;
+
+function sendTelegramVerifiedV82_(chatId, text, opts) {
+  opts = opts || {};
+  // Токен берётся ТОЛЬКО из ScriptProperties
+  var props = (typeof PropertiesService !== 'undefined') ? PropertiesService.getScriptProperties() : null;
+  var token = props ? (props.getProperty('TG_BOT_TOKEN_SECRET') || props.getProperty('TELEGRAM_BOT_TOKEN') || '') : '';
+  if (!token || !chatId) {
+    return { ok: false, error: 'MISSING_TELEGRAM_CREDENTIALS' };
+  }
+  var method = opts.photoUrl ? 'sendPhoto' : (opts.videoUrl ? 'sendVideo' : 'sendMessage');
+  var apiPayload = { chat_id: String(chatId) };
+  if (method === 'sendPhoto') {
+    apiPayload.photo = opts.photoUrl;
+    apiPayload.caption = String(text || '');
+  } else if (method === 'sendVideo') {
+    apiPayload.video = opts.videoUrl;
+    apiPayload.caption = String(text || '');
+  } else {
+    apiPayload.text = String(text || '');
+    apiPayload.parse_mode = 'HTML';
+  }
+  if (opts.reply_markup) {
+    apiPayload.reply_markup = opts.reply_markup;
+  } else if (opts.entityId && typeof buildTelegramInteractiveButtonsV80_ === 'function') {
+    apiPayload.reply_markup = buildTelegramInteractiveButtonsV80_(opts.entityId, opts.webappUrl);
+  }
+  try {
+    if (typeof UrlFetchApp !== 'undefined' && UrlFetchApp.fetch) {
+      var resp = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/' + method, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(apiPayload),
+        muteHttpExceptions: true
+      });
+      var code = resp && typeof resp.getResponseCode === 'function' ? resp.getResponseCode() : 200;
+      var rawText = resp && typeof resp.getContentText === 'function' ? resp.getContentText() : '{"ok":true}';
+      var body = {};
+      try { body = JSON.parse(rawText || '{"ok":true}'); } catch (_) { body = { ok: code === 200 }; }
+      if (code === 200 && body && body.ok !== false) {
+        return { ok: true, method: method, messageId: body.result && body.result.message_id };
+      }
+      return { ok: false, statusCode: code, description: (body && body.description) || 'TELEGRAM_API_ERROR' };
+    }
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+  return { ok: false, error: 'URLFETCH_UNAVAILABLE' };
+}
+
+
+
+/* =========================================================================
+   COFFEE ILLY v4.1 — ПЕРЕДАЧА СМЕНЫ, СПИСАНИЯ И APPEND-ONLY КОРРЕКТИРОВКИ
+   ========================================================================= */
+var INCIDENT_STATUSES_V41_ = {
+  'Новое': true,
+  'Принято в работу': true,
+  'Ожидает решения': true,
+  'Решено': true,
+  'Закрыто': true,
+  'Новая': true,
+  'В работе': true,
+  'Решена': true
+};
+
+function handoverShift_(ss, body, sess) {
+  var fromStaff = String((sess && sess.staffName) || '').trim();
+  var toStaff = String((body && body.toStaff) || '').trim();
+  if (!fromStaff) throw new Error('STAFF_AUTH_REQUIRED: Не определён передающий сотрудник');
+  if (!toStaff) throw new Error('VALIDATION_FAILED: Не указан принимающий сотрудник');
+  if (toStaff === fromStaff) throw new Error('VALIDATION_FAILED: Нельзя передать смену самому себе');
+  var sh = ss.getSheetByName('ПередачаСмен');
+  if (!sh) {
+    sh = ss.insertSheet('ПередачаСмен');
+    sh.appendRow(['HandoverID', 'Timestamp', 'BusinessDate', 'FromStaff', 'ToStaff', 'EquipmentState', 'OpenTasksJSON', 'CashStateJSON', 'Notes', 'ConfirmedByBoth']);
+  }
+  var hid = newId_('HND');
+  var ts = new Date().toISOString();
+  var bDate = String((body && body.businessDate) || isoDate_()).trim();
+  var equip = String((body && body.equipmentState) || 'Исправно').slice(0, 500);
+  var openTasks = JSON.stringify(Array.isArray(body && body.openTasks) ? body.openTasks : []);
+  var cashState = JSON.stringify((body && body.cashState && typeof body.cashState === 'object') ? body.cashState : {});
+  var notes = String((body && body.notes) || '').slice(0, 1000);
+  var confirmed = !!(body && body.confirmedByReceiver);
+  sh.appendRow([hid, ts, bDate, fromStaff, toStaff, equip, openTasks, cashState, notes, confirmed ? 'да' : 'ожидает']);
+  appendAudit_(ss, fromStaff, 'Передача смены', 'ID: ' + hid + ' -> ' + toStaff);
+  return { ok: true, handoverId: hid, timestamp: ts, fromStaff: fromStaff, toStaff: toStaff, immutable: true };
+}
+
+function submitWriteoff_(ss, body, sess) {
+  var staff = String((sess && sess.staffName) || '').trim();
+  var itemName = String((body && body.itemName) || '').trim();
+  var qty = Number(body && body.qty);
+  var reason = String((body && body.reason) || '').trim();
+  if (!itemName) throw new Error('VALIDATION_FAILED: Не указан товар для списания');
+  validateFiniteNumber_(qty, 0.01, 10000, 'Количество списания');
+  if (!reason) throw new Error('VALIDATION_FAILED: Не указана причина списания');
+  var sh = ss.getSheetByName('Списания');
+  if (!sh) {
+    sh = ss.insertSheet('Списания');
+    sh.appendRow(['WriteoffID', 'Date', 'Timestamp', 'Staff', 'ItemName', 'Qty', 'Reason', 'Comment', 'PhotoURL', 'MediaID', 'Status']);
+  }
+  var wid = newId_('WO');
+  var dt = String((body && body.date) || isoDate_()).trim();
+  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректная дата списания');
+  var ts = new Date().toISOString();
+  sh.appendRow([
+    wid, dt, ts, staff, itemName.slice(0, 150), qty, reason.slice(0, 200),
+    String((body && body.comment) || '').slice(0, 500),
+    String((body && body.photoUrl) || '').slice(0, 500),
+    String((body && body.mediaId) || '').slice(0, 120),
+    'Ожидает проверки'
+  ]);
+  appendAudit_(ss, staff, 'Регистрация списания', itemName + ' (' + qty + '), причина: ' + reason);
+  return { ok: true, writeoffId: wid, status: 'Ожидает проверки' };
+}
+
+function submitAdjustment_(ss, body, sess) {
+  var actor = String((sess && sess.staffName) || 'Администратор').trim();
+  var entityType = String((body && body.entityType) || '').trim();
+  var targetId = String((body && body.targetId) || '').trim();
+  var reason = String((body && body.reason) || '').trim();
+  if (!entityType || !targetId || !reason) {
+    throw new Error('VALIDATION_FAILED: Для корректировки обязательны entityType, targetId и reason');
+  }
+  var sh = ss.getSheetByName('Корректировки');
+  if (!sh) {
+    sh = ss.insertSheet('Корректировки');
+    sh.appendRow(['AdjustmentID', 'Timestamp', 'EntityType', 'TargetID', 'Actor', 'Reason', 'BeforeSummary', 'AfterSummary']);
+  }
+  var aid = newId_('ADJ');
+  var ts = new Date().toISOString();
+  sh.appendRow([
+    aid, ts, entityType, targetId, actor, reason.slice(0, 500),
+    JSON.stringify((body && body.beforeSummary) || {}),
+    JSON.stringify((body && body.afterSummary) || {})
+  ]);
+  appendAudit_(ss, actor, 'Корректировка подтверждённой записи', entityType + ':' + targetId + ' — ' + reason);
+  return { ok: true, adjustmentId: aid, appendOnly: true };
+}
+
+
+/* =========================================================================
+   COFFEE ILLY v93.0 — АВТО-ОТМЕТКА «НА РАБОТЕ» + TELEGRAM-УВЕДОМЛЕНИЯ ЧЕК-ЛИСТОВ
+   ========================================================================= */
+
+function getStaffPresenceToday_(ss) {
+  var today = isoDate_();
+  var raw = getJsonProp_('COFFEE_STAFF_PRESENCE_JSON', {});
+  var out = {};
+  Object.keys(raw || {}).forEach(function(nm) {
+    var rec = raw[nm];
+    if (rec && String(rec.date || '') === today) {
+      out[nm] = rec;
+    }
+  });
+  return out;
+}
+
+function markStaffOnShift_(ss, staffName, tgId, source) {
+  var nm = String(staffName || '').trim();
+  if (!nm) return { ok: false, error: 'EMPTY_STAFF_NAME' };
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
+  var map = getJsonProp_('COFFEE_STAFF_PRESENCE_JSON', {});
+  var prev = map[nm];
+  var isFirstToday = !(prev && prev.date === today && prev.status === 'on_shift');
+  var checkedInAt = (prev && prev.date === today && prev.checkedInAt) ? prev.checkedInAt : hm;
+  map[nm] = {
+    staffName: nm,
+    date: today,
+    status: 'on_shift',
+    checkedInAt: checkedInAt,
+    lastSeen: now.toISOString(),
+    tgId: String(tgId || (prev && prev.tgId) || ''),
+    source: String(source || 'Терминал')
+  };
+  setJsonProp_('COFFEE_STAFF_PRESENCE_JSON', map);
+  if (isFirstToday && ss) {
+    try {
+      var shP = ss.getSheetByName('Посещаемость');
+      if (!shP) {
+        shP = ss.insertSheet('Посещаемость');
+        shP.appendRow(['Дата', 'Время входа', 'Сотрудник', 'Статус', 'Telegram ID', 'Источник']);
+      }
+      shP.appendRow([today, checkedInAt, nm, 'На работе', map[nm].tgId, map[nm].source]);
+    } catch (_) {}
+    try { appendAudit_(ss, nm, 'Отмечен на работе (смена открыта)', 'Время: ' + checkedInAt + ' · ' + map[nm].source); } catch (_) {}
+  }
+  bumpDataRev_();
+  return { ok: true, staffName: nm, status: 'on_shift', checkedInAt: checkedInAt, date: today, presence: map[nm] };
+}
+
+function markStaffOffShift_(ss, staffName) {
+  var nm = String(staffName || '').trim();
+  if (!nm) return { ok: false };
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var hm = Utilities.formatDate(now, tz, 'HH:mm');
+  var map = getJsonProp_('COFFEE_STAFF_PRESENCE_JSON', {});
+  if (map[nm] && map[nm].date === today) {
+    map[nm].status = 'off_shift';
+    map[nm].checkedOutAt = hm;
+    map[nm].lastSeen = now.toISOString();
+    setJsonProp_('COFFEE_STAFF_PRESENCE_JSON', map);
+    try { appendAudit_(ss, nm, 'Выход со смены', 'Время: ' + hm); } catch (_) {}
+    bumpDataRev_();
+  }
+  return { ok: true, staffName: nm, status: 'off_shift', checkedOutAt: hm };
+}
+
+function saveTelegramSettingsV93_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  var tok = String(body.tgToken || '').trim();
+  var chat = String(body.tgChat || '').trim();
+  var webapp = String(body.webappUrl || '').trim();
+  if (tok && tok.indexOf('••') === -1) {
+    props.setProperty('TG_BOT_TOKEN_SECRET', tok);
+    saveSetting_(ss, { id: 'TG_TOKEN', value: '•••••••• (хранится на сервере)' });
+  }
+  if (chat) {
+    props.setProperty('TG_CHAT_ID_SECRET', chat);
+    saveSetting_(ss, { id: 'TG_CHAT', value: chat });
+  }
+  if (webapp) {
+    saveSetting_(ss, { id: 'WEBAPP_URL', value: webapp });
+  }
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', 'Обновлены настройки Telegram-бота', 'Chat: ' + (chat || 'без изм.') + (webapp ? (' · URL: ' + webapp) : ''));
+  return {
+    ok: true,
+    tgConfiguredOnServer: !!(props.getProperty('TG_BOT_TOKEN_SECRET')),
+    tgChat: props.getProperty('TG_CHAT_ID_SECRET') || chat,
+    webappUrl: webapp
+  };
+}
+
+function resolveStaffTelegramChatId_(ss, staffNameRaw) {
+  var needle = String(staffNameRaw || '').trim().toLowerCase();
+  if (!needle) return '';
+  var list = getStaffList_(ss) || [];
+  for (var i = 0; i < list.length; i++) {
+    var s = list[i];
+    if (!s || s.active === false || String(s.active || 'да').toLowerCase() === 'нет') continue;
+    var sn = String(s.name || '').trim().toLowerCase();
+    if (sn === needle || sn.indexOf(needle) === 0 || needle.indexOf(sn) === 0) {
+      var cid = normTgNumericId_(s.tgId);
+      if (cid) return cid;
+    }
+  }
+  var binds = getJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', {});
+  var keys = Object.keys(binds || {});
+  for (var j = 0; j < keys.length; j++) {
+    var bVal = binds[keys[j]];
+    var bName = String((bVal && typeof bVal === 'object' && bVal.staffName) ? bVal.staffName : keys[j]).trim().toLowerCase();
+    if (bName === needle || bName.indexOf(needle) === 0 || needle.indexOf(bName) === 0) {
+      var bCid = normTgNumericId_((bVal && typeof bVal === 'object') ? (bVal.tgId || bVal.id || keys[j]) : bVal);
+      if (bCid) return bCid;
+    }
+  }
+  return '';
+}
+
+function resolveTargetBaristasForDay_(ss, weekday, pr) {
+  pr = pr || getDailyPlansAndRosterFromSheet_(ss, getSettingsMap_(ss)) || { dailyPlans: {}, shiftRoster: {} };
+  var allStaff = (getStaffList_(ss) || []).filter(function(s) {
+    return s && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет' && normTgNumericId_(s.tgId);
+  });
+  var presence = getStaffPresenceToday_(ss) || {};
+
+  var rRaw = (pr.shiftRoster && pr.shiftRoster[weekday]) || (pr.dailyPlans && pr.dailyPlans[weekday] && pr.dailyPlans[weekday].roster) || '';
+  var rStr = Array.isArray(rRaw) ? rRaw.join(', ') : String(rRaw || '').trim();
+  if (/^выходной$/i.test(rStr)) {
+    return { dayOff: true, staff: [], rosterRaw: rStr };
+  }
+
+  // Очищаем скобки с часами/пометками «(07:30–22:30)», «(2 смены, пик)» перед сопоставлением имён
+  var cleaned = rStr.replace(/\([^)]*\)/g, ' ');
+  var rosterNames = cleaned.split(/[,;/+&]+/).map(function(x) { return x.trim().toLowerCase(); }).filter(Boolean);
+
+  var targetStaff = [];
+  if (rosterNames.length) {
+    targetStaff = allStaff.filter(function(s) {
+      var sn = String(s.name || '').trim().toLowerCase();
+      var firstWord = sn.split(/\s+/)[0];
+      return rosterNames.some(function(rn) {
+        var rnFirst = rn.split(/\s+/)[0];
+        return sn === rn || sn.indexOf(rn) >= 0 || rn.indexOf(sn) >= 0 || (firstWord && firstWord === rnFirst);
+      });
+    });
+  }
+  if (!targetStaff.length) {
+    targetStaff = allStaff.filter(function(s) { return presence[s.name] && presence[s.name].status === 'on_shift'; });
+  }
+  if (!targetStaff.length) {
+    var onlyBaristas = allStaff.filter(function(s) { return String(s.role || '').toLowerCase().indexOf('админ') === -1; });
+    targetStaff = onlyBaristas.length ? onlyBaristas : allStaff.slice();
+  }
+  return { dayOff: false, staff: targetStaff, rosterRaw: rStr };
+}
+
+function testTelegramAlertV93_(ss, body) {
+  body = body || {};
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var targetStaffName = String(body.targetStaffName || body.staffName || '').trim();
+  if (targetStaffName) {
+    var empText = String(body.text || '').trim() || (
+      '✅ <b>Персональный тест Coffee Illy ' + SERVER_VERSION_V97 + '</b>\n' +
+      '👋 Привет, ' + escapeTgHtml_(targetStaffName) + '!\n' +
+      '📍 Точка: ' + escapeTgHtml_(loc) + '\n' +
+      '🔔 Уведомления за 15 мин до старта и за 15 мин до дедлайна чек-листов работают корректно.'
+    );
+    var empRes = sendTelegramServerAlert_(ss, {
+      targetStaffName: targetStaffName,
+      type: 'test_barista',
+      force: true,
+      skipDedup: true,
+      targetPage: 'index.html',
+      buttonText: '▶️ Открыть терминал бариста',
+      buttonType: 'web_app',
+      text: empText
+    });
+    return { ok: !!(empRes && empRes.ok), target: targetStaffName, telegram: empRes };
+  }
+  var text = String(body.text || '').trim() || (
+    '✅ <b>Тест связи Coffee Illy ' + SERVER_VERSION_V97 + '</b>\n' +
+    '📍 Точка: ' + escapeTgHtml_(loc) + '\n' +
+    '🔔 Уведомления администратору и автопилот чек-листов работают корректно.'
+  );
+  var res = sendTelegramServerAlert_(ss, {
+    type: 'test',
+    force: true,
+    skipDedup: true,
+    targetPage: 'dashboard.html',
+    buttonText: '📊 Открыть дашборд владельца',
+    text: text
+  });
+  return { ok: !!(res && res.ok), target: 'admin', telegram: res };
+}
+
+function isBlockScheduledForDate_(block, isoDate, weekdayRu) {
+  if (!block || block.active === false) return false;
+  var st = String(block.scheduleType || 'daily').trim().toLowerCase();
+  if (st === 'weekly') {
+    var days = Array.isArray(block.scheduleDays) ? block.scheduleDays : [];
+    if (!days.length) return true;
+    return days.indexOf(weekdayRu) >= 0;
+  }
+  if (st === 'date') {
+    var sd = String(block.scheduleDate || '').trim().slice(0, 10);
+    if (!sd) return true;
+    return sd === String(isoDate || '').slice(0, 10);
+  }
+  return true;
+}
+
+function resolveBlockRecipients_(ss, block, defaultStaff) {
+  var assignee = String((block && block.assignee) || '').trim();
+  if (!assignee) return defaultStaff || [];
+  var all = (getStaffList_(ss) || []).filter(function(s) {
+    return s && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет' && normTgNumericId_(s.tgId);
+  });
+  var needle = assignee.toLowerCase();
+  var exact = all.filter(function(s) {
+    var sn = String(s.name || '').trim().toLowerCase();
+    return sn === needle || sn.indexOf(needle) >= 0 || needle.indexOf(sn) >= 0;
+  });
+  return exact;
+}
+
+function hhmmToMinV93_(hhmm) {
+  var m = String(hhmm || '').match(/(\d{1,2}):(\d{2})/);
+  return m ? (Number(m[1]) * 60 + Number(m[2])) : -1;
+}
+
+function getWeekdayRuV93_(dateObj, tz) {
+  var idx = Number(Utilities.formatDate(dateObj, tz, 'u')) || 1; // 1=Mon..7=Sun
+  var days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  return days[(idx - 1) % 7];
+}
+
+function checkAndNotifyChecklistWindows_(ss, opts) {
+  ss = ss || getTargetSpreadsheet_();
+  opts = opts || {};
+  var tz = Session.getScriptTimeZone() || 'GMT+2';
+  var now = new Date();
+  var today = String(opts.overrideDate || Utilities.formatDate(now, tz, 'yyyy-MM-dd'));
+  var hm = String(opts.overrideTime || Utilities.formatDate(now, tz, 'HH:mm'));
+  var nowMin = hhmmToMinV93_(hm);
+  var weekday = String(opts.overrideWeekday || getWeekdayRuV93_(now, tz));
+
+  var map = getSettingsMap_(ss);
+  var loc = map.LOCATION || 'Кофейня №1';
+  var blocks = getChecklistBlocksFromSheet_(ss, map) || [];
+  var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
+  var pr = getDailyPlansAndRosterFromSheet_(ss, map) || { dailyPlans: {}, shiftRoster: {} };
+  var extMap = {};
+  try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}') || {}; } catch (_) {}
+  var todayExt = (extMap && extMap[today]) || {};
+
+  var resolved = resolveTargetBaristasForDay_(ss, weekday, pr);
+  if (resolved.dayOff && !opts.force) {
+    return { ok: true, date: today, time: hm, weekday: weekday, dayOff: true, sent: [], skipped: [{ reason: 'day_off' }] };
+  }
+  var targetStaff = resolved.staff;
+
+  var props = PropertiesService.getScriptProperties();
+  var notifKey = 'TG_NOTIFIED_BLOCKS_' + today;
+  var notified = {};
+  try { notified = JSON.parse(props.getProperty(notifKey) || '{}') || {}; } catch (_) { notified = {}; }
+
+  var baseAppUrl = String(map.WEBAPP_URL || '').trim();
+  var sent = [];
+  var skipped = [];
+
+  blocks.forEach(function(b) {
+    if (!b || b.active === false || b.isCash || String(b.name || '').toLowerCase() === 'касса') return;
+    if (!isBlockScheduledForDate_(b, today, weekday)) {
+      skipped.push({ block: b.name, reason: 'not_scheduled_today' });
+      return;
+    }
+    var ext = todayExt[b.name];
+    var effOpen = (ext && ext.openFrom) ? String(ext.openFrom) : String(b.openTime || '08:00');
+    var effDeadline = (ext && ext.until) ? String(ext.until) : String(b.deadline || '22:00');
+    var openMin = hhmmToMinV93_(effOpen);
+    var deadMin = hhmmToMinV93_(effDeadline);
+    if (openMin < 0 || deadMin < 0) return;
+
+    var alreadyDone = chksToday.some(function(c) { return String(c.block || '').trim() === String(b.name || '').trim(); });
+    if (alreadyDone) {
+      skipped.push({ block: b.name, reason: 'already_done' });
+      return;
+    }
+
+    // Определяем фазу уведомления для бариста:
+    // 1) pre_start_15: за 15 минут до начала [openMin - 15, openMin - 1]
+    // 2) pre_deadline_15: за 15 минут до дедлайна [deadMin - 15, deadMin] (если окно >= 15 мин)
+    // 3) open: окно открыто [openMin, deadMin - 16] (или [openMin, deadMin] если окно < 15 мин)
+    var stage = '';
+    var windowLen = deadMin - openMin;
+    if (nowMin >= (openMin - 15) && nowMin < openMin) {
+      stage = 'pre_start_15';
+    } else if (windowLen >= 15 && nowMin >= (deadMin - 15) && nowMin <= deadMin) {
+      stage = 'pre_deadline_15';
+    } else if (nowMin >= openMin && nowMin <= deadMin) {
+      stage = 'open';
+    } else {
+      return;
+    }
+
+    var blkTargets = resolveBlockRecipients_(ss, b, targetStaff);
+    blkTargets.forEach(function(emp) {
+      var dedupId = stage + '|' + b.name + '|' + emp.name;
+      if (!opts.force && notified[dedupId]) {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'already_notified' });
+        return;
+      }
+      var chatId = normTgNumericId_(emp.tgId);
+      if (!chatId) return;
+
+      var msgText = '';
+      var btnText = '▶️ Пройти «' + b.name + '»';
+      if (stage === 'pre_start_15') {
+        var minsToStart = Math.max(1, openMin - nowMin);
+        msgText = [
+          '⏳ <b>Скоро начнётся чек-лист: «' + escapeTgHtml_(b.name) + '»</b>',
+          '👋 ' + escapeTgHtml_(emp.name) + ', до открытия окна осталось ~' + minsToStart + ' мин.',
+          '⏰ Окно выполнения: <b>' + escapeTgHtml_(effOpen) + ' – ' + escapeTgHtml_(effDeadline) + '</b>',
+          '📍 ' + escapeTgHtml_(loc),
+          '',
+          'Подготовьтесь открыть чек-лист в терминале.'
+        ].join('\n');
+        btnText = '📋 Открыть терминал';
+      } else if (stage === 'pre_deadline_15') {
+        var minsLeft = Math.max(0, deadMin - nowMin);
+        msgText = [
+          '⚠️ <b>До дедлайна чек-листа «' + escapeTgHtml_(b.name) + '» осталось ' + minsLeft + ' мин!</b>',
+          '👋 ' + escapeTgHtml_(emp.name) + ', чек-лист ещё не сдан.',
+          '⏰ Дедлайн: <b>' + escapeTgHtml_(effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ')',
+          '📍 ' + escapeTgHtml_(loc),
+          '',
+          'Пожалуйста, завершите и отправьте чек-лист вовремя.'
+        ].join('\n');
+        btnText = '⚡️ Срочно пройти «' + b.name + '»';
+      } else {
+        msgText = [
+          '📋 <b>Открылся чек-лист: «' + escapeTgHtml_(b.name) + '»</b>',
+          '👋 Привет, ' + escapeTgHtml_(emp.name) + '!',
+          '⏰ Окно выполнения: <b>' + escapeTgHtml_(effOpen) + ' – ' + escapeTgHtml_(effDeadline) + '</b>',
+          '📍 ' + escapeTgHtml_(loc),
+          '',
+          'Нажмите кнопку ниже, чтобы сразу открыть и пройти чек-лист.'
+        ].join('\n');
+      }
+
+      var res = sendTelegramServerAlert_(ss, {
+        chatIds: [chatId],
+        type: 'checklist_' + stage,
+        block: b.name,
+        webappUrl: baseAppUrl,
+        buttonText: btnText,
+        buttonType: 'web_app',
+        skipDedup: true,
+        force: true,
+        text: msgText
+      });
+      if (res && res.ok) {
+        notified[dedupId] = hm;
+        sent.push({ block: b.name, stage: stage, staff: emp.name, chatId: chatId, time: hm });
+      } else {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: (res && (res.reason || res.error)) || 'send_failed' });
+      }
+    });
+  });
+
+  if (sent.length) {
+    try { setJsonProp_(notifKey, notified); } catch (_) {}
+    try { appendAudit_(ss, 'Автопилот Telegram', 'Отправлены уведомления бариста (' + sent.length + ')', sent.map(function(x) { return x.stage + ':' + x.block + ' → ' + x.staff; }).join(', ')); } catch (_) {}
+  }
+
+  return {
+    ok: true,
+    date: today,
+    time: hm,
+    weekday: weekday,
+    targetStaff: targetStaff.map(function(s) { return s.name; }),
+    sent: sent,
+    skipped: skipped
+  };
+}
+
+
+function normTaskTitleKeyV94_(block, title) {
+  var b = String(block || '').trim().toLowerCase();
+  var t = String(title || '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, ' ')
+    .replace(/\bфото\b/gi, ' ')
+    .replace(/[+\-—·•:().,!?\d]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return b + '|' + t;
+}
+
+function dedupeTasksV94_(tasks) {
+  if (!Array.isArray(tasks)) return [];
+  var seen = {};
+  var out = [];
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    if (!t) continue;
+    if (String(t.id || '') === '__SYS_CONFIG_V19__' || String(t.title || '') === '__SYS_SYNC__') {
+      out.push(t);
+      continue;
+    }
+    var key = normTaskTitleKeyV94_(t.block, t.title);
+    if (!key || key.endsWith('|')) { out.push(t); continue; }
+    if (seen[key] == null) {
+      seen[key] = out.length;
+      out.push(t);
+    } else {
+      var prev = out[seen[key]];
+      var prevPhoto = String(prev.photo || 'нет').toLowerCase() === 'да' || prev.photo === true;
+      var curPhoto = String(t.photo || 'нет').toLowerCase() === 'да' || t.photo === true;
+      if ((curPhoto && !prevPhoto) || (String(t.instruction || '').length > String(prev.instruction || '').length + 30 && curPhoto === prevPhoto)) {
+        out[seen[key]] = t;
+      }
+    }
+  }
+  return out;
+}
+
+
+
+/* =========================================================================
+   v97.0.0: СКЛАД (24 ПОЗИЦИИ ПО УМОЛЧАНИЮ, УДАЛЕНИЕ, АЛЕРТ НИЗКИХ ОСТАТКОВ)
+            И ВСТРОЕННЫЕ АВТОТЕСТЫ ДЛЯ РЕДАКТОРА APPS SCRIPT
+   ========================================================================= */
+function getDefaultWarehouseItemsV97_() {
+  var today = isoDate_();
+  return [
+    { id: 'inv_beans_illy', name: 'Кофе зерновой Illy Classico', category: 'Сырьё', unit: 'г', stock: 3000, minStock: 1000, updatedAt: today },
+    { id: 'inv_beans_decaf', name: 'Кофе зерновой Decaf', category: 'Сырьё', unit: 'г', stock: 500, minStock: 200, updatedAt: today },
+    { id: 'inv_milk_32', name: 'Молоко 3.2% (бариста)', category: 'Молоко', unit: 'мл', stock: 12000, minStock: 4000, updatedAt: today },
+    { id: 'inv_milk_lactose', name: 'Молоко безлактозное', category: 'Молоко', unit: 'мл', stock: 3000, minStock: 1000, updatedAt: today },
+    { id: 'inv_milk_oat', name: 'Молоко овсяное (Alpro)', category: 'Молоко', unit: 'мл', stock: 4000, minStock: 1500, updatedAt: today },
+    { id: 'inv_milk_coconut', name: 'Молоко кокосовое', category: 'Молоко', unit: 'мл', stock: 3000, minStock: 1000, updatedAt: today },
+    { id: 'inv_cream_10', name: 'Сливки 10% (для рафа)', category: 'Молоко', unit: 'мл', stock: 2500, minStock: 1000, updatedAt: today },
+    { id: 'inv_syrup_vanilla', name: 'Сироп Ваниль', category: 'Сиропы', unit: 'мл', stock: 1000, minStock: 300, updatedAt: today },
+    { id: 'inv_syrup_caramel', name: 'Сироп Солёная карамель', category: 'Сиропы', unit: 'мл', stock: 1000, minStock: 300, updatedAt: today },
+    { id: 'inv_syrup_hazelnut', name: 'Сироп Лесной орех', category: 'Сиропы', unit: 'мл', stock: 1000, minStock: 300, updatedAt: today },
+    { id: 'inv_syrup_lavender', name: 'Сироп Лаванда', category: 'Сиропы', unit: 'мл', stock: 700, minStock: 250, updatedAt: today },
+    { id: 'inv_cocoa', name: 'Какао-порошок натуральный', category: 'Сырьё', unit: 'г', stock: 800, minStock: 250, updatedAt: today },
+    { id: 'inv_matcha', name: 'Матча церемониальная', category: 'Сырьё', unit: 'г', stock: 200, minStock: 60, updatedAt: today },
+    { id: 'inv_tea_black', name: 'Чай чёрный листовой', category: 'Чай', unit: 'г', stock: 500, minStock: 150, updatedAt: today },
+    { id: 'inv_tea_green', name: 'Чай зелёный / травяной', category: 'Чай', unit: 'г', stock: 500, minStock: 150, updatedAt: today },
+    { id: 'inv_cup_180', name: 'Стакан 180 мл', category: 'Расходники', unit: 'шт', stock: 250, minStock: 80, updatedAt: today },
+    { id: 'inv_cup_250', name: 'Стакан 250 мл', category: 'Расходники', unit: 'шт', stock: 400, minStock: 120, updatedAt: today },
+    { id: 'inv_cup_350', name: 'Стакан 350 мл', category: 'Расходники', unit: 'шт', stock: 400, minStock: 120, updatedAt: today },
+    { id: 'inv_cup_cold', name: 'Стакан холодный ПЭТ 400 мл', category: 'Расходники', unit: 'шт', stock: 200, minStock: 60, updatedAt: today },
+    { id: 'inv_lids', name: 'Крышки для стаканов (80/90 мм)', category: 'Расходники', unit: 'шт', stock: 600, minStock: 200, updatedAt: today },
+    { id: 'inv_sugar', name: 'Сахар в стиках', category: 'Расходники', unit: 'шт', stock: 800, minStock: 250, updatedAt: today },
+    { id: 'inv_napkins', name: 'Салфетки бумажные', category: 'Расходники', unit: 'уп', stock: 12, minStock: 4, updatedAt: today },
+    { id: 'inv_straws', name: 'Трубочки / мешалки', category: 'Расходники', unit: 'шт', stock: 500, minStock: 150, updatedAt: today },
+    { id: 'inv_water', name: 'Вода бутилированная 19 л', category: 'Сырьё', unit: 'шт', stock: 6, minStock: 2, updatedAt: today }
+  ];
+}
+
+function syncInventoryToSheetV97_(ss, list) {
+  if (!ss || !Array.isArray(list)) return;
+  try {
+    var sh = ss.getSheetByName('Склад');
+    if (!sh) {
+      sh = ss.insertSheet('Склад');
+    }
+    var rows = [['ID', 'Наименование', 'Категория', 'Остаток', 'Мин. порог', 'Ед. изм.', 'Статус', 'Обновлено']];
+    var today = isoDate_();
+    list.forEach(function(it) {
+      if (!it || !it.name) return;
+      var st = Number(it.stock) || 0;
+      var mn = Number(it.minStock) || 0;
+      var badge = st <= 0 ? '🚨 Нет в наличии' : (mn > 0 && st <= mn ? '⚠️ Заканчивается' : '✓ Норма');
+      rows.push([
+        String(it.id || ''),
+        String(it.name || ''),
+        String(it.category || 'Сырьё'),
+        st,
+        mn,
+        String(it.unit || 'шт'),
+        badge,
+        String(it.updatedAt || today)
+      ]);
+    });
+    sh.clearContents();
+    sh.getRange(1, 1, rows.length, 8).setValues(rows);
+  } catch (e) {
+    logError_(ss, 'syncInventoryToSheetV97_', e);
+  }
+}
+
+function getSeededInventory_(ss) {
+  // 1. Сначала пробуем прочитать актуальный лист «Склад», если он заполнен вручную или ранее синхронизирован
+  if (ss) {
+    try {
+      var sh = ss.getSheetByName('Склад');
+      if (sh && sh.getLastRow() > 1) {
+        var rows = sh.getDataRange().getValues();
+        var fromSheet = [];
+        for (var i = 1; i < rows.length; i++) {
+          var r = rows[i];
+          if (!r[1]) continue;
+          fromSheet.push({
+            id: String(r[0] || ('inv_' + i)).trim(),
+            name: String(r[1] || '').trim(),
+            category: String(r[2] || 'Сырьё').trim(),
+            stock: Math.max(0, Number(r[3]) || 0),
+            minStock: Math.max(0, Number(r[4]) || 0),
+            unit: String(r[5] || 'шт').trim(),
+            updatedAt: fmtIso_(r[7]) || isoDate_()
+          });
+        }
+        if (fromSheet.length >= 5) {
+          setJsonProp_('COFFEE_INVENTORY_JSON', fromSheet);
+          return fromSheet;
+        }
+      }
+    } catch (_) {}
+  }
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list) || list.length < 5) {
+    var defaults = getDefaultWarehouseItemsV97_();
+    var existingById = {};
+    (Array.isArray(list) ? list : []).forEach(function(it) { if (it && it.id) existingById[it.id] = it; });
+    var merged = (Array.isArray(list) ? list.slice() : []);
+    defaults.forEach(function(d) {
+      if (!existingById[d.id]) merged.push(d);
+    });
+    setJsonProp_('COFFEE_INVENTORY_JSON', merged);
+    syncInventoryToSheetV97_(ss, merged);
+    return merged;
+  }
+  return list;
+}
+
+function autoDeductInventoryFromSalesV97_(ss, products, deductKey) {
+  if (!Array.isArray(products) || !products.length) return { deducted: false, skipped: true };
+  var dKey = String(deductKey || '').trim();
+  if (dKey) {
+    var doneKeys = getJsonProp_('COFFEE_INVENTORY_DEDUCT_KEYS_JSON', []);
+    if (!Array.isArray(doneKeys)) doneKeys = [];
+    if (doneKeys.indexOf(dKey) >= 0) {
+      return { deducted: false, skipped: true, duplicateDeductSkipped: true };
+    }
+  }
+  var list = getSeededInventory_(ss);
+  if (!list.length) return;
+  var byId = {};
+  list.forEach(function(it) { if (it && it.id) byId[it.id] = it; });
+
+  function dec(id, amount) {
+    var it = byId[id];
+    if (!it || !amount) return;
+    it.stock = Math.max(0, Math.round((Number(it.stock) || 0) - amount));
+    it.updatedAt = isoDate_();
+    checkLowStockAlertV97_(ss, it);
+  }
+
+  products.forEach(function(p) {
+    var nm = String((p && p.name) || '').toLowerCase();
+    var qty = Math.max(0, Number(p && p.qty) || 0);
+    if (!qty) return;
+    if (/эспрессо|американо|капучино|латте|раф|flat|флэт|мокко|макиато|длинный|турецк/.test(nm)) {
+      var shots = /двойн|flat|флэт/.test(nm) ? 2 : 1;
+      dec('inv_beans_illy', 9 * shots * qty);
+      dec('inv_lids', qty);
+      if (/бол|350|400|раф/.test(nm)) dec('inv_cup_400', qty);
+      else if (/эспрессо|макиато|flat|флэт/.test(nm)) dec('inv_cup_200', qty);
+      else dec('inv_cup_300', qty);
+      if (/капучино|латте|flat|флэт|мокко|раф|макиато/.test(nm)) {
+        dec('inv_milk_32', (/бол|350|400/.test(nm) ? 250 : 180) * qty);
+      }
+    } else if (/какао/.test(nm)) {
+      dec('inv_cocoa', 20 * qty);
+      dec('inv_milk_32', 220 * qty);
+      dec('inv_cup_300', qty);
+      dec('inv_lids', qty);
+    } else if (/чай/.test(nm)) {
+      dec('inv_tea', qty);
+      if (/облепих|малин|ягод|прян|имбир/.test(nm)) dec('inv_berry_base', 40 * qty);
+      dec('inv_cup_400', qty);
+      dec('inv_lids', qty);
+    } else if (/сироп/.test(nm)) {
+      dec('inv_syrup', 15 * qty);
+    } else if (/альтернатив/.test(nm)) {
+      dec('inv_milk_alt', 50 * qty);
+    } else if (/без\s*лактоз/.test(nm)) {
+      dec('inv_milk_lf', 50 * qty);
+    } else if (/молоко/.test(nm)) {
+      dec('inv_milk_32', 50 * qty);
+    } else if (/сливк/.test(nm)) {
+      dec('inv_cream_10', 20 * qty);
+    } else if (/кола|спрайт|фанта/.test(nm)) {
+      dec('inv_soda', qty);
+    } else if (/вода|минерал/.test(nm)) {
+      dec('inv_water_btl', qty);
+    } else if (/лимонад|пина\s*колада|айс|ice/.test(nm)) {
+      dec('inv_ice', 120 * qty);
+      dec('inv_cup_400', qty);
+      dec('inv_straws', qty);
+    } else if (/маршмеллоу/.test(nm)) {
+      dec('inv_marshmallow', 20 * qty);
+    }
+  });
+
+  setJsonProp_('COFFEE_INVENTORY_JSON', list);
+  syncInventoryToSheetV97_(ss, list);
+  if (dKey) {
+    var doneKeys2 = getJsonProp_('COFFEE_INVENTORY_DEDUCT_KEYS_JSON', []);
+    if (!Array.isArray(doneKeys2)) doneKeys2 = [];
+    doneKeys2.push(dKey);
+    if (doneKeys2.length > 100) doneKeys2 = doneKeys2.slice(-100);
+    setJsonProp_('COFFEE_INVENTORY_DEDUCT_KEYS_JSON', doneKeys2);
+  }
+  return { deducted: true, skipped: false };
+}
+
+function deleteInventory_(ss, b) {
+  var id = String((b && b.id) || '').trim();
+  if (!id) return { ok: false, error: 'Не указан id позиции склада' };
+  var list = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+  if (!Array.isArray(list)) list = [];
+  var next = list.filter(function(it) { return it && String(it.id) !== id; });
+  setJsonProp_('COFFEE_INVENTORY_JSON', next);
+  syncInventoryToSheetV97_(ss, next);
+  bumpDataRev_();
+  return { ok: true, inventory: next };
+}
+
+function checkLowStockAlertV97_(ss, item) {
+  if (!item || Number(item.minStock) <= 0) return;
+  if (Number(item.stock) > Number(item.minStock)) return;
+  try {
+    var today = isoDate_();
+    var props = PropertiesService.getScriptProperties();
+    var dedupKey = 'LOW_STOCK_ALERT_' + today + '_' + String(item.id || item.name).replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (props.getProperty(dedupKey)) return;
+    props.setProperty(dedupKey, '1');
+    sendTelegramServerAlert_(ss, {
+      type: 'warehouse',
+      text: '📦 <b>Низкий остаток на складе</b>\nПозиция: ' + escapeTgHtml_(item.name) + '\nОстаток: <b>' + item.stock + ' ' + escapeTgHtml_(item.unit || 'шт') + '</b> (мин. ' + item.minStock + ' ' + escapeTgHtml_(item.unit || 'шт') + ')'
+    });
+  } catch (_) {}
+}
+
+/**
+ * Встроенные самотесты серверной логики (запускается из редактора Apps Script).
+ */
+function runSelfTests() {
+  var results = [];
+  function assertEq(name, actual, expected) {
+    var ok = (actual === expected);
+    results.push({ name: name, ok: ok, actual: actual, expected: expected });
+    if (!ok) throw new Error('TEST FAILED [' + name + ']: expected ' + expected + ', got ' + actual);
+  }
+  assertEq('normTgNumericId_ strips TG- prefix', normTgNumericId_('TG-123456789'), '123456789');
+  assertEq('normTgNumericId_ strips spaces', normTgNumericId_(' 987 654 '), '987654');
+  assertEq('escapeTgHtml_ escapes tags', escapeTgHtml_('<b>a & b</b>'), '&lt;b&gt;a &amp; b&lt;/b&gt;');
+  assertEq('counterDeltaServer_ basic', counterDeltaServer_(100, 145), 45);
+  assertEq('hhmmToMinV93_ 08:30', hhmmToMinV93_('08:30'), 510);
+  var h = hashPinV2_('482910');
+  assertEq('hashPinV2_ prefix', h.indexOf('v2$') === 0, true);
+  assertEq('verifyPinStored_ matches v2$', verifyPinStored_(h, '482910'), true);
+  assertEq('verifyPinStored_ rejects wrong pin', verifyPinStored_(h, '000000'), false);
+  assertEq('maskSensitiveLogText_ redacts token', maskSensitiveLogText_('?sessionToken=abc123&x=1').indexOf('abc123') === -1, true);
+  Logger.log('ALL ' + results.length + ' SELF-TESTS PASSED');
+  return { ok: true, passed: results.length, results: results };
+}

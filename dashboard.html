@@ -233,7 +233,7 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.14.11) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.15.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -251,11 +251,11 @@ tbody tr { transition: background .14s ease; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.14.11"></script>
-  <script src="js/cloud-sync.js?v=97.14.11"></script>
-<script src="js/pos-csv-parser.js?v=97.14.11"></script>
-  <script src="js/custom-select.js?v=97.14.11" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.11">
+  <script src="config.js?v=97.15.0"></script>
+  <script src="js/cloud-sync.js?v=97.15.0"></script>
+<script src="js/pos-csv-parser.js?v=97.15.0"></script>
+  <script src="js/custom-select.js?v=97.15.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.15.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -618,7 +618,7 @@ function initTheme(btnId) {
     openModal('📊 Сводный отчёт · ' + rngLabel, `
       <div class="grid-2" style="margin-bottom:10px;">
         <div class="card-soft"><div style="font-size:11.5px;color:var(--muted);">Выручка (${fCash.length} смен)</div><div style="font-size:18px;font-weight:800;">${fmtRub(rev)}</div><div style="font-size:11.5px;color:var(--muted);">План: ${planPct}% · Нал ${fmtRub(cashSum)} / Безнал ${fmtRub(cardSum)}</div></div>
-        <div class="card-soft"><div style="font-size:11.5px;color:var(--muted);">Чистый итог</div><div style="font-size:18px;font-weight:800;color:var(--good);">${fmtRub(net)}</div><div style="font-size:11.5px;color:var(--muted);">Расходы: ${fmtRub(expSum)} · Чеков: ${checksSum} (${avg} ₽)</div></div>
+        <div class="card-soft"><div style="font-size:11.5px;color:var(--muted);">Остаток после расходов</div><div style="font-size:18px;font-weight:800;color:var(--good);">${fmtRub(net)}</div><div style="font-size:11.5px;color:var(--muted);">Расходы: ${fmtRub(expSum)} · Чеков: ${checksSum} (${avg} ₽)</div></div>
       </div>
       <div class="card-soft" style="margin-bottom:10px;font-size:12.5px;">
         📋 Чек-листов сдано: <b>${fChecklists.length}</b> (с проблемами: <b>${probChks}</b>) · 🔧 Инциденты: открыто <b>${openIncCnt}</b> / всего <b>${fIncidents.length}</b>
@@ -842,7 +842,7 @@ function initTheme(btnId) {
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Выручка (${fCash.length} смен)</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">План по дням: ${fmtRub(totalPlanRev)} (<b style="color:${revPlanPct>=100?'var(--good)':'var(--accent)'}">${revPlanPct}%</b>) · Сегодня (${todayPlan.day}): ${fmtRub(todayPlan.rev)}</div></div>
           <div class="kpi"><div class="kpi-lbl">Чеки и средний чек</div><div class="kpi-val" style="color:${actualAvgCheck>=targetAvgCheck?'var(--good)':'var(--accent)'}">${actualAvgCheck} ₽</div><div class="kpi-meta">Чеков: <b>${totalChecks}</b> / ${totalPlanChecks} (${checksPlanPct}%) · Мин. ср. чек (${todayPlan.day}): ${todayPlan.avg} ₽</div></div>
-          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${fChecklists.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Остаток после расходов</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev-totalExp)}</div><div class="kpi-meta">Расходы: ${fmtRub(totalExp)} · Чек-листов: ${fChecklists.length}</div></div>
           <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--bad)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">За период: ${fIncidents.length} · Задач: ${state.tasks.length}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
@@ -1385,7 +1385,7 @@ function initTheme(btnId) {
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Выручка (${esc(rng.label)})</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">Нал: ${fmtRub(finCashSum)} · Безнал: ${fmtRub(finCardSum)}</div></div>
           <div class="kpi"><div class="kpi-lbl">Расходы за период</div><div class="kpi-val" style="color:var(--bad)">${fmtRub(totalExp)}</div><div class="kpi-meta">Операций: ${fExpenses.length}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Чистый итог</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev - totalExp)}</div><div class="kpi-meta">Закрыто смен: ${fCash.length}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Остаток после расходов</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev - totalExp)}</div><div class="kpi-meta">Закрыто смен: ${fCash.length}</div></div>
           <div class="kpi"><div class="kpi-lbl">Средний чек</div><div class="kpi-val">${finAvg} ₽</div><div class="kpi-meta">Всего чеков: ${finChecks}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
@@ -1879,19 +1879,22 @@ function initTheme(btnId) {
       if (!payload.name) { showToast('Укажите название товара'); return; }
       if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
       try {
+        let res = { ok: true };
         if (window.CoffeeCloudV93) {
-          const res = await window.CoffeeCloudV93.saveInventoryItem(payload);
-          if (res && res.ok) {
-            if (Array.isArray(res.inventory)) state.inventory = res.inventory;
-            if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+          res = await window.CoffeeCloudV93.saveInventoryItem(payload);
+          if (!res || (res.ok === false && !res.queued)) {
+            showToast('Ошибка сервера: ' + ((res && res.error) || 'не удалось сохранить остаток'));
+            return;
           }
+          if (Array.isArray(res.inventory)) state.inventory = res.inventory;
+          if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
         }
         if (!state.inventory) state.inventory = [];
         const ex = state.inventory.find(x => x.id === payload.id);
         if (ex) Object.assign(ex, payload, { updatedAt: getTodayISO() });
         else state.inventory.push(Object.assign({}, payload, { updatedAt: getTodayISO() }));
         saveSharedState(state, 'Администратор', 'Обновлён склад: ' + payload.name + ' (' + payload.stock + ' ' + payload.unit + ')');
-        closeModal(); showToast('✓ Остаток сохранён в Google Таблице'); render();
+        closeModal(); showToast(res && res.queued ? '⏳ В очереди синхронизации (офлайн)' : '✓ Остаток сохранён в Google Таблице'); render();
       } catch (err) {
         showToast('Ошибка сохранения склада: ' + ((err && err.message) || 'повторите'));
       } finally {
@@ -1902,13 +1905,18 @@ function initTheme(btnId) {
     if (delBtn && it) {
       delBtn.onclick = async () => {
         const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
+        let r = { ok: true };
         if (api && api.deleteInventory) {
-          const r = await api.deleteInventory(it.id);
-          if (r && r.ok && Array.isArray(r.inventory)) state.inventory = r.inventory;
+          r = await api.deleteInventory(it.id);
+          if (!r || (r.ok === false && !r.queued)) {
+            showToast('Ошибка удаления: ' + ((r && r.error) || 'отклонено сервером'));
+            return;
+          }
+          if (Array.isArray(r.inventory)) state.inventory = r.inventory;
         }
         state.inventory = (state.inventory || []).filter(x => x.id !== it.id);
         saveSharedState(state, 'Администратор', 'Удалена позиция склада: ' + it.name);
-        closeModal(); showToast('✓ Позиция удалена со склада'); render();
+        closeModal(); showToast(r && r.queued ? '⏳ Удаление в очереди (офлайн)' : '✓ Позиция удалена со склада'); render();
       };
     }
   }
@@ -2173,7 +2181,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.14.11"></script>
+  <script src="./js/time-picker.js?v=97.15.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2181,7 +2189,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.14.11').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.15.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

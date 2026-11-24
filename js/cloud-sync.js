@@ -136,6 +136,33 @@
     return r.json();
   }
 
+  const ADMIN_ONLY_ACTIONS = {
+    admin: 1, save_staff: 1, delete_staff: 1, save_staff_pins: 1,
+    save_checklist_blocks: 1, save_task: 1, delete_task: 1, reorder_tasks: 1,
+    extend_deadline: 1, save_daily_plans: 1, save_ttk: 1, delete_ttk: 1,
+    save_all_settings: 1, save_setting: 1, save_inventory: 1, restock_inventory: 1,
+    writeoff_inventory: 1, delete_inventory: 1, delete_cash: 1, add_expense: 1,
+    delete_expense: 1, update_incident: 1, grant_photo_reader_access: 1,
+    send_direct_tg: 1, add_announcement: 1, delete_announcement: 1
+  };
+  const STAFF_ONLY_ACTIONS = {
+    staff_bootstrap: 1, submit_checklist: 1, save_checklist_draft: 1,
+    submit_cash: 1, batch_submit_cash: 1, upload_photo: 1,
+    report_standalone_incident: 1, bind_telegram_user: 1, change_staff_pin: 1
+  };
+
+  function resolveTokenForAction(action, payload, sess) {
+    if (payload && payload.sessionToken) return String(payload.sessionToken);
+    if (payload && payload._role === 'admin') return sess.adminToken || '';
+    if (payload && payload._role === 'staff') return sess.staffToken || '';
+    if (ADMIN_ONLY_ACTIONS[action]) return sess.adminToken || '';
+    if (action === 'batch_submit_cash' || action === 'staff_bootstrap') {
+      return sess.staffToken || sess.adminToken || '';
+    }
+    if (STAFF_ONLY_ACTIONS[action]) return sess.staffToken || '';
+    return '';
+  }
+
   async function gasPost(action, payload) {
     if (!API_URL) return { ok: false, offline: true };
     const sess = getSession();
@@ -143,8 +170,11 @@
       action: action,
       operationId: (payload && payload.operationId) || ('op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7))
     }, payload || {});
-    if (!body.sessionToken) body.sessionToken = sess.adminToken || sess.staffToken || '';
-    if (!body.staffSessionToken && sess.staffToken) body.staffSessionToken = sess.staffToken;
+    delete body._role;
+    if (!body.sessionToken) body.sessionToken = resolveTokenForAction(action, payload, sess);
+    if (STAFF_ONLY_ACTIONS[action] && !body.staffSessionToken && sess.staffToken) {
+      body.staffSessionToken = sess.staffToken;
+    }
     const r = await fetch(API_URL, {
       method: 'POST',
       cache: 'no-store',
@@ -320,11 +350,13 @@
       return { ok: false, offline: true, error: 'Нет подключения к интернету. Смена PIN требует связи с сервером.' };
     }
     try {
+      const sessNow = getSession();
       const res = await gasPost('change_staff_pin', {
-        staffName: o.staffName || o.name || (getSession().staffName || ''),
+        staffName: o.staffName || o.name || (sessNow.staffName || ''),
         oldPin: o.oldPin || '',
         newPin: o.newPin || '',
-        resetCode: o.resetCode || ''
+        resetCode: o.resetCode || '',
+        sessionToken: o.asAdmin ? (sessNow.adminToken || '') : (sessNow.staffToken || '')
       });
       if (res && res.ok === true) {
         setSession({ staffToken: '', staffName: '' });
@@ -805,15 +837,21 @@
     const onSynced = opts && opts.onSynced;
     const onAuthRequired = opts && opts.onAuthRequired;
 
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // Single canonical SW registration lives in index.html / dashboard.html
+    function initTelegramWebAppSafe() {
+      try {
+        if (window.Telegram && window.Telegram.WebApp) {
+          window.Telegram.WebApp.ready();
+          window.Telegram.WebApp.expand();
+          return true;
+        }
+      } catch (_) {}
+      return false;
     }
-    try {
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-      }
-    } catch (_) {}
+    if (!initTelegramWebAppSafe() && typeof window !== 'undefined') {
+      window.addEventListener('DOMContentLoaded', initTelegramWebAppSafe, { once: true });
+      window.addEventListener('load', initTelegramWebAppSafe, { once: true });
+    }
 
     async function pullNow(forceFull) {
       if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
@@ -1180,6 +1218,7 @@
     authLogin: authLogin,
     authLogout: authLogout,
     changeStaffPin: changeStaffPin,
+    resolveTokenForAction: resolveTokenForAction,
     enqueueOp: enqueueOp,
     flushOutbox: flushOutbox,
     uploadPhotoToDrive: uploadPhotoToDrive,
@@ -1190,7 +1229,7 @@
       const TYPE_TO_ACTION = {
         'cash.submit': 'submit_cash',
         'cash.import': 'batch_submit_cash',
-        'checklist.submit': 'save_checklist',
+        'checklist.submit': 'submit_checklist',
         'incident.create': 'report_standalone_incident',
         'incident.resolve': 'update_incident',
         'expense.create': 'add_expense',
