@@ -220,10 +220,10 @@ body { overflow-x: hidden; padding-left: env(safe-area-inset-left); padding-righ
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.14.0"></script>
-  <script src="js/cloud-sync.js?v=97.14.0"></script>
-<script src="js/pos-csv-parser.js?v=97.14.0"></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.0">
+  <script src="config.js?v=97.14.1"></script>
+  <script src="js/cloud-sync.js?v=97.14.1"></script>
+<script src="js/pos-csv-parser.js?v=97.14.1"></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.1">
 </head>
 <body>
 <header class="topbar">
@@ -315,7 +315,18 @@ function saveSharedState(st, actor, desc) {
     st.auditLog.unshift({ date: getTodayISO(), time: (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (st.simTime || '13:25')), actor: actor || 'Система', rev: st.rev, text: desc });
     if (st.auditLog.length > 50) st.auditLog.pop();
   }
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(st));
+  } catch (qErr) {
+    try {
+      const slim = Object.assign({}, st, {
+        salesLog: Array.isArray(st.salesLog) ? st.salesLog.slice(0, 600) : [],
+        auditLog: Array.isArray(st.auditLog) ? st.auditLog.slice(0, 30) : [],
+        inventoryMoves: Array.isArray(st.inventoryMoves) ? st.inventoryMoves.slice(0, 150) : []
+      });
+      localStorage.setItem(STORE_KEY, JSON.stringify(slim));
+    } catch (_) {}
+  }
   if (syncCh) try { syncCh.postMessage({ type: 'state', rev: st.rev, ts: Date.now() }); } catch(_) {}
   if (window.CoffeeCloudV93 && desc) window.CoffeeCloudV93.dispatchStateChange(st, actor, desc);
 }
@@ -361,6 +372,7 @@ function initTheme(btnId) {
   let adminAuthNeeded = !adminUnlocked;
   let incFilter = 'open';
   let chkFilter = 'all';
+  let chkLogLimit = 50;
   let salesCatFilter = 'all';
   const sortState = {
     salesTop: { key: 'sum', dir: 'desc' },
@@ -600,6 +612,7 @@ function initTheme(btnId) {
       a.href = URL.createObjectURL(blob);
       a.download = 'coffee_illy_report_' + getTodayISO() + '.csv';
       a.click();
+      setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch (_) {} }, 1500);
       showToast('✓ CSV-отчёт скачан');
     };
     document.getElementById('rep-print').onclick = () => { window.print(); };
@@ -619,6 +632,7 @@ function initTheme(btnId) {
       <button class="btn-lg primary" id="p-ok">Подтвердить и загрузить данные</button>
     `);
     document.getElementById('p-ok').onclick = async () => {
+      const btn = document.getElementById('p-ok');
       const entered = document.getElementById('p-in').value.trim();
       if (!entered) return;
       if (!window.CoffeeCloudV93 || !window.CoffeeCloudV93.authLogin) {
@@ -629,15 +643,22 @@ function initTheme(btnId) {
         showToast('Нет подключения к интернету — вход владельца требует связи с сервером');
         return;
       }
-      const res = await window.CoffeeCloudV93.authLogin('admin', { pin: entered });
-      if (res && res.ok === true && res.sessionToken) {
-        adminUnlocked = true; adminAuthNeeded = false;
-        closeModal(); showToast('🔓 Живая сессия владельца активна');
-        if (cloudLoop && cloudLoop.pullNow) await cloudLoop.pullNow(true);
-        fn(); render();
-        return;
+      if (btn) { btn.disabled = true; btn.textContent = 'Проверка PIN...'; }
+      try {
+        const res = await window.CoffeeCloudV93.authLogin('admin', { pin: entered });
+        if (res && res.ok === true && res.sessionToken) {
+          adminUnlocked = true; adminAuthNeeded = false;
+          closeModal(); showToast('🔓 Живая сессия владельца активна');
+          if (cloudLoop && cloudLoop.pullNow) await cloudLoop.pullNow(true);
+          fn(); render();
+          return;
+        }
+        showToast((res && res.offline) ? 'Сервер недоступен' : ((res && res.error) ? String(res.error).replace(/^[A-Z_]+:\s*/, '') : 'Неверный PIN владельца'));
+      } catch (err) {
+        showToast('Сетевая ошибка входа: ' + ((err && err.message) || 'повторите'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Подтвердить и загрузить данные'; }
       }
-      showToast((res && res.offline) ? 'Сервер недоступен' : ((res && res.error) ? String(res.error).replace(/^[A-Z_]+:\s*/, '') : 'Неверный PIN владельца'));
     };
   }
 
@@ -906,10 +927,13 @@ function initTheme(btnId) {
             <select id="cf" class="chip-btn"><option value="all">Все сотрудники</option>${[...new Set(state.checklists.map(c=>c.who))].map(w=>`<option value="${esc(w)}" ${chkFilter===w?'selected':''}>${esc(w)}</option>`).join('')}</select>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<button type="button" class="badge accent" data-mv="${esc(u)}" data-mvt="${esc(c.block+' · '+c.date)}" style="border:0;cursor:pointer;margin-left:4px;">${isVideoMediaUrl(u)?'🎬':'📷'} ${idx+1}</button>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.slice(0, chkLogLimit).map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<button type="button" class="badge accent" data-mv="${esc(u)}" data-mvt="${esc(c.block+' · '+c.date)}" style="border:0;cursor:pointer;margin-left:4px;">${isVideoMediaUrl(u)?'🎬':'📷'} ${idx+1}</button>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
           </tbody></table></div>
+          ${logs.length > chkLogLimit ? `<div style="text-align:center;margin-top:12px;"><button class="chip-btn" id="chk-more">Показать ещё 50 (показано ${chkLogLimit} из ${logs.length})</button></div>` : ''}
         </div>`;
-      document.getElementById('cf').onchange = e => { chkFilter = e.target.value; render(); };
+      document.getElementById('cf').onchange = e => { chkFilter = e.target.value; chkLogLimit = 50; render(); };
+      const moreChkBtn = document.getElementById('chk-more');
+      if (moreChkBtn) moreChkBtn.onclick = () => { chkLogLimit += 50; render(); };
       root.querySelectorAll('[data-un]').forEach(b => b.onclick = () => guard('Открыть блок', () => {
         state.extensions[b.dataset.un] = { forceOpen: true, until: '23:59' };
         saveSharedState(state, 'Администратор', 'Открыт блок «' + b.dataset.un + '» до 23:59');
@@ -968,6 +992,7 @@ function initTheme(btnId) {
           if (stType === 'weekly' && !selDays.length) { showToast('Выберите хотя бы один день недели'); return; }
           if (stType === 'date' && !selDate) { showToast('Укажите конкретную дату'); return; }
           if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+          const prevBlk = Object.assign({}, blk, { scheduleDays: Array.isArray(blk.scheduleDays) ? blk.scheduleDays.slice() : [] });
           const old = blk.name;
           blk.name = nm; blk.openTime = op; blk.deadline = dl;
           blk.active = document.getElementById('m-blk-active').value === '1';
@@ -980,17 +1005,31 @@ function initTheme(btnId) {
             renamed[old] = nm;
             state.tasks.forEach(t => { if (t.block === old) t.block = nm; });
           }
-          saveSharedState(state, 'Администратор', '');
-          let res = { ok: true };
-          if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
-            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
-            res = await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, renamed);
-          } else {
-            saveSharedState(state, 'Администратор', 'Окно «' + nm + '»: ' + op + '–' + dl);
+          try {
+            let res = { ok: true };
+            if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
+              window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+              res = await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, renamed);
+            } else {
+              saveSharedState(state, 'Администратор', 'Окно «' + nm + '»: ' + op + '–' + dl);
+            }
+            if (res && (res.ok || res.queued)) {
+              saveSharedState(state, 'Администратор', '');
+              closeModal();
+              showToast(res.queued ? ('✓ Блок «' + nm + '» сохранён локально (уйдёт при связи)') : ('✓ Блок «' + nm + '» сохранён и синхронизирован!'));
+              render();
+            } else {
+              Object.assign(blk, prevBlk);
+              if (old !== nm) state.tasks.forEach(t => { if (t.block === nm) t.block = old; });
+              showToast('Ошибка сохранения: ' + ((res && res.error) || 'проверьте вход'));
+            }
+          } catch (err) {
+            Object.assign(blk, prevBlk);
+            if (old !== nm) state.tasks.forEach(t => { if (t.block === nm) t.block = old; });
+            showToast('Сетевая ошибка сохранения блока: ' + ((err && err.message) || 'повторите'));
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
           }
-          closeModal();
-          showToast(res && res.ok ? ('✓ Блок «' + nm + '» сохранён и синхронизирован!') : ('Ошибка сохранения: ' + ((res && res.error) || 'проверьте вход')));
-          render();
         };
         const delBlkBtn = document.getElementById('m-blk-del');
         if (delBlkBtn) delBlkBtn.onclick = async () => {
@@ -1025,6 +1064,7 @@ function initTheme(btnId) {
           document.getElementById('n-date-w').style.display = nst.value === 'date' ? 'block' : 'none';
         };
         document.getElementById('ns').onclick = async () => {
+          const btn = document.getElementById('ns');
           const nm = document.getElementById('nn').value.trim(), op = document.getElementById('no').value, dl = document.getElementById('nd').value;
           const stType = nst.value;
           const selDays = Array.from(document.querySelectorAll('.n-day-cb:checked')).map(el => el.value);
@@ -1032,15 +1072,33 @@ function initTheme(btnId) {
           if (!nm || toMin(op) >= toMin(dl)) { showToast('Проверьте название и время'); return; }
           if (stType === 'weekly' && !selDays.length) { showToast('Выберите дни недели'); return; }
           if (stType === 'date' && !selDate) { showToast('Укажите дату'); return; }
-          state.blocks.push({ id:'blk_'+Date.now(), name:nm, openTime:op, deadline:dl, isCash:false, active:true, assignee:document.getElementById('na').value, scheduleType:stType, scheduleDays:stType==='weekly'?selDays:[], scheduleDate:stType==='date'?selDate:'' });
+          if (btn) { btn.disabled = true; btn.textContent = 'Создание...'; }
+          const newBlk = { id:'blk_'+Date.now(), name:nm, openTime:op, deadline:dl, isCash:false, active:true, assignee:document.getElementById('na').value, scheduleType:stType, scheduleDays:stType==='weekly'?selDays:[], scheduleDate:stType==='date'?selDate:'' };
           const firstTitle = document.getElementById('nt').value.trim() || 'Проверить зону';
-          state.tasks.push({ id:'t_'+Date.now(), block:nm, group:nm, title:firstTitle, instruction:'Выполнить по стандарту.', photo:true, owner:'Администратор' });
-          if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
-            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
-            await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, {});
+          const newTask = { id:'t_'+Date.now(), block:nm, group:nm, title:firstTitle, instruction:'Выполнить по стандарту.', photo:true, owner:'Администратор' };
+          state.blocks.push(newBlk);
+          state.tasks.push(newTask);
+          try {
+            let res = { ok: true };
+            if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveChecklistBlocks) {
+              window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+              res = await window.CoffeeCloudV93.saveChecklistBlocks(state.blocks, {});
+            }
+            if (res && (res.ok || res.queued)) {
+              saveSharedState(state, 'Администратор', 'Добавлена задача «' + firstTitle + '»');
+              closeModal(); showToast('✓ Блок «' + nm + '» создан и отправлен в терминал!'); render();
+            } else {
+              state.blocks = state.blocks.filter(x => x.id !== newBlk.id);
+              state.tasks = state.tasks.filter(x => x.id !== newTask.id);
+              showToast('Ошибка создания блока: ' + ((res && res.error) || 'проверьте вход'));
+            }
+          } catch (err) {
+            state.blocks = state.blocks.filter(x => x.id !== newBlk.id);
+            state.tasks = state.tasks.filter(x => x.id !== newTask.id);
+            showToast('Сетевая ошибка создания блока: ' + ((err && err.message) || 'повторите'));
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Создать и отправить в терминал'; }
           }
-          saveSharedState(state, 'Администратор', 'Добавлена задача «' + firstTitle + '»');
-          closeModal(); showToast('✓ Блок «' + nm + '» создан и отправлен в терминал!'); render();
         };
       });
       return;
@@ -1170,16 +1228,21 @@ function initTheme(btnId) {
         document.getElementById('sales-csv-confirm').onclick = () => guard('Импорт CSV продаж', async () => {
           const btn = document.getElementById('sales-csv-confirm');
           if (btn) { btn.disabled = true; btn.textContent = '⏳ Загрузка...'; }
-          const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
-          const res = api && api.importPosBatch ? await api.importPosBatch(batch.days, 'sum') : { ok: false };
-          if (res && res.ok) {
-            closeModal();
-            showToast('✓ Загружено дней: ' + (res.count || batch.days.length));
-            if (api && api.pullNow) await api.pullNow(true);
-            render();
-          } else {
+          try {
+            const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
+            const res = api && api.importPosBatch ? await api.importPosBatch(batch.days, 'sum') : { ok: false };
+            if (res && res.ok) {
+              closeModal();
+              showToast('✓ Загружено дней: ' + (res.count || batch.days.length));
+              if (api && api.pullNow) await api.pullNow(true);
+              render();
+            } else {
+              showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи'));
+            }
+          } catch (err) {
+            showToast('Сетевая ошибка импорта: ' + ((err && err.message) || 'повторите'));
+          } finally {
             if (btn) { btn.disabled = false; btn.textContent = '✓ Загрузить в Google Таблицу'; }
-            showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи'));
           }
         });
       };
@@ -1395,46 +1458,33 @@ function initTheme(btnId) {
         openModal('Выписка POS распознана (' + batch.summary.filesCount + ' ф.)', box.innerHTML.replace('id="csv-imp-save"', 'id="csv-imp-save-m"'));
         const saveBatchFn = async (btnEl) => {
           if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳ Загрузка...'; }
-          const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
-          const res = api && api.importPosBatch ? await api.importPosBatch(batch.days, 'sum') : { ok: false };
-          if (res && res.ok) {
-            batch.days.forEach(d => {
-              const ex = state.cash.find(c => c.date === d.date);
-              if (ex) { ex.cash = d.cash; ex.card = d.card; ex.revenue = d.revenue; ex.checks = d.checks; ex.barista = d.barista; ex.topItems = d.topItems; ex.coffeeQty = d.coffeeQty; }
-              else state.cash.unshift({ date: d.date, cash: d.cash, card: d.card, revenue: d.revenue, checks: d.checks, writeoff: 0, topItems: d.topItems, barista: d.barista, coffeeQty: d.coffeeQty });
-            });
-            state.cash.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-            showToast('✓ Импортировано: ' + res.count + ' дн., чеков: ' + (res.txAdded || 0) + (res.txSkipped ? (' (дублей пропущено: ' + res.txSkipped + ')') : ''));
-            box.style.display = 'none';
-            closeModal();
-            render();
-          } else {
+          try {
+            const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
+            const res = api && api.importPosBatch ? await api.importPosBatch(batch.days, 'sum') : { ok: false };
+            if (res && res.ok) {
+              batch.days.forEach(d => {
+                const ex = state.cash.find(c => c.date === d.date);
+                if (ex) { ex.cash = d.cash; ex.card = d.card; ex.revenue = d.revenue; ex.checks = d.checks; ex.barista = d.barista; ex.topItems = d.topItems; ex.coffeeQty = d.coffeeQty; }
+                else state.cash.unshift({ date: d.date, cash: d.cash, card: d.card, revenue: d.revenue, checks: d.checks, writeoff: 0, topItems: d.topItems, barista: d.barista, coffeeQty: d.coffeeQty });
+              });
+              state.cash.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+              showToast('✓ Импортировано: ' + res.count + ' дн., чеков: ' + (res.txAdded || 0) + (res.txSkipped ? (' (дублей пропущено: ' + res.txSkipped + ')') : ''));
+              box.style.display = 'none';
+              closeModal();
+              render();
+            } else {
+              showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи с сервером'));
+            }
+          } catch (err) {
+            showToast('Сетевая ошибка импорта: ' + ((err && err.message) || 'повторите'));
+          } finally {
             if (btnEl) { btnEl.disabled = false; btnEl.textContent = '✓ Загрузить в Google Таблицу'; }
-            showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи с сервером'));
           }
         };
         const mSaveBtn = document.getElementById('csv-imp-save-m');
         if (mSaveBtn) mSaveBtn.onclick = () => guard('Импорт CSV в Google Таблицу', () => saveBatchFn(mSaveBtn));
-        document.getElementById('csv-imp-save').onclick = () => guard('Импорт CSV в Google Таблицу', async () => {
-          const btn = document.getElementById('csv-imp-save');
-          if (btn) { btn.disabled = true; btn.textContent = '⏳ Загрузка...'; }
-          const api = window.CoffeeCloudV94 || window.CoffeeCloudV93;
-          const res = api && api.importPosBatch ? await api.importPosBatch(batch.days, 'sum') : { ok: false };
-          if (res && res.ok) {
-            batch.days.forEach(d => {
-              const ex = state.cash.find(c => c.date === d.date);
-              if (ex) { ex.cash = d.cash; ex.card = d.card; ex.revenue = d.revenue; ex.checks = d.checks; ex.barista = d.barista; ex.topItems = d.topItems; ex.coffeeQty = d.coffeeQty; }
-              else state.cash.unshift({ date: d.date, cash: d.cash, card: d.card, revenue: d.revenue, checks: d.checks, writeoff: 0, topItems: d.topItems, barista: d.barista, coffeeQty: d.coffeeQty });
-            });
-            state.cash.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-            showToast('✓ Импортировано: ' + res.count + ' дн., чеков: ' + (res.txAdded || 0) + (res.txSkipped ? (' (дублей пропущено: ' + res.txSkipped + ')') : ''));
-            box.style.display = 'none';
-            render();
-          } else {
-            if (btn) { btn.disabled = false; btn.textContent = '✓ Загрузить в Google Таблицу'; }
-            showToast('Ошибка импорта: ' + ((res && res.error) || 'нет связи с сервером'));
-          }
-        });
+        const inlineSaveBtn = document.getElementById('csv-imp-save');
+        if (inlineSaveBtn) inlineSaveBtn.onclick = () => guard('Импорт CSV в Google Таблицу', () => saveBatchFn(inlineSaveBtn));
       };
       document.getElementById('e-add').onclick = () => guard('Добавить расход', () => {
         openModal('Новый расход', `
@@ -1484,6 +1534,7 @@ function initTheme(btnId) {
         document.getElementById('psv').onclick = async () => {
           const btn = document.getElementById('psv');
           if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+          const prevP = Object.assign({}, p);
           const rVal = Math.max(100, Number(document.getElementById('pr').value) || 2200);
           const cVal = Math.max(1, Number(document.getElementById('pc').value) || 75);
           const aVal = Math.max(1, Number(document.getElementById('pa').value) || 35);
@@ -1509,24 +1560,31 @@ function initTheme(btnId) {
             };
             rosterObj[x.day] = String(x.roster || '');
           });
-          // Локально сохраняем состояние без дублирования очереди
-          saveSharedState(state, 'Администратор', '');
-          let res = { ok: true, queued: true };
-          if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveDailyPlans === 'function') {
-            window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
-            res = await window.CoffeeCloudV93.saveDailyPlans(plansObj, rosterObj);
-          } else {
-            saveSharedState(state, 'Администратор', 'Обновлён план ' + p.day + ' (' + rVal + ' ₽ / ' + cVal + ' чек. / ≥' + aVal + ' ₽)');
+          try {
+            let res = { ok: true, queued: true };
+            if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveDailyPlans === 'function') {
+              window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+              res = await window.CoffeeCloudV93.saveDailyPlans(plansObj, rosterObj);
+            } else {
+              saveSharedState(state, 'Администратор', 'Обновлён план ' + p.day + ' (' + rVal + ' ₽ / ' + cVal + ' чек. / ≥' + aVal + ' ₽)');
+            }
+            if (res && (res.ok || res.queued)) {
+              saveSharedState(state, 'Администратор', '');
+              closeModal();
+              showToast(res.queued
+                ? ('✓ План на ' + p.day + ' сохранён локально (уйдёт в облако при связи)')
+                : ('✓ План на ' + p.day + ' сохранён в Google Таблице!'));
+              render();
+            } else {
+              Object.assign(p, prevP);
+              showToast('Ошибка сохранения плана: ' + ((res && res.error) || 'проверьте вход по PIN'));
+            }
+          } catch (err) {
+            Object.assign(p, prevP);
+            showToast('Сетевая ошибка сохранения плана: ' + ((err && err.message) || 'повторите'));
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Сохранить план на ' + p.day; }
           }
-          closeModal();
-          if (res && res.ok) {
-            showToast(res.queued
-              ? ('✓ План на ' + p.day + ' сохранён локально (уйдёт в облако при связи)')
-              : ('✓ План на ' + p.day + ' сохранён в Google Таблице!'));
-          } else {
-            showToast('Ошибка сохранения плана: ' + ((res && res.error) || 'проверьте вход по PIN'));
-          }
-          render();
         };
       }));
       return;
@@ -1618,6 +1676,7 @@ function initTheme(btnId) {
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn-lg primary" id="s-save" style="flex:1;">Сохранить</button>
             <button class="chip-btn good" id="s-grant-photos">🔓 Открыть доступ читателя к фото Drive</button>
+            <button class="chip-btn" id="s-change-pin">🔑 Сменить PIN владельца</button>
           </div>
         </div>
         <div class="card" style="margin-bottom:16px;">
@@ -1664,10 +1723,47 @@ function initTheme(btnId) {
       const grpBtn = document.getElementById('s-grant-photos');
       if (grpBtn) grpBtn.onclick = () => guard('Доступ к фото Drive', async () => {
         if (!window.CoffeeCloudV93 || !window.CoffeeCloudV93.grantPhotoReaderAccess) return;
-        showToast('⏳ Открываем доступ читателя на Google Drive...');
-        const res = await window.CoffeeCloudV93.grantPhotoReaderAccess();
-        if (res && res.ok) showToast('✓ Доступ читателя открыт (файлов: ' + (res.updated || 0) + ')');
-        else showToast('Ошибка: ' + ((res && res.error) || 'проверьте права DriveApp'));
+        grpBtn.disabled = true;
+        try {
+          showToast('⏳ Открываем доступ читателя на Google Drive...');
+          const res = await window.CoffeeCloudV93.grantPhotoReaderAccess();
+          if (res && res.ok) showToast('✓ Доступ читателя открыт (файлов: ' + (res.updated || 0) + ')');
+          else showToast('Ошибка: ' + ((res && res.error) || 'проверьте права DriveApp'));
+        } catch (err) {
+          showToast('Сетевая ошибка Drive: ' + ((err && err.message) || 'повторите'));
+        } finally {
+          grpBtn.disabled = false;
+        }
+      });
+      const chPinBtn = document.getElementById('s-change-pin');
+      if (chPinBtn) chPinBtn.onclick = () => guard('Сменить PIN владельца', () => {
+        openModal('Сменить PIN владельца', `
+          <div class="field"><label>Новый PIN (4–12 цифр)</label><input id="adm-pin-1" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Например: 5839"></div>
+          <div class="field"><label>Повторите новый PIN</label><input id="adm-pin-2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Повторите цифры"></div>
+          <button class="btn-lg primary" id="adm-pin-save">Сохранить новый PIN</button>
+        `);
+        document.getElementById('adm-pin-save').onclick = async () => {
+          const bSave = document.getElementById('adm-pin-save');
+          const p1 = (document.getElementById('adm-pin-1').value || '').trim();
+          const p2 = (document.getElementById('adm-pin-2').value || '').trim();
+          if (!/^\d{4,12}$/.test(p1) || /^(\d)\1{3,}$/.test(p1)) { showToast('PIN: 4–12 цифр, не из одинаковых цифр'); return; }
+          if (p1 !== p2) { showToast('PIN-коды не совпадают'); return; }
+          if (bSave) { bSave.disabled = true; bSave.textContent = 'Сохранение...'; }
+          try {
+            const api = window.CoffeeCloud || window.CoffeeCloudV93;
+            const res = api && api.changeAdminPin ? await api.changeAdminPin(p1) : { ok: false, error: 'API недоступен' };
+            if (res && res.ok) {
+              closeModal();
+              showToast('✓ Новый PIN владельца сохранён в Google Таблице!');
+            } else {
+              showToast('Ошибка смены PIN: ' + ((res && res.error) || 'проверьте вход'));
+            }
+          } catch (err) {
+            showToast('Сетевая ошибка: ' + ((err && err.message) || 'повторите'));
+          } finally {
+            if (bSave) { bSave.disabled = false; bSave.textContent = 'Сохранить новый PIN'; }
+          }
+        };
       });
       document.getElementById('tg-save').onclick = () => guard('Настройки Telegram', async () => {
         if (!window.CoffeeCloudV93) return;
@@ -1740,6 +1836,7 @@ function initTheme(btnId) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-lg primary" id="wh-sv" style="flex:1;">Сохранить на склад</button>${it ? `<button class="chip-btn bad" id="wh-del" style="padding:10px 14px;">🗑️ Удалить</button>` : ''}</div>
     `);
     document.getElementById('wh-sv').onclick = async () => {
+      const btn = document.getElementById('wh-sv');
       const payload = {
         id: it ? it.id : ('inv_' + Date.now().toString(36)),
         name: document.getElementById('wh-nm').value.trim(),
@@ -1749,19 +1846,26 @@ function initTheme(btnId) {
         minStock: Math.max(0, Math.round(Number(document.getElementById('wh-min').value) || 0))
       };
       if (!payload.name) { showToast('Укажите название товара'); return; }
-      if (window.CoffeeCloudV93) {
-        const res = await window.CoffeeCloudV93.saveInventoryItem(payload);
-        if (res && res.ok) {
-          if (Array.isArray(res.inventory)) state.inventory = res.inventory;
-          if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+      if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+      try {
+        if (window.CoffeeCloudV93) {
+          const res = await window.CoffeeCloudV93.saveInventoryItem(payload);
+          if (res && res.ok) {
+            if (Array.isArray(res.inventory)) state.inventory = res.inventory;
+            if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+          }
         }
+        if (!state.inventory) state.inventory = [];
+        const ex = state.inventory.find(x => x.id === payload.id);
+        if (ex) Object.assign(ex, payload, { updatedAt: getTodayISO() });
+        else state.inventory.push(Object.assign({}, payload, { updatedAt: getTodayISO() }));
+        saveSharedState(state, 'Администратор', 'Обновлён склад: ' + payload.name + ' (' + payload.stock + ' ' + payload.unit + ')');
+        closeModal(); showToast('✓ Остаток сохранён в Google Таблице'); render();
+      } catch (err) {
+        showToast('Ошибка сохранения склада: ' + ((err && err.message) || 'повторите'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Сохранить на склад'; }
       }
-      if (!state.inventory) state.inventory = [];
-      const ex = state.inventory.find(x => x.id === payload.id);
-      if (ex) Object.assign(ex, payload, { updatedAt: getTodayISO() });
-      else state.inventory.push(Object.assign({}, payload, { updatedAt: getTodayISO() }));
-      saveSharedState(state, 'Администратор', 'Обновлён склад: ' + payload.name + ' (' + payload.stock + ' ' + payload.unit + ')');
-      closeModal(); showToast('✓ Остаток сохранён в Google Таблице'); render();
     };
     const delBtn = document.getElementById('wh-del');
     if (delBtn && it) {
@@ -1788,21 +1892,29 @@ function initTheme(btnId) {
       <button class="btn-lg primary" id="wm-ok">${isRestock?'+ Зачислить на склад':'− Списать со склада'}</button>
     `);
     document.getElementById('wm-ok').onclick = async () => {
+      const btn = document.getElementById('wm-ok');
       const qty = Math.max(1, Math.round(Number(document.getElementById('wm-qty').value) || 0));
       const note = document.getElementById('wm-note').value.trim();
-      if (window.CoffeeCloudV93) {
-        const res = isRestock
-          ? await window.CoffeeCloudV93.restockInventory(it.id, qty, note)
-          : await window.CoffeeCloudV93.writeoffInventory(it.id, qty, note);
-        if (res && res.ok) {
-          if (Array.isArray(res.inventory)) state.inventory = res.inventory;
-          if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+      if (btn) { btn.disabled = true; btn.textContent = 'Запись...'; }
+      try {
+        if (window.CoffeeCloudV93) {
+          const res = isRestock
+            ? await window.CoffeeCloudV93.restockInventory(it.id, qty, note)
+            : await window.CoffeeCloudV93.writeoffInventory(it.id, qty, note);
+          if (res && res.ok) {
+            if (Array.isArray(res.inventory)) state.inventory = res.inventory;
+            if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+          }
         }
+        it.stock = Math.max(0, Number(it.stock || 0) + (isRestock ? qty : -qty));
+        it.updatedAt = getTodayISO();
+        saveSharedState(state, 'Администратор', (isRestock ? 'Приход склада: ' : 'Списание склада: ') + it.name + ' (' + (isRestock ? '+' : '-') + qty + ' ' + it.unit + ')');
+        closeModal(); showToast(isRestock ? '✓ Приход записан' : '✓ Списание записано'); render();
+      } catch (err) {
+        showToast('Ошибка операции со складом: ' + ((err && err.message) || 'повторите'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = isRestock ? '+ Зачислить на склад' : '− Списать со склада'; }
       }
-      it.stock = Math.max(0, Number(it.stock || 0) + (isRestock ? qty : -qty));
-      it.updatedAt = getTodayISO();
-      saveSharedState(state, 'Администратор', (isRestock ? 'Приход склада: ' : 'Списание склада: ') + it.name + ' (' + (isRestock ? '+' : '-') + qty + ' ' + it.unit + ')');
-      closeModal(); showToast(isRestock ? '✓ Приход записан' : '✓ Списание записано'); render();
     };
   }
   function openEditTaskModal(taskId, returnBlk) {
@@ -1901,26 +2013,39 @@ function initTheme(btnId) {
       if (pin && (!/^\d{4,12}$/.test(pin) || /^(\d)\1{3,}$/.test(pin))) { showToast('PIN: 4–12 цифр, не из одинаковых цифр'); return; }
       const btn = document.getElementById('m-staff-save');
       if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+      const prevStaff = s ? Object.assign({}, s) : null;
       const oldName = s ? s.name : '';
       const staffId = s ? s.id : ('st_' + Date.now());
       if (s) { s.name = nm; s.role = roleVal; s.active = activeVal; s.tgId = tg; }
       else state.staff.push({ id: staffId, name: nm, role: roleVal, shop: state.location, active: activeVal, pinIsDefault: false, tgId: tg });
-      saveSharedState(state, 'Администратор', '');
-      let res = { ok: true };
       const payload = { id: staffId, oldName: oldName || undefined, name: nm, role: roleVal, shop: state.location, active: activeVal ? 'да' : 'нет', tgId: tg, pin: pin || undefined };
-      if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveStaff === 'function') {
-        window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
-        res = await window.CoffeeCloudV93.saveStaff(payload);
-      } else if (window.CoffeeCloudV93 && window.CoffeeCloudV93.dispatchOperation) {
-        window.CoffeeCloudV93.dispatchOperation({ type: 'staff.update', payload: payload, actor: 'Администратор', description: 'Обновлён сотрудник ' + nm });
+      const rollbackStaff = () => {
+        if (s && prevStaff) Object.assign(s, prevStaff);
+        else state.staff = state.staff.filter(x => x.id !== staffId);
+      };
+      try {
+        let res = { ok: true };
+        if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveStaff === 'function') {
+          window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+          res = await window.CoffeeCloudV93.saveStaff(payload);
+        } else if (window.CoffeeCloudV93 && window.CoffeeCloudV93.dispatchOperation) {
+          window.CoffeeCloudV93.dispatchOperation({ type: 'staff.update', payload: payload, actor: 'Администратор', description: 'Обновлён сотрудник ' + nm });
+        }
+        if (res && (res.ok || res.queued)) {
+          saveSharedState(state, 'Администратор', '');
+          closeModal();
+          showToast(res.queued ? '✓ Сотрудник сохранён локально (уйдёт при связи)' : ('✓ Сотрудник «' + nm + '» обновлён в Google Таблице' + (pin ? ' (PIN изменён)' : '') + '!'));
+          render();
+        } else {
+          rollbackStaff();
+          showToast('Ошибка сохранения сотрудника: ' + ((res && res.error) || 'проверьте вход'));
+        }
+      } catch (err) {
+        rollbackStaff();
+        showToast('Сетевая ошибка сохранения сотрудника: ' + ((err && err.message) || 'повторите'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; }
       }
-      closeModal();
-      if (res && res.ok) {
-        showToast(res.queued ? '✓ Сотрудник сохранён локально (уйдёт при связи)' : ('✓ Сотрудник «' + nm + '» обновлён в Google Таблице' + (pin ? ' (PIN изменён)' : '') + '!'));
-      } else {
-        showToast('Ошибка сохранения сотрудника: ' + ((res && res.error) || 'проверьте вход'));
-      }
-      render();
     };
   }
   function openTtkModal(id) {
@@ -1985,7 +2110,18 @@ function initTheme(btnId) {
         if (window.CoffeeCloudV93.getSession && window.CoffeeCloudV93.getSession().adminToken) {
           adminUnlocked = true; adminAuthNeeded = false;
         }
-        try { localStorage.setItem(STORE_KEY, JSON.stringify(st)); } catch(_) {}
+        try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(st));
+  } catch (qErr) {
+    try {
+      const slim = Object.assign({}, st, {
+        salesLog: Array.isArray(st.salesLog) ? st.salesLog.slice(0, 600) : [],
+        auditLog: Array.isArray(st.auditLog) ? st.auditLog.slice(0, 30) : [],
+        inventoryMoves: Array.isArray(st.inventoryMoves) ? st.inventoryMoves.slice(0, 150) : []
+      });
+      localStorage.setItem(STORE_KEY, JSON.stringify(slim));
+    } catch (_) {}
+  }
         const ae = document.activeElement;
         const cEl = document.getElementById('content');
         const dfEl = document.getElementById('date-filter-bar');
@@ -2006,7 +2142,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.14.0"></script>
+  <script src="./js/time-picker.js?v=97.14.1"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2014,7 +2150,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.14.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.1').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

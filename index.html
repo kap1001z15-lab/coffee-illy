@@ -220,11 +220,11 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.14.0"></script>
-  <script src="js/cloud-sync.js?v=97.14.0"></script>
-  <script src="js/pos-csv-parser.js?v=97.14.0"></script>
-<script src="js/camera.js?v=97.14.0"></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.0">
+  <script src="config.js?v=97.14.1"></script>
+  <script src="js/cloud-sync.js?v=97.14.1"></script>
+  <script src="js/pos-csv-parser.js?v=97.14.1"></script>
+<script src="js/camera.js?v=97.14.1"></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.14.1">
 </head>
 <body>
 <header class="topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -472,6 +472,8 @@ function initTheme(btnId) {
   }
 
   let loginPending = false;
+  let activePhotoUploads = 0;
+  window.addEventListener('beforeunload', (e) => { if (activePhotoUploads > 0) { e.preventDefault(); e.returnValue = ''; } });
   function formatAuthError(res) {
     const raw = String((res && res.error) || '');
     if (res && res.offline) return 'Сервер недоступен — вход невозможен без интернета';
@@ -719,15 +721,23 @@ function initTheme(btnId) {
                 showToast(mType === 'video' ? '☁ Сохранение видео…' : '☁ Сохранение фото…');
                 render();
                 if (window.CoffeeCloudV94) {
-                  const up = await window.CoffeeCloudV94.uploadMediaToDrive({
+                  activePhotoUploads++;
+                  try {
+                    const up = await window.CoffeeCloudV94.uploadMediaToDrive({
                     dataUri: dataUri,
                     userName: authed || 'Бариста',
                     block: curBlk.name,
                     taskId: t.id,
                     kind: mType === 'video' ? 'checklist_video' : 'checklist'
                   });
-                  stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', fileId: (up && up.fileId) || '', queued: !!(up && up.queued) };
-                  showToast(mType === 'video' ? '✓ Видео сохранено' : '✓ Фото сохранено');
+                    stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: (up && up.url) || '', fileId: (up && up.fileId) || '', queued: !!(up && up.queued) };
+                    showToast(mType === 'video' ? '✓ Видео сохранено' : '✓ Фото сохранено');
+                  } catch (upErr) {
+                    stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: '', queued: true };
+                    showToast('⚠️ Фото сохранено локально (проверьте интернет)');
+                  } finally {
+                    activePhotoUploads = Math.max(0, activePhotoUploads - 1);
+                  }
                 } else {
                   stepPhotos[key] = { preview: dataUri, mediaType: mType, uploading: false, url: '' };
                 }
@@ -1112,9 +1122,16 @@ function initTheme(btnId) {
               const stEl = document.getElementById('n-cam-st');
               if (stEl) stEl.textContent = '☁ Загрузка…';
               if (window.CoffeeCloudV94) {
-                const up = await window.CoffeeCloudV94.uploadMediaToDrive({ dataUri, userName: authed || 'Бариста', block: 'Задача', kind: mType === 'video' ? 'incident_video' : 'incident' });
-                incPhotoUrl = (up && up.url) || '';
-                if (stEl) stEl.textContent = incPhotoUrl ? (mType === 'video' ? '✓ Видео прикреплено' : '✓ Фото прикреплено') : '✓ Снято';
+                activePhotoUploads++;
+                try {
+                  const up = await window.CoffeeCloudV94.uploadMediaToDrive({ dataUri, userName: authed || 'Бариста', block: 'Задача', kind: mType === 'video' ? 'incident_video' : 'incident' });
+                  incPhotoUrl = (up && up.url) || '';
+                  if (stEl) stEl.textContent = incPhotoUrl ? (mType === 'video' ? '✓ Видео прикреплено' : '✓ Фото прикреплено') : '✓ Снято';
+                } catch (_) {
+                  if (stEl) stEl.textContent = '⚠️ Ошибка загрузки — сохранено локально';
+                } finally {
+                  activePhotoUploads = Math.max(0, activePhotoUploads - 1);
+                }
               }
             }
           });
@@ -1199,7 +1216,7 @@ function initTheme(btnId) {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.14.0"></script>
+  <script src="./js/time-picker.js?v=97.14.1"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1207,7 +1224,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.14.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.14.1').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

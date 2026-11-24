@@ -226,7 +226,8 @@
       }
       writeOutbox(remaining);
       return { flushed: flushed, pending: remaining.length };
-    })();
+      window.CoffeeCloud = window.CoffeeCloudV93;
+})();
     const p = run.finally(() => { if (_flushPromise === p) _flushPromise = null; });
     _flushPromise = p;
     return p;
@@ -526,7 +527,7 @@
           shift: s.shift || prev.shift || '08:00–20:00',
           tgId: (s.tgId !== undefined && s.tgId !== null) ? String(s.tgId) : (prev.tgId || ''),
           active: s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет',
-          pin: prev.pin || '1234',
+          pin: '',
           pinIsDefault: prev.pinIsDefault !== false
         });
       });
@@ -909,9 +910,9 @@
     function nextDelay() {
       if (typeof document !== 'undefined' && document.hidden) return 25000;
       const idle = Date.now() - _lastActive;
-      const a = Number(CFG.SYNC_ACTIVE_MS) || 700;
-      const w = Number(CFG.SYNC_WARM_MS) || 2000;
-      const idl = Number(CFG.SYNC_IDLE_MS) || 6000;
+      const a = Number(CFG.SYNC_ACTIVE_MS) || 2500;
+      const w = Number(CFG.SYNC_WARM_MS) || 5000;
+      const idl = Number(CFG.SYNC_IDLE_MS) || 12000;
       return idle < 120000 ? a : (idle < 600000 ? w : idl);
     }
 
@@ -1088,6 +1089,11 @@
     enqueueOp('save_checklist_blocks', p);
     return { ok: true, queued: true };
   }
+  async function changeAdminPin(newPin) {
+    const clean = String(newPin || '').trim();
+    if (!/^\d{4,12}$/.test(clean)) return { ok: false, error: 'PIN должен содержать от 4 до 12 цифр' };
+    return gasPost('save_setting', { id: 'ADMIN_PIN', value: clean });
+  }
   async function grantPhotoReaderAccess() {
     return gasPost('grant_photo_reader_access', {});
   }
@@ -1238,6 +1244,7 @@
     saveStaff: saveStaff,
     saveChecklistBlocks: saveChecklistBlocks,
     grantPhotoReaderAccess: grantPhotoReaderAccess,
+    changeAdminPin: changeAdminPin,
     setupTriggers: setupTriggers,
     runChecklistNotificationsNow: runChecklistNotificationsNow,
     sendDailyDigest: sendDailyDigest,
@@ -1259,6 +1266,7 @@
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;
   window.CoffeeCloudV92 = API_OBJ;
+  window.CoffeeCloud = window.CoffeeCloudV93;
 })();
 
 
