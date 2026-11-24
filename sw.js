@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.14.1 */
-const CACHE_NAME = 'coffee-illy-v97-14-1';
+/* Coffee Illy ERP & Checklist — Service Worker v97.14.2 */
+const CACHE_NAME = 'coffee-illy-v97-14-2';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -38,7 +38,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   // Никогда не кэшируем API-запросы Google Apps Script / Google APIs / Telegram SDK
-  if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com') || url.hostname.includes('telegram.org')) {
+  if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com') || url.hostname.includes('telegram.org') || url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
     return;
   }
 

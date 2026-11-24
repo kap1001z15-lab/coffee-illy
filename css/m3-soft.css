@@ -4,14 +4,14 @@
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
 :root {
-  --m3-accent: #B85C38;
-  --m3-accent-hover: #9E4B2B;
-  --m3-accent-soft: rgba(184, 92, 56, 0.14);
+  --m3-accent: #9A4A24;
+  --m3-accent-hover: #7E3B1B;
+  --m3-accent-soft: rgba(154, 74, 36, 0.12);
   --m3-surface: #FFFFFF;
-  --m3-surface-2: #F4EFEA;
-  --m3-bg: #FAF8F6;
-  --m3-text: #2D2424;
-  --m3-text-2: #6B5E5A;
+  --m3-surface-2: #EFEAE4;
+  --m3-bg: #F6F3EF;
+  --m3-text: #1C1613;
+  --m3-text-2: #5C5048;
   --m3-border: rgba(45, 36, 36, 0.10);
   --m3-ok: #2E7D32;
   --m3-warn: #D97706;
@@ -23,14 +23,14 @@
 }
 
 [data-theme="dark"] {
-  --m3-surface: #23201E;
-  --m3-surface-2: #2D2926;
-  --m3-bg: #171514;
+  --m3-surface: #191715;
+  --m3-surface-2: #1C1A18;
+  --m3-bg: #121110;
   --m3-text: #F5EFEA;
   --m3-text-2: #B8ACA4;
   --m3-border: rgba(255, 245, 238, 0.12);
-  --m3-accent: #D97B54;
-  --m3-accent-hover: #E68F6B;
+  --m3-accent: #E29D6C;
+  --m3-accent-hover: #ECAE82;
   --m3-accent-soft: rgba(217, 123, 84, 0.18);
 }
 
