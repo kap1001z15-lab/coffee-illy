@@ -272,3 +272,83 @@ test('E2E Full Bidirectional Sync (Windows Dashboard <-> GAS <-> Android Termina
   assert.ok(ownerPull && ownerPull.changed, 'Owner must detect barista submission automatically');
   assert.ok(owner.state.checklists.some((c) => c.block === 'Закрытие' && c.who === 'Соня'), 'Owner dashboard must immediately show barista completed checklist');
 });
+
+test('E2E 3-Device Cross-OS Sync (Windows PC Dashboard #1 <-> macOS Dashboard #2 <-> Android/iOS Terminal) + fetch timeout safety', { skip: !hasGas }, async () => {
+  const { sandbox } = createLiveGasCluster();
+  const winDash = createDeviceClient(sandbox, 'owner');
+  const macDash = createDeviceClient(sandbox, 'owner');
+  const mobilePhone = createDeviceClient(sandbox, 'terminal');
+
+  // 1. All 3 devices authenticate
+  assert.equal((await winDash.api.authLogin('admin', { pin: '1234' })).ok, true);
+  assert.equal((await macDash.api.authLogin('admin', { pin: '1234' })).ok, true);
+  sandbox.saveStaff_(sandbox.getTargetSpreadsheet_(), { name: 'Соня', role: 'Бариста', pin: '1234', active: 'да' });
+  assert.equal((await mobilePhone.api.authLogin('staff', { name: 'Соня', pin: '1234' })).ok, true);
+
+  await winDash.loop.pullNow(true);
+  await macDash.loop.pullNow(true);
+  await mobilePhone.loop.pullNow(true);
+
+  // 2. Windows PC Dashboard #1 edits Открытие window to 06:30-11:30 and unlocks Закрытие
+  const nextBlocks = winDash.state.blocks.map((b) =>
+    b.name === 'Открытие' ? Object.assign({}, b, { openTime: '06:30', deadline: '11:30' }) : b
+  );
+  assert.equal((await winDash.api.saveChecklistBlocks(nextBlocks, {})).ok, true);
+  assert.equal((await winDash.api.extendDeadline('Закрытие', false)).ok, true);
+
+  // 3. BOTH macOS Dashboard #2 AND Android/iOS Terminal pull automatically (forceFull=false) via DATA_REV
+  const macPull = await macDash.loop.pullNow(false);
+  const phonePull = await mobilePhone.loop.pullNow(false);
+  assert.equal(macPull.changed, true, 'Second dashboard must detect DATA_REV bump');
+  assert.equal(phonePull.changed, true, 'Mobile terminal must detect DATA_REV bump');
+  assert.equal(macDash.state.blocks.find((b) => b.name === 'Открытие').openTime, '06:30');
+  assert.equal(mobilePhone.state.blocks.find((b) => b.name === 'Открытие').deadline, '11:30');
+  assert.equal(mobilePhone.state.extensions['Закрытие']?.forceOpen, true);
+
+  // 4. Mobile phone goes offline, submits checklist + cash + incident, reconnects -> BOTH dashboards receive all 3
+  const today = mobilePhone.api.localISO();
+  mobilePhone.setOnline(false);
+  mobilePhone.state.checklists.unshift({ date: today, time: '22:05', block: 'Закрытие', who: 'Соня', problems: 1, status: 'В срок', photos: [] });
+  mobilePhone.api.dispatchStateChange(mobilePhone.state, 'Соня', 'Сдан чек-лист «Закрытие»');
+  mobilePhone.state.cash.unshift({ date: today, cash: 1800, card: 2400, revenue: 4200, checks: 105, writeoff: 0, barista: 'Соня' });
+  mobilePhone.api.dispatchStateChange(mobilePhone.state, 'Соня', 'Закрыта касса: 4 200 ₽');
+  mobilePhone.state.incidents.unshift({ id: 'INC-XOS', date: today, time: '22:06', block: 'Закрытие', step: 'Гриндер', text: 'Сбился помол', priority: 'Критично', status: 'Новая проблема', who: 'Соня' });
+  mobilePhone.api.dispatchStateChange(mobilePhone.state, 'Соня', 'Проблема: Гриндер');
+  assert.equal(mobilePhone.api.getPendingCount(), 3);
+
+  mobilePhone.setOnline(true);
+  const fl = await mobilePhone.api.flushOutbox(true);
+  assert.equal(fl.flushed, 3);
+  assert.equal(fl.pending, 0);
+
+  const winPull = await winDash.loop.pullNow(false);
+  const macPull2 = await macDash.loop.pullNow(false);
+  assert.equal(winPull.changed, true);
+  assert.equal(macPull2.changed, true);
+  assert.equal(winDash.state.cash.find((c) => c.date === today)?.revenue, 4200);
+  assert.equal(macDash.state.cash.find((c) => c.date === today)?.revenue, 4200);
+  assert.ok(winDash.state.incidents.some((i) => i.step === 'Гриндер'));
+  assert.ok(macDash.state.checklists.some((c) => c.block === 'Закрытие' && c.who === 'Соня'));
+
+  // 5. Verify fetchWithTimeout aborts hung mobile sockets cleanly instead of deadlocking sync
+  const hangCtx = {
+    window: { COFFEE_CONFIG: { API_URL: 'https://example.test/exec' } },
+    navigator: { onLine: true },
+    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    setTimeout, clearTimeout, AbortController, URL, Date, Math, JSON, Object, Array, Set, Map, Promise, Error, RegExp, Number, String, Boolean,
+    fetch: (_url, opts) => new Promise((_resolve, reject) => {
+      if (opts && opts.signal) {
+        opts.signal.addEventListener('abort', () => {
+          const e = new Error('aborted');
+          e.name = 'AbortError';
+          reject(e);
+        });
+      }
+    })
+  };
+  hangCtx.window.window = hangCtx.window;
+  hangCtx.globalThis = hangCtx;
+  vm.createContext(hangCtx);
+  vm.runInContext(fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8'), hangCtx);
+  await assert.rejects(() => hangCtx.window.CoffeeCloudV94.fetchWithTimeout('https://example.test/hang', {}, 40), /TIMEOUT_40MS/);
+});

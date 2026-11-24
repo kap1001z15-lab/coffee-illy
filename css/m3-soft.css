@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.5)
+   Coffee Illy ERP & Checklist — Material 3 Soft Cross-Platform Styles (v97.15.6)
    Поддержка: Android, iOS (safe-area), macOS, Windows (клавиатура/мышь),
    Светлая / Тёмная / Авто тема, Accessibility (focus-visible, >=44px touch targets)
    ========================================================================== */
@@ -1088,7 +1088,7 @@ body {
   }
 }
 
-/* === v97.15.5 Minimalist Owner Dashboard Liquid Glass Polish === */
+/* === v97.15.6 Minimalist Owner Dashboard Liquid Glass Polish === */
 .dash-topbar {
   padding: max(8px, env(safe-area-inset-top)) 22px 8px !important;
   gap: 10px !important;
@@ -1208,7 +1208,7 @@ td {
   .kpi-val { font-size: clamp(18px, 5vw, 21px) !important; }
 }
 
-/* === v97.15.5 Pinned Mobile "+ Задача" Action === */
+/* === v97.15.6 Pinned Mobile "+ Задача" Action === */
 .bottom-action-wrap {
   position: fixed !important;
   left: 0;
@@ -1232,7 +1232,7 @@ td {
 }
 body.kb-open .bottom-action-wrap { display: none !important; }
 
-/* === v97.15.5 Apple iOS Liquid Glass Scroll-Wheel Time Picker (1-min precision) === */
+/* === v97.15.6 Apple iOS Liquid Glass Scroll-Wheel Time Picker (1-min precision) === */
 .ios-tp-input {
   cursor: pointer;
   font-variant-numeric: tabular-nums;
@@ -1373,7 +1373,7 @@ body.kb-open .bottom-action-wrap { display: none !important; }
 }
 
 /* ==========================================================================
-   v97.15.5 Apple Liquid Retina Unification, Sticky Nav+Date Dock & Direct Time Input
+   v97.15.6 Apple Liquid Retina Unification, Sticky Nav+Date Dock & Direct Time Input
    ========================================================================== */
 html, body {
   -webkit-font-smoothing: antialiased;

@@ -127,11 +127,47 @@
     try { localStorage.setItem(FAILED_OUTBOX_KEY, JSON.stringify(list)); } catch (_) {}
   }
 
+  async function fetchWithTimeout(url, opts, timeoutMs) {
+    const ms = Number(timeoutMs) || 20000;
+    const reqOpts = Object.assign({ cache: 'no-store', credentials: 'omit', redirect: 'follow' }, opts || {});
+    if (typeof AbortController === 'undefined') {
+      return fetch(url, reqOpts);
+    }
+    const ctrl = new AbortController();
+    reqOpts.signal = ctrl.signal;
+    const timer = setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, ms);
+    try {
+      return await fetch(url, reqOpts);
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw new Error('TIMEOUT_' + ms + 'MS');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Cross-tab instant sync signal (Windows/macOS multi-tab + Safari storage fallback)
+  let _bc = null;
+  const SYNC_PING_KEY = 'coffee_illy_v97_sync_ping';
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      _bc = new BroadcastChannel('coffee_illy_sync_v1');
+      if (_bc && typeof _bc.unref === 'function') _bc.unref();
+    }
+  } catch (_) {}
+
+  function notifyOtherTabs(rev) {
+    const msg = { type: 'sync_bump', rev: String(rev || ''), ts: Date.now() };
+    try { if (_bc) _bc.postMessage(msg); } catch (_) {}
+    try { localStorage.setItem(SYNC_PING_KEY, JSON.stringify(msg)); } catch (_) {}
+  }
+
   async function gasGet(params) {
     if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
     const qs = Object.keys(params || {}).map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
     const url = API_URL + (API_URL.indexOf('?') >= 0 ? '&' : '?') + qs + '&t=' + Date.now();
-    const r = await fetch(url, { cache: 'no-store' });
+    const tOut = (params && params.action === 'get_rev') ? 12000 : 25000;
+    const r = await fetchWithTimeout(url, { cache: 'no-store' }, tOut);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }
@@ -175,12 +211,13 @@
     if (STAFF_ONLY_ACTIONS[action] && !body.staffSessionToken && sess.staffToken) {
       body.staffSessionToken = sess.staffToken;
     }
-    const r = await fetch(API_URL, {
+    const postTimeout = (action === 'upload_photo' || action === 'batch_submit_cash') ? 45000 : 25000;
+    const r = await fetchWithTimeout(API_URL, {
       method: 'POST',
       cache: 'no-store',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body)
-    });
+    }, postTimeout);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }
@@ -255,8 +292,8 @@
         }
       }
       writeOutbox(remaining);
+      if (flushed > 0) notifyOtherTabs('');
       return { flushed: flushed, pending: remaining.length };
-      window.CoffeeCloud = window.CoffeeCloudV93;
 })();
     const p = run.finally(() => { if (_flushPromise === p) _flushPromise = null; });
     _flushPromise = p;
@@ -408,6 +445,7 @@
     }
     if (data.deadlineExtensions && typeof data.deadlineExtensions === 'object') {
       const todayKey = localISO();
+      const srvDateKey = data.serverDate ? String(data.serverDate).slice(0, 10) : '';
       const nextExt = {};
       Object.keys(data.deadlineExtensions).forEach((k) => {
         const val = data.deadlineExtensions[k];
@@ -416,7 +454,7 @@
         if (colonIdx === 10 && /^\d{4}-\d{2}-\d{2}$/.test(k.slice(0, 10))) {
           const dtPart = k.slice(0, 10);
           const blkName = k.slice(11);
-          if (dtPart === todayKey && blkName) nextExt[blkName] = Object.assign({}, val);
+          if ((dtPart === todayKey || (srvDateKey && dtPart === srvDateKey)) && blkName) nextExt[blkName] = Object.assign({}, val);
         } else if (k) {
           nextExt[k] = Object.assign({}, val);
         }
@@ -968,13 +1006,39 @@
       ['pointerdown', 'keydown', 'touchstart'].forEach((ev) =>
         window.addEventListener(ev, () => { _lastActive = Date.now(); }, { passive: true })
       );
-      const wake = () => { _lastActive = Date.now(); pullNow(true); };
+      let _lastWakeAt = 0;
+      const wake = () => {
+        const now = Date.now();
+        if (now - _lastWakeAt < 400) return;
+        _lastWakeAt = now;
+        _lastActive = now;
+        flushOutbox(true).catch(() => {}).then(() => pullNow(true)).finally(schedule);
+      };
       window.addEventListener('focus', wake);
-      window.addEventListener('online', () => { flushOutbox().then(wake); });
-      window.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) { flushOutbox().then(() => pullNow(true)); } });
+      window.addEventListener('online', wake);
+      window.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) wake(); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
       }
+      try {
+        if (window.Telegram && window.Telegram.WebApp && typeof window.Telegram.WebApp.onEvent === 'function') {
+          window.Telegram.WebApp.onEvent('activated', wake);
+        }
+      } catch (_) {}
+      if (_bc) {
+        _bc.onmessage = (ev) => {
+          if (ev && ev.data && ev.data.type === 'sync_bump') {
+            _lastServerRev = '';
+            pullNow(true);
+          }
+        };
+      }
+      window.addEventListener('storage', (ev) => {
+        if (ev && ev.key === SYNC_PING_KEY && ev.newValue) {
+          _lastServerRev = '';
+          pullNow(true);
+        }
+      });
     }
 
     _syncCallbacks = { pullNow: pullNow, flushOutbox: flushOutbox };
@@ -1112,7 +1176,7 @@
     const p = Object.assign({}, payload || {});
     try {
       const res = await gasPost('save_staff', p);
-      if (res && res.ok) { _lastServerRev = ''; return res; }
+      if (res && res.ok) { _lastServerRev = ''; notifyOtherTabs(res.rev || ''); return res; }
       if (res && res.ok === false) return res;
     } catch (_) {}
     enqueueOp('save_staff', p);
@@ -1123,7 +1187,7 @@
     if (renamedBlocks && Object.keys(renamedBlocks).length) p.renamedBlocks = renamedBlocks;
     try {
       const res = await gasPost('save_checklist_blocks', p);
-      if (res && res.ok) { _lastServerRev = ''; return res; }
+      if (res && res.ok) { _lastServerRev = ''; notifyOtherTabs(res.rev || ''); return res; }
       if (res && res.ok === false) return res;
     } catch (_) {}
     enqueueOp('save_checklist_blocks', p);
@@ -1135,7 +1199,7 @@
       : { date: localISO(), block: block, openFrom: '00:00', until: '23:59', reason: 'Открыто владельцем' };
     try {
       const res = await gasPost('extend_deadline', p);
-      if (res && res.ok) { _lastServerRev = ''; return res; }
+      if (res && res.ok) { _lastServerRev = ''; notifyOtherTabs(res.rev || ''); return res; }
       if (res && res.ok === false) return res;
     } catch (_) {}
     enqueueOp('extend_deadline', p);
@@ -1307,6 +1371,7 @@
     writeoffInventory: writeoffInventory,
     deleteInventory: deleteInventory,
     computeBackoffMs: computeBackoffMs,
+    fetchWithTimeout: fetchWithTimeout,
     markLocalMutation: markLocalMutation,
     getLocalMutationSeq: function () { return _localMutationSeq; },
     addExpiryItem: addExpiryItem,

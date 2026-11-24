@@ -1,5 +1,5 @@
 /**
- * Coffee Illy — Apple Liquid Retina 24h Time Picker (v97.15.5)
+ * Coffee Illy — Apple Liquid Retina 24h Time Picker (v97.15.6)
  * Двойной режим: мгновенный ручной ввод с клавиатуры (ПК Windows/macOS, авто-формат ЧЧ:ММ,
  * стрелки ↑/↓, авто-переход Часы → Минуты, Enter) + плавные барабаны Apple (00–23 / 00–59)
  * с точностью до минуты для сенсорных экранов.

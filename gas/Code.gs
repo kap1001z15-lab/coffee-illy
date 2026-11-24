@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v97.15.5';
+var SERVER_VERSION_V97 = 'v97.15.6';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -293,6 +293,7 @@ function doGet(e) {
       return jsonOut_({
         ok: true,
         rev: curRev,
+        serverDate: isoDate_(),
         serverTs: Date.now(),
         serverVersion: SERVER_VERSION_V97,
         specVersion: SPEC_VERSION_V97,
