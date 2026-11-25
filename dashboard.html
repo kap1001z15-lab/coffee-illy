@@ -233,7 +233,7 @@ body { overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right:
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.17.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.18.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -252,11 +252,11 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.17.0"></script>
-  <script src="js/cloud-sync.js?v=97.17.0"></script>
-<script src="js/pos-csv-parser.js?v=97.17.0"></script>
-  <script src="js/custom-select.js?v=97.17.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.17.0">
+  <script src="config.js?v=97.18.0"></script>
+  <script src="js/cloud-sync.js?v=97.18.0"></script>
+<script src="js/pos-csv-parser.js?v=97.18.0"></script>
+  <script src="js/custom-select.js?v=97.18.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.18.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -545,8 +545,8 @@ function initTheme(btnId) {
   }
 
   initTheme('btn-theme');
-  function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); }
-  function closeModal() { document.getElementById('modal-bg').classList.remove('open'); }
+  function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); try { const tgB = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton; if (tgB) { if (!window._tgBackBtnBound) { window._tgBackBtnBound = true; tgB.onClick(() => { const mb = document.getElementById('modal-bg'); if (mb && mb.classList.contains('open')) closeModal(); }); } tgB.show(); } } catch (_) {} }
+  function closeModal() { document.getElementById('modal-bg').classList.remove('open'); try { const tgB = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton; if (tgB) tgB.hide(); } catch (_) {} }
   document.getElementById('modal-close').onclick = closeModal;
   document.getElementById('modal-bg').onclick = (e) => { if (e.target.id === 'modal-bg') closeModal(); };
 
@@ -2273,7 +2273,7 @@ function initTheme(btnId) {
   })();
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.17.0"></script>
+  <script src="./js/time-picker.js?v=97.18.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2281,7 +2281,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.17.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.18.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

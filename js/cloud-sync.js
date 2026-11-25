@@ -896,12 +896,60 @@
     const onSynced = opts && opts.onSynced;
     const onAuthRequired = opts && opts.onAuthRequired;
 
-    // Single canonical SW registration lives in index.html / dashboard.html
+    // Full Telegram WebApp native adaptation (viewport, safe-area, swipe-lock, theme colors, BackButton)
+    function syncTelegramChromeColors(tg) {
+      try {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const bg = isDark ? '#121110' : '#F6F3EF';
+        if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor(bg);
+        if (typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor(bg);
+        if (typeof tg.setBottomBarColor === 'function') tg.setBottomBarColor(bg);
+      } catch (_) {}
+    }
+
+    function syncTelegramViewport(tg) {
+      try {
+        const root = document.documentElement;
+        if (tg.viewportStableHeight) {
+          root.style.setProperty('--app-vh', Math.round(tg.viewportStableHeight) + 'px');
+        }
+        const sa = tg.safeAreaInset || {};
+        const csa = tg.contentSafeAreaInset || {};
+        const topPx = (Number(sa.top) || 0) + (Number(csa.top) || 0);
+        const botPx = (Number(sa.bottom) || 0) + (Number(csa.bottom) || 0);
+        if (topPx > 0) root.style.setProperty('--tg-safe-top', topPx + 'px');
+        if (botPx > 0) root.style.setProperty('--tg-safe-bottom', botPx + 'px');
+      } catch (_) {}
+    }
+
     function initTelegramWebAppSafe() {
       try {
-        if (window.Telegram && window.Telegram.WebApp) {
-          window.Telegram.WebApp.ready();
-          window.Telegram.WebApp.expand();
+        const tg = window.Telegram && window.Telegram.WebApp;
+        if (tg) {
+          tg.ready();
+          tg.expand();
+          if (tg.initData || (tg.initDataUnsafe && tg.initDataUnsafe.user)) {
+            document.documentElement.classList.add('is-tg-webapp');
+          }
+          if (typeof tg.disableVerticalSwipes === 'function') {
+            try { tg.disableVerticalSwipes(); } catch (_) {}
+          }
+          syncTelegramChromeColors(tg);
+          syncTelegramViewport(tg);
+          if (!window._tgWebAppEventsBound && typeof tg.onEvent === 'function') {
+            window._tgWebAppEventsBound = true;
+            tg.onEvent('viewportChanged', () => syncTelegramViewport(tg));
+            tg.onEvent('safeAreaChanged', () => syncTelegramViewport(tg));
+            tg.onEvent('contentSafeAreaChanged', () => syncTelegramViewport(tg));
+            tg.onEvent('themeChanged', () => syncTelegramChromeColors(tg));
+            // Sync Telegram header/bg color when user switches app theme manually
+            if (typeof MutationObserver !== 'undefined') {
+              new MutationObserver(() => syncTelegramChromeColors(tg)).observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['data-theme']
+              });
+            }
+          }
           return true;
         }
       } catch (_) {}
@@ -964,7 +1012,20 @@
           data = await gasPost('staff_bootstrap', { sessionToken: sess.staffToken });
           if (data && data.ok === false && /AUTH_REQUIRED|EXPIRED|INVALID_SESSION/i.test(String(data.error || ''))) {
             setSession({ staffToken: '' });
-            data = await gasGet({ action: 'get_checklists', nocache: '1' });
+            // Если мы внутри Telegram WebApp — тихо восстанавливаем сессию по подписанному initData
+            const tgLive = getTelegramUser();
+            if (tgLive && tgLive.initData) {
+              try {
+                const reAuth = await autoLoginEmployee(getState ? getState() : null);
+                const freshSess = getSession();
+                if (reAuth && reAuth.ok && freshSess.staffToken) {
+                  data = await gasPost('staff_bootstrap', { sessionToken: freshSess.staffToken });
+                }
+              } catch (_) {}
+            }
+            if (!data || data.ok === false) {
+              data = await gasGet({ action: 'get_checklists', nocache: '1' });
+            }
           }
         } else {
           data = await gasGet({ action: 'get_checklists', nocache: '1' });

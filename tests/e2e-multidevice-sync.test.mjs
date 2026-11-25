@@ -352,3 +352,63 @@ test('E2E 3-Device Cross-OS Sync (Windows PC Dashboard #1 <-> macOS Dashboard #2
   vm.runInContext(fs.readFileSync(new URL('../js/cloud-sync.js', import.meta.url), 'utf8'), hangCtx);
   await assert.rejects(() => hangCtx.window.CoffeeCloudV94.fetchWithTimeout('https://example.test/hang', {}, 40), /TIMEOUT_40MS/);
 });
+
+test('E2E PC Web Dashboard <-> GAS <-> Telegram Web App (signed HMAC initData): bidirectional sync & silent session recovery', { skip: !hasGas }, async () => {
+  const crypto = await import('node:crypto');
+  const { sandbox } = createLiveGasCluster();
+  const botToken = '123456789:TEST_BOT_TOKEN_FOR_HMAC_SYNC';
+  sandbox.PropertiesService.getScriptProperties().setProperty('TG_BOT_TOKEN_SECRET', botToken);
+  if (!sandbox.Utilities.computeHmacSha256Signature) {
+    sandbox.Utilities.computeHmacSha256Signature = (val, key) => {
+      const kBuf = Array.isArray(key) ? Buffer.from(key.map((b) => (b < 0 ? b + 256 : b))) : Buffer.from(String(key), 'utf8');
+      const vBuf = Array.isArray(val) ? Buffer.from(val.map((b) => (b < 0 ? b + 256 : b))) : Buffer.from(String(val), 'utf8');
+      return Array.from(crypto.createHmac('sha256', kBuf).update(vBuf).digest()).map((b) => (b > 127 ? b - 256 : b));
+    };
+  }
+  sandbox.saveStaff_(sandbox.getTargetSpreadsheet_(), { name: 'Соня', role: 'Бариста', pin: '4321', active: 'да', tgId: 'TG-555444333' });
+
+  // Build genuine Telegram WebApp HMAC-SHA256 signed initData
+  const authDate = String(Math.floor(Date.now() / 1000));
+  const userJson = JSON.stringify({ id: 555444333, first_name: 'Соня' });
+  const pairs = [['auth_date', authDate], ['query_id', 'AAHdF6IQAAAAAN0XohDhrOrc'], ['user', userJson]];
+  pairs.sort((a, b) => a[0].localeCompare(b[0]));
+  const dataCheckString = pairs.map(([k, v]) => `${k}=${v}`).join('\n');
+  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+  const hash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+  const signedInitData = pairs.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&') + `&hash=${hash}`;
+
+  const pcWeb = createDeviceClient(sandbox, 'owner');
+  const tgApp = createDeviceClient(sandbox, 'terminal');
+
+  // 1. PC Web logs in as Owner; Telegram Web App logs in via signed HMAC initData (zero PIN needed!)
+  assert.equal((await pcWeb.api.authLogin('admin', { pin: '1234' })).ok, true);
+  const tgAuth = await tgApp.api.authLogin('staff', { autoLogin: true, tgId: 'TG-555444333', initData: signedInitData });
+  assert.equal(tgAuth.ok, true, 'Telegram Web App must authenticate via valid HMAC initData');
+  assert.equal(tgAuth.staffName, 'Соня');
+
+  await pcWeb.loop.pullNow(true);
+  await tgApp.loop.pullNow(true);
+
+  // 2. PC Web updates Открытие window to 07:15-10:45 & unlocks Закрытие -> Telegram Web App receives automatically
+  const updatedBlocks = pcWeb.state.blocks.map((b) =>
+    b.name === 'Открытие' ? Object.assign({}, b, { openTime: '07:15', deadline: '10:45' }) : b
+  );
+  assert.equal((await pcWeb.api.saveChecklistBlocks(updatedBlocks, {})).ok, true);
+  assert.equal((await pcWeb.api.extendDeadline('Закрытие', false)).ok, true);
+
+  const tgPull = await tgApp.loop.pullNow(false);
+  assert.equal(tgPull.changed, true, 'Telegram Web App must auto-sync PC Web edits via DATA_REV');
+  assert.equal(tgApp.state.blocks.find((b) => b.name === 'Открытие').openTime, '07:15');
+  assert.equal(tgApp.state.blocks.find((b) => b.name === 'Открытие').deadline, '10:45');
+  assert.equal(tgApp.state.extensions['Закрытие']?.forceOpen, true);
+
+  // 3. Telegram Web App submits completed checklist -> PC Web Dashboard receives automatically
+  const today = tgApp.api.localISO();
+  tgApp.state.checklists.unshift({ date: today, time: '22:10', block: 'Закрытие', who: 'Соня', problems: 0, status: 'В срок', photos: [] });
+  tgApp.api.dispatchStateChange(tgApp.state, 'Соня', 'Сдан чек-лист «Закрытие»');
+  await tgApp.api.flushOutbox(true);
+
+  const pcPull = await pcWeb.loop.pullNow(false);
+  assert.equal(pcPull.changed, true, 'PC Web Dashboard must auto-sync Telegram Web App submission');
+  assert.ok(pcWeb.state.checklists.some((c) => c.block === 'Закрытие' && c.who === 'Соня'));
+});
