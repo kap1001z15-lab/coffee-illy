@@ -234,7 +234,7 @@ body { overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right:
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.21.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.22.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -253,11 +253,11 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.21.0"></script>
-  <script src="js/cloud-sync.js?v=97.21.0"></script>
-<script src="js/pos-csv-parser.js?v=97.21.0"></script>
-  <script src="js/custom-select.js?v=97.21.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.21.0">
+  <script src="config.js?v=97.22.0"></script>
+  <script src="js/cloud-sync.js?v=97.22.0"></script>
+<script src="js/pos-csv-parser.js?v=97.22.0"></script>
+  <script src="js/custom-select.js?v=97.22.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.22.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -2306,18 +2306,67 @@ function initTheme(btnId) {
     const pend = (window.CoffeeCloudV94 && window.CoffeeCloudV94.getPendingCount) ? window.CoffeeCloudV94.getPendingCount() : 0;
     if (pend > 0) { e.preventDefault(); e.returnValue = ''; }
   });
-  const _dsp = document.getElementById('hdr-sync-pill');
-  if (_dsp) _dsp.onclick = async () => {
-    updateSyncPill();
-    if (navigator.onLine === false) { showToast('Нет интернета — изменения сохранены в очереди и отправятся при подключении'); return; }
-    if (window.CoffeeCloudV94 && window.CoffeeCloudV94.flushOutbox) {
-      showToast('☁ Синхронизация с сервером...');
-      const fl = await window.CoffeeCloudV94.flushOutbox(true);
+  function openSyncStatusModal() {
+    const api = window.CoffeeCloudV94;
+    const stInfo = (api && api.getSyncStatus) ? api.getSyncStatus(state) : { online: navigator.onLine !== false, pendingCount: 0, failedCount: 0, foreignPendingCount: 0, totalUnsynced: 0, lastRttMs: 0 };
+    const pend = (api && api.getPendingOps) ? api.getPendingOps() : [];
+    const failed = (api && api.getFailedOps) ? api.getFailedOps() : [];
+    const labels = {
+      upload_photo: '📷 Фото/видео на Drive',
+      submit_checklist: '✅ Сдача чек-листа',
+      save_checklist_draft: '📝 Прогресс чек-листа',
+      submit_cash: '💰 Закрытие кассы',
+      report_standalone_incident: '⚠️ Поломка',
+      staff_checkin: '👋 Вход на смену',
+      save_staff_notif_prefs: '🔔 Настройки уведомлений'
+    };
+    const renderRow = (op, isFail) => {
+      const title = labels[op.action] || op.action;
+      const blk = (op.payload && op.payload.block) ? (' · «' + esc(op.payload.block) + '»') : '';
+      const who = op.ownerName ? (' · ' + esc(op.ownerName)) : '';
+      const err = op.lastError ? ('<div style="font-size:11px;color:var(--bad);margin-top:2px;">' + esc(String(op.lastError).slice(0, 90)) + '</div>') : '';
+      return `<div class="card-soft" style="padding:8px 10px;font-size:12.5px;"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${title}${blk}</b><span class="badge ${isFail?'bad':'warn'}">${isFail?'Ошибка':'В очереди'}</span></div><div style="font-size:11px;color:var(--muted);">${who.replace(/^ · /,'') || 'Система'} · попыток: ${op.attempts||0}</div>${err}</div>`;
+    };
+    const listHtml = (pend.length || failed.length)
+      ? `<div class="stack" style="max-height:220px;overflow-y:auto;margin-bottom:10px;">${pend.map(x=>renderRow(x,false)).join('')}${failed.map(x=>renderRow(x,true)).join('')}</div>`
+      : `<div class="card-soft" style="text-align:center;padding:14px;margin-bottom:10px;color:var(--good);font-weight:600;">✓ Все данные и файлы сохранены на сервере</div>`;
+    openModal('Статус синхронизации', `
+      <div class="card-soft" style="margin-bottom:10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span>Связь: <b style="color:${stInfo.online?'var(--good)':'var(--warn)'};">${stInfo.online?'Онлайн':'Офлайн'}</b>${stInfo.lastRttMs?' · отклик ~'+(stInfo.lastRttMs/1000).toFixed(1)+' с':''}</span>
+        <span>В очереди: <b>${pend.length}</b> · Ошибок: <b>${failed.length}</b></span>
+      </div>
+      ${listHtml}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-lg primary" id="sync-now-btn" style="flex:1;">⚡ Синхронизировать сейчас</button>
+        ${(pend.length || failed.length) ? '<button class="btn-lg soft" id="sync-clear-btn">🗑 Очистить застрявшие</button>' : ''}
+      </div>
+    `);
+    const snb = document.getElementById('sync-now-btn');
+    if (snb) snb.onclick = async () => {
+      if (navigator.onLine === false) { showToast('Нет интернета — данные отправятся автоматически при подключении'); return; }
+      snb.disabled = true; snb.textContent = 'Синхронизация...';
+      try {
+        if (api && api.retryFailedOps && failed.length) await api.retryFailedOps();
+        if (api && api.flushOutbox) await api.flushOutbox(true);
+        updateSyncPill();
+        const after = (api && api.getSyncStatus) ? api.getSyncStatus(state) : { totalUnsynced: 0 };
+        if (after.totalUnsynced === 0) { closeModal(); showToast('✓ Все данные синхронизированы!'); }
+        else { openSyncStatusModal(); showToast('⏳ Осталось: ' + pluralFiles(after.totalUnsynced)); }
+      } catch (_) {
+        snb.disabled = false; snb.textContent = '⚡ Синхронизировать сейчас';
+        showToast('Ошибка связи с сервером');
+      }
+    };
+    const scb = document.getElementById('sync-clear-btn');
+    if (scb) scb.onclick = () => {
+      if (api && api.clearStaleOps) api.clearStaleOps();
       updateSyncPill();
-      if (fl && fl.pending === 0) showToast('✓ Все данные синхронизированы');
-      else if (fl && fl.pending > 0) showToast('⏳ Осталось не синхр.: ' + pluralFiles(fl.pending));
-    }
-  };
+      closeModal();
+      showToast('✓ Зависшие элементы очищены');
+    };
+  }
+  const _dsp = document.getElementById('hdr-sync-pill');
+  if (_dsp) _dsp.onclick = () => { updateSyncPill(); openSyncStatusModal(); };
   function updateNavAmbientGlow() {
     const dock = document.getElementById('dash-sticky-dock');
     const activeBtn = document.querySelector('#admin-nav button.active');
@@ -2367,7 +2416,7 @@ function initTheme(btnId) {
   })();
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.21.0"></script>
+  <script src="./js/time-picker.js?v=97.22.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2375,7 +2424,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.21.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.22.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

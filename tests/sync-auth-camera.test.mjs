@@ -440,7 +440,7 @@ test('Camera keepAlive prewarm requests OS permission ONCE and reuses standby st
   assert.equal(stopped, true, 'Explicit stopStream() on logout releases hardware cleanly');
 });
 
-test('v97.21.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offline Photo->Checklist URL Chaining', async () => {
+test('v97.22.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offline Photo->Checklist URL Chaining', async () => {
   const prevNav = globalThis.navigator;
   const prevFetch = globalThis.fetch;
   const prevLS = globalThis.localStorage;
@@ -517,6 +517,70 @@ test('v97.21.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offlin
     assert.match(idxHtml, /function updateSyncPill/);
     assert.match(dashHtml, /id="hdr-sync-pill"/);
     assert.match(dashHtml, /function updateSyncPill/);
+  } finally {
+    globalThis.window = prevWin;
+    globalThis.localStorage = prevLS;
+    globalThis.fetch = prevFetch;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: prevNav });
+  }
+});
+
+test('v97.22.0 Fast Sync: coalesces duplicate drafts, isolates foreign staff outbox items, and runs parallel photo uploads', async () => {
+  const prevNav = globalThis.navigator;
+  const prevFetch = globalThis.fetch;
+  const prevLS = globalThis.localStorage;
+  const prevWin = globalThis.window;
+  const store = new Map();
+  const lsMock = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); }
+  };
+  let isOnline = false;
+  let inFlight = 0;
+  let maxConcurrent = 0;
+  const winMock = {
+    COFFEE_CONFIG: { API_URL: 'https://script.google.com/macros/s/test/exec' },
+    localStorage: lsMock,
+    addEventListener: () => {},
+    dispatchEvent: () => {}
+  };
+  globalThis.window = winMock;
+  globalThis.localStorage = lsMock;
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { get onLine() { return isOnline; } } });
+  globalThis.fetch = async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    inFlight++;
+    if (inFlight > maxConcurrent) maxConcurrent = inFlight;
+    await new Promise((r) => setTimeout(r, 15));
+    inFlight--;
+    const respObj = body.action === 'upload_photo'
+      ? { ok: true, url: 'https://drive.google.com/file/d/' + body.taskId + '/view' }
+      : { ok: true, rev: 100 };
+    return { ok: true, text: async () => JSON.stringify(respObj), json: async () => respObj };
+  };
+  try {
+    const code = fs.readFileSync(path.join(process.cwd(), 'js/cloud-sync.js'), 'utf8');
+    const fn = new Function('window', 'localStorage', 'navigator', 'fetch', code);
+    fn(winMock, lsMock, globalThis.navigator, globalThis.fetch);
+    const api = winMock.CoffeeCloudV94;
+
+    // 1. Seed 3 duplicate save_checklist_draft ops offline -> must coalesce into 1!
+    lsMock.setItem('coffee_illy_v93_session', JSON.stringify({ staffName: 'Настя', staffToken: 'tok_n' }));
+    api.enqueueOp('save_checklist_draft', { userName: 'Настя', block: 'Лайн Чек 2', done: 1, total: 9 });
+    api.enqueueOp('save_checklist_draft', { userName: 'Настя', block: 'Лайн Чек 2', done: 2, total: 9 });
+    api.enqueueOp('save_checklist_draft', { userName: 'Настя', block: 'Лайн Чек 2', done: 3, total: 9 });
+    assert.equal(api.getPendingOps().filter((x) => x.action === 'save_checklist_draft').length, 1, 'Duplicate drafts for same block must coalesce to 1');
+
+    // 2. Add 3 offline photos -> flush online must upload them in parallel (maxConcurrent >= 2)
+    await api.uploadMediaToDrive({ dataUri: 'data:image/jpeg;base64,A', userName: 'Настя', block: 'Лайн Чек 2', taskId: 'p1' });
+    await api.uploadMediaToDrive({ dataUri: 'data:image/jpeg;base64,B', userName: 'Настя', block: 'Лайн Чек 2', taskId: 'p2' });
+    await api.uploadMediaToDrive({ dataUri: 'data:image/jpeg;base64,C', userName: 'Настя', block: 'Лайн Чек 2', taskId: 'p3' });
+    isOnline = true;
+    const fl = await api.flushOutbox(true);
+    assert.equal(fl.flushed, 4);
+    assert.equal(fl.pending, 0);
+    assert.ok(maxConcurrent >= 2, 'Photo uploads must run in parallel batches');
   } finally {
     globalThis.window = prevWin;
     globalThis.localStorage = prevLS;

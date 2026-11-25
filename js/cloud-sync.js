@@ -244,10 +244,18 @@
     return /LOCK|BUSY|RATE_LIMIT|TIMEOUT|TEMPORARY|UNAVAILABLE/i.test(String(errStr || ''));
   }
 
+  let _needFollowupFlush = false;
+  function _emitSyncStatusEvent() {
+    try { if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('coffee-sync-status')); } catch (_) {}
+  }
   async function flushOutbox(forceRetry) {
     if (!API_URL || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { flushed: 0, pending: readOutbox().length };
-    if (_flushPromise) return _flushPromise;
+    if (_flushPromise) {
+      if (forceRetry) _needFollowupFlush = true;
+      return _flushPromise;
+    }
     if (!readOutbox().length) return { flushed: 0, pending: 0 };
+    _needFollowupFlush = false;
     const run = (async () => {
       let flushed = 0;
       const now = Date.now();
@@ -256,16 +264,29 @@
       const doneIds = new Set();
       const retryPatches = new Map();
       const uploadedPhotoUrls = {}; // key: block + '|' + taskId -> Drive URL
+      const curSess = getSession();
+
+      // Разделяем на: 1) фото (можно грузить параллельно по 3 — GAS не держит Sheets Lock), 2) остальные операции
+      const photoBatch = [];
+      const seqBatch = [];
       for (let i = 0; i < q.length; i++) {
         const item = q[i];
         const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
+        // Автоочистка устаревших (>24ч) технических черновиков прогресса
+        if ((item.action === 'save_checklist_draft' || item.action === 'staff_checkin') && item.ts && (now - Number(item.ts)) > 86400000) {
+          doneIds.add(opId);
+          continue;
+        }
         if (!forceRetry && item.nextRetryAt && Number(item.nextRetryAt) > now) continue;
         // P1-7: Никогда не отправляем операцию бариста А под токеном бариста Б на общем устройстве
-        const curSess = getSession();
         if (item.ownerRole === 'staff' && item.ownerName && curSess.staffName && item.ownerName !== curSess.staffName) {
           continue;
         }
-        // v97.21: Если ранее в этой же очереди загрузилось фото для шага чек-листа — подставляем его Drive URL
+        if (item.action === 'upload_photo') photoBatch.push({ item, opId });
+        else seqBatch.push({ item, opId });
+      }
+
+      async function sendOne(item, opId) {
         if (item.action === 'submit_checklist' && item.payload && Array.isArray(item.payload.items)) {
           const blk = String(item.payload.block || '');
           item.payload.items.forEach((stepIt) => {
@@ -283,14 +304,13 @@
             const attempts = (Number(item.attempts) || 0) + 1;
             if (isRetryableServerError(errMsg) && attempts < 12) {
               retryPatches.set(opId, { attempts: attempts, nextRetryAt: Date.now() + computeBackoffMs(attempts), lastError: errMsg });
-              continue;
+              return;
             }
-            // Не удаляем молча — переносим в очередь проблемных операций для ручной проверки
             const failedList = readFailedOutbox();
             failedList.push(Object.assign({}, item, { status: 'failed', attempts: attempts, lastError: errMsg, failedAt: Date.now() }));
             writeFailedOutbox(failedList);
             doneIds.add(opId);
-            continue;
+            return;
           }
           if (item.action === 'upload_photo' && res && res.ok && (res.url || res.viewUrl) && item.payload) {
             const uKey = String(item.payload.block || '') + '|' + String(item.payload.taskId || '');
@@ -310,6 +330,16 @@
           }
         }
       }
+
+      // 1. Параллельная отправка фото по 3 одновременно (ускоряет синхронизацию в 3 раза)
+      for (let i = 0; i < photoBatch.length; i += 3) {
+        await Promise.all(photoBatch.slice(i, i + 3).map((x) => sendOne(x.item, x.opId)));
+      }
+      // 2. Последовательная отправка остальных операций (чек-листы получают уже готовые Drive URL!)
+      for (let i = 0; i < seqBatch.length; i++) {
+        await sendOne(seqBatch[i].item, seqBatch[i].opId);
+      }
+
       const latest = readOutbox();
       const remaining = [];
       for (let i = 0; i < latest.length; i++) {
@@ -323,11 +353,17 @@
         }
       }
       writeOutbox(remaining);
-      try { if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('coffee-sync-status')); } catch (_) {}
+      _emitSyncStatusEvent();
       if (flushed > 0) notifyOtherTabs('');
       return { flushed: flushed, pending: remaining.length };
-})();
-    const p = run.finally(() => { if (_flushPromise === p) _flushPromise = null; });
+    })();
+    const p = run.finally(() => {
+      if (_flushPromise === p) _flushPromise = null;
+      if (_needFollowupFlush && readOutbox().length > 0) {
+        _needFollowupFlush = false;
+        setTimeout(() => { flushOutbox(true).catch(() => {}); }, 80);
+      }
+    });
     _flushPromise = p;
     return p;
   }
@@ -339,9 +375,17 @@
     const sessNow = getSession();
     const ownerRole = ADMIN_ONLY_ACTIONS[action] ? 'admin' : 'staff';
     const ownerName = ownerRole === 'admin' ? 'Администратор' : String((payload && (payload.userName || payload.staffName || payload.barista)) || sessNow.staffName || '').trim();
-    const q = readOutbox();
+    let q = readOutbox();
+    // v97.22: Схлопываем повторяющиеся черновики прогресса и чек-ины, чтобы очередь не раздувалась при быстром прокликивании
+    if (action === 'save_checklist_draft' && payload && payload.block) {
+      const bLow = String(payload.block).trim().toLowerCase();
+      q = q.filter((x) => !(x && x.action === 'save_checklist_draft' && x.ownerName === ownerName && String((x.payload && x.payload.block) || '').trim().toLowerCase() === bLow));
+    } else if (action === 'staff_checkin') {
+      q = q.filter((x) => !(x && x.action === 'staff_checkin' && x.ownerName === ownerName));
+    }
     q.push({ action: action, status: 'pending', ownerRole: ownerRole, ownerName: ownerName, payload: Object.assign({ operationId: opId }, payload || {}), ts: Date.now(), attempts: 0, nextRetryAt: 0 });
     writeOutbox(q);
+    _emitSyncStatusEvent();
     flushOutbox(true).then((res) => {
       if (res && res.flushed > 0) _lastServerRev = '';
       if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(!!(res && res.flushed > 0));
@@ -1540,8 +1584,27 @@
     startCloudLoop: startCloudLoop,
     getTelegramUser: getTelegramUser,
     getPendingCount: function () { return readOutbox().length; },
+    getPendingOps: function () { return readOutbox(); },
+    clearStaleOps: function () {
+      const curSess = getSession();
+      const q = readOutbox();
+      // Оставляем только свежие финансовые/чек-лист операции текущего пользователя
+      const kept = q.filter((x) => x && (FINANCIAL_ACTIONS.has(x.action) || x.action === 'submit_checklist') && (!x.ownerName || !curSess.staffName || x.ownerName === curSess.staffName) && (Date.now() - Number(x.ts || 0)) < 86400000);
+      writeOutbox(kept);
+      writeFailedOutbox([]);
+      _emitSyncStatusEvent();
+      return { remaining: kept.length };
+    },
     getSyncStatus: function (st) {
-      const pending = readOutbox().length;
+      const curSess = getSession();
+      const allPending = readOutbox();
+      let activePending = 0;
+      let foreignPending = 0;
+      for (let i = 0; i < allPending.length; i++) {
+        const it = allPending[i];
+        if (it && it.ownerRole === 'staff' && it.ownerName && curSess.staffName && it.ownerName !== curSess.staffName) foreignPending++;
+        else activePending++;
+      }
       const failed = readFailedOutbox().length;
       const browserOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
       const srvConnected = st ? (st.liveConnected !== false) : true;
@@ -1549,9 +1612,11 @@
         online: browserOnline && srvConnected,
         browserOnline: browserOnline,
         liveConnected: srvConnected,
-        pendingCount: pending,
+        pendingCount: activePending,
+        foreignPendingCount: foreignPending,
         failedCount: failed,
-        totalUnsynced: pending + failed
+        totalUnsynced: activePending + failed,
+        lastRttMs: _lastRttMs || 0
       };
     },
     getLastRttMs: function () { return _lastRttMs; },
@@ -1585,10 +1650,17 @@
     addExpiryItem: addExpiryItem,
     disposeExpiryItem: disposeExpiryItem,
     importPosBatch: importPosBatch,
-    sendStepProgress: function (userName, block, done, total) {
-      if (!userName || !block) return;
-      enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
-    }
+    sendStepProgress: (function () {
+      let _tm = null;
+      return function (userName, block, done, total) {
+        if (!userName || !block) return;
+        if (_tm) clearTimeout(_tm);
+        _tm = setTimeout(() => {
+          _tm = null;
+          enqueueOp('save_checklist_draft', { userName: userName, block: block, done: Number(done || 0), total: Number(total || 0), updatedAt: new Date().toISOString() });
+        }, 1200);
+      };
+    })()
   };
   window.CoffeeCloudV94 = API_OBJ;
   window.CoffeeCloudV93 = API_OBJ;

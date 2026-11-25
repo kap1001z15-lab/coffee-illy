@@ -360,7 +360,7 @@ test('Dashboard UI & CloudSync integrity: weekly plan 2-barista modal, direct TG
   assert.match(cs, /sendTelegramAlert:\s*sendTelegramAlert/, 'cloud-sync.js must export sendTelegramAlert');
 });
 
-test('v97.21.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
+test('v97.22.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
   const { sandbox, ss, token, tgMessages: tgCalls } = createGasEnvWithTelegram();
   // Seed 3 blocks all opening at 06:00-11:00
   sandbox.saveChecklistBlocks_(ss, {
@@ -392,7 +392,7 @@ test('v97.21.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, s
   assert.equal(ov.overdueSent.some((x) => x.block === 'Открытие' || x.block === 'Лайн Чек 1'), false, 'Completed blocks must NEVER trigger false overdue');
 });
 
-test('v97.21.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
+test('v97.22.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
   const { sandbox, ss, token, tgMessages } = createGasEnvWithTelegram();
 
   // 1. Seed 2 blocks opening at 08:00-11:00 and 1 block opening at 08:10-12:00
