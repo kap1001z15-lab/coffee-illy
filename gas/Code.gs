@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v97.18.0';
+var SERVER_VERSION_V97 = 'v97.21.0';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -320,14 +320,8 @@ function doGet(e) {
       return jsonOut_(pubRes);
     }
 
-    // 2. Fallback на 1 релиз для GET-запросов разделов владельца (основной метод в v85 — POST с sessionToken в теле запроса)
-    requireAuth_(ss, p, 'admin');
-    appendAudit_(ss, 'Система', 'Устаревший GET-запрос с токеном в URL (F10)', 'Действие: ' + action + ' — используйте POST');
-
-    if (action === 'admin' || action === 'dashboard' || action === 'report') {
-      return jsonOut_({ ok: false, error: 'METHOD_NOT_ALLOWED: Используйте POST для защищённых запросов (' + action + ')' });
-    }
-    return jsonOut_({ ok: false, error: 'Неизвестное действие: ' + action });
+    // 2. Все защищённые действия принимаются строго через POST (токены в URL запрещены)
+    return jsonOut_({ ok: false, error: 'METHOD_NOT_ALLOWED: Используйте POST для защищённых запросов (' + action + ')' });
   } catch (err) {
     logError_(null, 'doGet', err);
     return jsonOut_({ ok: false, error: String((err && err.message) || err) });
@@ -352,9 +346,9 @@ var STAFF_OR_ADMIN_ACTIONS_ = {
   save_task: true,
   report_standalone_incident: true,
   handover_shift: true,
-  submit_writeoff: true,
   staff_checkin: true,
-  staff_checkout: true
+  staff_checkout: true,
+  save_staff_notif_prefs: true
 };
 
 function doPost(e) {
@@ -369,7 +363,6 @@ function doPost(e) {
     body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     action = String(body.action || '').trim();
     ss = getTargetSpreadsheet_();
-    ensureSheets_(ss);
 
     // 1. Публичные действия входа/выхода (выполняются без удержания глобальной блокировки)
     if (action === 'auth_login') {
@@ -396,7 +389,7 @@ function doPost(e) {
       } else if (action === 'switch_shop_location' && body && body.shop) {
         actorSess = requireAdminOrStaffSession_(ss, body);
         if (actorSess.role !== 'admin') actorSess = requireAuth_(ss, body, 'admin');
-      } else if (action === 'staff_bootstrap' || action === 'batch_submit_cash') {
+      } else if (action === 'staff_bootstrap' || action === 'batch_submit_cash' || action === 'save_staff_notif_prefs') {
         actorSess = requireAdminOrStaffSession_(ss, body);
       } else {
         actorSess = requireVerifiedStaffSession_(ss, body);
@@ -405,6 +398,7 @@ function doPost(e) {
       actorSess = requireAuth_(ss, body, 'admin');
     }
 
+    ensureSheets_(ss);
     if (actorSess && actorSess.role === 'staff' && actorSess.staffName) {
       body.userName = actorSess.staffName;
       body.barista = actorSess.staffName;
@@ -434,6 +428,9 @@ function doPost(e) {
 
     if (action === 'staff_bootstrap') {
       return jsonOut_(buildStaffBootstrapDto_(ss, actorSess, body.sinceTs));
+    }
+    if (action === 'save_staff_notif_prefs') {
+      return idempotentJsonOut_(ss, body, saveStaffNotifPrefs_(ss, body, actorSess), actorSess);
     }
 
     // Поэлементная дельта-синхронизация (по id и updatedAt, с фильтрацией полей и проверкой владельца)
@@ -495,9 +492,6 @@ function doPost(e) {
     }
     if (action === 'handover_shift') {
       return idempotentJsonOut_(ss, body, handoverShift_(ss, body, actorSess), actorSess);
-    }
-    if (action === 'submit_writeoff') {
-      return idempotentJsonOut_(ss, body, submitWriteoff_(ss, body, actorSess), actorSess);
     }
     if (action === 'staff_checkin') {
       var ciName = String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
@@ -586,7 +580,7 @@ function doPost(e) {
     if (action === 'sync_all_to_sheet') return idempotentJsonOut_(ss, body, syncAllToSheet_(ss, body), actorSess);
     if (action === 'restock_inventory' || action === 'save_inventory' || action === 'writeoff_inventory') return idempotentJsonOut_(ss, body, saveInventory_(ss, body), actorSess);
     if (action === 'delete_inventory') return idempotentJsonOut_(ss, body, deleteInventory_(ss, body), actorSess);
-    if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, { ok: true, backupId: 'BKP-' + Date.now(), timestamp: new Date().toISOString() }, actorSess);
+    if (action === 'create_server_backup') return idempotentJsonOut_(ss, body, createServerBackup_(ss), actorSess);
     if (action === 'save_shop') return idempotentJsonOut_(ss, body, saveShopLocation_(ss, body), actorSess);
     if (action === 'setup_autonomous_triggers') return idempotentJsonOut_(ss, body, setupAutonomousTriggers_(ss), actorSess);
     if (action === 'send_daily_digest') return idempotentJsonOut_(ss, body, sendDailyDigestNow_(ss, body), actorSess);
@@ -1053,6 +1047,16 @@ function hashPinV2_(pin, saltOpt) {
   return 'v2$25$' + salt + '$' + h;
 }
 
+function timingSafeEqualStr_(a, b) {
+  var s1 = String(a || '');
+  var s2 = String(b || '');
+  var diff = s1.length ^ s2.length;
+  var len = Math.max(s1.length, s2.length);
+  for (var i = 0; i < len; i++) {
+    diff |= (s1.charCodeAt(i) || 0) ^ (s2.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
 function verifyPinStored_(stored, candidateRaw) {
   var st = String(stored || '').trim();
   var cand = String(candidateRaw || '').trim();
@@ -1063,9 +1067,9 @@ function verifyPinStored_(stored, candidateRaw) {
     var parts = st.split('$');
     if (parts.length !== 4) return false;
     var recomputed = hashPinV2_(cand, parts[2]);
-    return recomputed === st;
+    return timingSafeEqualStr_(recomputed, st);
   }
-  return sha256Hex_(cand) === st;
+  return timingSafeEqualStr_(sha256Hex_(cand), st);
 }
 
 function normalizePinHash_(val) {
@@ -1224,7 +1228,7 @@ function handleAuthLogin_(ss, body) {
 
   try {
     if (role === 'admin') {
-      var adminKey = clientTag ? ('admin_' + clientTag) : 'admin';
+      var adminKey = 'admin';
       verifyOwnerPinServer_(ss, body.pin || '', adminKey);
     } else {
       // P0-1: Автоматический вход сотрудника по Telegram требует криптографической проверки HMAC initData
@@ -1246,7 +1250,7 @@ function handleAuthLogin_(ss, body) {
         autoLoggedIn = true;
       } else {
         if (!staffName) staffName = 'Бариста';
-        var actorKey = role + '_' + staffName + (clientTag ? ('_' + clientTag) : '');
+        var actorKey = role + '_' + staffName;
         var pinCandidate = body.pin || '';
         checkRateLimit_(actorKey);
         if (PropertiesService.getScriptProperties().getProperty('PIN_CHANGE_REQUIRED_' + staffName) === '1') {
@@ -1582,14 +1586,10 @@ function saveSettingSecure_(ss, body) {
 
 function sanitizePublicChecklists_(res, ss, sinceTs) {
   // Публичный pre-login ответ (v4.0): строго минимальный набор нефинансовых и неперсональных данных для экрана входа
-  var safeStaff = Array.isArray(res.staff) ? res.staff.map(function(s) {
-    return {
-      id: s.id,
-      name: s.name,
-      role: s.role,
-      location: s.location,
-      active: s.active
-    };
+  var safeStaff = Array.isArray(res.staff) ? res.staff.filter(function(s) {
+    return s && s.name && s.active !== false && String(s.active || 'да').toLowerCase() !== 'нет';
+  }).map(function(s) {
+    return { name: s.name, active: true };
   }) : [];
   return {
     ok: true,
@@ -1692,10 +1692,22 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
         var bName = String(c.block || '').trim();
         if (!bName) return;
         if (bName.toLowerCase() === 'день') bName = 'Лайн Чек 1';
-        mapDone[bName] = { date: todayStr, time: String(c.time || ''), status: String(c.status || 'В срок') };
+        mapDone[bName] = { date: todayStr, time: String(c.time || ''), who: String(c.who || ''), status: String(c.status || 'Выполнено'), isLate: !!c.isLate };
       });
+      try {
+        var allDr = full.userDrafts || {};
+        Object.keys(allDr).forEach(function(dk) {
+          var d = allDr[dk];
+          if (!d || d.completed !== true || String(d.date || '').slice(0, 10) !== todayStr) return;
+          var bName = String(d.block || '').trim();
+          if (!bName || mapDone[bName]) return;
+          mapDone[bName] = { date: todayStr, time: '', who: String(d.userName || ''), status: 'Выполнено', isLate: false };
+        });
+      } catch (_) {}
       return mapDone;
     })(),
+    globalNotifPrefs: getTgNotifPrefs_(getSettingsMap_(ss)),
+    myNotifPrefs: getEffectiveStaffNotifPrefs_(getTgNotifPrefs_(getSettingsMap_(ss)), staffName, getStaffNotifPrefsMap_()),
     announcements: full.announcements || [],
     staff: safeStaff,
     ttk: safeTtk,
@@ -2048,13 +2060,29 @@ function idempotentJsonOut_(ss, body, result, actorSess) {
         }
         sh.appendRow(safeRow_([id, Date.now(), raw, actorId, actorRole, actName]));
         var last = sh.getLastRow();
-        if (last > 5001) sh.deleteRows(2, last - 5001);
+        if (last > 2001) sh.deleteRows(2, last - 1501);
       } catch (_) {}
     }
   }
   return jsonOut_(result);
 }
 
+
+function createServerBackup_(ss) {
+  if (!ss || typeof DriveApp === 'undefined' || !DriveApp.getFileById) {
+    return { ok: false, error: 'DRIVE_UNAVAILABLE: Резервное копирование требует доступного DriveApp' };
+  }
+  try {
+    var src = DriveApp.getFileById(ss.getId());
+    var name = 'Coffee_Illy_Backup_' + isoDate_() + '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+2', 'HHmm');
+    var copy = src.makeCopy(name);
+    try { copy.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); } catch (_) {}
+    appendAudit_(ss, 'Администратор', 'Создана резервная копия таблицы', name);
+    return { ok: true, backupId: copy.getId(), name: name, url: copy.getUrl(), timestamp: new Date().toISOString() };
+  } catch (e) {
+    return { ok: false, error: 'BACKUP_FAILED: ' + String((e && e.message) || e) };
+  }
+}
 
 function safeCell_(v) {
   if (typeof v !== 'string') return v;
@@ -3163,6 +3191,7 @@ function getAdmin_(ss) {
     })(),
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
     staffPresence: getStaffPresenceToday_(ss),
+    staffNotifPrefs: getStaffNotifPrefsMap_(),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
     webappUrl: map.WEBAPP_URL || '',
     autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
@@ -3868,7 +3897,7 @@ function saveStaff_(ss, b) {
     props.setProperty('PIN_CHANGE_REQUIRED_' + staffName, '0');
     pinUpdated = true;
   } else if (!props.getProperty('STAFF_PIN_HASH_' + staffName)) {
-    generatedPin = String(100000 + Math.floor(Math.random() * 900000));
+    generatedPin = String(100000 + (parseInt(sha256Hex_(Utilities.getUuid() + Date.now()).slice(0, 8), 16) % 900000));
     props.setProperty('STAFF_PIN_HASH_' + staffName, hashPinV2_(generatedPin));
   }
 
@@ -5120,13 +5149,169 @@ function sendDailyDigestNow_(ss, b) {
   return { ok: true, summary: text, telegram: tgRes };
 }
 
+function normBlockKey_(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getExtForBlock_(extMap, today, blockName) {
+  if (!extMap || typeof extMap !== 'object') return null;
+  var flatKey = today + ':' + blockName;
+  if (extMap[flatKey]) return extMap[flatKey];
+  if (extMap[today] && extMap[today][blockName]) return extMap[today][blockName];
+  var target = normBlockKey_(blockName);
+  var keys = Object.keys(extMap);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    if (k.indexOf(today + ':') === 0 && normBlockKey_(k.slice(today.length + 1)) === target) {
+      return extMap[k];
+    }
+  }
+  return null;
+}
+
+function isBlockCompletedToday_(ss, chksToday, today, blockName) {
+  var target = normBlockKey_(blockName);
+  if (!target) return false;
+  if (Array.isArray(chksToday) && chksToday.some(function(c) { return normBlockKey_(c && c.block) === target; })) {
+    return true;
+  }
+  // Резервная проверка по завершённым черновикам (исключает ложную просрочку при задержке чтения листа)
+  try {
+    var drafts = getJsonProp_('COFFEE_USER_DRAFTS_JSON', {}) || {};
+    var dKeys = Object.keys(drafts);
+    for (var i = 0; i < dKeys.length; i++) {
+      var d = drafts[dKeys[i]];
+      if (d && d.completed === true && String(d.date || '').slice(0, 10) === today && normBlockKey_(d.block) === target) {
+        return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+function getTgNotifPrefs_(map) {
+  map = map || {};
+  var cool = parseInt(map.TG_NOTIFY_COOLDOWN_MIN, 10);
+  if (isNaN(cool) || cool < 0) cool = 30;
+  if (cool > 180) cool = 180;
+  return {
+    preStart: String(map.TG_NOTIFY_PRE_START || 'нет').toLowerCase() === 'да',
+    onOpen: String(map.TG_NOTIFY_OPEN || 'да').toLowerCase() !== 'нет',
+    preDeadline: String(map.TG_NOTIFY_PRE_DEADLINE || 'да').toLowerCase() !== 'нет',
+    overdue: String(map.TG_NOTIFY_OVERDUE || 'да').toLowerCase() !== 'нет',
+    quietEnd: String(map.TG_QUIET_END || '07:30').trim() || '07:30',
+    quietStart: String(map.TG_QUIET_START || '23:30').trim() || '23:30',
+    cooldownMin: cool
+  };
+}
+
+function getStaffNotifPrefsMap_() {
+  var raw = getJsonProp_('COFFEE_STAFF_NOTIF_PREFS_JSON', {}) || {};
+  return (raw && typeof raw === 'object') ? raw : {};
+}
+
+function getEffectiveStaffNotifPrefs_(globalPrefs, staffName, staffMap) {
+  var g = globalPrefs || getTgNotifPrefs_({});
+  var key = String(staffName || '').trim().toLowerCase();
+  var p = (staffMap && key && staffMap[key]) ? staffMap[key] : null;
+  var cool = (p && p.cooldownMin !== undefined && p.cooldownMin !== null) ? parseInt(p.cooldownMin, 10) : g.cooldownMin;
+  if (isNaN(cool) || cool < 0) cool = g.cooldownMin;
+  if (cool > 180) cool = 180;
+  return {
+    enabled: p ? (p.enabled !== false) : true,
+    preStart: (p && p.preStart !== undefined) ? !!p.preStart : !!g.preStart,
+    onOpen: (p && p.onOpen !== undefined) ? !!p.onOpen : !!g.onOpen,
+    preDeadline: (p && p.preDeadline !== undefined) ? !!p.preDeadline : !!g.preDeadline,
+    overdue: (p && p.overdue !== undefined) ? !!p.overdue : !!g.overdue,
+    quietEnd: (p && p.quietEnd) ? String(p.quietEnd).trim() : g.quietEnd,
+    quietStart: (p && p.quietStart) ? String(p.quietStart).trim() : g.quietStart,
+    cooldownMin: cool,
+    customized: !!p
+  };
+}
+
+function saveStaffNotifPrefs_(ss, body, actorSess) {
+  body = body || {};
+  var isAdmin = !!(actorSess && actorSess.role === 'admin');
+  var targetName = isAdmin
+    ? String(body.staffName || body.userName || (actorSess && actorSess.staffName) || '').trim()
+    : String((actorSess && actorSess.staffName) || body.staffName || body.userName || '').trim();
+  if (!targetName) {
+    return { ok: false, error: 'VALIDATION_FAILED: Не указано имя сотрудника для сохранения настроек уведомлений' };
+  }
+  var key = targetName.toLowerCase();
+  var all = getStaffNotifPrefsMap_();
+  var cool = parseInt(body.cooldownMin, 10);
+  if (isNaN(cool) || cool < 0) cool = 30;
+  if (cool > 180) cool = 180;
+  var qEnd = String(body.quietEnd || '07:30').trim();
+  var qStart = String(body.quietStart || '23:30').trim();
+  if (!/^\d{2}:\d{2}$/.test(qEnd)) qEnd = '07:30';
+  if (!/^\d{2}:\d{2}$/.test(qStart)) qStart = '23:30';
+  var rec = {
+    staffName: targetName,
+    enabled: body.enabled !== false,
+    preStart: !!body.preStart,
+    onOpen: body.onOpen !== false,
+    preDeadline: body.preDeadline !== false,
+    overdue: body.overdue !== false,
+    quietEnd: qEnd,
+    quietStart: qStart,
+    cooldownMin: cool,
+    updatedAt: Date.now()
+  };
+  all[key] = rec;
+  setJsonProp_('COFFEE_STAFF_NOTIF_PREFS_JSON', all);
+  bumpDataRev_();
+  appendAudit_(ss, targetName, 'Обновлены личные настройки уведомлений Telegram', (rec.enabled ? 'ВКЛ' : 'ВЫКЛ') + ' · Тихие часы: ' + qEnd + '–' + qStart + ' · Пауза: ' + cool + ' мин');
+  return { ok: true, staffName: targetName, prefs: rec };
+}
+
+function isQuietTimeNow_(nowMin, prefs) {
+  var qEnd = hhmmToMinV93_(prefs.quietEnd);
+  var qStart = hhmmToMinV93_(prefs.quietStart);
+  if (qEnd < 0 || qStart < 0 || qEnd === qStart) return false;
+  if (qStart > qEnd) {
+    return nowMin < qEnd || nowMin >= qStart;
+  }
+  return nowMin >= qStart && nowMin < qEnd;
+}
+
+function cleanupOldNotifProps_(todayIso) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var all = props.getProperties() || {};
+    var keys = Object.keys(all);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      var m = k.match(/^(?:TG_NOTIFIED_BLOCKS_|CRON_OVERDUE_|CRON_DIGEST_)(\d{4}-\d{2}-\d{2})/);
+      if (m && m[1] < todayIso) {
+        var d1 = new Date(m[1] + 'T00:00:00Z').getTime();
+        var d2 = new Date(todayIso + 'T00:00:00Z').getTime();
+        if (!isNaN(d1) && !isNaN(d2) && (d2 - d1) > 2 * 86400000) {
+          props.deleteProperty(k);
+        }
+      }
+    }
+  } catch (_) {}
+}
+
 function cronCheckDeadlinesAndDigest(opts) {
   opts = opts || {};
   var result = { ok: true, overdueSent: [], windows: null };
+  var lock = null;
+  var gotLock = false;
   try {
+    if (!opts.skipLock && typeof LockService !== 'undefined' && LockService.getScriptLock) {
+      lock = LockService.getScriptLock();
+      gotLock = lock.tryLock(15000);
+      if (!gotLock) {
+        return { ok: true, skipped: 'lock_busy', overdueSent: [], windows: null };
+      }
+    }
     var ss = opts.ss || getTargetSpreadsheet_();
     try { cleanupSessions_(); } catch (_) {}
-    // v97.12: Уведомления бариста за 15 мин до старта, при открытии и за 15 мин до дедлайна
+    // v97.20: Умные группируемые уведомления с тихими часами, антиспам-паузой и личными настройками бариста
     try { result.windows = checkAndNotifyChecklistWindows_(ss, opts); } catch (_) {}
     var tz = Session.getScriptTimeZone() || 'GMT+2';
     var now = new Date();
@@ -5135,65 +5320,113 @@ function cronCheckDeadlinesAndDigest(opts) {
     var nowMin = hhmmToMinV93_(hm);
     var weekday = String(opts.overrideWeekday || getWeekdayRuV93_(now, tz));
     var props = PropertiesService.getScriptProperties();
+    cleanupOldNotifProps_(today);
     var map = getSettingsMap_(ss);
     var loc = map.LOCATION || 'Кофейня №1';
     var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
     var rawBlocks = getChecklistBlocksFromSheet_(ss, map) || [];
     var extMap = {};
     try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}') || {}; } catch (_) {}
-    var todayExt = (extMap && extMap[today]) || {};
     var pr = getDailyPlansAndRosterFromSheet_(ss, map) || { dailyPlans: {}, shiftRoster: {} };
     var resolved = resolveTargetBaristasForDay_(ss, weekday, pr);
 
+    var nPrefs = getTgNotifPrefs_(map);
+    var staffPrefsMap = getStaffNotifPrefsMap_();
+    var adminOverdueItems = [];
+    var baristaOverdueBuckets = {};
+
     rawBlocks.forEach(function(b) {
+      if (!nPrefs.overdue) return;
       if (!b || b.active === false || b.isCash || String(b.name || '').toLowerCase() === 'касса') return;
       if (!isBlockScheduledForDate_(b, today, weekday)) return;
-      var ext = todayExt[b.name];
+      var ext = getExtForBlock_(extMap, today, b.name);
       var effDeadline = (ext && ext.until) ? String(ext.until) : String(b.deadline || '22:00');
       var deadMin = hhmmToMinV93_(effDeadline);
       if (deadMin < 0 || nowMin <= deadMin) return;
 
-      var done = chksToday.some(function(c) { return String(c.block || '').trim() === String(b.name || '').trim(); });
-      var alertKey = 'CRON_OVERDUE_' + today + '_' + b.name;
-      if (!done && (opts.force || !props.getProperty(alertKey))) {
+      var done = isBlockCompletedToday_(ss, chksToday, today, b.name);
+      var alertKey = 'CRON_OVERDUE_' + today + '_' + normBlockKey_(b.name);
+      var legacyKey = 'CRON_OVERDUE_' + today + '_' + b.name;
+      if (!done && (opts.force || (!props.getProperty(alertKey) && !props.getProperty(legacyKey)))) {
         props.setProperty(alertKey, hm);
         var blkOvStaff = resolveBlockRecipients_(ss, b, resolved.staff);
         var staffLabel = (b.assignee || (blkOvStaff.length ? blkOvStaff.map(function(s) { return s.name; }).join(', ') : 'не назначен'));
-        // 1. Уведомление администратору
-        var adminRes = sendTelegramServerAlert_(ss, {
-          type: 'overdue',
-          block: b.name,
-          targetPage: 'dashboard.html',
-          buttonText: '📊 Открыть дашборд',
-          skipDedup: true,
-          force: true,
-          text: '⏰ <b>АВТОПИЛОТ ПРОСРОЧКИ (' + escapeTgHtml_(today) + ')</b>\n' +
-            '📋 Чек-лист «<b>' + escapeTgHtml_(b.name) + '</b>» не сдан к дедлайну <b>' + escapeTgHtml_(effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ')!\n' +
-            '👤 Смена: ' + escapeTgHtml_(staffLabel) + ' · 📍 ' + escapeTgHtml_(loc)
-        });
-        result.overdueSent.push({ block: b.name, recipient: 'admin', ok: !!(adminRes && adminRes.ok) });
-        // 2. Персональное уведомление бариста на смене (если не выходной)
+        adminOverdueItems.push({ block: b, effDeadline: effDeadline, staffLabel: staffLabel });
+
         if ((!resolved.dayOff || b.assignee) && blkOvStaff.length) {
           blkOvStaff.forEach(function(emp) {
             var chatId = normTgNumericId_(emp.tgId);
             if (!chatId) return;
-            var empRes = sendTelegramServerAlert_(ss, {
-              chatIds: [chatId],
-              type: 'overdue_barista',
-              block: b.name,
-              buttonText: '⚡️ Срочно пройти «' + b.name + '»',
-              buttonType: 'web_app',
-              skipDedup: true,
-              force: true,
-              text: '🚨 <b>Просрочен чек-лист: «' + escapeTgHtml_(b.name) + '»</b>\n' +
-                '👋 ' + escapeTgHtml_(emp.name) + ', дедлайн был в <b>' + escapeTgHtml_(effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ').\n' +
-                '📍 ' + escapeTgHtml_(loc) + ' — пожалуйста, завершите чек-лист или свяжитесь с владельцем.'
-            });
-            result.overdueSent.push({ block: b.name, recipient: emp.name, chatId: chatId, ok: !!(empRes && empRes.ok) });
+            var empPrefs = getEffectiveStaffNotifPrefs_(nPrefs, emp.name, staffPrefsMap);
+            if (!opts.force && (!empPrefs.enabled || !empPrefs.overdue)) return;
+            if (!opts.ignoreQuietHours && !opts.force && (isQuietTimeNow_(nowMin, nPrefs) || isQuietTimeNow_(nowMin, empPrefs))) return;
+            var bKey = emp.name + '|' + chatId;
+            if (!baristaOverdueBuckets[bKey]) {
+              baristaOverdueBuckets[bKey] = { emp: emp, chatId: chatId, items: [] };
+            }
+            baristaOverdueBuckets[bKey].items.push({ block: b, effDeadline: effDeadline });
           });
         }
       }
     });
+
+    // 1. Одно сводное уведомление администратору по всем новым просрочкам
+    if (adminOverdueItems.length > 0) {
+      var admText = adminOverdueItems.length === 1
+        ? ('⏰ <b>АВТОПИЛОТ ПРОСРОЧКИ (' + escapeTgHtml_(today) + ')</b>\n' +
+            '📋 Чек-лист «<b>' + escapeTgHtml_(adminOverdueItems[0].block.name) + '</b>» не сдан к дедлайну <b>' + escapeTgHtml_(adminOverdueItems[0].effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ')!\n' +
+            '👤 Смена: ' + escapeTgHtml_(adminOverdueItems[0].staffLabel) + ' · 📍 ' + escapeTgHtml_(loc))
+        : ('⏰ <b>АВТОПИЛОТ ПРОСРОЧКИ (' + escapeTgHtml_(today) + ' · ' + adminOverdueItems.length + ' блока)</b>\n' +
+            '📍 ' + escapeTgHtml_(loc) + ' · сейчас ' + escapeTgHtml_(hm) + '\n\n' +
+            adminOverdueItems.map(function(it) {
+              return '• <b>' + escapeTgHtml_(it.block.name) + '</b> (дедлайн ' + escapeTgHtml_(it.effDeadline) + ' · ' + escapeTgHtml_(it.staffLabel) + ')';
+            }).join('\n'));
+      var adminRes = sendTelegramServerAlert_(ss, {
+        type: 'overdue',
+        block: adminOverdueItems[0].block.name,
+        targetPage: 'dashboard.html',
+        buttonText: '📊 Открыть дашборд',
+        skipDedup: true,
+        force: true,
+        text: admText
+      });
+      var admOk = !!(adminRes && adminRes.ok);
+      adminOverdueItems.forEach(function(it) {
+        result.overdueSent.push({ block: it.block.name, recipient: 'admin', grouped: adminOverdueItems.length > 1, ok: admOk });
+      });
+    }
+
+    // 2. Одно сводное уведомление каждому бариста по всем его просроченным блокам
+    Object.keys(baristaOverdueBuckets).forEach(function(bk) {
+      var grp = baristaOverdueBuckets[bk];
+      var emp = grp.emp;
+      var items = grp.items;
+      if (!items.length) return;
+      var bText = items.length === 1
+        ? ('🚨 <b>Просрочен чек-лист: «' + escapeTgHtml_(items[0].block.name) + '»</b>\n' +
+            '👋 ' + escapeTgHtml_(emp.name) + ', дедлайн был в <b>' + escapeTgHtml_(items[0].effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ').\n' +
+            '📍 ' + escapeTgHtml_(loc) + ' — пожалуйста, завершите чек-лист или свяжитесь с владельцем.')
+        : ('🚨 <b>Просрочены чек-листы (' + items.length + ')</b>\n' +
+            '👋 ' + escapeTgHtml_(emp.name) + ' · 📍 ' + escapeTgHtml_(loc) + ' (сейчас ' + escapeTgHtml_(hm) + ')\n\n' +
+            items.map(function(it) {
+              return '• <b>' + escapeTgHtml_(it.block.name) + '</b> (дедлайн был в ' + escapeTgHtml_(it.effDeadline) + ')';
+            }).join('\n') + '\n\nПожалуйста, завершите чек-листы или свяжитесь с владельцем.');
+      var empRes = sendTelegramServerAlert_(ss, {
+        chatIds: [grp.chatId],
+        type: 'overdue_barista',
+        block: items[0].block.name,
+        buttonText: items.length === 1 ? ('⚡️ Срочно пройти «' + items[0].block.name + '»') : '⚡️ Открыть чек-листы',
+        buttonType: 'web_app',
+        skipDedup: true,
+        force: true,
+        text: bText
+      });
+      var empOk = !!(empRes && empRes.ok);
+      items.forEach(function(it) {
+        result.overdueSent.push({ block: it.block.name, recipient: emp.name, chatId: grp.chatId, grouped: items.length > 1, ok: empOk });
+      });
+    });
+
     if (hm >= '22:45' && hm <= '23:45') {
       var digKey = 'CRON_DIGEST_' + today;
       if (opts.force || !props.getProperty(digKey)) {
@@ -5204,6 +5437,10 @@ function cronCheckDeadlinesAndDigest(opts) {
   } catch (e) {
     result.ok = false;
     result.error = String((e && e.message) || e);
+  } finally {
+    if (gotLock && lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
   }
   return result;
 }
@@ -5325,7 +5562,7 @@ function verifyTelegramInitDataHmac_(initDataRaw, checkReplayOpt) {
   }
   var receivedHash = String(hashMatch[1]).toLowerCase();
 
-  // Проверка срока действия auth_date (не старше 24 часов и не из будущего)
+  // Проверка срока действия auth_date (не старше 2 часов и не из будущего)
   var authDateMatch = initDataRaw.match(/(?:^|&)auth_date=(\d+)/);
   if (!authDateMatch) {
     return { ok: false, reason: 'MISSING_AUTH_DATE' };
@@ -5693,6 +5930,17 @@ function saveTelegramSettingsV93_(ss, body) {
   }
   bumpDataRev_();
   appendAudit_(ss, 'Администратор', 'Обновлены настройки Telegram-бота', 'Chat: ' + (chat || 'без изм.') + (webapp ? (' · URL: ' + webapp) : ''));
+    if (body && body.tgNotifyPreStart !== undefined) saveSetting_(ss, { id: 'TG_NOTIFY_PRE_START', value: body.tgNotifyPreStart ? 'да' : 'нет' });
+  if (body && body.tgNotifyOpen !== undefined) saveSetting_(ss, { id: 'TG_NOTIFY_OPEN', value: body.tgNotifyOpen ? 'да' : 'нет' });
+  if (body && body.tgNotifyPreDeadline !== undefined) saveSetting_(ss, { id: 'TG_NOTIFY_PRE_DEADLINE', value: body.tgNotifyPreDeadline ? 'да' : 'нет' });
+  if (body && body.tgNotifyOverdue !== undefined) saveSetting_(ss, { id: 'TG_NOTIFY_OVERDUE', value: body.tgNotifyOverdue ? 'да' : 'нет' });
+  if (body && body.tgQuietEnd) saveSetting_(ss, { id: 'TG_QUIET_END', value: String(body.tgQuietEnd).trim() });
+  if (body && body.tgQuietStart) saveSetting_(ss, { id: 'TG_QUIET_START', value: String(body.tgQuietStart).trim() });
+  if (body && body.tgNotifyCooldownMin !== undefined && body.tgNotifyCooldownMin !== null) {
+    var cVal = Math.max(0, Math.min(180, parseInt(body.tgNotifyCooldownMin, 10) || 0));
+    saveSetting_(ss, { id: 'TG_NOTIFY_COOLDOWN_MIN', value: String(cVal) });
+  }
+  bumpDataRev_();
   return {
     ok: true,
     tgConfiguredOnServer: !!(props.getProperty('TG_BOT_TOKEN_SECRET')),
@@ -5857,13 +6105,17 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
   var weekday = String(opts.overrideWeekday || getWeekdayRuV93_(now, tz));
 
   var map = getSettingsMap_(ss);
+  var nPrefs = getTgNotifPrefs_(map);
+  if (!opts.ignoreQuietHours && isQuietTimeNow_(nowMin, nPrefs)) {
+    return { ok: true, date: today, time: hm, weekday: weekday, quietHours: true, sent: [], skipped: [{ reason: 'quiet_hours', quietEnd: nPrefs.quietEnd, quietStart: nPrefs.quietStart }] };
+  }
+
   var loc = map.LOCATION || 'Кофейня №1';
   var blocks = getChecklistBlocksFromSheet_(ss, map) || [];
   var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
   var pr = getDailyPlansAndRosterFromSheet_(ss, map) || { dailyPlans: {}, shiftRoster: {} };
   var extMap = {};
   try { extMap = JSON.parse(map.DEADLINE_EXTENSIONS_JSON || '{}') || {}; } catch (_) {}
-  var todayExt = (extMap && extMap[today]) || {};
 
   var resolved = resolveTargetBaristasForDay_(ss, weekday, pr);
   if (resolved.dayOff && !opts.force) {
@@ -5875,10 +6127,14 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
   var notifKey = 'TG_NOTIFIED_BLOCKS_' + today;
   var notified = {};
   try { notified = JSON.parse(props.getProperty(notifKey) || '{}') || {}; } catch (_) { notified = {}; }
+  if (!notified._lastNonUrgent || typeof notified._lastNonUrgent !== 'object') notified._lastNonUrgent = {};
 
+  var staffPrefsMap = getStaffNotifPrefsMap_();
   var baseAppUrl = String(map.WEBAPP_URL || '').trim();
   var sent = [];
   var skipped = [];
+  // Группируем одновременные уведомления по (emp.name + '|' + stage), чтобы не спамить 3–5 сообщениями подряд
+  var buckets = {};
 
   blocks.forEach(function(b) {
     if (!b || b.active === false || b.isCash || String(b.name || '').toLowerCase() === 'касса') return;
@@ -5886,23 +6142,18 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
       skipped.push({ block: b.name, reason: 'not_scheduled_today' });
       return;
     }
-    var ext = todayExt[b.name];
+    var ext = getExtForBlock_(extMap, today, b.name);
     var effOpen = (ext && ext.openFrom) ? String(ext.openFrom) : String(b.openTime || '08:00');
     var effDeadline = (ext && ext.until) ? String(ext.until) : String(b.deadline || '22:00');
     var openMin = hhmmToMinV93_(effOpen);
     var deadMin = hhmmToMinV93_(effDeadline);
     if (openMin < 0 || deadMin < 0) return;
 
-    var alreadyDone = chksToday.some(function(c) { return String(c.block || '').trim() === String(b.name || '').trim(); });
-    if (alreadyDone) {
+    if (isBlockCompletedToday_(ss, chksToday, today, b.name)) {
       skipped.push({ block: b.name, reason: 'already_done' });
       return;
     }
 
-    // Определяем фазу уведомления для бариста:
-    // 1) pre_start_15: за 15 минут до начала [openMin - 15, openMin - 1]
-    // 2) pre_deadline_15: за 15 минут до дедлайна [deadMin - 15, deadMin] (если окно >= 15 мин)
-    // 3) open: окно открыто [openMin, deadMin - 16] (или [openMin, deadMin] если окно < 15 мин)
     var stage = '';
     var windowLen = deadMin - openMin;
     if (nowMin >= (openMin - 15) && nowMin < openMin) {
@@ -5916,87 +6167,129 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
     }
 
     var blkTargets = resolveBlockRecipients_(ss, b, targetStaff);
+    var bNorm = normBlockKey_(b.name);
     blkTargets.forEach(function(emp) {
-      var dedupId = stage + '|' + b.name + '|' + emp.name;
-      if (!opts.force && notified[dedupId]) {
+      var empPrefs = getEffectiveStaffNotifPrefs_(nPrefs, emp.name, staffPrefsMap);
+      if (!opts.force && !empPrefs.enabled) {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'muted_by_staff' });
+        return;
+      }
+      if (!opts.ignoreQuietHours && !opts.force && isQuietTimeNow_(nowMin, empPrefs)) {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'staff_quiet_hours' });
+        return;
+      }
+      if (stage === 'pre_start_15' && !empPrefs.preStart) {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'disabled_by_setting' });
+        return;
+      }
+      if (stage === 'pre_deadline_15' && !empPrefs.preDeadline) {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'disabled_by_setting' });
+        return;
+      }
+      if (stage === 'open' && !empPrefs.onOpen) {
+        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'disabled_by_setting' });
+        return;
+      }
+
+      var dedupId = stage + '|' + bNorm + '|' + String(emp.name || '').trim().toLowerCase();
+      var legacyDedup = stage + '|' + b.name + '|' + emp.name;
+      if (!opts.force && (notified[dedupId] || notified[legacyDedup])) {
         skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'already_notified' });
         return;
       }
       var chatId = normTgNumericId_(emp.tgId);
       if (!chatId) return;
 
-      var msgText = '';
-      var btnText = '▶️ Пройти «' + b.name + '»';
-      if (stage === 'pre_start_15') {
-        var minsToStart = Math.max(1, openMin - nowMin);
-        msgText = [
-          '⏳ <b>Скоро начнётся чек-лист: «' + escapeTgHtml_(b.name) + '»</b>',
-          '👋 ' + escapeTgHtml_(emp.name) + ', до открытия окна осталось ~' + minsToStart + ' мин.',
-          '⏰ Окно выполнения: <b>' + escapeTgHtml_(effOpen) + ' – ' + escapeTgHtml_(effDeadline) + '</b>',
-          '📍 ' + escapeTgHtml_(loc),
-          '',
-          'Подготовьтесь открыть чек-лист в терминале.'
-        ].join('\n');
-        btnText = '📋 Открыть терминал';
-      } else if (stage === 'pre_deadline_15') {
-        var minsLeft = Math.max(0, deadMin - nowMin);
-        msgText = [
-          '⚠️ <b>До дедлайна чек-листа «' + escapeTgHtml_(b.name) + '» осталось ' + minsLeft + ' мин!</b>',
-          '👋 ' + escapeTgHtml_(emp.name) + ', чек-лист ещё не сдан.',
-          '⏰ Дедлайн: <b>' + escapeTgHtml_(effDeadline) + '</b> (сейчас ' + escapeTgHtml_(hm) + ')',
-          '📍 ' + escapeTgHtml_(loc),
-          '',
-          'Пожалуйста, завершите и отправьте чек-лист вовремя.'
-        ].join('\n');
-        btnText = '⚡️ Срочно пройти «' + b.name + '»';
-      } else {
-        msgText = [
-          '📋 <b>Открылся чек-лист: «' + escapeTgHtml_(b.name) + '»</b>',
-          '👋 Привет, ' + escapeTgHtml_(emp.name) + '!',
-          '⏰ Окно выполнения: <b>' + escapeTgHtml_(effOpen) + ' – ' + escapeTgHtml_(effDeadline) + '</b>',
-          '📍 ' + escapeTgHtml_(loc),
-          '',
-          'Нажмите кнопку ниже, чтобы сразу открыть и пройти чек-лист.'
-        ].join('\n');
+      // Антиспам-пауза для несрочных этапов (pre_start_15 / open): не слать сообщения подряд чаще cooldownMin
+      var isNonUrgent = (stage === 'pre_start_15' || stage === 'open');
+      if (!opts.force && !opts.ignoreCooldown && isNonUrgent && empPrefs.cooldownMin > 0) {
+        var lastMin = Number(notified._lastNonUrgent[chatId]);
+        if (!isNaN(lastMin) && nowMin >= lastMin && (nowMin - lastMin) < empPrefs.cooldownMin) {
+          skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: 'cooldown_active', cooldownMin: empPrefs.cooldownMin });
+          return;
+        }
       }
 
-      var res = sendTelegramServerAlert_(ss, {
-        chatIds: [chatId],
-        type: 'checklist_' + stage,
-        block: b.name,
-        webappUrl: baseAppUrl,
-        buttonText: btnText,
-        buttonType: 'web_app',
-        skipDedup: true,
-        force: true,
-        text: msgText
-      });
-      if (res && res.ok) {
-        notified[dedupId] = hm;
-        sent.push({ block: b.name, stage: stage, staff: emp.name, chatId: chatId, time: hm });
-      } else {
-        skipped.push({ block: b.name, stage: stage, staff: emp.name, reason: (res && (res.reason || res.error)) || 'send_failed' });
+      var bucketKey = emp.name + '|' + stage;
+      if (!buckets[bucketKey]) {
+        buckets[bucketKey] = { emp: emp, chatId: chatId, stage: stage, items: [] };
       }
+      buckets[bucketKey].items.push({ block: b, effOpen: effOpen, effDeadline: effDeadline, openMin: openMin, deadMin: deadMin, dedupId: dedupId });
     });
   });
 
-  if (sent.length) {
-    try { setJsonProp_(notifKey, notified); } catch (_) {}
-    try { appendAudit_(ss, 'Автопилот Telegram', 'Отправлены уведомления бариста (' + sent.length + ')', sent.map(function(x) { return x.stage + ':' + x.block + ' → ' + x.staff; }).join(', ')); } catch (_) {}
-  }
+  Object.keys(buckets).forEach(function(bk) {
+    var grp = buckets[bk];
+    var emp = grp.emp;
+    var stage = grp.stage;
+    var items = grp.items;
+    if (!items.length) return;
 
-  return {
-    ok: true,
-    date: today,
-    time: hm,
-    weekday: weekday,
-    targetStaff: targetStaff.map(function(s) { return s.name; }),
-    sent: sent,
-    skipped: skipped
-  };
+    var msgText = '';
+    var btnText = items.length === 1 ? ('▶️ Пройти «' + items[0].block.name + '»') : '📋 Открыть чек-листы';
+    var firstBlkName = items[0].block.name;
+
+    if (items.length === 1) {
+      var it = items[0];
+      if (stage === 'pre_start_15') {
+        var minsToStart = Math.max(1, it.openMin - nowMin);
+        msgText = [
+          '⏳ <b>Скоро начнётся чек-лист: «' + escapeTgHtml_(it.block.name) + '»</b>',
+          '👋 ' + escapeTgHtml_(emp.name) + ', до открытия осталось ~' + minsToStart + ' мин.',
+          '⏰ Окно: <b>' + escapeTgHtml_(it.effOpen) + ' – ' + escapeTgHtml_(it.effDeadline) + '</b> · 📍 ' + escapeTgHtml_(loc)
+        ].join('\n');
+        btnText = '📋 Открыть терминал';
+      } else if (stage === 'pre_deadline_15') {
+        var minsLeft = Math.max(0, it.deadMin - nowMin);
+        msgText = [
+          '⚠️ <b>До дедлайна «' + escapeTgHtml_(it.block.name) + '» осталось ' + minsLeft + ' мин!</b>',
+          '👋 ' + escapeTgHtml_(emp.name) + ', чек-лист ещё не сдан (дедлайн <b>' + escapeTgHtml_(it.effDeadline) + '</b>).',
+          '📍 ' + escapeTgHtml_(loc)
+        ].join('\n');
+        btnText = '⚡️ Срочно пройти «' + it.block.name + '»';
+      } else {
+        msgText = [
+          '📋 <b>Открылся чек-лист: «' + escapeTgHtml_(it.block.name) + '»</b>',
+          '👋 ' + escapeTgHtml_(emp.name) + ', окно выполнения: <b>' + escapeTgHtml_(it.effOpen) + ' – ' + escapeTgHtml_(it.effDeadline) + '</b>.',
+          '📍 ' + escapeTgHtml_(loc)
+        ].join('\n');
+      }
+    } else {
+      var listLines = items.map(function(it) {
+        return '• <b>' + escapeTgHtml_(it.block.name) + '</b> (' + escapeTgHtml_(it.effOpen) + ' – ' + escapeTgHtml_(it.effDeadline) + ')';
+      });
+      var hdr = stage === 'pre_start_15'
+        ? '⏳ <b>Скоро откроются чек-листы (' + items.length + ')</b>'
+        : (stage === 'pre_deadline_15'
+          ? '⚠️ <b>Скоро дедлайн по чек-листам (' + items.length + ')</b>'
+          : '📋 <b>Открыты чек-листы (' + items.length + ')</b>');
+      msgText = [hdr, '👋 ' + escapeTgHtml_(emp.name) + ' · 📍 ' + escapeTgHtml_(loc), ''].concat(listLines).join('\n');
+    }
+
+    var res = sendTelegramServerAlert_(ss, {
+      chatIds: [grp.chatId],
+      type: 'barista_' + stage,
+      block: firstBlkName,
+      buttonText: btnText,
+      buttonType: 'web_app',
+      webappUrl: baseAppUrl,
+      skipDedup: true,
+      force: true,
+      text: msgText
+    });
+    var okSent = !!(res && res.ok);
+    if (okSent && (stage === 'pre_start_15' || stage === 'open')) {
+      notified._lastNonUrgent[grp.chatId] = nowMin;
+    }
+    items.forEach(function(it) {
+      if (okSent) notified[it.dedupId] = hm;
+      sent.push({ block: it.block.name, stage: stage, staff: emp.name, chatId: grp.chatId, grouped: items.length > 1, ok: okSent });
+    });
+  });
+
+  try { props.setProperty(notifKey, JSON.stringify(notified)); } catch (_) {}
+  return { ok: true, date: today, time: hm, weekday: weekday, sent: sent, skipped: skipped };
 }
-
-
 function normTaskTitleKeyV94_(block, title) {
   var b = String(block || '').trim().toLowerCase();
   var t = String(title || '')

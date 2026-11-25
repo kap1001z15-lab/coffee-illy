@@ -194,7 +194,7 @@
     send_direct_tg: 1, add_announcement: 1, delete_announcement: 1
   };
   const STAFF_ONLY_ACTIONS = {
-    staff_bootstrap: 1, submit_checklist: 1, save_checklist_draft: 1,
+    staff_bootstrap: 1, submit_checklist: 1, save_checklist_draft: 1, save_staff_notif_prefs: 1,
     submit_cash: 1, batch_submit_cash: 1, upload_photo: 1,
     report_standalone_incident: 1, bind_telegram_user: 1, change_staff_pin: 1
   };
@@ -255,6 +255,7 @@
       if (!q.length) return { flushed: 0, pending: 0 };
       const doneIds = new Set();
       const retryPatches = new Map();
+      const uploadedPhotoUrls = {}; // key: block + '|' + taskId -> Drive URL
       for (let i = 0; i < q.length; i++) {
         const item = q[i];
         const opId = (item.payload && item.payload.operationId) || (item.action + '_' + item.ts + '_' + i);
@@ -263,6 +264,15 @@
         const curSess = getSession();
         if (item.ownerRole === 'staff' && item.ownerName && curSess.staffName && item.ownerName !== curSess.staffName) {
           continue;
+        }
+        // v97.21: Если ранее в этой же очереди загрузилось фото для шага чек-листа — подставляем его Drive URL
+        if (item.action === 'submit_checklist' && item.payload && Array.isArray(item.payload.items)) {
+          const blk = String(item.payload.block || '');
+          item.payload.items.forEach((stepIt) => {
+            if (!stepIt || stepIt.photo_url) return;
+            const uKey = blk + '|' + String(stepIt.id || '');
+            if (uploadedPhotoUrls[uKey]) stepIt.photo_url = uploadedPhotoUrls[uKey];
+          });
         }
         try {
           const t0 = Date.now();
@@ -281,6 +291,10 @@
             writeFailedOutbox(failedList);
             doneIds.add(opId);
             continue;
+          }
+          if (item.action === 'upload_photo' && res && res.ok && (res.url || res.viewUrl) && item.payload) {
+            const uKey = String(item.payload.block || '') + '|' + String(item.payload.taskId || '');
+            uploadedPhotoUrls[uKey] = res.url || res.viewUrl;
           }
           doneIds.add(opId);
           flushed++;
@@ -309,6 +323,7 @@
         }
       }
       writeOutbox(remaining);
+      try { if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('coffee-sync-status')); } catch (_) {}
       if (flushed > 0) notifyOtherTabs('');
       return { flushed: flushed, pending: remaining.length };
 })();
@@ -443,6 +458,13 @@
       if (sMap.WO_NORM !== undefined && Number(sMap.WO_NORM) >= 0) state.woNorm = Number(sMap.WO_NORM);
       if (sMap.INIT_COUNTER !== undefined && Number(sMap.INIT_COUNTER) >= 0) state.initCounter = Number(sMap.INIT_COUNTER);
       if (sMap.PHOTO_ALL !== undefined) state.photoAll = String(sMap.PHOTO_ALL).toLowerCase() === 'да';
+      if (sMap.TG_NOTIFY_PRE_START !== undefined) state.tgNotifyPreStart = String(sMap.TG_NOTIFY_PRE_START).toLowerCase() === 'да';
+      if (sMap.TG_NOTIFY_OPEN !== undefined) state.tgNotifyOpen = String(sMap.TG_NOTIFY_OPEN).toLowerCase() !== 'нет';
+      if (sMap.TG_NOTIFY_PRE_DEADLINE !== undefined) state.tgNotifyPreDeadline = String(sMap.TG_NOTIFY_PRE_DEADLINE).toLowerCase() !== 'нет';
+      if (sMap.TG_NOTIFY_OVERDUE !== undefined) state.tgNotifyOverdue = String(sMap.TG_NOTIFY_OVERDUE).toLowerCase() !== 'нет';
+      if (sMap.TG_QUIET_END) state.tgQuietEnd = String(sMap.TG_QUIET_END);
+      if (sMap.TG_QUIET_START) state.tgQuietStart = String(sMap.TG_QUIET_START);
+      if (sMap.TG_NOTIFY_COOLDOWN_MIN !== undefined) state.tgNotifyCooldownMin = Math.max(0, Math.min(180, parseInt(sMap.TG_NOTIFY_COOLDOWN_MIN, 10) || 0));
       changed = true;
     }
     const rawBlocks = Array.isArray(data.checklistBlocks) && data.checklistBlocks.length
@@ -603,6 +625,74 @@
           photos: phList
         };
       });
+      // v97.20: Дополняем пройденными черновиками и ещё не синхронизированными записями из очереди,
+      // чтобы только что сданный чек-лист никогда не «откатывался» в невыполненные
+      const _seenDone = new Set(state.checklists.map((x) => String(x.date || '').slice(0, 10) + '|' + String(x.block || '').trim().toLowerCase()));
+      if (data.userDrafts && typeof data.userDrafts === 'object') {
+        Object.keys(data.userDrafts).forEach((dk) => {
+          const d = data.userDrafts[dk];
+          if (!d || d.completed !== true || !d.block) return;
+          const dDate = String(d.date || '').slice(0, 10);
+          const dKey = dDate + '|' + String(d.block || '').trim().toLowerCase();
+          if (dDate && !_seenDone.has(dKey)) {
+            _seenDone.add(dKey);
+            state.checklists.unshift({
+              date: dDate,
+              time: d.time || '',
+              block: String(d.block).trim(),
+              who: String(d.userName || '').trim() || 'Бариста',
+              problems: 0,
+              deadline: '',
+              status: 'Выполнено',
+              isLate: false,
+              done: 0,
+              total: 0,
+              photos: []
+            });
+          }
+        });
+      }
+      try {
+        const _pendOps = readOutbox();
+        _pendOps.forEach((op) => {
+          if (!op || op.action !== 'submit_checklist' || !op.payload || !op.payload.block) return;
+          const pDate = String(op.payload.date || localISO()).slice(0, 10);
+          const pKey = pDate + '|' + String(op.payload.block || '').trim().toLowerCase();
+          if (!_seenDone.has(pKey)) {
+            _seenDone.add(pKey);
+            state.checklists.unshift({
+              date: pDate,
+              time: op.payload.time || localHHMM(),
+              block: String(op.payload.block).trim(),
+              who: String(op.payload.who || op.payload.userName || 'Бариста').trim(),
+              problems: Array.isArray(op.payload.items) ? op.payload.items.filter((x) => x && x.isIncident).length : 0,
+              deadline: op.payload.deadline || '',
+              status: op.payload.isLate ? 'Просрочено' : 'Выполнено',
+              isLate: !!op.payload.isLate,
+              done: 0,
+              total: 0,
+              photos: [],
+              _pendingSync: true
+            });
+          }
+        });
+      } catch (_) {}
+      changed = true;
+    }
+    if (data.shiftCompletedBlocksToday && typeof data.shiftCompletedBlocksToday === 'object') {
+      state.shiftCompletedBlocksToday = Object.assign({}, data.shiftCompletedBlocksToday);
+      changed = true;
+    }
+    if (data.globalNotifPrefs && typeof data.globalNotifPrefs === 'object') {
+      state.globalNotifPrefs = Object.assign({}, data.globalNotifPrefs);
+      changed = true;
+    }
+    if (data.myNotifPrefs && typeof data.myNotifPrefs === 'object') {
+      state.myNotifPrefs = Object.assign({}, data.myNotifPrefs);
+      changed = true;
+    }
+    if (data.staffNotifPrefs && typeof data.staffNotifPrefs === 'object') {
+      state.staffNotifPrefs = Object.assign({}, data.staffNotifPrefs);
       changed = true;
     }
     if (Array.isArray(data.staff) && data.staff.length) {
@@ -1097,7 +1187,21 @@
         flushOutbox(true).catch(() => {}).then(() => pullNow(true)).finally(schedule);
       };
       window.addEventListener('focus', wake);
-      window.addEventListener('online', wake);
+      window.addEventListener('online', () => {
+      try {
+        const st = getState();
+        if (st) st.liveConnected = true;
+        if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('coffee-sync-status'));
+      } catch (_) {}
+      wake();
+    });
+    window.addEventListener('offline', () => {
+      try {
+        const st = getState();
+        if (st) st.liveConnected = false;
+        if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('coffee-sync-status'));
+      } catch (_) {}
+    });
       window.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) wake(); });
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
@@ -1251,6 +1355,9 @@
 
   async function saveTelegramSettings(opts) {
     return gasPost('save_telegram_settings', opts || {});
+  }
+  async function saveStaffNotifPrefs(opts) {
+    return gasPost('save_staff_notif_prefs', opts || {});
   }
   async function testTelegramAlert(opts) {
     return gasPost('test_telegram_alert', opts || {});
@@ -1433,6 +1540,20 @@
     startCloudLoop: startCloudLoop,
     getTelegramUser: getTelegramUser,
     getPendingCount: function () { return readOutbox().length; },
+    getSyncStatus: function (st) {
+      const pending = readOutbox().length;
+      const failed = readFailedOutbox().length;
+      const browserOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
+      const srvConnected = st ? (st.liveConnected !== false) : true;
+      return {
+        online: browserOnline && srvConnected,
+        browserOnline: browserOnline,
+        liveConnected: srvConnected,
+        pendingCount: pending,
+        failedCount: failed,
+        totalUnsynced: pending + failed
+      };
+    },
     getLastRttMs: function () { return _lastRttMs; },
     getLastRev: function () { return _lastServerRev; },
     getSession: getSession,
@@ -1440,6 +1561,7 @@
     autoLoginEmployee: autoLoginEmployee,
     checkOutStaff: checkOutStaff,
     saveTelegramSettings: saveTelegramSettings,
+    saveStaffNotifPrefs: saveStaffNotifPrefs,
     testTelegramAlert: testTelegramAlert,
     sendTelegramAlert: sendTelegramAlert,
     saveDailyPlans: saveDailyPlans,

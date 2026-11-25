@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const gasCodePath = path.resolve(rootDir, '..', 'coffee-illy-gas', 'Code.gs');
+const gasCodePath = path.resolve(rootDir, 'gas', 'Code.gs');
 
 function createGasEnvWithTelegram({ throwOnDeleteAllRows = false } = {}) {
   const sheets = new Map();
@@ -245,6 +245,9 @@ test('Barista TG Alerts: sends 15m pre-start, open, and 15m pre-deadline alerts 
   }
 
   // 1) 15 min BEFORE start (07:15 on Вт -> scheduled barista is Алина, chat 2000002)
+  sandbox.saveSetting_(ss, { id: 'TG_NOTIFY_PRE_START', value: 'да' });
+  sandbox.saveSetting_(ss, { id: 'TG_QUIET_END', value: '06:00' });
+  sandbox.saveSetting_(ss, { id: 'TG_NOTIFY_COOLDOWN_MIN', value: '0' });
   const rPre = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-24', overrideTime: '07:15', overrideWeekday: 'Вт' });
   assert.equal(rPre.ok, true);
   const preOpen = rPre.sent.filter((x) => x.block === 'Открытие' && x.stage === 'pre_start_15');
@@ -269,7 +272,7 @@ test('Barista TG Alerts: sends 15m pre-start, open, and 15m pre-deadline alerts 
   const preDead = rDead.sent.filter((x) => x.block === 'Открытие' && x.stage === 'pre_deadline_15');
   assert.equal(preDead.length, 1);
   assert.equal(preDead[0].staff, 'Алина');
-  assert.ok(tgMessages.some((m) => m.body.chat_id === '2000002' && /До дедлайна чек-листа «Открытие» осталось 15 мин/.test(m.body.text)), 'Must send 15m pre-deadline alert for Открытие');
+  assert.ok(tgMessages.some((m) => m.body.chat_id === '2000002' && /До дедлайна (?:чек-листа )?«Открытие» осталось 15 мин/.test(m.body.text)), 'Must send 15m pre-deadline alert for Открытие');
   assert.ok(tgMessages.some((m) => m.body.chat_id === '2000002' && /Скоро начнётся чек-лист: «Лайн Чек 1»/.test(m.body.text)), 'Must also send 15m pre-start alert for Лайн Чек 1 at 08:15');
 
   // 4) Multi-barista shift on Ср ("Алина + Соня (2 смены)") sends to BOTH baristas
@@ -355,4 +358,107 @@ test('Dashboard UI & CloudSync integrity: weekly plan 2-barista modal, direct TG
   assert.match(dash, /data-tg-staff=/, 'Team tab must include quick personal TG button per barista');
   assert.match(cs, /saveDailyPlans:\s*saveDailyPlans/, 'cloud-sync.js must export saveDailyPlans');
   assert.match(cs, /sendTelegramAlert:\s*sendTelegramAlert/, 'cloud-sync.js must export sendTelegramAlert');
+});
+
+test('v97.21.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
+  const { sandbox, ss, token, tgMessages: tgCalls } = createGasEnvWithTelegram();
+  // Seed 3 blocks all opening at 06:00-11:00
+  sandbox.saveChecklistBlocks_(ss, {
+    blocks: [
+      { id: 'b1', name: 'Открытие', openTime: '06:00', deadline: '11:00', active: true },
+      { id: 'b2', name: 'Лайн Чек 1', openTime: '06:00', deadline: '11:00', active: true },
+      { id: 'b3', name: 'Лайн Чек 2', openTime: '06:00', deadline: '21:00', active: true }
+    ]
+  });
+
+  // 1. At 05:47 AM, quiet hours (default 07:30) MUST block all morning spam
+  tgCalls.length = 0;
+  const r547 = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-25', overrideTime: '05:47', overrideWeekday: 'Ср' });
+  assert.equal(r547.quietHours, true);
+  assert.equal(tgCalls.length, 0, 'Must NOT wake barista up at 05:47 AM');
+
+  // 2. At 08:00 AM (after quiet hours), all 3 open blocks MUST be grouped into ONE single Telegram message per barista (not 3!)
+  tgCalls.length = 0;
+  const r800 = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-25', overrideTime: '08:00', overrideWeekday: 'Ср' });
+  assert.equal(r800.sent.length >= 3, true);
+  const uniqueChats = new Set(tgCalls.map((c) => c.body.chat_id));
+  assert.equal(tgCalls.length, uniqueChats.size, 'All 3 simultaneous blocks must be grouped into 1 Telegram message per barista');
+
+  // 3. Mark Открытие completed in drafts (even if sheet read lags) & Лайн Чек 1 in Чек-листы -> NO false overdue at 11:02!
+  sandbox.setJsonProp_('COFFEE_USER_DRAFTS_JSON', { '2026-11-25::Алина::Открытие': { completed: true, date: '2026-11-25', userName: 'Алина', block: 'Открытие', updatedAt: '2026-11-25T10:15:00Z' } });
+  ss.getSheetByName('Чек-листы').appendRow(['2026-11-25', '10:20', 'Лайн Чек 1', 'Алина', 0, '[]', '11:00', 'В срок']);
+  tgCalls.length = 0;
+  const ov = sandbox.cronCheckDeadlinesAndDigest({ ss, overrideDate: '2026-11-25', overrideTime: '11:02', overrideWeekday: 'Ср' });
+  assert.equal(ov.overdueSent.some((x) => x.block === 'Открытие' || x.block === 'Лайн Чек 1'), false, 'Completed blocks must NEVER trigger false overdue');
+});
+
+test('v97.21.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
+  const { sandbox, ss, token, tgMessages } = createGasEnvWithTelegram();
+
+  // 1. Seed 2 blocks opening at 08:00-11:00 and 1 block opening at 08:10-12:00
+  sandbox.saveChecklistBlocks_(ss, {
+    blocks: [
+      { id: 'b1', name: 'Открытие', openTime: '08:00', deadline: '11:00', active: true },
+      { id: 'b2', name: 'Лайн Чек 1', openTime: '08:00', deadline: '11:00', active: true },
+      { id: 'b3', name: 'Лайн Чек 2', openTime: '08:10', deadline: '12:00', active: true }
+    ]
+  });
+
+  // 2. Save personal notification prefs for Соня via POST save_staff_notif_prefs (cooldown 30 min, quiet until 08:30)
+  const saveRes = JSON.parse(sandbox.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: 'save_staff_notif_prefs',
+        sessionToken: token,
+        staffName: 'Соня',
+        enabled: true,
+        onOpen: true,
+        preDeadline: true,
+        overdue: true,
+        preStart: false,
+        quietEnd: '08:30',
+        quietStart: '22:00',
+        cooldownMin: 30
+      })
+    }
+  }).getContent());
+  assert.equal(saveRes.ok, true);
+  assert.equal(saveRes.prefs.quietEnd, '08:30');
+  assert.equal(saveRes.prefs.cooldownMin, 30);
+
+  // 3. At 08:05 on Ср (Алина + Соня): Алина gets 1 grouped open message (Открытие + Лайн Чек 1), Соня is protected by her personal quiet hours (until 08:30)!
+  tgMessages.length = 0;
+  const r805 = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-25', overrideTime: '08:05', overrideWeekday: 'Ср' });
+  assert.equal(r805.sent.some((x) => x.staff === 'Алина'), true);
+  assert.equal(r805.sent.some((x) => x.staff === 'Соня'), false, 'Соня must be protected by personal quietEnd 08:30');
+  assert.equal(tgMessages.length, 1, 'Алина must receive 1 grouped message, not 2');
+
+  // 4. At 08:15 (only 10 min after 08:05): Лайн Чек 2 opens, but Алина has 30m anti-spam cooldown -> skipped!
+  tgMessages.length = 0;
+  const r815 = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-25', overrideTime: '08:15', overrideWeekday: 'Ср' });
+  assert.equal(r815.sent.some((x) => x.staff === 'Алина' && x.block === 'Лайн Чек 2'), false, '30m cooldown must prevent back-to-back non-urgent spam');
+  assert.equal(r815.skipped.some((x) => x.staff === 'Алина' && x.reason === 'cooldown_active'), true);
+
+  // 5. At 11:02: BOTH Открытие and Лайн Чек 1 are overdue -> Admin gets 1 grouped alert, each barista gets 1 grouped alert (NOT 2 separate messages!)
+  tgMessages.length = 0;
+  const ov = sandbox.cronCheckDeadlinesAndDigest({ ss, overrideDate: '2026-11-25', overrideTime: '11:02', overrideWeekday: 'Ср' });
+  assert.equal(ov.ok, true);
+  const adminMsgs = tgMessages.filter((m) => m.body.chat_id === '1000001');
+  const alinaMsgs = tgMessages.filter((m) => m.body.chat_id === '2000002' && /Просрочен/.test(m.body.text));
+  const sonyaMsgs = tgMessages.filter((m) => m.body.chat_id === '2000003' && /Просрочен/.test(m.body.text));
+  assert.equal(adminMsgs.length, 1, 'Admin must get 1 consolidated overdue message for 2 blocks');
+  assert.equal(alinaMsgs.length, 1, 'Алина must get 1 consolidated overdue message for 2 blocks');
+  assert.equal(sonyaMsgs.length, 1, 'Соня must get 1 consolidated overdue message for 2 blocks');
+
+  // 6. Verify Terminal, Dashboard & CloudSync UI/sync controls exist
+  const idxHtml = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  const dashHtml = fs.readFileSync(path.join(rootDir, 'dashboard.html'), 'utf8');
+  const csJs = fs.readFileSync(path.join(rootDir, 'js/cloud-sync.js'), 'utf8');
+  assert.match(idxHtml, /id="b-notif"/, 'Terminal must have 🔔 notification settings button');
+  assert.match(idxHtml, /saveStaffNotifPrefs/, 'Terminal must save personal notification prefs to server');
+  assert.match(idxHtml, /function findDoneToday/, 'Terminal must normalize completed checklist matching');
+  assert.match(dashHtml, /id="tg-n-cool"/, 'Dashboard must have anti-spam cooldown selector');
+  assert.match(dashHtml, /✓ Пройден/, 'Dashboard getBlkSt must show completed status instead of false Closed/Overdue');
+  assert.match(csJs, /saveStaffNotifPrefs:\s*saveStaffNotifPrefs/, 'CloudSync must export saveStaffNotifPrefs');
+  assert.match(csJs, /_pendingSync:\s*true/, 'CloudSync must preserve pending submit_checklist ops on merge');
 });

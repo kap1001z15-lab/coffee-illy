@@ -439,3 +439,88 @@ test('Camera keepAlive prewarm requests OS permission ONCE and reuses standby st
   camera.stopStream();
   assert.equal(stopped, true, 'Explicit stopStream() on logout releases hardware cleanly');
 });
+
+test('v97.21.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offline Photo->Checklist URL Chaining', async () => {
+  const prevNav = globalThis.navigator;
+  const prevFetch = globalThis.fetch;
+  const prevLS = globalThis.localStorage;
+  const prevWin = globalThis.window;
+
+  const store = new Map();
+  const lsMock = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); }
+  };
+  let isOnline = false;
+  const posted = [];
+  const winMock = {
+    COFFEE_CONFIG: { API_URL: 'https://script.google.com/macros/s/test/exec' },
+    localStorage: lsMock,
+    addEventListener: () => {},
+    dispatchEvent: () => {}
+  };
+  globalThis.window = winMock;
+  globalThis.localStorage = lsMock;
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { get onLine() { return isOnline; } }
+  });
+  globalThis.fetch = async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    posted.push(body);
+    const respObj = body.action === 'upload_photo'
+      ? { ok: true, url: 'https://drive.google.com/file/d/OFFLINE_PHOTO_1/view', fileId: 'OFFLINE_PHOTO_1' }
+      : { ok: true, rev: 99 };
+    return { ok: true, text: async () => JSON.stringify(respObj), json: async () => respObj };
+  };
+
+  try {
+    const code = fs.readFileSync(path.join(process.cwd(), 'js/cloud-sync.js'), 'utf8');
+    const fn = new Function('window', 'localStorage', 'navigator', 'fetch', code);
+    fn(winMock, lsMock, globalThis.navigator, globalThis.fetch);
+    const api = winMock.CoffeeCloudV94;
+    assert.ok(api && typeof api.getSyncStatus === 'function');
+
+    // 1. Offline: upload photo + submit checklist -> both queued cleanly
+    const upRes = await api.uploadMediaToDrive({ dataUri: 'data:image/jpeg;base64,AAAA', userName: 'Соня', block: 'Открытие', taskId: 't1' });
+    assert.equal(upRes.queued, true);
+    api.dispatchStateChange({
+      checklists: [{
+        block: 'Открытие', who: 'Соня', date: '2026-11-25', deadline: '11:00', isLate: false,
+        items: [{ id: 't1', title: 'Кофемашина', photo_url: '', isIncident: false }]
+      }]
+    }, 'Соня', 'Сдан чек-лист «Открытие»');
+    const stOff = api.getSyncStatus({ liveConnected: false });
+    assert.equal(stOff.online, false);
+    assert.equal(stOff.totalUnsynced, 2, 'Must count both queued photo and queued checklist');
+
+    // 2. Back online: flushOutbox uploads photo, injects Drive URL into submit_checklist, and delivers both!
+    isOnline = true;
+    const fl = await api.flushOutbox(true);
+    assert.equal(fl.flushed, 2);
+    assert.equal(fl.pending, 0);
+    const chkPost = posted.find((x) => x.action === 'submit_checklist');
+    assert.ok(chkPost, 'submit_checklist must be delivered to server');
+    assert.equal(chkPost.items[0].photo_url, 'https://drive.google.com/file/d/OFFLINE_PHOTO_1/view', 'Offline photo Drive URL must be injected into queued checklist');
+    const stOn = api.getSyncStatus({ liveConnected: true });
+    assert.equal(stOn.online, true);
+    assert.equal(stOn.totalUnsynced, 0);
+
+    // 3. Verify Green/Yellow pill CSS & UI wiring in both clients
+    const css = fs.readFileSync(path.join(process.cwd(), 'css/m3-soft.css'), 'utf8');
+    const idxHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const dashHtml = fs.readFileSync(path.join(process.cwd(), 'dashboard.html'), 'utf8');
+    assert.match(css, /\.live-pill\.is-online/);
+    assert.match(css, /\.live-pill\.is-offline/);
+    assert.match(idxHtml, /id="hdr-sync-pill"/);
+    assert.match(idxHtml, /function updateSyncPill/);
+    assert.match(dashHtml, /id="hdr-sync-pill"/);
+    assert.match(dashHtml, /function updateSyncPill/);
+  } finally {
+    globalThis.window = prevWin;
+    globalThis.localStorage = prevLS;
+    globalThis.fetch = prevFetch;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: prevNav });
+  }
+});

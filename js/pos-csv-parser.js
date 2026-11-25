@@ -484,7 +484,41 @@
     };
   }
 
+
+  function decodeCsvBuffer(buf) {
+    if (!buf) return '';
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    if (typeof TextDecoder === 'undefined') {
+      let s = '';
+      for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+      return s.replace(/^\uFEFF/, '');
+    }
+    try {
+      const utf8 = new TextDecoder('utf-8', { fatal: true }).decode(u8);
+      if (utf8.indexOf('\uFFFD') === -1) return utf8.replace(/^\uFEFF/, '');
+    } catch (_) {}
+    try {
+      return new TextDecoder('windows-1251').decode(u8).replace(/^\uFEFF/, '');
+    } catch (_) {
+      return new TextDecoder('utf-8').decode(u8).replace(/^\uFEFF/, '');
+    }
+  }
+
+  async function readCsvFile(file) {
+    if (!file) return '';
+    if (typeof file.arrayBuffer === 'function') {
+      const buf = await file.arrayBuffer();
+      return decodeCsvBuffer(buf);
+    }
+    if (typeof file.text === 'function') {
+      return file.text();
+    }
+    return '';
+  }
+
   const API = {
+    decodeCsvBuffer,
+    readCsvFile,
     parseCsvRows,
     parseSingleCsvFile,
     parsePosBatch,

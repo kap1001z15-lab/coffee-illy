@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const gasPath = fs.existsSync(path.resolve(root, '../coffee-illy-gas/Code.gs'))
-  ? path.resolve(root, '../coffee-illy-gas/Code.gs')
+const gasPath = fs.existsSync(path.resolve(root, 'gas/Code.gs'))
+  ? path.resolve(root, 'gas/Code.gs')
   : path.resolve(root, 'Code.gs');
 const cloudPath = path.resolve(root, 'js/cloud-sync.js');
 const csvPath = path.resolve(root, 'js/pos-csv-parser.js');
@@ -225,7 +225,7 @@ test('P0.1/P0.4/P1.4/P1.5/Sec6/Sec7 Audit Hardening: strict admin/staff session 
   const dash = fs.readFileSync(path.join(root, 'dashboard.html'), 'utf8');
   const gasPath = fs.existsSync(path.join(root, 'gas/Code.gs'))
     ? path.join(root, 'gas/Code.gs')
-    : path.join(root, '..', 'coffee-illy-gas', 'Code.gs');
+    : path.join(root, 'gas', 'Code.gs');
   const gas = fs.readFileSync(gasPath, 'utf8');
 
   // 1. No blind adminToken || staffToken fallback in gasPost
@@ -259,7 +259,7 @@ test('P0.1/P0.4/P1.4/P1.5/Sec6/Sec7 Audit Hardening: strict admin/staff session 
   assert.ok(!cs.includes("navigator.serviceWorker.register('./sw.js')"), 'cloud-sync.js must not duplicate SW registration');
 });
 
-test('P0-1, P1-5, P1-10 Audit v97.18.0: Telegram auto-login requires HMAC, staff batch_submit_cash restricted, public get_checklists minimal', { skip: !hasGas }, () => {
+test('P0-1, P1-5, P1-10 Audit v97.21.0: Telegram auto-login requires HMAC, staff batch_submit_cash restricted, public get_checklists minimal', { skip: !hasGas }, () => {
   const { sandbox } = createGasSandbox();
   sandbox.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ('SEC_TEST_SHEET');
   sandbox.saveStaff_(sandbox.getTargetSpreadsheet_(), { name: 'Соня', role: 'Бариста', pin: '1234', active: 'да', tgId: 'TG-99887766' });
@@ -295,7 +295,7 @@ test('P0-1, P1-5, P1-10 Audit v97.18.0: Telegram auto-login requires HMAC, staff
   assert.equal(pub.shiftRoster, undefined, 'Public get_checklists must not expose shiftRoster');
 });
 
-test('P0-3, P2, P3 Audit v97.18.0: setup_initial_credentials requires INITIAL_SETUP_CODE, formula injection neutralized, RESET_ property deleted on use', { skip: !hasGas }, () => {
+test('P0-3, P2, P3 Audit v97.21.0: setup_initial_credentials requires INITIAL_SETUP_CODE, formula injection neutralized, RESET_ property deleted on use', { skip: !hasGas }, () => {
   const { sandbox } = createGasSandbox();
   const props = sandbox.PropertiesService.getScriptProperties();
   props.setProperty('TARGET_SPREADSHEET_ID', 'SEC_TEST_P03');
@@ -337,4 +337,32 @@ test('P0-3, P2, P3 Audit v97.18.0: setup_initial_credentials requires INITIAL_SE
   assert.ok(props.getProperty('RESET_Соня'), 'RESET_ property exists before use');
   assert.equal(sandbox.consumeStaffResetCode_('Соня', gen.resetCode), true);
   assert.equal(props.getProperty('RESET_Соня'), null, 'RESET_ property must be deleted after consumption');
+});
+
+test('v97.21.0 Hardening: CSP meta present in HTML clients, no fake BKP- backup stub in Code.gs', () => {
+  const dash = fs.readFileSync(path.resolve(__dirname, '../dashboard.html'), 'utf8');
+  const idx = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+  const gasCode = fs.readFileSync(path.resolve(__dirname, '../gas/Code.gs'), 'utf8');
+  assert.match(dash, /http-equiv="Content-Security-Policy"/);
+  assert.match(idx, /http-equiv="Content-Security-Policy"/);
+  assert.ok(!gasCode.includes("backupId: 'BKP-'"), 'Fake BKP- backup stub must be replaced by real createServerBackup_');
+  assert.ok(gasCode.includes('function createServerBackup_('));
+});
+
+test('v97.21.0 Audit: Brute-force rate limit holds even when attacker rotates clientId, and doGet rejects URL tokens', { skip: !hasGas }, () => {
+  const { sandbox } = createGasSandbox();
+  sandbox.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ('BF_TEST_SHEET');
+
+  let lastRes = null;
+  for (let i = 0; i < 6; i++) {
+    lastRes = JSON.parse(sandbox.doPost({
+      postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '9999', clientId: 'spoof_' + i }) }
+    }).getContent());
+  }
+  assert.equal(lastRes.ok, false);
+  assert.match(String(lastRes.error || ''), /RATE_LIMIT|заблокирован|повторите/i, 'Spoofed clientId must NOT bypass brute-force lockout');
+
+  const getTok = JSON.parse(sandbox.doGet({ parameter: { action: 'unknown_secret', sessionToken: 'fake_tok' } }).getContent());
+  assert.equal(getTok.ok, false);
+  assert.match(String(getTok.error || ''), /METHOD_NOT_ALLOWED/i);
 });

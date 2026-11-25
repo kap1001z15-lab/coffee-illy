@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const gasCodePath = path.resolve(rootDir, '..', 'coffee-illy-gas', 'Code.gs');
+const gasCodePath = path.resolve(rootDir, 'gas', 'Code.gs');
 
 function createBorisGasEnv({ throwOnDeleteAllRows = true } = {}) {
   const sheets = new Map();
@@ -288,12 +288,15 @@ test('Boris Fix #5 & #6: Global plan inputs removed from Параметры ко
     }
   });
 
+  // Enable pre_start_15 (off by default in v97.21.0)
+  sandbox.saveSetting_(ss, { id: 'TG_NOTIFY_PRE_START', value: 'да' });
+
   // On Ср (not scheduled) -> 0 messages
-  const wedRes = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-25', overrideTime: '09:45', overrideWeekday: 'Ср' });
+  const wedRes = sandbox.checkAndNotifyChecklistWindows_(ss, { ignoreQuietHours: true,  overrideDate: '2026-11-25', overrideTime: '09:45', overrideWeekday: 'Ср' });
   assert.equal(wedRes.sent.length, 0);
 
   // On Вт at 09:45 (-15m before start) -> sent ONLY to Соня (2000003), NOT Алина
-  const tueRes = sandbox.checkAndNotifyChecklistWindows_(ss, { overrideDate: '2026-11-24', overrideTime: '09:45', overrideWeekday: 'Вт' });
+  const tueRes = sandbox.checkAndNotifyChecklistWindows_(ss, { ignoreQuietHours: true,  overrideDate: '2026-11-24', overrideTime: '09:45', overrideWeekday: 'Вт' });
   assert.equal(tueRes.sent.length, 1);
   assert.equal(tueRes.sent[0].staff, 'Соня');
   assert.equal(tgMessages[tgMessages.length - 1].body.chat_id, '2000003');
@@ -313,7 +316,7 @@ test('Deep Audit Regression: zero corrupted control chars in HTML/JS/GAS, valid 
     path.resolve(process.cwd(), 'dashboard.html'),
     path.resolve(process.cwd(), 'index.html'),
     path.resolve(process.cwd(), 'js/cloud-sync.js'),
-    path.resolve(process.cwd(), '../coffee-illy-gas/Code.gs')
+    path.resolve(process.cwd(), 'gas/Code.gs')
   ];
   for (const fp of files) {
     const content = fs.readFileSync(fp, 'utf8');
@@ -322,7 +325,7 @@ test('Deep Audit Regression: zero corrupted control chars in HTML/JS/GAS, valid 
   }
   const dash = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idx = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
-  const gas = fs.readFileSync(path.resolve(process.cwd(), '../coffee-illy-gas/Code.gs'), 'utf8');
+  const gas = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
   assert.ok(dash.includes('/^(\\d)\\1{3,}$/'), 'dashboard.html must use valid \\1 backreference for PIN validation');
   assert.ok(idx.includes('/^(\\d)\\1{3,}$/'), 'index.html must use valid \\1 backreference for PIN validation');
   assert.ok(gas.includes('Кофейня — Медиаархив Смен') && gas.includes('cur.getFolders'), 'grantPhotoFolderReaderAccess_ must support legacy folder & subfolders');
@@ -350,7 +353,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   const res = sandbox.autoMigrateSchemaIfNeeded_(ss, false);
   assert.equal(res.ok, true);
   assert.equal(res.migrated, true);
-  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.18.0');
+  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.21.0');
 
   assert.equal(shTl._data[0].length, 9);
   assert.equal(shTl._data[0][6], 'Сотрудник');
@@ -374,7 +377,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   assert.equal(res2.skipped, true);
 });
 
-test('v97.18.0 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
+test('v97.21.0 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
   const dash = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idx = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const cs = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');

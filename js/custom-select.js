@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Coffee Illy ERP & Checklist — Custom Select Bottom-Sheet / Dialog (v97.18.0)
+   Coffee Illy ERP & Checklist — Custom Select Bottom-Sheet / Dialog (v97.19.0)
    Replaces ugly native Android/OS <select> popups with a theme-matched
    bottom sheet (phones) / dialog (tablet & desktop) while keeping 100%
    compatibility with underlying <select>.value and change events.
@@ -222,7 +222,7 @@
 })();
 
 /* ==========================================================================
-   Coffee Illy ERP — Native Telegram HapticFeedback Engine (v97.18.0)
+   Coffee Illy ERP — Native Telegram HapticFeedback Engine (v97.19.0)
    Zero-dependency, silent fallback outside Telegram Mini App
    ========================================================================== */
 (function () {

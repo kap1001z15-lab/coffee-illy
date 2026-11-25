@@ -1,5 +1,5 @@
-/* Coffee Illy ERP & Checklist — Service Worker v97.18.0 */
-const CACHE_NAME = 'coffee-illy-v97-18-0';
+/* Coffee Illy ERP & Checklist — Service Worker v97.21.0 */
+const CACHE_NAME = 'coffee-illy-v97-21-0';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -34,7 +34,7 @@ function fetchWithSwTimeout(req, ms) {
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+    caches.open(CACHE_NAME).then((cache) => Promise.allSettled(CORE_ASSETS.map((u) => cache.add(u).catch(() => {}))))
   );
 });
 

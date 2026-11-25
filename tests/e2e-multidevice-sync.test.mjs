@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 
 const baseDir = path.dirname(new URL(import.meta.url).pathname);
-const gasPath = path.resolve(baseDir, '../../coffee-illy-gas/Code.gs');
+const gasPath = path.resolve(baseDir, '../gas/Code.gs');
 const cloudPath = path.resolve(baseDir, '../js/cloud-sync.js');
 const csvPath = path.resolve(baseDir, '../js/pos-csv-parser.js');
 const hasGas = fs.existsSync(gasPath);

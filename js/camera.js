@@ -1,5 +1,5 @@
 /**
- * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v97.18.0)
+ * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v97.19.0)
  * Единый модуль камеры с однократным запросом разрешения при входе в терминал:
  * - prewarm({ keepAlive: true }) запрашивает доступ 1 раз при входе и держит поток
  *   в энергосберегающей паузе (track.enabled = false) без повторных запросов getUserMedia
@@ -470,7 +470,7 @@
   }
 
   var api = {
-    version: 'v97.18.0',
+    version: 'v97.19.0',
     MAX_VIDEO_SEC: MAX_VIDEO_SEC,
     prewarm: prewarm,
     open: open,

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const gasCodePath = path.resolve(rootDir, '..', 'coffee-illy-gas', 'Code.gs');
+const gasCodePath = path.resolve(rootDir, 'gas', 'Code.gs');
 
 function createGasEnv() {
   const sheets = new Map();

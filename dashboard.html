@@ -2,6 +2,7 @@
 <html lang="ru" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://drive.google.com https://lh3.googleusercontent.com https://*.googleusercontent.com; media-src 'self' data: blob: https://drive.google.com https://*.googleusercontent.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com; base-uri 'self'; form-action 'self';">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F6F3EF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
@@ -233,7 +234,7 @@ body { overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right:
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.18.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v97.21.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -252,11 +253,11 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.18.0"></script>
-  <script src="js/cloud-sync.js?v=97.18.0"></script>
-<script src="js/pos-csv-parser.js?v=97.18.0"></script>
-  <script src="js/custom-select.js?v=97.18.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.18.0">
+  <script src="config.js?v=97.21.0"></script>
+  <script src="js/cloud-sync.js?v=97.21.0"></script>
+<script src="js/pos-csv-parser.js?v=97.21.0"></script>
+  <script src="js/custom-select.js?v=97.21.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=97.21.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -265,7 +266,7 @@ tbody tr { transition: background .14s ease; }
     <div class="brand-meta">
       <div class="brand-title"><span class="hide-xs">Дашборд · </span><span id="hdr-loc">Кофейня №1</span></div>
       <div class="brand-sub">
-        <span class="live-pill"><span class="live-dot"></span><span id="hdr-rev">Онлайн</span></span>
+        <span class="live-pill is-online" id="hdr-sync-pill" role="button" tabindex="0" title="Нажмите для принудительной синхронизации"><span class="live-dot"></span><span id="hdr-rev">Онлайн</span></span>
       </div>
     </div>
   </div>
@@ -716,18 +717,36 @@ function initTheme(btnId) {
     return { day: dayKey, rev, checks, avg, roster: (found && found.roster) || '' };
   }
   function blockTasks(nm) { return state.tasks.filter(t => t.block === nm); }
+  function normBlkName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  function findDoneToday(blkName) {
+    const target = normBlkName(blkName);
+    if (!target) return null;
+    const todayLocal = getTodayISO();
+    const todaySrv = String(state.serverDate || '').slice(0, 10);
+    return (state.checklists || []).find((c) => {
+      if (!c) return false;
+      const cd = String(c.date || '').slice(0, 10);
+      if (cd !== todayLocal && (!todaySrv || cd !== todaySrv)) return false;
+      return normBlkName(c.block) === target;
+    }) || null;
+  }
   function getBlkSt(b) {
-    if (b.active === false) return { label:'Отключён', cls:'', open:false };
-    if (state.extensions[b.name] && state.extensions[b.name].forceOpen) return { label:'Открыт админом до 23:59', cls:'good', open:true };
+    if (b.active === false) return { code:'off', label:'Отключён', cls:'', open:false };
+    const done = !b.isCash ? findDoneToday(b.name) : null;
+    if (done) {
+      const meta = [done.time, done.who].filter(Boolean).join(' · ');
+      return { code:'done', label: (done.isLate ? '✓ Пройден с опозд.' : '✓ Пройден') + (meta ? ' (' + meta + ')' : ''), cls: done.isLate ? 'warn' : 'good', open:false };
+    }
+    if (state.extensions[b.name] && state.extensions[b.name].forceOpen) return { code:'open', label:'Открыт админом до 23:59', cls:'good', open:true };
     const now = toMin(window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '12:00');
-    if (now < toMin(b.openTime)) return { label:'Откроется в ' + b.openTime, cls:'', open:false };
-    if (now > toMin(b.deadline)) return { label:'Закрыт (' + b.deadline + ')', cls:'bad', open:false };
-    return { label:'Открыт до ' + b.deadline, cls:'accent', open:true };
+    if (now < toMin(b.openTime)) return { code:'soon', label:'Откроется в ' + b.openTime, cls:'', open:false };
+    if (now > toMin(b.deadline)) return { code:'closed', label:'Просрочен (' + b.deadline + ')', cls:'bad', open:false };
+    return { code:'open', label:'Открыт до ' + b.deadline, cls:'accent', open:true };
   }
 
   function render() {
     document.getElementById('hdr-loc').textContent = state.location;
-    document.getElementById('hdr-rev').textContent = (state.liveConnected ? 'Онлайн' : 'Ожидание') + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '');
+    updateSyncPill();
     const _clkEl = document.getElementById('hdr-clock-txt') || document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
     const lb = document.getElementById('btn-lock');
     lb.innerHTML = adminUnlocked ? '<svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.6"/></svg><span class="pill-lbl"> Сессия</span>' : '<svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="pill-lbl"> Войти</span>';
@@ -920,7 +939,7 @@ function initTheme(btnId) {
             ${state.staff.filter(s=>s.active!==false).map(s => {
               const pr = (state.staffPresence || {})[s.name];
               const isOn = !!(pr && pr.status === 'on_shift');
-              const doneToday = state.checklists.filter(c => c.date === getTodayISO() && c.who === s.name).length;
+              const doneToday = (state.checklists || []).filter(c => c && String(c.date || '').slice(0, 10) === getTodayISO() && String(c.who || '').trim().toLowerCase() === String(s.name || '').trim().toLowerCase()).length;
               const openBlocksCnt = Math.max(1, state.blocks.filter(b => !b.isCash && b.active !== false).length);
               const pct = Math.min(100, Math.round((doneToday / openBlocksCnt) * 100));
               return `<div class="row-item"><div class="row-main">
@@ -1289,7 +1308,7 @@ function initTheme(btnId) {
       if (scsv) scsv.onchange = async (ev) => {
         const files = Array.from(ev.target.files || []);
         if (!files.length || !window.CoffeePosCsvV93) return;
-        const loaded = await Promise.all(files.map(f => f.text().then(text => ({ name: f.name, text }))));
+        const loaded = await Promise.all(files.map(f => (window.CoffeePosCsvV93 && window.CoffeePosCsvV93.readCsvFile ? window.CoffeePosCsvV93.readCsvFile(f) : f.text()).then(text => ({ name: f.name, text }))));
         const staffNames = (state.staff || []).map(s => s.name).filter(Boolean);
         const batch = window.CoffeePosCsvV93.parsePosBatch(loaded, staffNames);
         if (!batch.days.length) { showToast('Не удалось распознать CSV'); return; }
@@ -1506,7 +1525,7 @@ function initTheme(btnId) {
       if (csvIn) csvIn.onchange = async (ev) => {
         const files = Array.from(ev.target.files || []);
         if (!files.length || !window.CoffeePosCsvV93) return;
-        const loaded = await Promise.all(files.map(f => f.text().then(text => ({ name: f.name, text }))));
+        const loaded = await Promise.all(files.map(f => (window.CoffeePosCsvV93 && window.CoffeePosCsvV93.readCsvFile ? window.CoffeePosCsvV93.readCsvFile(f) : f.text()).then(text => ({ name: f.name, text }))));
         const staffNames = (state.staff || []).map(s => s.name).filter(Boolean);
         const batch = window.CoffeePosCsvV93.parsePosBatch(loaded, staffNames);
         const box = document.getElementById('csv-imp-preview');
@@ -1755,11 +1774,28 @@ function initTheme(btnId) {
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Telegram-бот и авто-уведомления</h2></div><span class="badge ${state.tgConfiguredOnServer?'good':'warn'}">${state.tgConfiguredOnServer?'🤖 Бот подключён':'⚠️ Нужен токен'}</span></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-            <span class="badge accent">⏳ За 15 мин до старта → бариста</span>
-            <span class="badge accent">📋 В момент открытия → бариста</span>
-            <span class="badge warn">⚠️ За 15 мин до дедлайна → бариста</span>
-            <span class="badge bad">⏰ Просрочка → админу и бариста</span>
+          <div class="card-soft" style="margin-bottom:12px;padding:12px;">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;">Какие уведомления отправлять бариста (одновременные группируются в 1 сообщение)</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px;">
+              <label class="chip-btn" style="justify-content:flex-start;cursor:pointer;"><input type="checkbox" id="tg-n-pre" ${state.tgNotifyPreStart===true?'checked':''} style="width:auto;margin-right:6px;">За 15 мин до старта</label>
+              <label class="chip-btn" style="justify-content:flex-start;cursor:pointer;"><input type="checkbox" id="tg-n-open" ${state.tgNotifyOpen!==false?'checked':''} style="width:auto;margin-right:6px;">При открытии чек-листов</label>
+              <label class="chip-btn" style="justify-content:flex-start;cursor:pointer;"><input type="checkbox" id="tg-n-dead" ${state.tgNotifyPreDeadline!==false?'checked':''} style="width:auto;margin-right:6px;">За 15 мин до дедлайна</label>
+              <label class="chip-btn" style="justify-content:flex-start;cursor:pointer;"><input type="checkbox" id="tg-n-over" ${state.tgNotifyOverdue!==false?'checked':''} style="width:auto;margin-right:6px;">При просрочке (если не сдано)</label>
+            </div>
+            <div class="grid-2" style="margin-bottom:8px;">
+              <div class="field" style="margin-bottom:0;"><label>Тихие часы: не беспокоить до</label><input id="tg-q-end" class="ios-tp-input" type="text" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="07:30" data-time-picker="1" value="${esc(state.tgQuietEnd || '07:30')}"></div>
+              <div class="field" style="margin-bottom:0;"><label>Тихие часы: не беспокоить после</label><input id="tg-q-start" class="ios-tp-input" type="text" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="23:30" data-time-picker="1" value="${esc(state.tgQuietStart || '23:30')}"></div>
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label>Антиспам-пауза между несрочными уведомлениями (просрочки и 15 мин до дедлайна приходят всегда)</label>
+              <select id="tg-n-cool">
+                <option value="0" ${Number(state.tgNotifyCooldownMin)===0?'selected':''}>Без паузы</option>
+                <option value="15" ${Number(state.tgNotifyCooldownMin)===15?'selected':''}>Не чаще раза в 15 мин</option>
+                <option value="30" ${(state.tgNotifyCooldownMin===undefined||Number(state.tgNotifyCooldownMin)===30)?'selected':''}>Не чаще раза в 30 мин (рекомендуется)</option>
+                <option value="60" ${Number(state.tgNotifyCooldownMin)===60?'selected':''}>Не чаще раза в 60 мин</option>
+              </select>
+            </div>
+            ${state.staffNotifPrefs && Object.keys(state.staffNotifPrefs).length ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);">Личные настройки бариста из терминала: ${Object.values(state.staffNotifPrefs).map(p => `<span class="badge ${p.enabled===false?'warn':'good'}" style="margin-right:4px;">${esc(p.staffName||'')}: ${p.enabled===false?'🔕 выкл':('🔔 ' + esc(p.quietEnd||'07:30') + '–' + esc(p.quietStart||'23:30'))}</span>`).join('')}</div>` : ''}
           </div>
           <div class="grid-2">
             <div class="field"><label>Токен Telegram-бота (BotFather)</label><input id="tg-tok" type="password" placeholder="${state.tgConfiguredOnServer?'•••••••• (сохранён на сервере)':'123456:ABC-DEF...'}"></div>
@@ -1844,11 +1880,20 @@ function initTheme(btnId) {
         const tok = document.getElementById('tg-tok').value.trim();
         const chat = document.getElementById('tg-chat').value.trim();
         const url = document.getElementById('tg-url').value.trim();
-        const res = await window.CoffeeCloudV93.saveTelegramSettings({ tgToken: tok, tgChat: chat, webappUrl: url });
+        const _ft = (v) => (window.CoffeeTimePicker && window.CoffeeTimePicker.formatTimeInput ? window.CoffeeTimePicker.formatTimeInput(v) : String(v || '').trim());
+        const tgNotifyPreStart = !!(document.getElementById('tg-n-pre') && document.getElementById('tg-n-pre').checked);
+        const tgNotifyOpen = !!(document.getElementById('tg-n-open') && document.getElementById('tg-n-open').checked);
+        const tgNotifyPreDeadline = !!(document.getElementById('tg-n-dead') && document.getElementById('tg-n-dead').checked);
+        const tgNotifyOverdue = !!(document.getElementById('tg-n-over') && document.getElementById('tg-n-over').checked);
+        const tgQuietEnd = _ft((document.getElementById('tg-q-end') && document.getElementById('tg-q-end').value) || '07:30');
+        const tgQuietStart = _ft((document.getElementById('tg-q-start') && document.getElementById('tg-q-start').value) || '23:30');
+        const tgNotifyCooldownMin = Number((document.getElementById('tg-n-cool') && document.getElementById('tg-n-cool').value) ?? 30);
+        const res = await window.CoffeeCloudV93.saveTelegramSettings({ tgToken: tok, tgChat: chat, webappUrl: url, tgNotifyPreStart, tgNotifyOpen, tgNotifyPreDeadline, tgNotifyOverdue, tgQuietEnd, tgQuietStart, tgNotifyCooldownMin });
         if (res && res.ok) {
           state.tgConfiguredOnServer = !!res.tgConfiguredOnServer;
           state.tgChat = res.tgChat || chat;
           state.webappUrl = res.webappUrl || url;
+          state.tgNotifyPreStart = tgNotifyPreStart; state.tgNotifyOpen = tgNotifyOpen; state.tgNotifyPreDeadline = tgNotifyPreDeadline; state.tgNotifyOverdue = tgNotifyOverdue; state.tgQuietEnd = tgQuietEnd; state.tgQuietStart = tgQuietStart; state.tgNotifyCooldownMin = tgNotifyCooldownMin;
           showToast('✓ Настройки Telegram сохранены на сервере!'); render();
         } else showToast('Ошибка сохранения Telegram: ' + ((res && res.error) || 'проверьте вход'));
       });
@@ -2210,8 +2255,7 @@ function initTheme(btnId) {
         const isEditing = !!(ae && ((cEl && cEl.contains(ae)) || (dfEl && dfEl.contains(ae))) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
         const modalOpen = !!(document.getElementById('modal-bg') && document.getElementById('modal-bg').classList.contains('open'));
         if (isEditing || modalOpen) {
-          const revEl = document.getElementById('hdr-rev');
-          if (revEl) revEl.textContent = st.liveConnected ? ('Онлайн · ' + (st.lastSyncAt || '')) : 'Офлайн';
+          updateSyncPill();
           if (isEditing && !ae.dataset.syncBlurBound) {
             ae.dataset.syncBlurBound = '1';
             ae.addEventListener('blur', () => { render(); }, { once: true });
@@ -2224,6 +2268,56 @@ function initTheme(btnId) {
   }
 
   
+  function pluralFiles(n) {
+    const a = Math.abs(Number(n) || 0) % 100;
+    const b = a % 10;
+    if (a >= 11 && a <= 19) return n + ' файлов';
+    if (b === 1) return n + ' файл';
+    if (b >= 2 && b <= 4) return n + ' файла';
+    return n + ' файлов';
+  }
+  function updateSyncPill() {
+    const pill = document.getElementById('hdr-sync-pill');
+    const revEl = document.getElementById('hdr-rev');
+    if (!revEl) return;
+    const stInfo = (window.CoffeeCloudV94 && window.CoffeeCloudV94.getSyncStatus)
+      ? window.CoffeeCloudV94.getSyncStatus(state)
+      : { online: (navigator.onLine !== false && state.liveConnected !== false), pendingCount: 0, failedCount: 0, totalUnsynced: 0 };
+    const unsynced = stInfo.totalUnsynced || 0;
+    const isOnline = !!stInfo.online;
+    if (pill) {
+      pill.classList.remove('is-online', 'is-offline', 'is-syncing');
+      if (!isOnline) pill.classList.add('is-offline');
+      else if (unsynced > 0) pill.classList.add('is-syncing');
+      else pill.classList.add('is-online');
+    }
+    if (!isOnline) {
+      revEl.textContent = unsynced > 0 ? ('Офлайн · не синхр.: ' + pluralFiles(unsynced)) : 'Офлайн';
+    } else if (unsynced > 0) {
+      revEl.textContent = 'Синхр. · осталось ' + pluralFiles(unsynced);
+    } else {
+      revEl.textContent = 'Онлайн' + (state.lastSyncAt ? ' · ' + state.lastSyncAt : '');
+    }
+  }
+  window.addEventListener('coffee-sync-status', updateSyncPill);
+  window.addEventListener('online', updateSyncPill);
+  window.addEventListener('offline', updateSyncPill);
+  window.addEventListener('beforeunload', (e) => {
+    const pend = (window.CoffeeCloudV94 && window.CoffeeCloudV94.getPendingCount) ? window.CoffeeCloudV94.getPendingCount() : 0;
+    if (pend > 0) { e.preventDefault(); e.returnValue = ''; }
+  });
+  const _dsp = document.getElementById('hdr-sync-pill');
+  if (_dsp) _dsp.onclick = async () => {
+    updateSyncPill();
+    if (navigator.onLine === false) { showToast('Нет интернета — изменения сохранены в очереди и отправятся при подключении'); return; }
+    if (window.CoffeeCloudV94 && window.CoffeeCloudV94.flushOutbox) {
+      showToast('☁ Синхронизация с сервером...');
+      const fl = await window.CoffeeCloudV94.flushOutbox(true);
+      updateSyncPill();
+      if (fl && fl.pending === 0) showToast('✓ Все данные синхронизированы');
+      else if (fl && fl.pending > 0) showToast('⏳ Осталось не синхр.: ' + pluralFiles(fl.pending));
+    }
+  };
   function updateNavAmbientGlow() {
     const dock = document.getElementById('dash-sticky-dock');
     const activeBtn = document.querySelector('#admin-nav button.active');
@@ -2273,7 +2367,7 @@ function initTheme(btnId) {
   })();
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.18.0"></script>
+  <script src="./js/time-picker.js?v=97.21.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2281,7 +2375,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.18.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=97.21.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

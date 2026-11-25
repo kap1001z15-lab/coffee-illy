@@ -49,3 +49,17 @@ test('parseNum handles Russian decimal commas and currency symbols', () => {
   assert.equal(parser.parseNum('45.00'), 45);
   assert.equal(parser.parseNum(''), 0);
 });
+
+test('decodeCsvBuffer decodes Windows-1251 Russian POS CSV cleanly alongside UTF-8', () => {
+  // Windows-1251 bytes for: "Дата;Товар;Количество;Сумма\n2026-11-25;Капучино;5;175"
+  const cp1251Bytes = new Uint8Array([
+    0xC4,0xE0,0xF2,0xE0,0x3B,0xD2,0xEE,0xE2,0xE0,0xF0,0x3B,0xCA,0xEE,0xEB,0xE8,0xF7,0xE5,0xF1,0xF2,0xE2,0xEE,0x3B,0xD1,0xF3,0xEC,0xEC,0xE0,0x0A,
+    0x32,0x30,0x32,0x36,0x2D,0x31,0x31,0x2D,0x32,0x35,0x3B,0xCA,0xE0,0xEF,0xF3,0xF7,0xE8,0xED,0xEE,0x3B,0x35,0x3B,0x31,0x37,0x35
+  ]);
+  const decoded = parser.decodeCsvBuffer(cp1251Bytes);
+  assert.ok(decoded.includes('Дата;Товар'), 'Header must decode from Windows-1251');
+  assert.ok(decoded.includes('Капучино;5;175'), 'Product row must decode from Windows-1251');
+  const parsed = parser.parsePosBatch([{ name: '2026-11-25.csv', text: decoded }]);
+  assert.equal(parsed.days.length, 1);
+  assert.equal(parsed.days[0].revenue, 175);
+});
