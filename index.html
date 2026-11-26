@@ -235,7 +235,7 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 .center-action-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:8px 0 10px; }
 
 
-/* === Modern Typography & Cross-Platform Surface Polish (v98.3.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v98.4.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, .step-title, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -258,7 +258,7 @@ tbody tr { transition: background .14s ease; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* === Compact Terminal Topbar (v98.3.0) — maximizes main screen space === */
+/* === Compact Terminal Topbar (v98.4.0) — maximizes main screen space === */
 .terminal-topbar { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:max(6px, env(safe-area-inset-top)) 12px 7px !important; }
 .topbar-row1 { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
 .terminal-topbar .brand { gap:8px; min-width:0; flex:1; }
@@ -289,12 +289,12 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=98.3.0"></script>
-  <script src="js/cloud-sync.js?v=98.3.0"></script>
-  <script src="js/pos-csv-parser.js?v=98.3.0"></script>
-<script src="js/camera.js?v=98.3.0"></script>
-  <script src="js/custom-select.js?v=98.3.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=98.3.0">
+  <script src="config.js?v=98.4.0"></script>
+  <script src="js/cloud-sync.js?v=98.4.0"></script>
+  <script src="js/pos-csv-parser.js?v=98.4.0"></script>
+<script src="js/camera.js?v=98.4.0"></script>
+  <script src="js/custom-select.js?v=98.4.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=98.4.0">
 </head>
 <body>
 <header class="topbar terminal-topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -303,12 +303,12 @@ tbody tr { transition: background .14s ease; }
       <div class="brand-dot">CI</div>
       <div class="brand-meta">
         <div class="brand-title" id="hdr-loc">ILLY</div>
-        <div class="brand-sub"><span class="live-pill is-online" id="hdr-sync-pill" role="button" tabindex="0" title="Нажмите для принудительной синхронизации"><span class="live-dot"></span><span id="hdr-rev">Онлайн</span></span><span id="hdr-clock">13:25</span></div>
+        <div class="brand-sub"><span class="live-pill is-online" id="hdr-sync-pill" role="button" tabindex="0" title="Нажмите для принудительной синхронизации"><span class="live-dot"></span><span id="hdr-rev">Онлайн</span></span></div>
       </div>
     </div>
   </div>
   <div class="top-actions" id="user-ctl"></div>
-  <button class="chip-btn topbar-theme-btn" id="btn-theme" aria-label="Переключить тему оформления">Авто</button>
+  <button class="chip-btn topbar-theme-btn" id="btn-theme" style="display:none;" aria-label="Переключить тему оформления">Авто</button>
 </header>
 
 <main class="shell" id="body"></main>
@@ -434,6 +434,7 @@ function initTheme(btnId) {
   function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); try { const tgB = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton; if (tgB) { if (!window._tgBackBtnBound) { window._tgBackBtnBound = true; tgB.onClick(() => { const mb = document.getElementById('modal-bg'); if (mb && mb.classList.contains('open')) closeModal(); }); } tgB.show(); } } catch (_) {} }
   function closeModal() { document.getElementById('modal-bg').classList.remove('open'); try { const tgB = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton; if (tgB) tgB.hide(); } catch (_) {} }
   document.getElementById('modal-close').onclick = closeModal;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { const mb = document.getElementById('modal-bg'); if (mb && mb.classList.contains('open')) closeModal(); } });
   document.getElementById('modal-bg').onclick = (e) => { if (e.target.id === 'modal-bg') closeModal(); };
 
   function activeStaff() { return state.staff.filter(s=>s.active!==false); }
@@ -708,9 +709,10 @@ function initTheme(btnId) {
 function render() {
   requestAnimationFrame(updateBnavAmbientGlow);
   renderTerminalFailedOpsBanner();
+    if (!state.location || state.location === 'Кофейня №1') state.location = 'ILLY';
     document.getElementById('hdr-loc').textContent = state.location;
     updateSyncPill();
-    document.getElementById('hdr-clock').textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (state.simTime || '13:25'));
+    const _hc = document.getElementById('hdr-clock'); if (_hc) _hc.textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : (state.simTime || '13:25'));
     const body = document.getElementById('body'), nav = document.getElementById('bnav'), uc = document.getElementById('user-ctl');
 
     if (!authed) {
@@ -745,8 +747,7 @@ function render() {
     nav.style.display = 'grid';
     document.querySelectorAll('#bnav button').forEach(b=>b.classList.toggle('active', b.dataset.t===tab));
     const _npOn = !(state.myNotifPrefs && state.myNotifPrefs.enabled === false);
-    uc.innerHTML = `<span class="badge good uc-shift"><span class="shift-dot"></span> <span class="hide-xs">На работе · </span>${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn uc-notif" id="b-notif" aria-label="Настройки уведомлений" title="Настройки уведомлений Telegram">${_npOn ? '🔔' : '🔕'}</button><button class="chip-btn uc-pin" id="b-pin"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6M15.5 7.5 18 10"/></svg> ${esc(authed)}</button><button class="chip-btn uc-out" id="b-out" aria-label="Выйти из смены"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg><span class="out-lbl"> Выйти</span></button>`;
-    document.getElementById('b-out').onclick = async () => {
+    const doLogoutShift = async () => {
       const prevName = authed;
       if (window.CoffeeCameraV94) window.CoffeeCameraV94.stop();
       if (window.CoffeeCloudV93) {
@@ -754,8 +755,9 @@ function render() {
         if (window.CoffeeCloudV93.authLogout) await window.CoffeeCloudV93.authLogout('staff');
       }
       if (state.staffPresence && state.staffPresence[prevName]) state.staffPresence[prevName].status = 'off_shift';
-      authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; render();
+      authed = null; checkedInAt = ''; welcomeBanner = ''; pinBuf = ''; closeModal(); render();
     };
+    uc.innerHTML = `<span class="badge good uc-shift"><span class="shift-dot"></span> <span class="hide-xs">На работе · </span>${esc(checkedInAt||state.simTime||'08:00')}</span><button class="chip-btn uc-notif" id="b-notif" aria-label="Настройки уведомлений" title="Настройки уведомлений Telegram">${_npOn ? '🔔' : '🔕'}</button><button class="chip-btn uc-pin" id="b-pin" title="Профиль, тема, PIN и выход">${esc(authed)} ▾</button>`;
     const _bnBtn = document.getElementById('b-notif');
     if (_bnBtn) _bnBtn.onclick = () => {
       const s = getSt(authed) || { name: authed, tgId: '' };
@@ -841,7 +843,15 @@ function render() {
         <div class="field"><label>Новый PIN (4–12 цифр)</label><input id="pn" type="password" inputmode="numeric" autocomplete="new-password" enterkeyhint="next"></div>
         <div class="field"><label>Повторите новый PIN</label><input id="pn2" type="password" inputmode="numeric" autocomplete="new-password" enterkeyhint="done"></div>
         <button class="btn-lg primary" id="ps">Сохранить PIN на сервере</button>
+        <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;">
+          <button type="button" class="chip-btn" id="prof-theme" style="flex:1;justify-content:center;padding:10px;">🌓 Тема оформления</button>
+          <button type="button" class="chip-btn bad" id="b-out" style="flex:1;justify-content:center;padding:10px;">🚪 Выйти из смены</button>
+        </div>
       `);
+      const _pt = document.getElementById('prof-theme');
+      if (_pt) _pt.onclick = () => { const bt = document.getElementById('btn-theme'); if (bt) bt.click(); showToast('Тема переключена'); };
+      const _bo = document.getElementById('b-out');
+      if (_bo) _bo.onclick = doLogoutShift;
       document.getElementById('ps').onclick = async () => {
         const btn = document.getElementById('ps');
         const o = document.getElementById('po').value.trim();
@@ -1615,7 +1625,7 @@ function render() {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=98.3.0"></script>
+  <script src="./js/time-picker.js?v=98.4.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1623,7 +1633,7 @@ function render() {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=98.3.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=98.4.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

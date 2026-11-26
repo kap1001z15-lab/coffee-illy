@@ -127,6 +127,10 @@ tr:last-child td { border-bottom:none; }
 .drag-handle:active { cursor:grabbing; color:var(--accent); }
 .is-dragging { opacity:0.45 !important; transform:scale(0.99); }
 .drag-over { outline:2px dashed var(--accent) !important; outline-offset:2px; background:var(--accent-soft) !important; }
+table, .kpi-val, .bar-val { font-variant-numeric: tabular-nums; }
+.chk-row-clickable { cursor:pointer; }
+.chk-row-clickable:hover .row-title { color:var(--accent); }
+.mv-nav-bar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; }
 .bar-dt { font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; line-height:1.15; height:16px; display:flex; align-items:center; }
 .chart-ctrl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .chart-gran { display:inline-flex; background:var(--surface); padding:3px; border-radius:999px; border:1px solid var(--border); gap:2px; }
@@ -240,7 +244,7 @@ body { overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right:
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v98.3.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v98.4.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -259,11 +263,11 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=98.3.0"></script>
-  <script src="js/cloud-sync.js?v=98.3.0"></script>
-<script src="js/pos-csv-parser.js?v=98.3.0"></script>
-  <script src="js/custom-select.js?v=98.3.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=98.3.0">
+  <script src="config.js?v=98.4.0"></script>
+  <script src="js/cloud-sync.js?v=98.4.0"></script>
+<script src="js/pos-csv-parser.js?v=98.4.0"></script>
+  <script src="js/custom-select.js?v=98.4.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=98.4.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -277,10 +281,9 @@ tbody tr { transition: background .14s ease; }
     </div>
   </div>
   <div class="top-actions">
-    <span class="chip-btn hide-xs" id="hdr-clock" style="cursor:default;"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> <span id="hdr-clock-txt">--:--</span></span>
-    <button class="chip-btn good dash-icon-pill" id="btn-lock" aria-label="Статус сессии владельца"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.6"/></svg><span class="pill-lbl"> Админ-сессия</span></button>
-    <button class="chip-btn dash-icon-pill" id="btn-theme" aria-label="Переключить тему оформления">Авто</button>
-    <button class="chip-btn dash-icon-pill" id="btn-reset" aria-label="Обновить данные из облака"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg><span class="pill-lbl"> Обновить</span></button>
+    <button class="chip-btn good dash-icon-pill" id="btn-lock" aria-label="Статус сессии владельца"><svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.6"/></svg><span class="pill-lbl"> Сессия</span></button>
+    <button class="chip-btn dash-icon-pill" id="btn-theme" title="Переключить тему оформления" aria-label="Переключить тему оформления" style="padding:7px 10px;">🌓</button>
+    <button class="chip-btn dash-icon-pill" id="btn-reset" title="Обновить данные из облака" aria-label="Обновить данные из облака" style="padding:7px 10px;"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg></button>
   </div>
 </header>
 
@@ -393,7 +396,7 @@ function initTheme(btnId) {
     const eff = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
     document.documentElement.setAttribute('data-theme', eff);
     const b = document.getElementById(btnId);
-    if (b) b.innerHTML = mode === 'auto' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg><span class="pill-lbl"> Авто</span>' : (mode === 'light' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><span class="pill-lbl"> Светлая</span>' : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="pill-lbl"> Тёмная</span>');
+    if (b) { b.innerHTML = mode === 'auto' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg>' : (mode === 'light' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>' : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'); b.title = 'Тема: ' + (mode === 'auto' ? 'Авто' : (mode === 'light' ? 'Светлая' : 'Тёмная')); }
   }
   mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
   window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
@@ -451,7 +454,7 @@ function initTheme(btnId) {
     });
   }
   let salesQuery = '';
-  let whCatFilter = 'all';
+  let whCatFilter = 'all'; let whSearchQuery = '';
   const DATE_STORE_KEY = 'coffee_illy_v93_date_range';
   function shiftIsoDate(baseIso, deltaDays) {
     const m = String(baseIso || getTodayISO()).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -555,6 +558,14 @@ function initTheme(btnId) {
   function openModal(t, h) { document.getElementById('modal-title').textContent = t; document.getElementById('modal-body').innerHTML = h; document.getElementById('modal-bg').classList.add('open'); try { const tgB = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton; if (tgB) { if (!window._tgBackBtnBound) { window._tgBackBtnBound = true; tgB.onClick(() => { const mb = document.getElementById('modal-bg'); if (mb && mb.classList.contains('open')) closeModal(); }); } tgB.show(); } } catch (_) {} }
   function closeModal() { document.getElementById('modal-bg').classList.remove('open'); try { const tgB = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton; if (tgB) tgB.hide(); } catch (_) {} }
   document.getElementById('modal-close').onclick = closeModal;
+  document.addEventListener('keydown', (e) => {
+    const mb = document.getElementById('modal-bg');
+    if (!mb || !mb.classList.contains('open')) return;
+    if (e.key === 'Escape') { closeModal(); return; }
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === 'ArrowLeft') { const b = document.getElementById('mv-prev'); if (b && !b.disabled) b.click(); }
+    if (e.key === 'ArrowRight') { const b = document.getElementById('mv-next'); if (b && !b.disabled) b.click(); }
+  });
   document.getElementById('modal-bg').onclick = (e) => { if (e.target.id === 'modal-bg') closeModal(); };
 
   function extractDriveFileId(url) {
@@ -580,7 +591,9 @@ function initTheme(btnId) {
   }
 
   function openMediaViewer(url, title, meta) {
-    const rawUrl = String(url || '').trim();
+    const photos = (meta && Array.isArray(meta.photos) && meta.photos.length) ? meta.photos : [url];
+    const curIdx = Math.max(0, Math.min(photos.length - 1, Number(meta && meta.index !== undefined ? meta.index : 0) || 0));
+    const rawUrl = String(photos[curIdx] || url || '').trim();
     if (!rawUrl) return;
     const fid = extractDriveFileId(rawUrl);
     const isVid = isVideoMediaUrl(rawUrl);
@@ -589,36 +602,45 @@ function initTheme(btnId) {
     const imgSrc = fid ? ('https://drive.google.com/thumbnail?id=' + fid + '&sz=w1600') : rawUrl;
     const rev = getPhotoReview(rawUrl);
     const canReview = !!(meta && meta.canReview);
+    const hasGallery = photos.length > 1;
 
     const viewerHtml = isVid
-      ? `<div style="border-radius:16px;overflow:hidden;background:#000;aspect-ratio:9/14;max-height:56vh;width:100%;">
+      ? `<div id="mv-stage" style="border-radius:16px;overflow:hidden;background:#000;aspect-ratio:9/14;max-height:54vh;width:100%;">
            <iframe src="${esc(drivePreviewUrl)}" style="width:100%;height:100%;border:0;" allow="autoplay; fullscreen" allowfullscreen></iframe>
          </div>`
-      : `<div style="border-radius:16px;overflow:hidden;background:var(--surface-2);text-align:center;">
-           <img id="mv-img" src="${esc(imgSrc)}" alt="${esc(title || 'Фото')}" style="max-width:100%;max-height:56vh;object-fit:contain;display:block;margin:0 auto;">
-           <iframe id="mv-fb" src="${esc(drivePreviewUrl)}" style="display:none;width:100%;height:52vh;border:0;" allow="fullscreen"></iframe>
+      : `<div id="mv-stage" style="border-radius:16px;overflow:hidden;background:var(--surface-2);text-align:center;">
+           <img id="mv-img" src="${esc(imgSrc)}" alt="${esc(title || 'Фото')}" style="max-width:100%;max-height:54vh;object-fit:contain;display:block;margin:0 auto;">
+           <iframe id="mv-fb" src="${esc(drivePreviewUrl)}" style="display:none;width:100%;height:50vh;border:0;" allow="fullscreen"></iframe>
          </div>`;
 
-    const revBanner = rev ? `<div class="card-soft" style="margin-top:10px;padding:8px 12px;border:1px solid ${rev.status==='approved'?'var(--good)':'var(--bad)'};font-size:12.5px;">
+    const galleryBar = hasGallery ? `
+      <div class="mv-nav-bar">
+        <button type="button" class="chip-btn" id="mv-prev" ${curIdx === 0 ? 'disabled' : ''}>← Назад</button>
+        <span class="badge" style="font-weight:700;">${curIdx + 1} / ${photos.length}</span>
+        <button type="button" class="chip-btn" id="mv-next" ${curIdx === photos.length - 1 ? 'disabled' : ''}>Вперёд →</button>
+      </div>` : '';
+
+    const revBanner = rev ? `<div class="card-soft" style="margin-top:8px;padding:8px 12px;border:1px solid ${rev.status==='approved'?'var(--good)':'var(--bad)'};font-size:12.5px;">
       <b>${rev.status==='approved'?'✅ Принято':'↩️ Отправлено на переделку'}</b>${rev.comment ? ' — ' + esc(rev.comment) : ''}${rev.reviewedAt ? ` <span style="color:var(--muted)">(${esc(rev.reviewedAt)})</span>` : ''}
     </div>` : '';
 
     const qcBlock = canReview ? `
-      <div class="card-soft" style="margin-top:10px;padding:10px 12px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">Контроль качества фото (бариста: ${esc(meta.who || '—')})</div>
+      <div class="card-soft" style="margin-top:8px;padding:10px 12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">Контроль качества (бариста: ${esc(meta.who || '—')})</div>
         <div class="field" style="margin-bottom:8px;"><input id="mv-qc-comment" placeholder="Комментарий при возврате (например: Протри холдер и пересними)" value="${esc((rev && rev.comment) || '')}"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="chip-btn good" id="mv-qc-approve" style="flex:1;justify-content:center;padding:10px;">✅ Принято</button>
+          <button type="button" class="chip-btn good" id="mv-qc-approve" style="flex:1;justify-content:center;padding:10px;">✅ Принято${curIdx < photos.length - 1 ? ' →' : ''}</button>
           <button type="button" class="chip-btn bad" id="mv-qc-rework" style="flex:1;justify-content:center;padding:10px;">↩️ Переделать (TG)</button>
         </div>
       </div>` : '';
 
-    openModal((isVid ? '🎬 Видео: ' : '📷 Фото: ') + (title || 'Медиафайл'), `
+    openModal((isVid ? '🎬 ' : '📷 ') + (title || 'Медиафайл') + (hasGallery ? ` (${curIdx + 1}/${photos.length})` : ''), `
       ${viewerHtml}
+      ${galleryBar}
       ${revBanner}
       ${qcBlock}
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <a href="${esc(driveViewUrl)}" target="_blank" rel="noopener" class="btn-lg primary" style="text-decoration:none;flex:1;">↗ Открыть на Google Диске</a>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <a href="${esc(driveViewUrl)}" target="_blank" rel="noopener" class="chip-btn" style="text-decoration:none;flex:1;justify-content:center;padding:9px;">↗ Открыть на Google Диске</a>
       </div>
     `);
     const im = document.getElementById('mv-img');
@@ -627,6 +649,31 @@ function initTheme(btnId) {
       const fb = document.getElementById('mv-fb');
       if (fb) fb.style.display = 'block';
     };
+    const goStep = (nextIdx) => {
+      if (nextIdx < 0 || nextIdx >= photos.length) return;
+      openMediaViewer(photos[nextIdx], title, Object.assign({}, meta, { photos, index: nextIdx, idx: nextIdx + 1 }));
+    };
+    if (hasGallery) {
+      if (curIdx < photos.length - 1) {
+        const nf = extractDriveFileId(String(photos[curIdx + 1] || ''));
+        if (nf && !isVideoMediaUrl(photos[curIdx + 1])) { const pre = new Image(); pre.src = 'https://drive.google.com/thumbnail?id=' + nf + '&sz=w1600'; }
+      }
+      const pBtn = document.getElementById('mv-prev');
+      const nBtn = document.getElementById('mv-next');
+      if (pBtn) pBtn.onclick = () => goStep(curIdx - 1);
+      if (nBtn) nBtn.onclick = () => goStep(curIdx + 1);
+      const stg = document.getElementById('mv-stage');
+      if (stg) {
+        let sx = 0;
+        stg.addEventListener('touchstart', (e) => { if (e.touches && e.touches.length === 1) sx = e.touches[0].clientX; }, { passive: true });
+        stg.addEventListener('touchend', (e) => {
+          if (!sx || !e.changedTouches || !e.changedTouches.length) return;
+          const dx = e.changedTouches[0].clientX - sx;
+          sx = 0;
+          if (Math.abs(dx) > 45) goStep(dx < 0 ? curIdx + 1 : curIdx - 1);
+        }, { passive: true });
+      }
+    }
     if (canReview) {
       const submitQc = (status) => guard(status === 'approved' ? 'Принять фото' : 'Вернуть на переделку', async () => {
         const comment = (document.getElementById('mv-qc-comment')?.value || '').trim();
@@ -650,7 +697,7 @@ function initTheme(btnId) {
               barista: meta.who || '',
               block: meta.block || '',
               date: meta.date || '',
-              photoIndex: Number(meta.idx || 0)
+              photoIndex: curIdx + 1
             });
           }
           state.photoReviews = state.photoReviews || {};
@@ -663,12 +710,13 @@ function initTheme(btnId) {
             reviewedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
           };
           saveSharedState(state, 'Администратор', (status === 'approved' ? 'Принято фото: ' : 'Переделать фото: ') + (meta.block || ''));
-          closeModal();
           render();
           if (status === 'rework') {
             showToast(res && res.tgSent ? '↩️ Отправлено на переделку — бариста получил уведомление в Telegram' : '↩️ Статус «Переделать» сохранён');
+            if (curIdx < photos.length - 1) goStep(curIdx + 1); else closeModal();
           } else {
-            showToast('✅ Фото отмечено как принятое');
+            showToast('✅ Фото принято');
+            if (curIdx < photos.length - 1) goStep(curIdx + 1); else closeModal();
           }
         } catch (err) {
           showToast('Ошибка сохранения оценки: ' + ((err && err.message) || 'повторите'));
@@ -875,6 +923,7 @@ function initTheme(btnId) {
   }
 
   function render() {
+    if (!state.location || state.location === 'Кофейня №1') state.location = 'ILLY';
     document.getElementById('hdr-loc').textContent = state.location;
     updateSyncPill();
     const _clkEl = document.getElementById('hdr-clock-txt') || document.getElementById('hdr-clock'); if (_clkEl) _clkEl.textContent = (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localHHMM() : '');
@@ -1274,15 +1323,14 @@ function initTheme(btnId) {
             ${state.blocks.map(b => {
               const st = getBlkSt(b);
               const isExt = !!(state.extensions[b.name] && state.extensions[b.name].forceOpen);
-              return `<div class="row-item" draggable="true" data-blk-id="${esc(b.id)}" style="${b.active===false?'opacity:.55;':''}"><span class="drag-handle" title="Перетащите, чтобы изменить порядок">⠿</span><div class="row-main">
+              return `<div class="row-item chk-row-clickable" draggable="true" data-blk-id="${esc(b.id)}" style="${b.active===false?'opacity:.55;':''}"><span class="drag-handle" title="Перетащите, чтобы изменить порядок">⠿</span><div class="row-main" data-vt="${esc(b.name)}" title="Нажмите, чтобы открыть задачи блока">
                 <div class="row-title">${esc(b.name)} <span class="badge">${b.isCash?'Касса':blockTasks(b.name).length+' задач'}</span> ${b.assignee?`<span class="badge accent">👤 ${esc(b.assignee)}</span>`:''} ${b.scheduleType==='weekly'&&Array.isArray(b.scheduleDays)&&b.scheduleDays.length?`<span class="badge">📅 ${esc(b.scheduleDays.join(', '))}</span>`:(b.scheduleType==='date'&&b.scheduleDate?`<span class="badge warn">📅 ${esc(b.scheduleDate)}</span>`:'')}</div>
                 <div class="row-sub">Окно: <b>${b.openTime}–${b.deadline}</b> · <span class="badge ${st.cls}">${st.label}</span></div>
-              </div><div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="chip-btn" data-eb="${esc(b.id)}">✏️ Окно</button>
-                <button class="chip-btn" data-vt="${esc(b.name)}">📋 Задачи (${blockTasks(b.name).length})</button>
+              </div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                <button class="chip-btn" data-eb="${esc(b.id)}" title="Настроить окно и расписание">⚙️</button>
                 ${isExt
-                  ? `<button class="chip-btn" data-lk="${esc(b.name)}">🔒 Вернуть окно</button>`
-                  : `<button class="chip-btn good" data-un="${esc(b.name)}">${st.open ? '🔓 До 23:59' : '🔓 Открыть'}</button>`}
+                  ? `<button class="chip-btn" data-lk="${esc(b.name)}">🔒 Вернуть</button>`
+                  : `<button class="chip-btn good" data-un="${esc(b.name)}">${st.open ? '🔓 23:59' : '🔓 Открыть'}</button>`}
               </div></div>`;
             }).join('')}
           </div>
@@ -1295,7 +1343,19 @@ function initTheme(btnId) {
             </div>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.slice(0, chkLogLimit).map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>{ const rev = getPhotoReview(u); const cls = rev ? (rev.status==='approved'?'good':'bad') : 'accent'; const ico = rev ? (rev.status==='approved'?'✅':'↩️') : (isVideoMediaUrl(u)?'🎬':'📷'); return `<button type="button" class="badge ${cls}" data-mv="${esc(u)}" data-mvt="${esc(c.block+' · '+c.date)}" data-mv-who="${esc(c.who||'')}" data-mv-block="${esc(c.block||'')}" data-mv-date="${esc(c.date||'')}" data-mv-idx="${idx+1}" title="${rev?(rev.status==='approved'?'Принято':'Переделать: '+(rev.comment||'')):'Открыть и оценить фото'}" style="border:0;cursor:pointer;margin-left:4px;">${ico} ${idx+1}</button>`; }).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.slice(0, chkLogLimit).map((c, rIdx)=>{
+              const phs = Array.isArray(c.photos) ? c.photos.filter(Boolean) : [];
+              let phChip = '';
+              if (phs.length) {
+                const revs = phs.map(u => getPhotoReview(u));
+                const reworkCnt = revs.filter(r => r && r.status === 'rework').length;
+                const okCnt = revs.filter(r => r && r.status === 'approved').length;
+                const cls = reworkCnt ? 'bad' : (okCnt === phs.length ? 'good' : 'accent');
+                const lbl = reworkCnt ? `↩️ ${reworkCnt}/${phs.length} фото` : (okCnt === phs.length ? `✅ ${phs.length} фото` : `📷 ${phs.length} фото`);
+                phChip = ` <button type="button" class="badge ${cls}" data-gal-idx="${rIdx}" title="Открыть галерею фото (${phs.length} шт.)" style="border:0;cursor:pointer;margin-left:4px;">${lbl}</button>`;
+              }
+              return `<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${phChip}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`;
+            }).join('')}
           </tbody></table></div>
           ${logs.length > chkLogLimit ? `<div style="text-align:center;margin-top:12px;"><button class="chip-btn" id="chk-more">Показать ещё 50 (показано ${chkLogLimit} из ${logs.length})</button></div>` : ''}
         </div>`;
@@ -1346,6 +1406,13 @@ function initTheme(btnId) {
           render();
         } finally { b.disabled = false; }
       }));
+      const _shownLogs = logs.slice(0, chkLogLimit);
+      root.querySelectorAll('[data-gal-idx]').forEach(b => b.onclick = () => {
+        const c = _shownLogs[Number(b.dataset.galIdx)];
+        if (!c || !Array.isArray(c.photos) || !c.photos.length) return;
+        const phs = c.photos.filter(Boolean);
+        openMediaViewer(phs[0], c.block + ' · ' + c.date, { canReview: true, who: c.who || '', block: c.block || '', date: c.date || '', photos: phs, index: 0, idx: 1 });
+      });
       root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => openMediaViewer(b.dataset.mv, b.dataset.mvt, { canReview: true, who: b.dataset.mvWho || '', block: b.dataset.mvBlock || '', date: b.dataset.mvDate || '', idx: b.dataset.mvIdx || '' }));
       root.querySelectorAll('[data-lk]').forEach(b => b.onclick = () => guard('Вернуть окно', async () => {
         const blkName = b.dataset.lk;
@@ -1676,7 +1743,8 @@ function initTheme(btnId) {
 
     if (tab === 'warehouse') {
       const whCats = ['all', ...Array.from(new Set(invAll.map(i => i.category || 'Сырьё')))];
-      const invShown = whCatFilter === 'all' ? invAll : invAll.filter(i => (i.category || 'Сырьё') === whCatFilter);
+      const _whQ = String(whSearchQuery || '').trim().toLowerCase();
+      const invShown = invAll.filter(i => (whCatFilter === 'all' || (i.category || 'Сырьё') === whCatFilter) && (!_whQ || String(i.name || '').toLowerCase().includes(_whQ) || String(i.category || '').toLowerCase().includes(_whQ)));
       const restockMoves = fInvMoves.filter(m => m.type === 'restock' || m.delta > 0);
       const writeoffMoves = fInvMoves.filter(m => m.type === 'writeoff' || m.delta < 0);
       const nowMs = Date.now();
@@ -1696,8 +1764,11 @@ function initTheme(btnId) {
               <button class="chip-btn accent" id="wh-add">+ Товар на склад</button>
             </div>
           </div>
-          <div class="date-pills" style="margin-bottom:12px;">
-            ${whCats.map(c => `<button class="date-pill ${whCatFilter===c?'active':''}" data-wc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+          <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px;">
+            <div class="date-pills" style="margin-bottom:0;">
+              ${whCats.map(c => `<button class="date-pill ${whCatFilter===c?'active':''}" data-wc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
+            </div>
+            <input id="wh-search" type="search" placeholder="🔍 Поиск по складу..." value="${esc(whSearchQuery)}" style="min-width:190px;max-width:260px;padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font-size:12.5px;">
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Товар</th><th>Категория</th><th>Остаток</th><th>Мин. порог</th><th>Статус</th><th>Обновлено</th><th>Действия</th></tr></thead><tbody>
             ${invShown.length ? invShown.map(it => {
@@ -1741,6 +1812,8 @@ function initTheme(btnId) {
             </div>
           </div>
         </div>`;
+      const whS = document.getElementById('wh-search');
+      if (whS) whS.oninput = (e) => { whSearchQuery = e.target.value || ''; const pos = e.target.selectionStart || whSearchQuery.length; render(); const el = document.getElementById('wh-search'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} } };
       root.querySelectorAll('[data-wc]').forEach(b => b.onclick = () => { whCatFilter = b.dataset.wc; render(); });
       const whOrdBtn = document.getElementById('wh-order-btn');
       if (whOrdBtn) whOrdBtn.onclick = () => {
@@ -1954,7 +2027,7 @@ function initTheme(btnId) {
               <button class="chip-btn accent" id="e-add">+ Расход</button>
             </div>
           </div>
-          <div class="stack">${sortedFinExp.length ? sortedFinExp.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет расходов за выбранный период</div>`}</div>
+          <div class="stack">${sortedFinExp.length ? sortedFinExp.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:13px;padding:10px 4px;"><span>Нет расходов за выбранный период</span><button type="button" class="chip-btn accent" id="e-add-empty">+ Добавить первый расход</button></div>`}</div>
         </div>`;
       bindSortHeaders(root);
       root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => openMediaViewer(b.dataset.mv, b.dataset.mvt));
@@ -2018,6 +2091,7 @@ function initTheme(btnId) {
         const inlineSaveBtn = document.getElementById('csv-imp-save');
         if (inlineSaveBtn) inlineSaveBtn.onclick = () => guard('Импорт CSV в Google Таблицу', () => saveBatchFn(inlineSaveBtn));
       };
+      const _eAddEmpty = document.getElementById('e-add-empty'); if (_eAddEmpty) _eAddEmpty.onclick = () => document.getElementById('e-add').click();
       document.getElementById('e-add').onclick = () => guard('Добавить расход', () => {
         openModal('Новый расход', `
           <div class="field"><label>Категория</label><select id="ec">${optList(EXP_CATS, EXP_CATS[0])}</select></div>
@@ -3196,7 +3270,7 @@ function initTheme(btnId) {
   })();
 })();
 </script>
-  <script src="./js/time-picker.js?v=98.3.0"></script>
+  <script src="./js/time-picker.js?v=98.4.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -3204,7 +3278,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=98.3.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=98.4.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

@@ -486,7 +486,7 @@
   function mergeServerIntoState(state, data) {
     if (!data || typeof data !== 'object') return false;
     let changed = false;
-    if (data.location) { state.location = String(data.location); changed = true; }
+    if (data.location) { const _loc = String(data.location).trim(); state.location = (_loc === 'Кофейня №1' || !_loc) ? 'ILLY' : _loc; changed = true; }
     if (Number(data.plan) > 0) { state.plan = Number(data.plan); changed = true; }
     if (data.photoAll !== undefined) {
       state.photoAll = String(data.photoAll).toLowerCase() === 'да' || data.photoAll === true;
@@ -495,7 +495,7 @@
     if (Array.isArray(data.settings) && data.settings.length) {
       const sMap = {};
       data.settings.forEach((x) => { if (x && x.id) sMap[String(x.id).toUpperCase()] = x.value; });
-      if (sMap.LOCATION) state.location = String(sMap.LOCATION);
+      if (sMap.LOCATION) { const _sloc = String(sMap.LOCATION).trim(); state.location = (_sloc === 'Кофейня №1' || !_sloc) ? 'ILLY' : _sloc; }
       if (Number(sMap.PLAN) > 0) state.plan = Number(sMap.PLAN);
       if (Number(sMap.MIN_AVG_CHECK) > 0) state.minAvgCheck = Number(sMap.MIN_AVG_CHECK);
       if (Number(sMap.PLAN_CHECKS) > 0) state.planChecks = Number(sMap.PLAN_CHECKS);
