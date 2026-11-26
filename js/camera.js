@@ -1,5 +1,5 @@
 /**
- * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v98.5.0)
+ * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v98.7.0)
  * Единый модуль камеры с однократным запросом разрешения при входе в терминал:
  * - prewarm({ keepAlive: true }) запрашивает доступ 1 раз при входе и держит поток
  *   в энергосберегающей паузе (track.enabled = false) без повторных запросов getUserMedia
@@ -38,7 +38,9 @@
     onDone: null,
     capturedItems: [],
     multiMode: true,
-    allowVideo: true
+    allowVideo: true,
+    zoomLevel: 1,
+    digitalZoom: 1
   };
 
   function mapCameraError(err) {
@@ -213,7 +215,16 @@
     canvas.width = w;
     canvas.height = h;
     var ctx = canvas.getContext('2d');
-    ctx.drawImage(videoEl, 0, 0, w, h);
+    var dz = Number(state.digitalZoom || 1);
+    if (dz > 1.01) {
+      var sw = vw / dz;
+      var sh = vh / dz;
+      var sx = (vw - sw) / 2;
+      var sy = (vh - sh) / 2;
+      ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, w, h);
+    } else {
+      ctx.drawImage(videoEl, 0, 0, w, h);
+    }
     var dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
     return {
       kind: 'photo',
@@ -237,6 +248,8 @@
     state.multiMode = opts.multi !== false;
     state.allowVideo = opts.allowVideo !== false;
     state.capturedItems = [];
+    state.zoomLevel = 1;
+    state.digitalZoom = 1;
     state.onDone = typeof opts.onCapture === 'function' ? opts.onCapture : null;
     var onCapturedCb = typeof opts.onCaptured === 'function' ? opts.onCaptured : null;
 
@@ -381,35 +394,67 @@
         };
       }
 
-      function shortLensLabel(d, idx) {
-        var lbl = String((d && d.label) || '').toLowerCase();
-        if (lbl.indexOf('ultra') >= 0 || lbl.indexOf('0.5') >= 0 || lbl.indexOf('wide') >= 0 && lbl.indexOf('back') >= 0 && idx > 0) return '0.5×';
-        if (lbl.indexOf('tele') >= 0 || lbl.indexOf('2x') >= 0) return '2×';
-        if (lbl.indexOf('front') >= 0 || lbl.indexOf('user') >= 0 || lbl.indexOf('selfie') >= 0) return 'Фронт';
-        if (lbl.indexOf('back') >= 0 || lbl.indexOf('rear') >= 0 || lbl.indexOf('environment') >= 0) return '1×';
-        return (idx + 1) + '×';
+      function getZoomCaps() {
+        try {
+          var t0 = state.stream && state.stream.getVideoTracks && state.stream.getVideoTracks()[0];
+          if (t0 && typeof t0.getCapabilities === 'function') {
+            var caps = t0.getCapabilities();
+            if (caps && caps.zoom && typeof caps.zoom.min === 'number' && typeof caps.zoom.max === 'number' && caps.zoom.max > caps.zoom.min) {
+              return caps.zoom;
+            }
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      async function applyLensZoom(targetZ) {
+        var z = Number(targetZ) || 1;
+        state.zoomLevel = z;
+        var caps = getZoomCaps();
+        var appliedHw = false;
+        if (caps) {
+          try {
+            var t0 = state.stream && state.stream.getVideoTracks && state.stream.getVideoTracks()[0];
+            if (t0 && typeof t0.applyConstraints === 'function') {
+              var clamped = Math.max(caps.min, Math.min(caps.max, z));
+              await t0.applyConstraints({ advanced: [{ zoom: clamped }] });
+              appliedHw = Math.abs(clamped - z) < 0.05;
+              state.digitalZoom = appliedHw ? 1 : Math.max(1, z / Math.max(0.5, clamped));
+            }
+          } catch (_) {
+            appliedHw = false;
+          }
+        }
+        if (!appliedHw) {
+          state.digitalZoom = Math.max(1, z);
+        }
+        if (videoEl && videoEl.style) {
+          videoEl.style.transition = 'transform 160ms ease';
+          videoEl.style.transform = state.digitalZoom > 1.01 ? ('scale(' + state.digitalZoom + ')') : '';
+        }
+        renderLensPills();
       }
 
       function renderLensPills() {
         if (!lensesEl) return;
-        if (!state.devices || state.devices.length <= 1) {
+        if (state.facingMode === 'user') {
           lensesEl.style.display = 'none';
           return;
         }
-        var shown = state.devices.slice(0, 4);
+        // Переключение объективов/зума идёт на ТЕКУЩЕМ потоке (applyConstraints / цифровой зум)
+        // без повторного вызова getUserMedia — Telegram больше не спрашивает разрешение камеры!
+        var caps = getZoomCaps();
+        var levels = (caps && caps.min <= 0.7) ? [0.5, 1, 2] : [1, 1.5, 2];
         lensesEl.style.display = 'inline-flex';
-        lensesEl.innerHTML = shown.map(function (d, idx) {
-          var isAct = state.selectedDeviceId
-            ? d.deviceId === state.selectedDeviceId
-            : (idx === 0);
-          return '<button type="button" class="lg-cam-lens' + (isAct ? ' is-active' : '') + '" data-dev="' + d.deviceId + '">' + shortLensLabel(d, idx) + '</button>';
+        lensesEl.innerHTML = levels.map(function (z) {
+          var isAct = Math.abs(Number(state.zoomLevel || 1) - z) < 0.05;
+          var lbl = (z === 0.5 ? '0.5×' : (z === 1.5 ? '1.5×' : (z + '×')));
+          return '<button type="button" class="lg-cam-lens' + (isAct ? ' is-active' : '') + '" data-zoom="' + z + '">' + lbl + '</button>';
         }).join('');
-        lensesEl.querySelectorAll('[data-dev]').forEach(function (btn) {
+        lensesEl.querySelectorAll('[data-zoom]').forEach(function (btn) {
           btn.onclick = function () {
-            state.selectedDeviceId = btn.getAttribute('data-dev') || '';
-            if (devSel) devSel.value = state.selectedDeviceId;
             if (global && global.CoffeeHaptic && global.CoffeeHaptic.select) global.CoffeeHaptic.select();
-            bootCamera(false, true);
+            applyLensZoom(Number(btn.getAttribute('data-zoom')) || 1);
           };
         });
       }
@@ -544,6 +589,9 @@
       ov.querySelector('[data-cam="flip"]').onclick = function () {
         state.selectedDeviceId = '';
         state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+        state.zoomLevel = 1;
+        state.digitalZoom = 1;
+        if (videoEl && videoEl.style) videoEl.style.transform = '';
         if (global && global.CoffeeHaptic && global.CoffeeHaptic.select) global.CoffeeHaptic.select();
         bootCamera(false, true);
       };
@@ -572,7 +620,7 @@
   }
 
   var api = {
-    version: 'v98.5.0',
+    version: 'v98.7.0',
     MAX_VIDEO_SEC: MAX_VIDEO_SEC,
     prewarm: prewarm,
     open: open,

@@ -235,7 +235,7 @@ body.kb-open .bottom-search-wrap { bottom:10px; padding-right:110px; }
 .center-action-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:8px 0 10px; }
 
 
-/* === Modern Typography & Cross-Platform Surface Polish (v98.5.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v98.7.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, .step-title, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -258,7 +258,7 @@ tbody tr { transition: background .14s ease; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* === Compact Terminal Topbar (v98.5.0) — maximizes main screen space === */
+/* === Compact Terminal Topbar (v98.7.0) — maximizes main screen space === */
 .terminal-topbar { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:max(6px, env(safe-area-inset-top)) 12px 7px !important; }
 .topbar-row1 { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
 .terminal-topbar .brand { gap:8px; min-width:0; flex:1; }
@@ -289,12 +289,12 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=98.5.0"></script>
-  <script src="js/cloud-sync.js?v=98.5.0"></script>
-  <script src="js/pos-csv-parser.js?v=98.5.0"></script>
-<script src="js/camera.js?v=98.5.0"></script>
-  <script src="js/custom-select.js?v=98.5.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=98.5.0">
+  <script src="config.js?v=98.7.0"></script>
+  <script src="js/cloud-sync.js?v=98.7.0"></script>
+  <script src="js/pos-csv-parser.js?v=98.7.0"></script>
+<script src="js/camera.js?v=98.7.0"></script>
+  <script src="js/custom-select.js?v=98.7.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=98.7.0">
 </head>
 <body>
 <header class="topbar terminal-topbar" style="max-width:460px;width:100%;margin:0 auto;">
@@ -308,7 +308,7 @@ tbody tr { transition: background .14s ease; }
     </div>
   </div>
   <div class="top-actions" id="user-ctl"></div>
-  <button class="chip-btn topbar-theme-btn" id="btn-theme" style="display:none;" aria-label="Переключить тему оформления">Авто</button>
+  <button class="chip-btn topbar-theme-btn" id="btn-theme" title="Сменить тему (Светлая / Тёмная)" aria-label="Переключить тему оформления" style="padding:7px 10px;">🌓</button>
 </header>
 
 <main class="shell" id="body"></main>
@@ -393,17 +393,23 @@ function initTheme(btnId) {
   const mql = window.matchMedia('(prefers-color-scheme: dark)');
   let mode = 'auto';
   try { mode = localStorage.getItem(THEME_KEY) || 'auto'; } catch(_) {}
+  function effTheme() { return mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode; }
   function apply() {
-    const eff = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
+    const eff = effTheme();
     document.documentElement.setAttribute('data-theme', eff);
     const b = document.getElementById(btnId);
-    if (b) b.innerHTML = mode === 'auto' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg><span class="theme-lbl"> Авто</span>' : (mode === 'light' ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><span class="theme-lbl"> Светлая</span>' : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="theme-lbl"> Тёмная</span>');
+    if (b) {
+      b.innerHTML = eff === 'dark'
+        ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>'
+        : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+      b.title = eff === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему';
+    }
   }
   mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
   window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
   const b = document.getElementById(btnId);
   if (b) b.onclick = () => {
-    mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto');
+    mode = effTheme() === 'dark' ? 'light' : 'dark';
     try { localStorage.setItem(THEME_KEY, mode); } catch(_) {}
     apply();
   };
@@ -1625,7 +1631,7 @@ function render() {
   }
 })();
 </script>
-  <script src="./js/time-picker.js?v=98.5.0"></script>
+  <script src="./js/time-picker.js?v=98.7.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -1633,7 +1639,7 @@ function render() {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=98.5.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=98.7.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

@@ -360,7 +360,7 @@ test('Dashboard UI & CloudSync integrity: weekly plan 2-barista modal, direct TG
   assert.match(cs, /sendTelegramAlert:\s*sendTelegramAlert/, 'cloud-sync.js must export sendTelegramAlert');
 });
 
-test('v98.5.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
+test('v98.7.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
   const { sandbox, ss, token, tgMessages: tgCalls } = createGasEnvWithTelegram();
   // Seed 3 blocks all opening at 06:00-11:00
   sandbox.saveChecklistBlocks_(ss, {
@@ -392,7 +392,7 @@ test('v98.5.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, si
   assert.equal(ov.overdueSent.some((x) => x.block === 'Открытие' || x.block === 'Лайн Чек 1'), false, 'Completed blocks must NEVER trigger false overdue');
 });
 
-test('v98.5.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
+test('v98.7.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
   const { sandbox, ss, token, tgMessages } = createGasEnvWithTelegram();
 
   // 1. Seed 2 blocks opening at 08:00-11:00 and 1 block opening at 08:10-12:00
@@ -463,7 +463,7 @@ test('v98.5.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Gr
   assert.match(csJs, /_pendingSync:\s*true/, 'CloudSync must preserve pending submit_checklist ops on merge');
 });
 
-test('v98.5.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
+test('v98.7.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
   const { sandbox, token } = createGasEnvWithTelegram();
   const saveRes = JSON.parse(sandbox.doPost({
     postData: {
@@ -499,7 +499,7 @@ test('v98.5.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes p
   assert.match(dashHtml, /id="ph-custom"/, 'Dashboard must allow custom shift hours');
 });
 
-test('75) v98.5.0: Зарплата и табель, сверка наличных + фото Z-отчёта и QC фото чек-листов (Принято / Переделать)', () => {
+test('75) v98.7.0: Зарплата и табель, сверка наличных + фото Z-отчёта и QC фото чек-листов (Принято / Переделать)', () => {
   const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
   const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
@@ -537,7 +537,7 @@ test('75) v98.5.0: Зарплата и табель, сверка наличны
   assert.ok(dashHtml.includes('🧾 Z'), 'dashboard.html missing Z-report photo button');
 });
 
-test('76) v98.5.0: Переименование в ILLY, эмодзи-фавикон ☕, сдвоенные смены в табеле и автозаявка поставщикам со склада', () => {
+test('76) v98.7.0: Переименование в ILLY, эмодзи-фавикон ☕, сдвоенные смены в табеле и автозаявка поставщикам со склада', () => {
   const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
   const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
@@ -570,7 +570,7 @@ test('76) v98.5.0: Переименование в ILLY, эмодзи-фавик
   assert.ok(dashHtml.includes('id="ord-copy"') && dashHtml.includes('id="ord-tg"'), 'dashboard.html missing copy/TG order buttons');
 });
 
-test('77) v98.5.0: Интерактивное погружение по клику на столбик графика (день / неделя / месяц)', () => {
+test('77) v98.7.0: Интерактивное погружение по клику на столбик графика (день / неделя / месяц)', () => {
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   assert.ok(dashHtml.includes('data-bar-idx='), 'dashboard.html missing clickable data-bar-idx on bars');
   assert.ok(dashHtml.includes('const openChartBucketModal = (pt) =>'), 'dashboard.html missing openChartBucketModal');
@@ -579,7 +579,7 @@ test('77) v98.5.0: Интерактивное погружение по клик
   assert.ok(dashHtml.includes('monthNamesRuFull'), 'dashboard.html missing full month titles for drill-down');
 });
 
-test('78) v98.5.0: Перетаскивание (Drag-and-Drop + touch) для порядка самих чек-листов и задач внутри них', () => {
+test('78) v98.7.0: Перетаскивание (Drag-and-Drop + touch) для порядка самих чек-листов и задач внутри них', () => {
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   assert.ok(dashHtml.includes('function bindDragSort('), 'dashboard.html missing bindDragSort helper');
   assert.ok(dashHtml.includes('function reorderBlocksById('), 'dashboard.html missing reorderBlocksById');
@@ -589,7 +589,7 @@ test('78) v98.5.0: Перетаскивание (Drag-and-Drop + touch) для �
   assert.ok(dashHtml.includes('touchstart') && dashHtml.includes('touchmove') && dashHtml.includes('elementFromPoint'), 'dashboard.html missing mobile touch drag support');
 });
 
-test('79) v98.5.0: Галерея-карусель фото, разгрузка шапок, поиск по складу, tabular-nums, Esc и нормализация Дашборд · ILLY', () => {
+test('79) v98.7.0: Галерея-карусель фото, разгрузка шапок, поиск по складу, tabular-nums, Esc и нормализация Дашборд · ILLY', () => {
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
@@ -606,12 +606,31 @@ test('79) v98.5.0: Галерея-карусель фото, разгрузка 
   assert.ok(idxHtml.includes('id="prof-theme"') && idxHtml.includes("e.key === 'Escape'"), 'index.html missing profile theme & Esc close');
 });
 
-test('80) v98.5.0: Минималистичная камера в стиле iPhone (сетка, tap-to-focus, чипы объективов, переключатель ФОТО/ВИДЕО 15С)', () => {
+test('80) v98.7.0: Минималистичная камера в стиле iPhone (сетка, tap-to-focus, чипы объективов, переключатель ФОТО/ВИДЕО 15С)', () => {
   const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
   const cssCode = fs.readFileSync(path.resolve(process.cwd(), 'css/m3-soft.css'), 'utf8');
   assert.ok(camCode.includes('lg-cam-overlay ios-cam'), 'camera.js missing ios-cam overlay');
-  assert.ok(camCode.includes('data-cam="lenses"') && camCode.includes('shortLensLabel'), 'camera.js missing floating lens pills');
+  assert.ok(camCode.includes('data-cam="lenses"') && camCode.includes('applyLensZoom'), 'camera.js missing floating lens pills');
   assert.ok(camCode.includes('data-cam="grid"') && camCode.includes('data-cam="focus"'), 'camera.js missing grid & tap-to-focus');
   assert.ok(camCode.includes('data-mode="photo"') && camCode.includes('data-mode="video"'), 'camera.js missing iOS mode switcher');
   assert.ok(cssCode.includes('.lg-cam-shutter.is-recording > span'), 'm3-soft.css missing iOS crimson recording morph');
+});
+
+test('81) v98.7.0: Дедупликация объективов камеры (без дублей 1× и Фронт) + отдельная 1-тап кнопка темы Светлая/Тёмная на верхней панели', () => {
+  const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
+  const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  assert.ok(camCode.includes("state.facingMode === 'user'") && camCode.includes('applyLensZoom'), 'camera.js missing lens deduplication');
+  assert.ok(idxHtml.includes('id="btn-theme"') && !idxHtml.includes('id="btn-theme" style="display:none;"'), 'index.html btn-theme must be visible in topbar');
+  assert.ok(idxHtml.includes("mode = effTheme() === 'dark' ? 'light' : 'dark'"), 'index.html missing 1-tap dark<->light toggle');
+  assert.ok(dashHtml.includes("mode = effTheme() === 'dark' ? 'light' : 'dark'"), 'dashboard.html missing 1-tap dark<->light toggle');
+});
+
+test('82) v98.7.0: Переключение объектива/зума камеры работает на текущем потоке без повторного getUserMedia и запроса доступа Telegram', () => {
+  const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
+  assert.ok(camCode.includes('function getZoomCaps()'), 'camera.js missing getZoomCaps');
+  assert.ok(camCode.includes('async function applyLensZoom('), 'camera.js missing applyLensZoom');
+  assert.ok(camCode.includes('t0.applyConstraints({ advanced: [{ zoom: clamped }] })'), 'camera.js missing hardware zoom applyConstraints');
+  assert.ok(camCode.includes('data-zoom="'), 'camera.js missing zero-reprompt data-zoom pills');
+  assert.ok(camCode.includes('state.digitalZoom'), 'camera.js missing digital zoom fallback for canvas capture');
 });
