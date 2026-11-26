@@ -288,7 +288,7 @@ test('Boris Fix #5 & #6: Global plan inputs removed from Параметры ко
     }
   });
 
-  // Enable pre_start_15 (off by default in v97.22.0)
+  // Enable pre_start_15 (off by default in v97.25.0)
   sandbox.saveSetting_(ss, { id: 'TG_NOTIFY_PRE_START', value: 'да' });
 
   // On Ср (not scheduled) -> 0 messages
@@ -353,7 +353,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   const res = sandbox.autoMigrateSchemaIfNeeded_(ss, false);
   assert.equal(res.ok, true);
   assert.equal(res.migrated, true);
-  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.22.0');
+  assert.equal(props.getProperty('SCHEMA_MIGRATED_VERSION'), 'v97.25.0');
 
   assert.equal(shTl._data[0].length, 9);
   assert.equal(shTl._data[0][6], 'Сотрудник');
@@ -377,7 +377,7 @@ test('Zero-Data-Loss Auto-Migration: upgrading legacy 6-col sheets preserves all
   assert.equal(res2.skipped, true);
 });
 
-test('v97.22.0 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
+test('v97.25.0 Production Hardening (F1-F7): try/finally + rollback on async modals, quota-safe polling, pagination, no pin:1234, revokeObjectURL & beforeunload', () => {
   const dash = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idx = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const cs = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
@@ -425,4 +425,14 @@ test('P0-2 Hardening: Uninitialized server rejects anonymous 1234 login (SETUP_R
   const cs = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
   assert.ok(dash.includes('id="s-change-pin"') && dash.includes('changeAdminPin'), 'dashboard.html must provide admin PIN change UI');
   assert.ok(cs.includes('async function changeAdminPin'), 'cloud-sync.js must export changeAdminPin');
+});
+
+test('v97.25.0 Photo Reader Access: grantPhotoFolderReaderAccess_ persists ALLOW_PUBLIC_LINK_DRIVE_PHOTOS=1 so future photos stay readable too', () => {
+  const { sandbox, ss } = createBorisGasEnv();
+  const res = sandbox.grantPhotoFolderReaderAccess_(ss);
+  assert.equal(res.ok, true);
+  assert.equal(res.allowPublicLinks, true);
+  assert.equal(sandbox.PropertiesService.getScriptProperties().getProperty('ALLOW_PUBLIC_LINK_DRIVE_PHOTOS'), '1', 'Must persist ALLOW_PUBLIC_LINK_DRIVE_PHOTOS=1 for all future uploads');
+  const dash = fs.readFileSync(path.join(rootDir, 'dashboard.html'), 'utf8');
+  assert.match(dash, /id="chk-grant-photos"/, 'Checklist History must expose 1-click reader access button');
 });

@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v97.22.0';
+var SERVER_VERSION_V97 = 'v97.25.0';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -557,6 +557,7 @@ function doPost(e) {
       return idempotentJsonOut_(ss, body, { ok: true }, actorSess);
     }
     if (action === 'extend_deadline') return idempotentJsonOut_(ss, body, extendDeadline_(ss, body), actorSess);
+    if (action === 'clear_deadline_extension') return idempotentJsonOut_(ss, body, extendDeadline_(ss, Object.assign({}, body, { clear: true })), actorSess);
     if (action === 'save_block_windows') return idempotentJsonOut_(ss, body, saveBlockWindows_(ss, body), actorSess);
     if (action === 'simulate_overdue') return idempotentJsonOut_(ss, body, simulateOverdue_(ss, body), actorSess);
     if (action === 'save_announcement') return idempotentJsonOut_(ss, body, saveAnnouncement_(ss, body), actorSess);
@@ -2099,11 +2100,6 @@ function escapeTgHtml_(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-function safeTgHref_(u) {
-  var s = String(u || '').trim();
-  return /^https:\/\//i.test(s) ? escapeTgHtml_(s) : '';
-}
-
 function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -2286,7 +2282,7 @@ function autoMigrateSchemaIfNeeded_(ss, forceOpt) {
 
   // 6. Однократное открытие доступа читателя к уже загруженным фото на Google Drive
   try {
-    var drvRes = grantPhotoFolderReaderAccess_(ss);
+    var drvRes = grantPhotoFolderReaderAccess_(ss, { preserveDefaultPrivacy: true });
     if (drvRes && drvRes.ok && drvRes.updated > 0) {
       migratedItems.push('Фото Drive (' + drvRes.updated + ')');
     }
@@ -2577,9 +2573,9 @@ function getDailyPlansAndRosterFromSheet_(ss, map) {
       var r = rows[i];
       var d = String(r[0] || '').trim();
       if (!plans[d]) continue;
-      if (Number(r[1]) > 0) plans[d].revenue = Number(r[1]);
-      if (Number(r[2]) > 0) plans[d].avgCheck = Number(r[2]);
-      if (Number(r[3]) > 0) plans[d].checks = Number(r[3]);
+      if (r[1] !== '' && r[1] !== null && r[1] !== undefined && !isNaN(Number(r[1])) && Number(r[1]) >= 0) plans[d].revenue = Number(r[1]);
+      if (r[2] !== '' && r[2] !== null && r[2] !== undefined && !isNaN(Number(r[2])) && Number(r[2]) >= 0) plans[d].avgCheck = Number(r[2]);
+      if (r[3] !== '' && r[3] !== null && r[3] !== undefined && !isNaN(Number(r[3])) && Number(r[3]) >= 0) plans[d].checks = Number(r[3]);
       if (r[4] != null && String(r[4]).trim() !== '') roster[d] = String(r[4]).trim();
     }
   }
@@ -3575,11 +3571,14 @@ function writeDailyPlansSheet_(ss, plans, roster) {
   var days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   var rows = days.map(function(d) {
     var dp = (plans && plans[d]) || { revenue: 2200, avgCheck: 35, checks: 75 };
+    var rRev = (dp.revenue !== undefined && dp.revenue !== '') ? Number(dp.revenue) : ((dp.rev !== undefined && dp.rev !== '') ? Number(dp.rev) : 2200);
+    var rAvg = (dp.avgCheck !== undefined && dp.avgCheck !== '') ? Number(dp.avgCheck) : ((dp.avg !== undefined && dp.avg !== '') ? Number(dp.avg) : 35);
+    var rChk = (dp.checks !== undefined && dp.checks !== '') ? Number(dp.checks) : 75;
     return [
       d,
-      Math.max(100, Number(dp.revenue || dp.rev) || 2200),
-      Math.max(1, Number(dp.avgCheck || dp.avg) || 35),
-      Math.max(1, Number(dp.checks) || 75),
+      isNaN(rRev) ? 2200 : Math.max(0, rRev),
+      isNaN(rAvg) ? 35 : Math.max(0, rAvg),
+      isNaN(rChk) ? 75 : Math.max(0, rChk),
       String((roster && roster[d] != null) ? roster[d] : '')
     ];
   });
@@ -3612,10 +3611,13 @@ function saveDailyPlans_(ss, b) {
   ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(function(d) {
     if (incomingPlans[d] && typeof incomingPlans[d] === 'object') {
       var dp = incomingPlans[d];
+      var rawRev = (dp.revenue !== undefined && dp.revenue !== '') ? Number(dp.revenue) : ((dp.rev !== undefined && dp.rev !== '') ? Number(dp.rev) : Number((plans[d] && plans[d].revenue) || 2200));
+      var rawAvg = (dp.avgCheck !== undefined && dp.avgCheck !== '') ? Number(dp.avgCheck) : ((dp.avg !== undefined && dp.avg !== '') ? Number(dp.avg) : Number((plans[d] && plans[d].avgCheck) || 35));
+      var rawChk = (dp.checks !== undefined && dp.checks !== '') ? Number(dp.checks) : Number((plans[d] && plans[d].checks) || 75);
       plans[d] = {
-        revenue: Math.max(100, Number(dp.revenue || dp.rev) || (plans[d] && plans[d].revenue) || 2200),
-        avgCheck: Math.max(1, Number(dp.avgCheck || dp.avg) || (plans[d] && plans[d].avgCheck) || 35),
-        checks: Math.max(1, Number(dp.checks) || (plans[d] && plans[d].checks) || 75)
+        revenue: isNaN(rawRev) ? 2200 : Math.max(0, rawRev),
+        avgCheck: isNaN(rawAvg) ? 35 : Math.max(0, rawAvg),
+        checks: isNaN(rawChk) ? 75 : Math.max(0, rawChk)
       };
     }
   });
@@ -5487,14 +5489,21 @@ function applySecureDriveFileSharingV82_(file) {
   return 'PRIVATE';
 }
 
-function grantPhotoFolderReaderAccess_(ss) {
+function grantPhotoFolderReaderAccess_(ss, opts) {
+  opts = opts || {};
   var updated = 0;
   var foldersCount = 0;
   try {
+    // v97.24: Явное включение доступа читателя по ссылке для всех будущих загрузок фото/видео
+    var props = PropertiesService.getScriptProperties();
+    if (props && !opts.preserveDefaultPrivacy) {
+      try { props.setProperty('ALLOW_PUBLIC_LINK_DRIVE_PHOTOS', '1'); } catch (_) {}
+    }
     if (typeof DriveApp === 'undefined' || (!DriveApp.getFoldersByName && !DriveApp.getFolderById)) {
-      return { ok: true, updated: 0, note: 'DriveApp недоступен в тестовой среде' };
+      return { ok: true, updated: 0, allowPublicLinks: true, note: 'Режим доступа читателя включён (DriveApp недоступен в тестовой среде)' };
     }
     var seenIds = {};
+    var seenFileIds = {};
     var seenRefs = [];
     var queue = [];
     function enqueueFolder(fl) {
@@ -5508,7 +5517,6 @@ function grantPhotoFolderReaderAccess_(ss) {
       queue.push(fl);
     }
     try {
-      var props = PropertiesService.getScriptProperties();
       var savedId = props && props.getProperty('DRIVE_MEDIA_FOLDER_ID');
       if (savedId && typeof DriveApp.getFolderById === 'function') {
         try { enqueueFolder(DriveApp.getFolderById(savedId)); } catch (_) {}
@@ -5526,15 +5534,17 @@ function grantPhotoFolderReaderAccess_(ss) {
         } catch (_) {}
       }
     }
-    if (!queue.length) return { ok: true, updated: 0, note: 'Папка фото ещё не создана' };
-    while (queue.length && updated < 400) {
+    while (queue.length && updated < 600) {
       var cur = queue.shift();
       foldersCount++;
       try { cur.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_) {}
       try {
         var files = cur.getFiles();
-        while (files && files.hasNext() && updated < 400) {
+        while (files && files.hasNext() && updated < 600) {
           var f = files.next();
+          var fileId = '';
+          try { fileId = typeof f.getId === 'function' ? String(f.getId() || '') : ''; } catch (_) {}
+          if (fileId) seenFileIds[fileId] = true;
           try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); updated++; } catch (_) {}
         }
       } catch (_) {}
@@ -5545,8 +5555,42 @@ function grantPhotoFolderReaderAccess_(ss) {
         }
       } catch (_) {}
     }
-    try { appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Открыт доступ читателя к папке фото', 'Папок: ' + foldersCount + ', файлов: ' + updated); } catch (_) {}
-    return { ok: true, updated: updated, folders: foldersCount };
+    // Дополнительно открываем доступ ко всем файлам по ID из листов «Медиафайлы» и «Чек-листы»
+    if (typeof DriveApp.getFileById === 'function' && ss) {
+      var extraIds = [];
+      try {
+        var shM = ss.getSheetByName('Медиафайлы');
+        if (shM && shM.getLastRow() > 1) {
+          var mRows = shM.getDataRange().getValues();
+          for (var mi = Math.max(1, mRows.length - 300); mi < mRows.length; mi++) {
+            var mid = String(mRows[mi][0] || '').trim();
+            if (mid && !seenFileIds[mid]) { seenFileIds[mid] = true; extraIds.push(mid); }
+          }
+        }
+      } catch (_) {}
+      try {
+        var shC = ss.getSheetByName('Чек-листы');
+        if (shC && shC.getLastRow() > 1) {
+          var cRows = shC.getDataRange().getValues();
+          for (var ci = Math.max(1, cRows.length - 120); ci < cRows.length; ci++) {
+            var rawPh = String(cRows[ci][5] || '');
+            var matches = rawPh.match(/(?:\/d\/|[?&]id=)([a-zA-Z0-9_-]{18,})/g) || [];
+            for (var k = 0; k < matches.length; k++) {
+              var idClean = matches[k].replace(/^.*(?:\/d\/|[?&]id=)/, '');
+              if (idClean && !seenFileIds[idClean]) { seenFileIds[idClean] = true; extraIds.push(idClean); }
+            }
+          }
+        }
+      } catch (_) {}
+      for (var ei = 0; ei < extraIds.length && updated < 600; ei++) {
+        try {
+          var ef = DriveApp.getFileById(extraIds[ei]);
+          if (ef) { ef.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); updated++; }
+        } catch (_) {}
+      }
+    }
+    try { appendAudit_(ss || getTargetSpreadsheet_(), 'Администратор', 'Открыт доступ читателя к папке фото и новым загрузкам', 'Папок: ' + foldersCount + ', файлов: ' + updated); } catch (_) {}
+    return { ok: true, updated: updated, folders: foldersCount, allowPublicLinks: true };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };
   }
@@ -5787,33 +5831,6 @@ function handoverShift_(ss, body, sess) {
   return { ok: true, handoverId: hid, timestamp: ts, fromStaff: fromStaff, toStaff: toStaff, immutable: true };
 }
 
-function submitWriteoff_(ss, body, sess) {
-  var staff = String((sess && sess.staffName) || '').trim();
-  var itemName = String((body && body.itemName) || '').trim();
-  var qty = Number(body && body.qty);
-  var reason = String((body && body.reason) || '').trim();
-  if (!itemName) throw new Error('VALIDATION_FAILED: Не указан товар для списания');
-  validateFiniteNumber_(qty, 0.01, 10000, 'Количество списания');
-  if (!reason) throw new Error('VALIDATION_FAILED: Не указана причина списания');
-  var sh = ss.getSheetByName('Списания');
-  if (!sh) {
-    sh = ss.insertSheet('Списания');
-    sh.appendRow(safeRow_(['WriteoffID', 'Date', 'Timestamp', 'Staff', 'ItemName', 'Qty', 'Reason', 'Comment', 'PhotoURL', 'MediaID', 'Status']));
-  }
-  var wid = newId_('WO');
-  var dt = String((body && body.date) || isoDate_()).trim();
-  if (!isValidIsoDate_(dt)) throw new Error('VALIDATION_FAILED: Некорректная дата списания');
-  var ts = new Date().toISOString();
-  sh.appendRow(safeRow_([
-    wid, dt, ts, staff, itemName.slice(0, 150), qty, reason.slice(0, 200),
-    String((body && body.comment) || '').slice(0, 500),
-    String((body && body.photoUrl) || '').slice(0, 500),
-    String((body && body.mediaId) || '').slice(0, 120),
-    'Ожидает проверки'
-  ]));
-  appendAudit_(ss, staff, 'Регистрация списания', itemName + ' (' + qty + '), причина: ' + reason);
-  return { ok: true, writeoffId: wid, status: 'Ожидает проверки' };
-}
 
 function submitAdjustment_(ss, body, sess) {
   var actor = String((sess && sess.staffName) || 'Администратор').trim();

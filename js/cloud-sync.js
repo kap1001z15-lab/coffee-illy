@@ -778,16 +778,20 @@
       state.plans = days.map((d) => {
         const p = data.dailyPlans[d] || {};
         const prev = prevByDay[d] || {};
-        const rev = Number(p.revenue || p.rev || prev.rev || state.plan || 2200);
-        const avg = Number(p.avgCheck || p.avg || prev.avg || 35);
+        const hasRev = (p.revenue !== undefined && p.revenue !== '') || (p.rev !== undefined && p.rev !== '');
+        const rev = hasRev ? Math.max(0, Number(p.revenue !== undefined && p.revenue !== '' ? p.revenue : p.rev)) : (prev.rev !== undefined ? Number(prev.rev) : Number(state.plan || 2200));
+        const hasAvg = (p.avgCheck !== undefined && p.avgCheck !== '') || (p.avg !== undefined && p.avg !== '');
+        const avg = hasAvg ? Math.max(0, Number(p.avgCheck !== undefined && p.avgCheck !== '' ? p.avgCheck : p.avg)) : (prev.avg !== undefined ? Number(prev.avg) : 35);
+        const hasChk = (p.checks !== undefined && p.checks !== '');
+        const checks = hasChk ? Math.max(0, Number(p.checks)) : (prev.checks !== undefined ? Number(prev.checks) : 75);
         return {
           day: d,
-          rev: rev,
-          revenue: rev,
-          avg: avg,
-          avgCheck: avg,
-          checks: Number(p.checks || prev.checks || 75),
-          roster: (data.shiftRoster && data.shiftRoster[d] !== undefined ? data.shiftRoster[d] : (p.roster || prev.roster || ''))
+          rev: isNaN(rev) ? 2200 : rev,
+          revenue: isNaN(rev) ? 2200 : rev,
+          avg: isNaN(avg) ? 35 : avg,
+          avgCheck: isNaN(avg) ? 35 : avg,
+          checks: isNaN(checks) ? 75 : checks,
+          roster: (data.shiftRoster && data.shiftRoster[d] !== undefined ? data.shiftRoster[d] : (p.roster !== undefined ? p.roster : (prev.roster || '')))
         };
       });
       changed = true;

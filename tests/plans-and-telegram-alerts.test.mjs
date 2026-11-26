@@ -360,7 +360,7 @@ test('Dashboard UI & CloudSync integrity: weekly plan 2-barista modal, direct TG
   assert.match(cs, /sendTelegramAlert:\s*sendTelegramAlert/, 'cloud-sync.js must export sendTelegramAlert');
 });
 
-test('v97.22.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
+test('v97.25.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
   const { sandbox, ss, token, tgMessages: tgCalls } = createGasEnvWithTelegram();
   // Seed 3 blocks all opening at 06:00-11:00
   sandbox.saveChecklistBlocks_(ss, {
@@ -392,7 +392,7 @@ test('v97.22.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, s
   assert.equal(ov.overdueSent.some((x) => x.block === 'Открытие' || x.block === 'Лайн Чек 1'), false, 'Completed blocks must NEVER trigger false overdue');
 });
 
-test('v97.22.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
+test('v97.25.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
   const { sandbox, ss, token, tgMessages } = createGasEnvWithTelegram();
 
   // 1. Seed 2 blocks opening at 08:00-11:00 and 1 block opening at 08:10-12:00
@@ -461,4 +461,40 @@ test('v97.22.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, G
   assert.match(dashHtml, /✓ Пройден/, 'Dashboard getBlkSt must show completed status instead of false Closed/Overdue');
   assert.match(csJs, /saveStaffNotifPrefs:\s*saveStaffNotifPrefs/, 'CloudSync must export saveStaffNotifPrefs');
   assert.match(csJs, /_pendingSync:\s*true/, 'CloudSync must preserve pending submit_checklist ops on merge');
+});
+
+test('v97.25.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
+  const { sandbox, token } = createGasEnvWithTelegram();
+  const saveRes = JSON.parse(sandbox.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: 'save_daily_plans',
+        sessionToken: token,
+        plans: {
+          'Пн': { revenue: 3000, checks: 90, avgCheck: 35 },
+          'Вс': { revenue: 0, checks: 0, avgCheck: 0 }
+        },
+        roster: {
+          'Пн': 'Соня (07:00–21:00)',
+          'Вс': 'Выходной'
+        }
+      })
+    }
+  }).getContent());
+  assert.equal(saveRes.ok, true);
+  assert.equal(saveRes.dailyPlans['Пн'].revenue, 3000);
+  assert.equal(saveRes.dailyPlans['Вс'].revenue, 0, 'Day Off revenue 0 must NOT be overwritten with 2200');
+  assert.equal(saveRes.dailyPlans['Вс'].checks, 0, 'Day Off checks 0 must NOT be overwritten with 75');
+
+  // Re-read via admin payload (reads from Планы sheet!) -> Вс MUST stay 0!
+  const adm = JSON.parse(sandbox.doPost({
+    postData: { contents: JSON.stringify({ action: 'admin', sessionToken: token }) }
+  }).getContent());
+  assert.equal(adm.dailyPlans['Вс'].revenue, 0, 'Reading Планы sheet must preserve 0 for Day Off');
+  assert.equal(adm.shiftRoster['Вс'], 'Выходной');
+
+  const dashHtml = fs.readFileSync(path.join(rootDir, 'dashboard.html'), 'utf8');
+  assert.match(dashHtml, /function computePeriodPlan/, 'Dashboard must compute plan across all calendar days in selected period');
+  assert.match(dashHtml, /id="btn-edit-week-plans"/, 'Dashboard must provide bulk week plan editor');
+  assert.match(dashHtml, /id="ph-custom"/, 'Dashboard must allow custom shift hours');
 });
