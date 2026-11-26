@@ -13,15 +13,15 @@ const gasPath = fs.existsSync(path.resolve(root, 'gas/Code.gs'))
   : path.resolve(root, 'Code.gs');
 const hasGas = fs.existsSync(gasPath);
 
-test('Audit #1: sw.js uses v98-4-0, ignoreSearch:true, and never returns index.html for offline JS/CSS', () => {
+test('Audit #1: sw.js uses v98-5-0, ignoreSearch:true, and never returns index.html for offline JS/CSS', () => {
   const sw = fs.readFileSync(path.resolve(root, 'sw.js'), 'utf8');
-  assert.ok(sw.includes("coffee-illy-v98-4-0"), 'CACHE_NAME must match v98.4.0');
+  assert.ok(sw.includes("coffee-illy-v98-5-0"), 'CACHE_NAME must match v98.5.0');
   assert.ok(sw.includes('ignoreSearch: true'), 'caches.match must use ignoreSearch: true for ?v= query strings');
   assert.ok(sw.includes('status: 503'), 'Offline JS/CSS fallback must return 503 instead of HTML');
   for (const fn of ['index.html', 'dashboard.html']) {
     const h = fs.readFileSync(path.resolve(root, fn), 'utf8');
     assert.equal(h.includes('?v=97.9.0'), false, `${fn} must not keep stale ?v=97.9.0 query strings`);
-    assert.ok(h.includes('?v=98.4.0'), `${fn} must reference ?v=98.4.0`);
+    assert.ok(h.includes('?v=98.5.0'), `${fn} must reference ?v=98.5.0`);
   }
 });
 
@@ -114,7 +114,7 @@ test('Audit #8, #9, #10, #11, #12: defer Telegram SDK, m3-soft.css linked, owner
   for (const fn of ['index.html', 'dashboard.html']) {
     const h = fs.readFileSync(path.resolve(root, fn), 'utf8');
     assert.ok(h.includes('telegram-web-app.js" defer'), `${fn} must load telegram-web-app.js with defer`);
-    assert.ok(h.includes('css/m3-soft.css?v=98.4.0'), `${fn} must link css/m3-soft.css`);
+    assert.ok(h.includes('css/m3-soft.css?v=98.5.0'), `${fn} must link css/m3-soft.css`);
   }
   const m3 = fs.readFileSync(path.resolve(root, 'css/m3-soft.css'), 'utf8');
   assert.ok(m3.includes('@media (max-width: 380px)'), 'm3-soft.css must support <= 380px narrow screens');
@@ -128,7 +128,7 @@ test('Audit #8, #9, #10, #11, #12: defer Telegram SDK, m3-soft.css linked, owner
   assert.ok(ci.includes('npm run test:full'), 'CI workflow must run npm run test:full before deploy');
 });
 
-test('v98.4.0 Full Codebase Audit: 100% cloud-sync -> GAS doPost action parity (incl. clear_deadline_extension) & zero dead stubs', () => {
+test('v98.5.0 Full Codebase Audit: 100% cloud-sync -> GAS doPost action parity (incl. clear_deadline_extension) & zero dead stubs', () => {
   const gas = fs.readFileSync(path.join(process.cwd(), 'gas/Code.gs'), 'utf8');
   const cs = fs.readFileSync(path.join(process.cwd(), 'js/cloud-sync.js'), 'utf8');
   assert.ok(!/function\s+submitWriteoff_\s*\(/.test(gas), 'Dead submitWriteoff_ stub must be removed');

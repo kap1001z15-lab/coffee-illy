@@ -1,5 +1,5 @@
 /**
- * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v97.19.0)
+ * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v98.5.0)
  * Единый модуль камеры с однократным запросом разрешения при входе в терминал:
  * - prewarm({ keepAlive: true }) запрашивает доступ 1 раз при входе и держит поток
  *   в энергосберегающей паузе (track.enabled = false) без повторных запросов getUserMedia
@@ -15,7 +15,9 @@
   var JPEG_QUALITY = 0.78;
   var CAM_GRANTED_KEY = 'coffee_illy_v97_cam_granted';
 
-  var ICO_CLOSE = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  var ICO_CLOSE = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  var ICO_GRID = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>';
+  var ICO_CHECK = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;"><path d="M20 6 9 17l-5-5"/></svg>';
   var ICO_FLIP = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>';
   var ICO_VIDEO = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="3"/></svg>';
   var ICO_STOP = '<svg class="ui-ico" viewBox="0 0 24 24" style="width:15px;height:15px;fill:currentColor;"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>';
@@ -298,44 +300,125 @@
       }
       document.addEventListener('visibilitychange', onVisibility);
 
+      var camMode = 'photo';
+      var showGrid = true;
       var ov = document.createElement('div');
-      ov.className = 'lg-cam-overlay';
+      ov.className = 'lg-cam-overlay ios-cam';
       ov.innerHTML =
-        '<div class="lg-cam-top">' +
-          '<button type="button" class="lg-cam-pill" data-cam="close" aria-label="Закрыть камеру">' + ICO_CLOSE + '<span>Закрыть</span></button>' +
-          '<div class="lg-cam-title">' + (opts.title || 'Живая камера') + '</div>' +
-          '<button type="button" class="lg-cam-icon" data-cam="flip" aria-label="Сменить камеру">' + ICO_FLIP + '</button>' +
-        '</div>' +
-        '<div data-cam="devwrap" class="lg-cam-devwrap" style="display:none;">' +
-          '<select data-cam="devices" class="lg-cam-select"></select>' +
-        '</div>' +
         '<div class="lg-cam-stage">' +
           '<video autoplay playsinline muted class="lg-cam-video"></video>' +
+          '<div class="lg-cam-grid is-on" data-cam="grid"><span></span><span></span><span></span><span></span></div>' +
+          '<div class="lg-cam-flash" data-cam="flash"></div>' +
+          '<div class="lg-cam-focus" data-cam="focus"></div>' +
+          '<div class="lg-cam-top">' +
+            '<button type="button" class="lg-cam-icon" data-cam="close" aria-label="Закрыть камеру">' + ICO_CLOSE + '</button>' +
+            '<div class="lg-cam-title" title="' + String(opts.title || 'Камера').replace(/"/g, '&quot;') + '">' + (opts.title || 'Камера') + '</div>' +
+            '<button type="button" class="lg-cam-icon is-active" data-cam="gridbtn" aria-label="Сетка кадра">' + ICO_GRID + '</button>' +
+          '</div>' +
+          '<div data-cam="recbadge" class="lg-cam-rec" style="display:none;">00:00</div>' +
+          '<div data-cam="lenses" class="lg-cam-lenses" style="display:none;"></div>' +
+          '<select data-cam="devices" class="lg-cam-select" style="display:none;"></select>' +
           '<div data-cam="err" class="lg-cam-err" style="display:none;"></div>' +
-          '<div data-cam="recbadge" class="lg-cam-rec" style="display:none;">● REC 00:00 / 00:15</div>' +
         '</div>' +
-        '<div data-cam="strip" class="lg-cam-strip" style="display:none;"></div>' +
-        '<div class="lg-cam-dock">' +
-          (state.allowVideo ? '<button type="button" class="lg-cam-pill" data-cam="video">' + ICO_VIDEO + '<span>Видео 15с</span></button>' : '<span></span>') +
-          '<button type="button" class="lg-cam-shutter" data-cam="shutter" aria-label="Сделать фото"><span></span></button>' +
-          '<button type="button" class="lg-cam-done" data-cam="done" disabled>Готово (0)</button>' +
+        '<div class="lg-cam-bottom">' +
+          '<div data-cam="strip" class="lg-cam-strip" style="display:none;"></div>' +
+          (state.allowVideo
+            ? '<div class="lg-cam-modes" data-cam="modes">' +
+                '<button type="button" class="lg-cam-mode is-active" data-mode="photo">ФОТО</button>' +
+                '<button type="button" class="lg-cam-mode" data-mode="video" data-cam="video">ВИДЕО 15С</button>' +
+              '</div>'
+            : '<div class="lg-cam-modes"><span class="lg-cam-mode is-active">ФОТО</span></div>') +
+          '<div class="lg-cam-dock">' +
+            '<button type="button" class="lg-cam-icon lg-cam-flip-lg" data-cam="flip" aria-label="Сменить камеру">' + ICO_FLIP + '</button>' +
+            '<button type="button" class="lg-cam-shutter" data-cam="shutter" aria-label="Сделать фото"><span></span></button>' +
+            '<button type="button" class="lg-cam-done" data-cam="done" disabled>' + ICO_CHECK + '<span>0</span></button>' +
+          '</div>' +
         '</div>';
 
       state.overlay = ov;
       document.body.appendChild(ov);
 
+      var stageEl = ov.querySelector('.lg-cam-stage');
       var videoEl = ov.querySelector('video');
       var errEl = ov.querySelector('[data-cam="err"]');
       var stripEl = ov.querySelector('[data-cam="strip"]');
       var doneBtn = ov.querySelector('[data-cam="done"]');
+      var shutterBtn = ov.querySelector('[data-cam="shutter"]');
       var recBadge = ov.querySelector('[data-cam="recbadge"]');
-      var devWrap = ov.querySelector('[data-cam="devwrap"]');
+      var lensesEl = ov.querySelector('[data-cam="lenses"]');
       var devSel = ov.querySelector('[data-cam="devices"]');
+      var flashEl = ov.querySelector('[data-cam="flash"]');
+      var focusEl = ov.querySelector('[data-cam="focus"]');
+      var gridEl = ov.querySelector('[data-cam="grid"]');
+      var gridBtn = ov.querySelector('[data-cam="gridbtn"]');
+
+      function triggerFlash() {
+        if (!flashEl || !flashEl.classList) return;
+        flashEl.classList.remove('is-pop');
+        void flashEl.offsetWidth;
+        flashEl.classList.add('is-pop');
+      }
+
+      if (stageEl && focusEl && typeof stageEl.addEventListener === 'function') {
+        stageEl.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('button,.lg-cam-lenses,.lg-cam-top')) return;
+          var rect = stageEl.getBoundingClientRect();
+          var x = ev.clientX - rect.left;
+          var y = ev.clientY - rect.top;
+          focusEl.style.left = x + 'px';
+          focusEl.style.top = y + 'px';
+          focusEl.classList.remove('is-pop');
+          void focusEl.offsetWidth;
+          focusEl.classList.add('is-pop');
+        });
+      }
+
+      if (gridBtn && gridEl) {
+        gridBtn.onclick = function () {
+          showGrid = !showGrid;
+          gridEl.classList.toggle('is-on', showGrid);
+          gridBtn.classList.toggle('is-active', showGrid);
+        };
+      }
+
+      function shortLensLabel(d, idx) {
+        var lbl = String((d && d.label) || '').toLowerCase();
+        if (lbl.indexOf('ultra') >= 0 || lbl.indexOf('0.5') >= 0 || lbl.indexOf('wide') >= 0 && lbl.indexOf('back') >= 0 && idx > 0) return '0.5×';
+        if (lbl.indexOf('tele') >= 0 || lbl.indexOf('2x') >= 0) return '2×';
+        if (lbl.indexOf('front') >= 0 || lbl.indexOf('user') >= 0 || lbl.indexOf('selfie') >= 0) return 'Фронт';
+        if (lbl.indexOf('back') >= 0 || lbl.indexOf('rear') >= 0 || lbl.indexOf('environment') >= 0) return '1×';
+        return (idx + 1) + '×';
+      }
+
+      function renderLensPills() {
+        if (!lensesEl) return;
+        if (!state.devices || state.devices.length <= 1) {
+          lensesEl.style.display = 'none';
+          return;
+        }
+        var shown = state.devices.slice(0, 4);
+        lensesEl.style.display = 'inline-flex';
+        lensesEl.innerHTML = shown.map(function (d, idx) {
+          var isAct = state.selectedDeviceId
+            ? d.deviceId === state.selectedDeviceId
+            : (idx === 0);
+          return '<button type="button" class="lg-cam-lens' + (isAct ? ' is-active' : '') + '" data-dev="' + d.deviceId + '">' + shortLensLabel(d, idx) + '</button>';
+        }).join('');
+        lensesEl.querySelectorAll('[data-dev]').forEach(function (btn) {
+          btn.onclick = function () {
+            state.selectedDeviceId = btn.getAttribute('data-dev') || '';
+            if (devSel) devSel.value = state.selectedDeviceId;
+            if (global && global.CoffeeHaptic && global.CoffeeHaptic.select) global.CoffeeHaptic.select();
+            bootCamera(false, true);
+          };
+        });
+      }
 
       function updateStrip() {
         var count = state.capturedItems.length;
-        doneBtn.textContent = 'Готово (' + count + ')';
+        doneBtn.innerHTML = count > 0 ? (ICO_CHECK + '<span>Готово · ' + count + '</span>') : (ICO_CHECK + '<span>0</span>');
         doneBtn.disabled = count === 0;
+        if (doneBtn && doneBtn.classList) doneBtn.classList.toggle('has-items', count > 0);
         if (!count) {
           stripEl.style.display = 'none';
           stripEl.innerHTML = '';
@@ -357,6 +440,72 @@
         });
       }
 
+      function syncModeUi() {
+        (typeof ov.querySelectorAll === 'function' ? ov.querySelectorAll('.lg-cam-mode[data-mode]') : []).forEach(function (b) {
+          b.classList.toggle('is-active', b.getAttribute('data-mode') === camMode);
+        });
+        shutterBtn.classList.toggle('is-video', camMode === 'video');
+        shutterBtn.classList.toggle('is-recording', !!state.recording);
+        shutterBtn.setAttribute('aria-label', camMode === 'video' ? (state.recording ? 'Остановить запись' : 'Начать запись видео') : 'Сделать фото');
+      }
+
+      async function toggleVideoRecording() {
+        if (state.recording) {
+          if (state.mediaRecorder) try { state.mediaRecorder.stop(); } catch (_) {}
+          return;
+        }
+        if (typeof MediaRecorder === 'undefined') {
+          errEl.textContent = 'Запись видео не поддерживается в этом браузере. Сделайте фото.';
+          errEl.style.display = 'flex';
+          return;
+        }
+        try {
+          await bootCamera(false, false);
+          var mime = pickSupportedVideoMime();
+          state.recChunks = [];
+          state.mediaRecorder = mime ? new MediaRecorder(state.stream, { mimeType: mime }) : new MediaRecorder(state.stream);
+          state.mediaRecorder.ondataavailable = function (ev) {
+            if (ev.data && ev.data.size > 0) state.recChunks.push(ev.data);
+          };
+          state.mediaRecorder.onstop = function () {
+            state.recording = false;
+            clearInterval(state.recTimer);
+            recBadge.style.display = 'none';
+            syncModeUi();
+            var blob = new Blob(state.recChunks, { type: mime || 'video/webm' });
+            var reader = new FileReader();
+            reader.onloadend = function () {
+              state.capturedItems.push({
+                kind: 'video',
+                mimeType: blob.type || 'video/webm',
+                dataUrl: String(reader.result || ''),
+                durationSec: state.recSec,
+                createdAt: new Date().toISOString()
+              });
+              if (!state.multiMode) finish(state.capturedItems, false);
+              else updateStrip();
+            };
+            reader.readAsDataURL(blob);
+          };
+          state.recSec = 0;
+          state.recording = true;
+          recBadge.style.display = 'inline-flex';
+          recBadge.textContent = '● 00:00 / 00:' + MAX_VIDEO_SEC;
+          syncModeUi();
+          state.mediaRecorder.start(250);
+          state.recTimer = setInterval(function () {
+            state.recSec++;
+            recBadge.textContent = '● 00:' + String(state.recSec).padStart(2, '0') + ' / 00:' + MAX_VIDEO_SEC;
+            if (state.recSec >= MAX_VIDEO_SEC && state.mediaRecorder && state.recording) {
+              try { state.mediaRecorder.stop(); } catch (_) {}
+            }
+          }, 1000);
+        } catch (err) {
+          errEl.textContent = mapCameraError(err);
+          errEl.style.display = 'flex';
+        }
+      }
+
       async function bootCamera(withAudio, forceNew) {
         errEl.style.display = 'none';
         try {
@@ -364,13 +513,13 @@
           videoEl.srcObject = s;
           await videoEl.play();
           if (state.devices.length > 1) {
-            devWrap.style.display = 'block';
             devSel.innerHTML = state.devices.map(function (d, idx) {
               var lbl = d.label || ('Камера ' + (idx + 1));
               var sel = d.deviceId === state.selectedDeviceId ? ' selected' : '';
               return '<option value="' + d.deviceId + '"' + sel + '>' + lbl + '</option>';
             }).join('');
           }
+          renderLensPills();
         } catch (err) {
           errEl.textContent = mapCameraError(err);
           errEl.style.display = 'flex';
@@ -382,6 +531,15 @@
         bootCamera(false, true);
       };
 
+      (typeof ov.querySelectorAll === 'function' ? ov.querySelectorAll('.lg-cam-mode[data-mode]') : []).forEach(function (btn) {
+        btn.onclick = function () {
+          if (state.recording) return;
+          camMode = btn.getAttribute('data-mode') || 'photo';
+          if (global && global.CoffeeHaptic && global.CoffeeHaptic.select) global.CoffeeHaptic.select();
+          syncModeUi();
+        };
+      });
+
       ov.querySelector('[data-cam="close"]').onclick = function () { finish([], true); };
       ov.querySelector('[data-cam="flip"]').onclick = function () {
         state.selectedDeviceId = '';
@@ -389,9 +547,14 @@
         if (global && global.CoffeeHaptic && global.CoffeeHaptic.select) global.CoffeeHaptic.select();
         bootCamera(false, true);
       };
-      ov.querySelector('[data-cam="shutter"]').onclick = function () {
+      shutterBtn.onclick = function () {
+        if (camMode === 'video') {
+          toggleVideoRecording();
+          return;
+        }
         if (!state.stream || state.recording) return;
         if (global && global.CoffeeHaptic && global.CoffeeHaptic.impact) global.CoffeeHaptic.impact('medium');
+        triggerFlash();
         var item = capturePhotoFromVideo(videoEl);
         state.capturedItems.push(item);
         if (!state.multiMode) {
@@ -404,73 +567,12 @@
         if (state.capturedItems.length > 0) finish(state.capturedItems, false);
       };
 
-      var vidBtn = ov.querySelector('[data-cam="video"]');
-      if (vidBtn) {
-        vidBtn.onclick = async function () {
-          if (state.recording) {
-            if (state.mediaRecorder) try { state.mediaRecorder.stop(); } catch (_) {}
-            return;
-          }
-          if (typeof MediaRecorder === 'undefined') {
-            errEl.textContent = 'Запись видео не поддерживается в этом браузере. Сделайте фото.';
-            errEl.style.display = 'flex';
-            return;
-          }
-          try {
-            // Записываем видео с уже открытого видеопотока (без повторного запроса микрофона/камеры)
-            await bootCamera(false, false);
-            var mime = pickSupportedVideoMime();
-            state.recChunks = [];
-            state.mediaRecorder = mime ? new MediaRecorder(state.stream, { mimeType: mime }) : new MediaRecorder(state.stream);
-            state.mediaRecorder.ondataavailable = function (ev) {
-              if (ev.data && ev.data.size > 0) state.recChunks.push(ev.data);
-            };
-            state.mediaRecorder.onstop = function () {
-              state.recording = false;
-              clearInterval(state.recTimer);
-              recBadge.style.display = 'none';
-              vidBtn.innerHTML = ICO_VIDEO + '<span>Видео 15с</span>';
-              var blob = new Blob(state.recChunks, { type: mime || 'video/webm' });
-              var reader = new FileReader();
-              reader.onloadend = function () {
-                state.capturedItems.push({
-                  kind: 'video',
-                  mimeType: blob.type || 'video/webm',
-                  dataUrl: String(reader.result || ''),
-                  durationSec: state.recSec,
-                  createdAt: new Date().toISOString()
-                });
-                if (!state.multiMode) finish(state.capturedItems, false);
-                else updateStrip();
-              };
-              reader.readAsDataURL(blob);
-            };
-            state.recSec = 0;
-            state.recording = true;
-            recBadge.style.display = 'block';
-            recBadge.textContent = '● REC 00:00 / 00:15';
-            vidBtn.innerHTML = ICO_STOP + '<span>Стоп</span>';
-            state.mediaRecorder.start(250);
-            state.recTimer = setInterval(function () {
-              state.recSec++;
-              recBadge.textContent = '● REC 00:' + String(state.recSec).padStart(2, '0') + ' / 00:' + MAX_VIDEO_SEC;
-              if (state.recSec >= MAX_VIDEO_SEC && state.mediaRecorder && state.recording) {
-                try { state.mediaRecorder.stop(); } catch (_) {}
-              }
-            }, 1000);
-          } catch (err) {
-            errEl.textContent = mapCameraError(err);
-            errEl.style.display = 'flex';
-          }
-        };
-      }
-
       bootCamera(false, false);
     });
   }
 
   var api = {
-    version: 'v97.19.0',
+    version: 'v98.5.0',
     MAX_VIDEO_SEC: MAX_VIDEO_SEC,
     prewarm: prewarm,
     open: open,
