@@ -360,7 +360,7 @@ test('Dashboard UI & CloudSync integrity: weekly plan 2-barista modal, direct TG
   assert.match(cs, /sendTelegramAlert:\s*sendTelegramAlert/, 'cloud-sync.js must export sendTelegramAlert');
 });
 
-test('v97.25.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
+test('v98.3.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
   const { sandbox, ss, token, tgMessages: tgCalls } = createGasEnvWithTelegram();
   // Seed 3 blocks all opening at 06:00-11:00
   sandbox.saveChecklistBlocks_(ss, {
@@ -392,7 +392,7 @@ test('v97.25.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, s
   assert.equal(ov.overdueSent.some((x) => x.block === 'Открытие' || x.block === 'Лайн Чек 1'), false, 'Completed blocks must NEVER trigger false overdue');
 });
 
-test('v97.25.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
+test('v98.3.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
   const { sandbox, ss, token, tgMessages } = createGasEnvWithTelegram();
 
   // 1. Seed 2 blocks opening at 08:00-11:00 and 1 block opening at 08:10-12:00
@@ -463,7 +463,7 @@ test('v97.25.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, G
   assert.match(csJs, /_pendingSync:\s*true/, 'CloudSync must preserve pending submit_checklist ops on merge');
 });
 
-test('v97.25.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
+test('v98.3.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
   const { sandbox, token } = createGasEnvWithTelegram();
   const saveRes = JSON.parse(sandbox.doPost({
     postData: {
@@ -497,4 +497,94 @@ test('v97.25.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes 
   assert.match(dashHtml, /function computePeriodPlan/, 'Dashboard must compute plan across all calendar days in selected period');
   assert.match(dashHtml, /id="btn-edit-week-plans"/, 'Dashboard must provide bulk week plan editor');
   assert.match(dashHtml, /id="ph-custom"/, 'Dashboard must allow custom shift hours');
+});
+
+test('75) v98.3.0: Зарплата и табель, сверка наличных + фото Z-отчёта и QC фото чек-листов (Принято / Переделать)', () => {
+  const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
+  const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
+  const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+
+  // GAS backend routes & handlers
+  assert.ok(gasCode.includes("action === 'save_payroll_rate'"), 'GAS missing save_payroll_rate route');
+  assert.ok(gasCode.includes("action === 'review_checklist_photo'"), 'GAS missing review_checklist_photo route');
+  assert.ok(gasCode.includes('function savePayrollRate_('), 'GAS missing savePayrollRate_');
+  assert.ok(gasCode.includes('function saveCashMetaAndAlert_('), 'GAS missing saveCashMetaAndAlert_');
+  assert.ok(gasCode.includes('function reviewChecklistPhoto_('), 'GAS missing reviewChecklistPhoto_');
+  assert.ok(gasCode.includes('payrollRates: getPayrollRatesMap_()'), 'getAdmin_ missing payrollRates');
+  assert.ok(gasCode.includes('cashMeta: getCashMetaMap_()'), 'getAdmin_ missing cashMeta');
+  assert.ok(gasCode.includes('photoReviews: getPhotoReviewsMap_()'), 'getAdmin_ missing photoReviews');
+
+  // cloud-sync.js exports & wiring
+  assert.ok(syncCode.includes('async function savePayrollRate('), 'cloud-sync missing savePayrollRate');
+  assert.ok(syncCode.includes('async function reviewChecklistPhoto('), 'cloud-sync missing reviewChecklistPhoto');
+  assert.ok(syncCode.includes('zPhotoUrl'), 'cloud-sync missing zPhotoUrl');
+  assert.ok(syncCode.includes('cashDiff'), 'cloud-sync missing cashDiff');
+
+  // Terminal index.html cash reconciliation & Z-report photo
+  assert.ok(idxHtml.includes('id="c-open"'), 'index.html missing c-open');
+  assert.ok(idxHtml.includes('id="c-enc"'), 'index.html missing c-enc');
+  assert.ok(idxHtml.includes('id="c-fact"'), 'index.html missing c-fact');
+  assert.ok(idxHtml.includes('id="c-diff-badge"'), 'index.html missing c-diff-badge');
+  assert.ok(idxHtml.includes('id="c-zphoto-btn"'), 'index.html missing c-zphoto-btn');
+
+  // Dashboard UI: Payroll, Z-report + diff, Photo QC
+  assert.ok(dashHtml.includes('Табель и расчёт зарплаты'), 'dashboard.html missing Payroll card');
+  assert.ok(dashHtml.includes('data-pr-edit='), 'dashboard.html missing payroll edit button');
+  assert.ok(dashHtml.includes('data-pr-pay='), 'dashboard.html missing payroll pay button');
+  assert.ok(dashHtml.includes('mv-qc-approve'), 'dashboard.html missing Photo QC approve button');
+  assert.ok(dashHtml.includes('mv-qc-rework'), 'dashboard.html missing Photo QC rework button');
+  assert.ok(dashHtml.includes('🧾 Z'), 'dashboard.html missing Z-report photo button');
+});
+
+test('76) v98.3.0: Переименование в ILLY, эмодзи-фавикон ☕, сдвоенные смены в табеле и автозаявка поставщикам со склада', () => {
+  const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
+  const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
+  const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  const ownHtml = fs.readFileSync(path.resolve(process.cwd(), 'owner.html'), 'utf8');
+
+  // 1. Default location renamed to ILLY
+  assert.ok(!idxHtml.includes('Кофейня №1'), 'index.html still has Кофейня №1');
+  assert.ok(!dashHtml.includes('Кофейня №1'), 'dashboard.html still has Кофейня №1');
+  assert.ok(idxHtml.includes('>ILLY<'), 'index.html missing ILLY header');
+  assert.ok(dashHtml.includes('>ILLY<'), 'dashboard.html missing ILLY header');
+
+  // 2. Coffee emoji favicon + title on all HTML pages
+  for (const [name, html] of [['index.html', idxHtml], ['dashboard.html', dashHtml], ['owner.html', ownHtml]]) {
+    assert.ok(html.includes('rel="icon" type="image/svg+xml"') && html.includes('%E2%98%95'), name + ' missing coffee emoji SVG favicon');
+    assert.ok(html.includes('<title>☕ ILLY'), name + ' missing ☕ ILLY title');
+  }
+
+  // 3. Double shifts (secondBarista) in Terminal, CloudSync, GAS, and Dashboard Payroll
+  assert.ok(idxHtml.includes('id="c-barista2"'), 'index.html missing c-barista2 selector');
+  assert.ok(syncCode.includes('secondBarista'), 'cloud-sync.js missing secondBarista');
+  assert.ok(syncCode.includes("desc.indexOf('Выплата зарплаты') === 0"), 'cloud-sync.js missing salary expense sync');
+  assert.ok(gasCode.includes('secondBarista: secBar'), 'gas/Code.gs missing secondBarista persistence');
+  assert.ok(dashHtml.includes('doubleShifts'), 'dashboard.html missing doubleShifts payroll calc');
+  assert.ok(dashHtml.includes("if (tab === 'warehouse' || tab === 'settings')"), 'dashboard.html should show date bar on team tab');
+
+  // 4. Supplier auto-order modal in Warehouse
+  assert.ok(dashHtml.includes('id="wh-order-btn"'), 'dashboard.html missing wh-order-btn');
+  assert.ok(dashHtml.includes('Автозаявка поставщикам'), 'dashboard.html missing supplier order modal');
+  assert.ok(dashHtml.includes('id="ord-copy"') && dashHtml.includes('id="ord-tg"'), 'dashboard.html missing copy/TG order buttons');
+});
+
+test('77) v98.3.0: Интерактивное погружение по клику на столбик графика (день / неделя / месяц)', () => {
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  assert.ok(dashHtml.includes('data-bar-idx='), 'dashboard.html missing clickable data-bar-idx on bars');
+  assert.ok(dashHtml.includes('const openChartBucketModal = (pt) =>'), 'dashboard.html missing openChartBucketModal');
+  assert.ok(dashHtml.includes('id="bar-drill-apply"'), 'dashboard.html missing apply period button');
+  assert.ok(dashHtml.includes('id="bar-drill-days"'), 'dashboard.html missing break-down-by-days button');
+  assert.ok(dashHtml.includes('monthNamesRuFull'), 'dashboard.html missing full month titles for drill-down');
+});
+
+test('78) v98.3.0: Перетаскивание (Drag-and-Drop + touch) для порядка самих чек-листов и задач внутри них', () => {
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  assert.ok(dashHtml.includes('function bindDragSort('), 'dashboard.html missing bindDragSort helper');
+  assert.ok(dashHtml.includes('function reorderBlocksById('), 'dashboard.html missing reorderBlocksById');
+  assert.ok(dashHtml.includes('function reorderTaskById('), 'dashboard.html missing reorderTaskById');
+  assert.ok(dashHtml.includes('id="blk-drag-list"') && dashHtml.includes('data-blk-id='), 'dashboard.html missing draggable checklist blocks');
+  assert.ok(dashHtml.includes('id="task-drag-list"') && dashHtml.includes('data-task-id='), 'dashboard.html missing draggable checklist tasks');
+  assert.ok(dashHtml.includes('touchstart') && dashHtml.includes('touchmove') && dashHtml.includes('elementFromPoint'), 'dashboard.html missing mobile touch drag support');
 });

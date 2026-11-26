@@ -739,6 +739,31 @@
       state.staffNotifPrefs = Object.assign({}, data.staffNotifPrefs);
       changed = true;
     }
+    if (data.payrollRates && typeof data.payrollRates === 'object') {
+      state.payrollRates = Object.assign({}, data.payrollRates);
+      changed = true;
+    }
+    if (data.photoReviews && typeof data.photoReviews === 'object') {
+      state.photoReviews = Object.assign({}, data.photoReviews);
+      changed = true;
+    }
+    if (data.cashMeta && typeof data.cashMeta === 'object') {
+      state.cashMeta = Object.assign({}, data.cashMeta);
+      if (Array.isArray(state.cash)) {
+        state.cash.forEach((c) => {
+          const m = c && c.date ? data.cashMeta[String(c.date).slice(0, 10)] : null;
+          if (m) {
+            if (m.zPhotoUrl) c.zPhotoUrl = m.zPhotoUrl;
+            if (m.cashOpening !== undefined) c.cashOpening = Number(m.cashOpening) || 0;
+            if (m.cashEncashment !== undefined) c.cashEncashment = Number(m.cashEncashment) || 0;
+            if (m.cashFact !== undefined && m.cashFact !== null) c.cashFact = Number(m.cashFact);
+            if (m.cashDiff !== undefined && m.cashDiff !== null) c.cashDiff = Number(m.cashDiff);
+            if (m.secondBarista !== undefined) c.secondBarista = String(m.secondBarista || '').trim();
+          }
+        });
+      }
+      changed = true;
+    }
     if (Array.isArray(data.staff) && data.staff.length) {
       const prevMap = {};
       (state.staff || []).forEach((s) => { prevMap[s.name] = s; });
@@ -932,7 +957,12 @@
         cash: Number(last.cash || 0),
         card: Number(last.card || 0),
         checks: Number(last.checks || 0),
-        writeoff: Number(last.writeoff || 0)
+        writeoff: Number(last.writeoff || 0),
+        zPhotoUrl: last.zPhotoUrl || '',
+        cashOpening: last.cashOpening !== undefined ? Number(last.cashOpening) : '',
+        cashEncashment: last.cashEncashment !== undefined ? Number(last.cashEncashment) : '',
+        cashFact: (last.cashFact !== undefined && last.cashFact !== '' && last.cashFact !== null) ? Number(last.cashFact) : null,
+        secondBarista: String(last.secondBarista || '').trim()
       });
     } else if (desc.indexOf('Проблема:') === 0 || desc.indexOf('Внеплановая поломка:') === 0) {
       const inc = st.incidents && st.incidents[0];
@@ -953,14 +983,14 @@
       });
     } else if (desc.indexOf('Решён инцидент') === 0) {
       enqueueOp('update_incident', { id: desc.replace('Решён инцидент ', '').trim(), status: 'Решена' });
-    } else if (desc.indexOf('Добавлен расход') === 0 && st.expenses && st.expenses.length) {
+    } else if ((desc.indexOf('Добавлен расход') === 0 || desc.indexOf('Выплата зарплаты') === 0) && st.expenses && st.expenses.length) {
       const e = st.expenses[0];
       enqueueOp('add_expense', { id: e.id, date: e.date || localISO(), category: e.category, amount: e.amount, comment: e.comment, who: e.who || actor });
     } else if (desc.indexOf('Удалён расход') === 0) {
       enqueueOp('delete_expense', { id: desc.replace('Удалён расход ', '').trim() });
     } else if (desc.indexOf('Обновлены настройки точки') === 0) {
       enqueueOp('save_all_settings', { items: [
-        { id: 'LOCATION', value: String(st.location || 'Кофейня №1') },
+        { id: 'LOCATION', value: String(st.location || 'ILLY') },
         { id: 'WO_NORM', value: String(st.woNorm || 15) },
         { id: 'INIT_COUNTER', value: String(st.initCounter || 600) },
         { id: 'PHOTO_ALL', value: st.photoAll ? 'да' : 'нет' }
@@ -991,7 +1021,7 @@
       const nm = desc.replace('Обновлён сотрудник ', '').trim();
       const s = (st.staff || []).find((x) => x.name === nm);
       if (s) {
-        enqueueOp('save_staff', { id: s.id, name: s.name, role: s.role, shop: s.shop || st.location || 'Кофейня №1', active: s.active === false ? 'нет' : 'да', tgId: s.tgId || '' });
+        enqueueOp('save_staff', { id: s.id, name: s.name, role: s.role, shop: s.shop || st.location || 'ILLY', active: s.active === false ? 'нет' : 'да', tgId: s.tgId || '' });
         if (s.pin) enqueueOp('save_staff_pins', { pins: [{ name: s.name, pin: s.pin }] });
       }
     } else if (desc.indexOf('Обновлена ТТК') === 0) {
@@ -1407,6 +1437,12 @@
   async function saveStaffNotifPrefs(opts) {
     return gasPost('save_staff_notif_prefs', opts || {});
   }
+  async function savePayrollRate(opts) {
+    return gasPost('save_payroll_rate', opts || {});
+  }
+  async function reviewChecklistPhoto(opts) {
+    return gasPost('review_checklist_photo', opts || {});
+  }
   async function testTelegramAlert(opts) {
     return gasPost('test_telegram_alert', opts || {});
   }
@@ -1631,6 +1667,8 @@
     checkOutStaff: checkOutStaff,
     saveTelegramSettings: saveTelegramSettings,
     saveStaffNotifPrefs: saveStaffNotifPrefs,
+    savePayrollRate: savePayrollRate,
+    reviewChecklistPhoto: reviewChecklistPhoto,
     testTelegramAlert: testTelegramAlert,
     sendTelegramAlert: sendTelegramAlert,
     saveDailyPlans: saveDailyPlans,

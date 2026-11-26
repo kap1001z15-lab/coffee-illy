@@ -9,7 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Coffee Illy — Дашборд</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%239A4A24'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='central' text-anchor='middle' font-size='64'%3E%E2%98%95%3C/text%3E%3C/svg%3E">
+<title>☕ ILLY — Дашборд</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -120,7 +121,12 @@ tr:last-child td { border-bottom:none; }
 .bar-track { flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; min-height:110px; }
 .bar-fill { width:72%; max-width:42px; min-width:22px; border-radius:10px 10px 4px 4px; background:var(--accent); transition:height .25s ease, opacity .15s ease; }
 .bar-fill.hit { background:var(--good); }
-.bar-col:hover .bar-fill { opacity:.86; }
+.bar-col[data-bar-idx] { cursor:pointer; } .bar-col[data-bar-idx]:hover .bar-fill { opacity:.92; transform:scaleY(1.04); transform-origin:bottom; box-shadow:0 4px 14px rgba(0,0,0,0.22); } .bar-col[data-bar-idx]:hover .bar-val { color:var(--accent); } .bar-col[data-bar-idx]:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:10px; }
+.drag-handle { display:inline-flex; align-items:center; justify-content:center; width:26px; height:32px; border-radius:8px; color:var(--muted); font-size:16px; line-height:1; cursor:grab; user-select:none; -webkit-user-select:none; touch-action:none; flex-shrink:0; transition:background .15s, color .15s; }
+.drag-handle:hover { background:var(--surface-2); color:var(--ink); }
+.drag-handle:active { cursor:grabbing; color:var(--accent); }
+.is-dragging { opacity:0.45 !important; transform:scale(0.99); }
+.drag-over { outline:2px dashed var(--accent) !important; outline-offset:2px; background:var(--accent-soft) !important; }
 .bar-dt { font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; line-height:1.15; height:16px; display:flex; align-items:center; }
 .chart-ctrl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .chart-gran { display:inline-flex; background:var(--surface); padding:3px; border-radius:999px; border:1px solid var(--border); gap:2px; }
@@ -234,7 +240,7 @@ body { overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right:
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v97.25.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v98.3.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -253,18 +259,18 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=97.25.0"></script>
-  <script src="js/cloud-sync.js?v=97.25.0"></script>
-<script src="js/pos-csv-parser.js?v=97.25.0"></script>
-  <script src="js/custom-select.js?v=97.25.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=97.25.0">
+  <script src="config.js?v=98.3.0"></script>
+  <script src="js/cloud-sync.js?v=98.3.0"></script>
+<script src="js/pos-csv-parser.js?v=98.3.0"></script>
+  <script src="js/custom-select.js?v=98.3.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=98.3.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
   <div class="brand">
     <div class="brand-dot">CI</div>
     <div class="brand-meta">
-      <div class="brand-title"><span class="hide-xs">Дашборд · </span><span id="hdr-loc">Кофейня №1</span></div>
+      <div class="brand-title"><span class="hide-xs">Дашборд · </span><span id="hdr-loc">ILLY</span></div>
       <div class="brand-sub">
         <span class="live-pill is-online" id="hdr-sync-pill" role="button" tabindex="0" title="Нажмите для принудительной синхронизации"><span class="live-dot"></span><span id="hdr-rev">Онлайн</span></span>
       </div>
@@ -305,7 +311,7 @@ tbody tr { transition: background .14s ease; }
 
 <script>
 
-const LIVE_SNAPSHOT = {"location":"Кофейня №1","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[],"salesLog":[],"inventory":[],"inventoryMoves":[],"expiryItems":[]};
+const LIVE_SNAPSHOT = {"location":"ILLY","plan":2200,"minAvgCheck":35,"planChecks":75,"staff":[],"blocks":[],"tasks":[],"cash":[],"expenses":[],"checklists":[],"incidents":[],"plans":[{"day":"Пн","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Вт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Ср","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Чт","rev":2200,"avg":35,"checks":70,"roster":""},{"day":"Пт","rev":2500,"avg":35,"checks":80,"roster":""},{"day":"Сб","rev":2800,"avg":35,"checks":85,"roster":""},{"day":"Вс","rev":2400,"avg":35,"checks":75,"roster":""}],"goodDeeds":[],"ttk":[],"audits":[],"salesLog":[],"inventory":[],"inventoryMoves":[],"expiryItems":[]};
 const STORE_KEY = 'coffee_illy_v90_live_state';
 const THEME_KEY = 'coffee_illy_v90_theme';
 function getTodayISO() { return (window.CoffeeCloudV93 ? window.CoffeeCloudV93.localISO() : new Date().toISOString().slice(0,10)); }
@@ -509,7 +515,7 @@ function initTheme(btnId) {
   function renderDateBar(rng) {
     const bar = document.getElementById('date-filter-bar');
     if (!bar) return;
-    if (tab === 'warehouse' || tab === 'team' || tab === 'settings') {
+    if (tab === 'warehouse' || tab === 'settings') {
       bar.style.display = 'none';
       return;
     }
@@ -565,7 +571,15 @@ function initTheme(btnId) {
     return s.includes('export=download') || s.includes('/preview') || s.includes('.mp4') || s.includes('.webm') || s.includes('video/');
   }
 
-  function openMediaViewer(url, title) {
+  function getPhotoReview(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return null;
+    const fid = extractDriveFileId(raw);
+    const map = state.photoReviews || {};
+    return (fid && map[fid]) || map[raw] || null;
+  }
+
+  function openMediaViewer(url, title, meta) {
     const rawUrl = String(url || '').trim();
     if (!rawUrl) return;
     const fid = extractDriveFileId(rawUrl);
@@ -573,19 +587,37 @@ function initTheme(btnId) {
     const driveViewUrl = fid ? ('https://drive.google.com/file/d/' + fid + '/view') : rawUrl;
     const drivePreviewUrl = fid ? ('https://drive.google.com/file/d/' + fid + '/preview') : rawUrl;
     const imgSrc = fid ? ('https://drive.google.com/thumbnail?id=' + fid + '&sz=w1600') : rawUrl;
+    const rev = getPhotoReview(rawUrl);
+    const canReview = !!(meta && meta.canReview);
 
     const viewerHtml = isVid
-      ? `<div style="border-radius:16px;overflow:hidden;background:#000;aspect-ratio:9/14;max-height:62vh;width:100%;">
+      ? `<div style="border-radius:16px;overflow:hidden;background:#000;aspect-ratio:9/14;max-height:56vh;width:100%;">
            <iframe src="${esc(drivePreviewUrl)}" style="width:100%;height:100%;border:0;" allow="autoplay; fullscreen" allowfullscreen></iframe>
          </div>`
       : `<div style="border-radius:16px;overflow:hidden;background:var(--surface-2);text-align:center;">
-           <img id="mv-img" src="${esc(imgSrc)}" alt="${esc(title || 'Фото')}" style="max-width:100%;max-height:60vh;object-fit:contain;display:block;margin:0 auto;">
-           <iframe id="mv-fb" src="${esc(drivePreviewUrl)}" style="display:none;width:100%;height:55vh;border:0;" allow="fullscreen"></iframe>
+           <img id="mv-img" src="${esc(imgSrc)}" alt="${esc(title || 'Фото')}" style="max-width:100%;max-height:56vh;object-fit:contain;display:block;margin:0 auto;">
+           <iframe id="mv-fb" src="${esc(drivePreviewUrl)}" style="display:none;width:100%;height:52vh;border:0;" allow="fullscreen"></iframe>
          </div>`;
+
+    const revBanner = rev ? `<div class="card-soft" style="margin-top:10px;padding:8px 12px;border:1px solid ${rev.status==='approved'?'var(--good)':'var(--bad)'};font-size:12.5px;">
+      <b>${rev.status==='approved'?'✅ Принято':'↩️ Отправлено на переделку'}</b>${rev.comment ? ' — ' + esc(rev.comment) : ''}${rev.reviewedAt ? ` <span style="color:var(--muted)">(${esc(rev.reviewedAt)})</span>` : ''}
+    </div>` : '';
+
+    const qcBlock = canReview ? `
+      <div class="card-soft" style="margin-top:10px;padding:10px 12px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">Контроль качества фото (бариста: ${esc(meta.who || '—')})</div>
+        <div class="field" style="margin-bottom:8px;"><input id="mv-qc-comment" placeholder="Комментарий при возврате (например: Протри холдер и пересними)" value="${esc((rev && rev.comment) || '')}"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="chip-btn good" id="mv-qc-approve" style="flex:1;justify-content:center;padding:10px;">✅ Принято</button>
+          <button type="button" class="chip-btn bad" id="mv-qc-rework" style="flex:1;justify-content:center;padding:10px;">↩️ Переделать (TG)</button>
+        </div>
+      </div>` : '';
 
     openModal((isVid ? '🎬 Видео: ' : '📷 Фото: ') + (title || 'Медиафайл'), `
       ${viewerHtml}
-      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+      ${revBanner}
+      ${qcBlock}
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <a href="${esc(driveViewUrl)}" target="_blank" rel="noopener" class="btn-lg primary" style="text-decoration:none;flex:1;">↗ Открыть на Google Диске</a>
       </div>
     `);
@@ -595,6 +627,60 @@ function initTheme(btnId) {
       const fb = document.getElementById('mv-fb');
       if (fb) fb.style.display = 'block';
     };
+    if (canReview) {
+      const submitQc = (status) => guard(status === 'approved' ? 'Принять фото' : 'Вернуть на переделку', async () => {
+        const comment = (document.getElementById('mv-qc-comment')?.value || '').trim();
+        if (status === 'rework' && !comment) {
+          showToast('Укажите коротко, что именно нужно переделать');
+          document.getElementById('mv-qc-comment')?.focus();
+          return;
+        }
+        const key = fid || rawUrl;
+        const btnA = document.getElementById('mv-qc-approve');
+        const btnR = document.getElementById('mv-qc-rework');
+        if (btnA) btnA.disabled = true;
+        if (btnR) btnR.disabled = true;
+        try {
+          let res = { ok: true };
+          if (window.CoffeeCloudV93 && window.CoffeeCloudV93.reviewChecklistPhoto) {
+            res = await window.CoffeeCloudV93.reviewChecklistPhoto({
+              photoUrl: rawUrl,
+              status,
+              comment,
+              barista: meta.who || '',
+              block: meta.block || '',
+              date: meta.date || '',
+              photoIndex: Number(meta.idx || 0)
+            });
+          }
+          state.photoReviews = state.photoReviews || {};
+          state.photoReviews[key] = {
+            status,
+            comment,
+            barista: meta.who || '',
+            block: meta.block || '',
+            date: meta.date || '',
+            reviewedAt: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+          };
+          saveSharedState(state, 'Администратор', (status === 'approved' ? 'Принято фото: ' : 'Переделать фото: ') + (meta.block || ''));
+          closeModal();
+          render();
+          if (status === 'rework') {
+            showToast(res && res.tgSent ? '↩️ Отправлено на переделку — бариста получил уведомление в Telegram' : '↩️ Статус «Переделать» сохранён');
+          } else {
+            showToast('✅ Фото отмечено как принятое');
+          }
+        } catch (err) {
+          showToast('Ошибка сохранения оценки: ' + ((err && err.message) || 'повторите'));
+          if (btnA) btnA.disabled = false;
+          if (btnR) btnR.disabled = false;
+        }
+      });
+      const btnA = document.getElementById('mv-qc-approve');
+      const btnR = document.getElementById('mv-qc-rework');
+      if (btnA) btnA.onclick = () => submitQc('approved');
+      if (btnR) btnR.onclick = () => submitQc('rework');
+    }
   }
 
   function openReportModal(fCash, fExpenses, fChecklists, fIncidents, rngLabel) {
@@ -851,6 +937,7 @@ function initTheme(btnId) {
         ? (effectiveSpan > 120 && sortedCash.length > 35 ? 'month' : (effectiveSpan > 31 && sortedCash.length > 18 ? 'week' : 'day'))
         : chartGranularity;
       const monthNamesRu = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+      const monthNamesRuFull = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
       function buildChartSeries(list, gran) {
         if (gran === 'day') {
           return list.map(c => {
@@ -858,13 +945,18 @@ function initTheme(btnId) {
             const dp = getDayPlan(c.date);
             const avgC = c.checks ? Math.round(revVal / c.checks) : 0;
             const pct = dp.rev > 0 ? Math.round((revVal / dp.rev) * 100) : 0;
+            const iso = String(c.date || '').slice(0, 10);
             return {
-              label: dp.day + ' ' + c.date.slice(8) + '.' + c.date.slice(5, 7),
+              gran: 'day',
+              from: iso,
+              to: iso,
+              fullTitle: dp.day + ', ' + fmtDateRu(iso),
+              label: dp.day + ' ' + iso.slice(8) + '.' + iso.slice(5, 7),
               rev: revVal,
               plan: dp.rev,
               hit: revVal >= dp.rev,
               shifts: 1,
-              tip: `${dp.day} ${fmtDateRu(c.date)} · Выручка: ${fmtRub(revVal)} / ${fmtRub(dp.rev)} (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} ₽`
+              tip: `${dp.day} ${fmtDateRu(iso)} · Выручка: ${fmtRub(revVal)} / ${fmtRub(dp.rev)} (${pct}%) · Чеки: ${c.checks}/${dp.checks} · Ср. чек: ${avgC} ₽ (нажмите для деталей)`
             };
           });
         }
@@ -875,14 +967,21 @@ function initTheme(btnId) {
           const dt = new Date(c.date + 'T12:00:00');
           let key = c.date.slice(0, 7);
           let lbl = (monthNamesRu[dt.getMonth()] || '') + ' ' + String(dt.getFullYear()).slice(2);
+          let fromIso = key + '-01';
+          const lastD = new Date(dt.getFullYear(), dt.getMonth() + 1, 0);
+          let toIso = key + '-' + String(lastD.getDate()).padStart(2, '0');
+          let fullTitle = (monthNamesRuFull[dt.getMonth()] || lbl) + ' ' + dt.getFullYear();
           if (gran === 'week') {
             const dayIdx = (dt.getDay() + 6) % 7;
             const mon = new Date(dt.getTime() - dayIdx * 86400000);
             const sun = new Date(mon.getTime() + 6 * 86400000);
             key = mon.toISOString().slice(0, 10);
+            fromIso = key;
+            toIso = sun.toISOString().slice(0, 10);
             lbl = String(mon.getDate()).padStart(2, '0') + '.' + String(mon.getMonth() + 1).padStart(2, '0') + '–' + String(sun.getDate()).padStart(2, '0') + '.' + String(sun.getMonth() + 1).padStart(2, '0');
+            fullTitle = 'Неделя ' + lbl + '.' + sun.getFullYear();
           }
-          const cur = map.get(key) || { key, label: lbl, rev: 0, plan: 0, checks: 0, shifts: 0 };
+          const cur = map.get(key) || { key, gran, from: fromIso, to: toIso, fullTitle, label: lbl, rev: 0, plan: 0, checks: 0, shifts: 0 };
           cur.rev += revVal;
           cur.plan += dp.rev;
           cur.checks += (Number(c.checks) || 0);
@@ -893,12 +992,16 @@ function initTheme(btnId) {
           const pct = g.plan > 0 ? Math.round((g.rev / g.plan) * 100) : 0;
           const avgC = g.checks > 0 ? Math.round(g.rev / g.checks) : 0;
           return {
+            gran: g.gran,
+            from: g.from,
+            to: g.to,
+            fullTitle: g.fullTitle,
             label: g.label,
             rev: g.rev,
             plan: g.plan,
             hit: g.rev >= g.plan,
             shifts: g.shifts,
-            tip: `${g.label} (${g.shifts} смен) · Выручка: ${fmtRub(g.rev)} / План: ${fmtRub(g.plan)} (${pct}%) · Чеки: ${g.checks} · Ср. чек: ${avgC} ₽`
+            tip: `${g.label} (${g.shifts} смен) · Выручка: ${fmtRub(g.rev)} / План: ${fmtRub(g.plan)} (${pct}%) · Чеки: ${g.checks} · Ср. чек: ${avgC} ₽ (нажмите для деталей)`
           };
         });
       }
@@ -922,7 +1025,7 @@ function initTheme(btnId) {
           <div class="card-head">
             <div>
               <h2 class="card-title">${chartTitle}</h2>
-              <div class="card-sub">${planRefLabel} · Средняя: ${fmtRub(avgBucketRev)} · Макс.: ${fmtRub(maxRev)} · Период: ${esc(rng.label)}</div>
+              <div class="card-sub">${planRefLabel} · Средняя: ${fmtRub(avgBucketRev)} · Макс.: ${fmtRub(maxRev)} · Период: ${esc(rng.label)} · Нажмите на столбик для подробной аналитики</div>
             </div>
             <div class="chart-ctrl">
               <div class="chart-gran" id="chart-gran-ctrl">
@@ -940,9 +1043,9 @@ function initTheme(btnId) {
           <div class="chart-scroll">
             <div class="chart-wrap">
               ${chartPts.length ? `<div class="chart-plan-line" style="bottom:calc(28px + ${planTrackPct}% * 0.72)"><span class="chart-plan-lbl">${esc(planRefLabel)}</span></div>` : ''}
-              ${chartPts.length ? chartPts.map(p => {
+              ${chartPts.length ? chartPts.map((p, idx) => {
                 const hPct = p.rev > 0 ? Math.max(8, Math.round((p.rev / maxRev) * 100)) : 4;
-                return `<div class="bar-col" title="${esc(p.tip)}"><div class="bar-val">${p.rev.toLocaleString('ru-RU')} ₽</div><div class="bar-track"><div class="bar-fill ${p.hit?'hit':''}" style="height:${hPct}%;"></div></div><div class="bar-dt">${esc(p.label)}</div></div>`;
+                return `<div class="bar-col" data-bar-idx="${idx}" role="button" tabindex="0" title="${esc(p.tip)}"><div class="bar-val">${p.rev.toLocaleString('ru-RU')} ₽</div><div class="bar-track"><div class="bar-fill ${p.hit?'hit':''}" style="height:${hPct}%;"></div></div><div class="bar-dt">${esc(p.label)}</div></div>`;
               }).join('') : `<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;padding:48px 0;">Нет закрытых смен за выбранный период (${esc(rng.label)})</div>`}
             </div>
           </div>
@@ -995,6 +1098,164 @@ function initTheme(btnId) {
             }).join('')}
           </div>
         </div>`;
+      const openChartBucketModal = (pt) => {
+        if (!pt || !pt.from || !pt.to) return;
+        const inB = (dt) => { const d = String(dt || '').slice(0, 10); return d >= pt.from && d <= pt.to; };
+        const bCash = (state.cash || []).filter(c => inB(c.date)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const bExp = (state.expenses || []).filter(e => inB(e.date));
+        const bChks = (state.checklists || []).filter(c => inB(c.date));
+        const bIncs = (state.incidents || []).filter(i => inB(i.date));
+        const bSales = (state.salesLog || []).filter(s => inB(s.date));
+
+        const rev = bCash.reduce((a, c) => a + cashRev(c), 0);
+        const cashSum = bCash.reduce((a, c) => a + (Number(c.cash) || 0), 0);
+        const cardSum = bCash.reduce((a, c) => a + (Number(c.card) || 0), 0);
+        const checksSum = bCash.reduce((a, c) => a + (Number(c.checks) || 0), 0);
+        const woSum = bCash.reduce((a, c) => a + (Number(c.writeoff) || 0), 0);
+        const expSum = bExp.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+        const net = rev - expSum;
+        const avgC = checksSum > 0 ? Math.round(rev / checksSum) : 0;
+        const bPlanObj = computePeriodPlan({ from: pt.from, to: pt.to }, bCash);
+        const planRev = bPlanObj.periodRev || pt.plan || 0;
+        const planPct = planRev > 0 ? Math.round((rev / planRev) * 100) : 0;
+        const cashPct = rev > 0 ? Math.round((cashSum / rev) * 100) : 0;
+        const cardPct = rev > 0 ? (100 - cashPct) : 0;
+
+        // Top items from POS salesLog for this bucket
+        const prodMap = {};
+        bSales.forEach(s => {
+          const nm = String(s.item || s.name || 'Позиция').trim();
+          const cur = prodMap[nm] || (prodMap[nm] = { name: nm, qty: 0, sum: 0 });
+          cur.qty += (Number(s.qty) || 0);
+          cur.sum += (Number(s.sum) || 0);
+        });
+        const topProds = Object.values(prodMap).sort((a, b) => b.sum - a.sum).slice(0, 8);
+        const maxProdSum = topProds.length ? Math.max(topProds[0].sum, 1) : 1;
+
+        const shiftsHtml = bCash.length ? bCash.map(c => {
+          const r = cashRev(c);
+          const dp = getDayPlan(c.date);
+          const aC = c.checks ? Math.round(r / c.checks) : 0;
+          return `<div class="card-soft" style="padding:8px 10px;font-size:12.5px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+              <div><b>${fmtDateRu(c.date)}</b> (${dp.day}) · ${esc(c.barista || 'Бариста')}${c.secondBarista ? ` <span class="badge accent">+ ${esc(c.secondBarista)}</span>` : ''}</div>
+              <div><b>${fmtRub(r)}</b> <span class="badge ${r >= dp.rev ? 'good' : 'warn'}">${dp.rev > 0 ? Math.round((r / dp.rev) * 100) + '%' : '—'}</span></div>
+            </div>
+            <div style="color:var(--muted);font-size:11.5px;margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <span>Нал: ${fmtRub(c.cash)} · Безнал: ${fmtRub(c.card)} · Чеков: ${c.checks || 0} (ср. ${aC} ₽)</span>
+              ${c.zPhotoUrl ? `<button type="button" class="badge accent" data-bmv="${esc(c.zPhotoUrl)}" data-bmvt="Z-отчёт · ${esc(c.date)}" style="border:0;cursor:pointer;">🧾 Z-отчёт</button>` : ''}
+              ${(c.cashFact != null && c.cashFact !== '' && c.cashDiff != null) ? `<span class="badge ${Math.abs(Number(c.cashDiff))>=50?(Number(c.cashDiff)<0?'bad':'warn'):'good'}">Сверка: ${Number(c.cashDiff)===0?'0 ₽':((Number(c.cashDiff)>0?'+':'')+fmtRub(c.cashDiff))}</span>` : ''}
+            </div>
+          </div>`;
+        }).join('') : '<div style="color:var(--muted);font-size:12.5px;">Нет закрытых кассовых смен</div>';
+
+        const topProdsHtml = topProds.length ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">☕ Топ позиций из POS (${bSales.length} записей)</div>
+            <div class="stack" style="gap:5px;">
+              ${topProds.map(p => `<div style="font-size:12px;">
+                <div style="display:flex;justify-content:space-between;gap:8px;"><span><b>${esc(p.name)}</b> <span style="color:var(--muted)">(${p.qty} шт.)</span></span><b>${fmtRub(p.sum)}</b></div>
+                <div class="pbar" style="margin-top:3px;height:5px;"><div style="width:${Math.max(6, Math.round((p.sum / maxProdSum) * 100))}%;"></div></div>
+              </div>`).join('')}
+            </div>
+          </div>` : '';
+
+        const chksHtml = bChks.length ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">✅ Чек-листы (${bChks.length})</div>
+            <div class="stack" style="gap:5px;max-height:150px;overflow-y:auto;">
+              ${bChks.slice(0, 15).map(c => `<div class="card-soft" style="padding:6px 9px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+                <div><b>${esc(c.block)}</b> · ${esc(c.who)} <span style="color:var(--muted)">(${c.date} ${c.time || ''})</span>${Array.isArray(c.photos) && c.photos.length ? ' ' + c.photos.slice(0, 5).map((u, idx) => `<button type="button" class="badge accent" data-bmv="${esc(u)}" data-bmvt="${esc(c.block + ' · ' + c.date)}" style="border:0;cursor:pointer;margin-left:2px;">📷${idx+1}</button>`).join('') : ''}</div>
+                <span class="badge good">${esc(c.status || 'Выполнено')}</span>
+              </div>`).join('')}
+            </div>
+          </div>` : '';
+
+        const expHtml = bExp.length ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">💸 Расходы (${fmtRub(expSum)})</div>
+            <div class="stack" style="gap:4px;">
+              ${bExp.map(e => `<div style="font-size:12px;display:flex;justify-content:space-between;gap:8px;padding:4px 8px;border-radius:8px;background:var(--surface);"><span><b>${esc(e.category)}</b>${e.comment ? ' — ' + esc(e.comment) : ''}</span><b>${fmtRub(e.amount)}</b></div>`).join('')}
+            </div>
+          </div>` : '';
+
+        const incsHtml = bIncs.length ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">⚠️ Поломки (${bIncs.length})</div>
+            <div class="stack" style="gap:4px;">
+              ${bIncs.map(i => `<div style="font-size:12px;padding:5px 8px;border-radius:8px;background:var(--surface);"><b>${esc(i.step)}</b> · ${esc(i.who)} — ${esc(i.text || '—')} <span class="badge ${i.status==='Решена'?'good':'bad'}">${esc(i.status || 'Открыта')}</span></div>`).join('')}
+            </div>
+          </div>` : '';
+
+        const granTag = pt.gran === 'month' ? 'Месяц' : (pt.gran === 'week' ? 'Неделя' : 'День');
+        openModal(`📊 Аналитика (${granTag}): ${pt.fullTitle}`, `
+          <div class="grid-2" style="gap:8px;margin-bottom:10px;">
+            <div class="card-soft" style="padding:10px;">
+              <div style="font-size:11px;color:var(--muted);">Выручка / План</div>
+              <div style="font-size:18px;font-weight:800;margin:2px 0;">${fmtRub(rev)}</div>
+              <div style="font-size:11.5px;color:${planPct>=100?'var(--good)':'var(--accent)'};"><b>${planPct}%</b> от плана ${fmtRub(planRev)}</div>
+            </div>
+            <div class="card-soft" style="padding:10px;">
+              <div style="font-size:11px;color:var(--muted);">Наличные / Безнал</div>
+              <div style="font-size:14.5px;font-weight:800;margin:4px 0;">${fmtRub(cashSum)} / ${fmtRub(cardSum)}</div>
+              <div style="font-size:11.5px;color:var(--muted);">${cashPct}% нал · ${cardPct}% безнал</div>
+            </div>
+            <div class="card-soft" style="padding:10px;">
+              <div style="font-size:11px;color:var(--muted);">Чеки и средний чек</div>
+              <div style="font-size:18px;font-weight:800;margin:2px 0;">${avgC} ₽</div>
+              <div style="font-size:11.5px;color:var(--muted);">Чеков: <b>${checksSum}</b> · Смен: <b>${bCash.length}</b></div>
+            </div>
+            <div class="card-soft" style="padding:10px;">
+              <div style="font-size:11px;color:var(--muted);">Остаток после расходов</div>
+              <div style="font-size:18px;font-weight:800;margin:2px 0;color:${net>=0?'var(--good)':'var(--bad)'};">${fmtRub(net)}</div>
+              <div style="font-size:11.5px;color:var(--muted);">Расходы: ${fmtRub(expSum)}${woSum ? ' · Спис.: ' + fmtRub(woSum) : ''}</div>
+            </div>
+          </div>
+          <div style="max-height:44vh;overflow-y:auto;padding-right:2px;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">🧾 Кассовые смены (${bCash.length})</div>
+            <div class="stack" style="gap:6px;">${shiftsHtml}</div>
+            ${topProdsHtml}
+            ${chksHtml}
+            ${expHtml}
+            ${incsHtml}
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+            <button type="button" class="btn-lg primary" id="bar-drill-apply" style="flex:1;">📅 Открыть этот период в дашборде</button>
+            ${pt.gran !== 'day' ? `<button type="button" class="chip-btn accent" id="bar-drill-days" style="padding:10px 14px;">📊 Разбить по дням</button>` : ''}
+          </div>
+        `);
+        document.querySelectorAll('[data-bmv]').forEach(btn => btn.onclick = () => openMediaViewer(btn.dataset.bmv, btn.dataset.bmvt));
+        const applyBtn = document.getElementById('bar-drill-apply');
+        if (applyBtn) applyBtn.onclick = () => {
+          datePreset = 'custom';
+          customFrom = pt.from;
+          customTo = pt.to;
+          saveDateRangePref();
+          closeModal();
+          render();
+          showToast('📅 Период дашборда: ' + pt.fullTitle);
+        };
+        const daysBtn = document.getElementById('bar-drill-days');
+        if (daysBtn) daysBtn.onclick = () => {
+          datePreset = 'custom';
+          customFrom = pt.from;
+          customTo = pt.to;
+          chartGranularity = 'day';
+          saveDateRangePref();
+          closeModal();
+          render();
+          showToast('📊 Показаны дни за ' + pt.fullTitle);
+        };
+      };
+
+      root.querySelectorAll('[data-bar-idx]').forEach(el => {
+        const openIt = () => {
+          const pt = chartPts[Number(el.dataset.barIdx)];
+          if (pt) openChartBucketModal(pt);
+        };
+        el.onclick = openIt;
+        el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openIt(); } };
+      });
       root.querySelectorAll('[data-cg]').forEach(b => b.onclick = () => { chartGranularity = b.dataset.cg; render(); });
       const _ovU = document.getElementById('ov-unlock'); if (_ovU) _ovU.onclick = () => guard('Живые данные дашборда', () => {});
       return;
@@ -1008,12 +1269,12 @@ function initTheme(btnId) {
       });
       root.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Чек-листы (${state.blocks.length})</h2></div><button class="chip-btn accent" id="b-add">+ Новый блок</button></div>
-          <div class="stack">
+          <div class="card-head"><div><h2 class="card-title">Чек-листы (${state.blocks.length})</h2><div class="card-sub">Перетащите блок за ⠿, чтобы изменить порядок чек-листов в терминале</div></div><button class="chip-btn accent" id="b-add">+ Новый блок</button></div>
+          <div class="stack" id="blk-drag-list">
             ${state.blocks.map(b => {
               const st = getBlkSt(b);
               const isExt = !!(state.extensions[b.name] && state.extensions[b.name].forceOpen);
-              return `<div class="row-item" style="${b.active===false?'opacity:.55;':''}"><div class="row-main">
+              return `<div class="row-item" draggable="true" data-blk-id="${esc(b.id)}" style="${b.active===false?'opacity:.55;':''}"><span class="drag-handle" title="Перетащите, чтобы изменить порядок">⠿</span><div class="row-main">
                 <div class="row-title">${esc(b.name)} <span class="badge">${b.isCash?'Касса':blockTasks(b.name).length+' задач'}</span> ${b.assignee?`<span class="badge accent">👤 ${esc(b.assignee)}</span>`:''} ${b.scheduleType==='weekly'&&Array.isArray(b.scheduleDays)&&b.scheduleDays.length?`<span class="badge">📅 ${esc(b.scheduleDays.join(', '))}</span>`:(b.scheduleType==='date'&&b.scheduleDate?`<span class="badge warn">📅 ${esc(b.scheduleDate)}</span>`:'')}</div>
                 <div class="row-sub">Окно: <b>${b.openTime}–${b.deadline}</b> · <span class="badge ${st.cls}">${st.label}</span></div>
               </div><div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -1034,10 +1295,16 @@ function initTheme(btnId) {
             </div>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Дата</th><th>Блок</th><th>Сотрудник</th><th>Проблем</th><th>Статус</th></tr></thead><tbody>
-            ${logs.slice(0, chkLogLimit).map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>`<button type="button" class="badge accent" data-mv="${esc(u)}" data-mvt="${esc(c.block+' · '+c.date)}" style="border:0;cursor:pointer;margin-left:4px;">${isVideoMediaUrl(u)?'🎬':'📷'} ${idx+1}</button>`).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
+            ${logs.slice(0, chkLogLimit).map(c=>`<tr><td><b>${c.date}</b> <span style="color:var(--muted)">${c.time}</span></td><td>${esc(c.block)}${Array.isArray(c.photos)&&c.photos.length?' '+c.photos.map((u,idx)=>{ const rev = getPhotoReview(u); const cls = rev ? (rev.status==='approved'?'good':'bad') : 'accent'; const ico = rev ? (rev.status==='approved'?'✅':'↩️') : (isVideoMediaUrl(u)?'🎬':'📷'); return `<button type="button" class="badge ${cls}" data-mv="${esc(u)}" data-mvt="${esc(c.block+' · '+c.date)}" data-mv-who="${esc(c.who||'')}" data-mv-block="${esc(c.block||'')}" data-mv-date="${esc(c.date||'')}" data-mv-idx="${idx+1}" title="${rev?(rev.status==='approved'?'Принято':'Переделать: '+(rev.comment||'')):'Открыть и оценить фото'}" style="border:0;cursor:pointer;margin-left:4px;">${ico} ${idx+1}</button>`; }).join(''):''}</td><td>${esc(c.who)}</td><td>${c.problems||0}</td><td><span class="badge good">${esc(c.status)}</span></td></tr>`).join('')}
           </tbody></table></div>
           ${logs.length > chkLogLimit ? `<div style="text-align:center;margin-top:12px;"><button class="chip-btn" id="chk-more">Показать ещё 50 (показано ${chkLogLimit} из ${logs.length})</button></div>` : ''}
         </div>`;
+      const blkListEl = document.getElementById('blk-drag-list');
+      if (blkListEl) bindDragSort(blkListEl, '[data-blk-id]', 'blkId', (fromId, toId) => {
+        guard('Порядок чек-листов', () => {
+          if (reorderBlocksById(fromId, toId)) render();
+        });
+      });
       document.getElementById('cf').onchange = e => { chkFilter = e.target.value; chkLogLimit = 50; render(); };
       const chkGrantBtn = document.getElementById('chk-grant-photos');
       if (chkGrantBtn) chkGrantBtn.onclick = () => guard('Доступ читателя к фото Drive', async () => {
@@ -1079,7 +1346,7 @@ function initTheme(btnId) {
           render();
         } finally { b.disabled = false; }
       }));
-      root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => openMediaViewer(b.dataset.mv, b.dataset.mvt));
+      root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => openMediaViewer(b.dataset.mv, b.dataset.mvt, { canReview: true, who: b.dataset.mvWho || '', block: b.dataset.mvBlock || '', date: b.dataset.mvDate || '', idx: b.dataset.mvIdx || '' }));
       root.querySelectorAll('[data-lk]').forEach(b => b.onclick = () => guard('Вернуть окно', async () => {
         const blkName = b.dataset.lk;
         b.disabled = true;
@@ -1424,7 +1691,10 @@ function initTheme(btnId) {
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head">
             <div><h2 class="card-title">Товары и остатки на складе (${invShown.length})</h2></div>
-            <button class="chip-btn accent" id="wh-add">+ Товар на склад</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button type="button" class="chip-btn ${lowStockCount?'warn':'good'}" id="wh-order-btn" title="Сформировать заявку поставщикам по позициям ниже минимума">🛒 Заявка поставщикам${lowStockCount?' ('+lowStockCount+')':''}</button>
+              <button class="chip-btn accent" id="wh-add">+ Товар на склад</button>
+            </div>
           </div>
           <div class="date-pills" style="margin-bottom:12px;">
             ${whCats.map(c => `<button class="date-pill ${whCatFilter===c?'active':''}" data-wc="${esc(c)}">${c==='all'?'Все категории':esc(c)}</button>`).join('')}
@@ -1472,6 +1742,91 @@ function initTheme(btnId) {
           </div>
         </div>`;
       root.querySelectorAll('[data-wc]').forEach(b => b.onclick = () => { whCatFilter = b.dataset.wc; render(); });
+      const whOrdBtn = document.getElementById('wh-order-btn');
+      if (whOrdBtn) whOrdBtn.onclick = () => {
+        const lowItems = invAll.filter(it => Number(it.stock || 0) <= Number(it.minStock || 0));
+        const renderOrderModal = (includeAll) => {
+          const list = includeAll ? invAll : (lowItems.length ? lowItems : invAll);
+          const rows = list.map(it => {
+            const st = Number(it.stock || 0);
+            const mn = Number(it.minStock || 0);
+            const target = Math.max(mn * 2, mn + 1);
+            const rec = Math.max(st <= mn ? 1 : 0, Math.ceil(target - st));
+            return { id: it.id, name: it.name, cat: it.category || 'Сырьё', stock: st, minStock: mn, unit: it.unit || 'шт', qty: rec };
+          });
+          openModal('🛒 Автозаявка поставщикам (' + (state.location || 'ILLY') + ')', `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+              <div style="font-size:12.5px;color:var(--muted);">${lowItems.length ? ('Позиций ниже минимума: <b>' + lowItems.length + '</b>') : 'Все позиции выше минимума — показан полный склад'}</div>
+              ${lowItems.length ? `<button type="button" class="chip-btn" id="ord-toggle-all">${includeAll ? 'Только дефицит (' + lowItems.length + ')' : 'Показать весь склад (' + invAll.length + ')'}</button>` : ''}
+            </div>
+            <div class="stack" style="max-height:260px;overflow-y:auto;margin-bottom:10px;">
+              ${rows.map((r, i) => `<div class="card-soft" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;">
+                <div style="min-width:0;flex:1;">
+                  <b>${esc(r.name)}</b> <span class="badge">${esc(r.cat)}</span>
+                  <div style="font-size:11.5px;color:var(--muted);">Остаток: ${r.stock} ${esc(r.unit)} · Мин: ${r.minStock} ${esc(r.unit)}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                  <input type="number" min="0" step="1" class="ord-qty-in" data-idx="${i}" value="${r.qty}" style="width:72px;padding:6px 8px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font-weight:700;text-align:center;">
+                  <span style="font-size:12px;color:var(--muted);min-width:26px;">${esc(r.unit)}</span>
+                </div>
+              </div>`).join('')}
+            </div>
+            <div class="field" style="margin-bottom:10px;"><label>Готовый текст заявки (для WhatsApp / Telegram)</label><textarea id="ord-preview" rows="5" readonly style="font-size:12.5px;"></textarea></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn-lg primary" id="ord-copy" style="flex:1;">📋 Скопировать заявку</button>
+              <button type="button" class="chip-btn good" id="ord-tg" style="padding:10px 14px;">📨 В Telegram</button>
+            </div>
+          `);
+          const buildOrderText = () => {
+            const grouped = {};
+            let totalPos = 0;
+            document.querySelectorAll('.ord-qty-in').forEach(inp => {
+              const r = rows[Number(inp.dataset.idx)];
+              const q = Math.max(0, Number(inp.value) || 0);
+              if (!r || q <= 0) return;
+              totalPos++;
+              if (!grouped[r.cat]) grouped[r.cat] = [];
+              grouped[r.cat].push('• ' + r.name + ' — ' + q + ' ' + r.unit + ' (остаток ' + r.stock + ')');
+            });
+            if (!totalPos) return 'Список заказа пуст (укажите количество > 0).';
+            const lines = ['🛒 Заявка на закупку · ' + (state.location || 'ILLY') + ' (' + todayISO() + ')', ''];
+            Object.keys(grouped).forEach(cat => {
+              lines.push('📦 ' + cat + ':');
+              grouped[cat].forEach(l => lines.push(l));
+              lines.push('');
+            });
+            return lines.join('\n').trim();
+          };
+          const syncPreview = () => {
+            const ta = document.getElementById('ord-preview');
+            if (ta) ta.value = buildOrderText();
+          };
+          document.querySelectorAll('.ord-qty-in').forEach(inp => inp.oninput = syncPreview);
+          syncPreview();
+          const togBtn = document.getElementById('ord-toggle-all');
+          if (togBtn) togBtn.onclick = () => renderOrderModal(!includeAll);
+          document.getElementById('ord-copy').onclick = async () => {
+            const txt = buildOrderText();
+            try { await navigator.clipboard.writeText(txt); showToast('✓ Заявка скопирована в буфер обмена'); }
+            catch (_) {
+              const ta = document.getElementById('ord-preview');
+              if (ta) { ta.select(); document.execCommand('copy'); }
+              showToast('✓ Заявка скопирована');
+            }
+          };
+          document.getElementById('ord-tg').onclick = () => guard('Отправить заявку в Telegram', async () => {
+            const txt = buildOrderText();
+            if (!window.CoffeeCloudV93 || !window.CoffeeCloudV93.sendTelegramAlert) return;
+            const btn = document.getElementById('ord-tg');
+            btn.disabled = true;
+            try {
+              const res = await window.CoffeeCloudV93.sendTelegramAlert(txt, 'admin');
+              showToast(res && res.ok ? '📨 Заявка отправлена в Telegram' : ('Ошибка TG: ' + ((res && res.error) || 'проверьте бота')));
+            } finally { btn.disabled = false; }
+          });
+        };
+        renderOrderModal(false);
+      };
       document.getElementById('wh-add').onclick = () => guard('Добавить товар на склад', () => openWarehouseModal(null));
       root.querySelectorAll('[data-wh-ed]').forEach(b => b.onclick = () => guard('Редактировать товар', () => openWarehouseModal(b.dataset.whEd)));
       root.querySelectorAll('[data-wh-in]').forEach(b => b.onclick = () => guard('Приход на склад', () => openWarehouseMoveModal(b.dataset.whIn, 'restock')));
@@ -1557,8 +1912,12 @@ function initTheme(btnId) {
                 <td><b>${fmtRub(c.revenue)}</b> <span class="badge ${c.revenue>=dp.rev?'good':'warn'}">${revPct}% · ${fmtRub(dp.rev)}</span></td>
                 <td><b>${c.checks}</b> <span class="badge ${c.checks>=dp.checks?'good':'warn'}">/ ${dp.checks}</span></td>
                 <td><b>${avgC} ₽</b> <span class="badge ${avgC>=dp.avg?'good':'bad'}">≥ ${dp.avg} ₽</span></td>
-                <td style="color:var(--muted)">${fmtRub(c.cash)} / ${fmtRub(c.card)}</td>
-                <td>${esc(c.barista)}</td>
+                <td style="color:var(--muted)">
+                  ${fmtRub(c.cash)} / ${fmtRub(c.card)}
+                  ${c.zPhotoUrl ? `<button type="button" class="badge accent" data-mv="${esc(c.zPhotoUrl)}" data-mvt="Z-отчёт · ${esc(c.date)} · ${esc(c.barista)}" style="border:0;cursor:pointer;margin-left:4px;" title="Открыть фото Z-отчёта">🧾 Z</button>` : ''}
+                  ${(c.cashFact != null && c.cashFact !== '' && c.cashDiff != null) ? `<span class="badge ${Math.abs(Number(c.cashDiff))>=50?(Number(c.cashDiff)<0?'bad':'warn'):'good'}" style="margin-left:4px;" title="Размен: ${fmtRub(c.cashOpening||0)} · Инкассация: ${fmtRub(c.cashEncashment||0)} · Факт: ${fmtRub(c.cashFact||0)}">${Number(c.cashDiff)===0?'✓ 0 ₽':((Number(c.cashDiff)>0?'+':'')+fmtRub(c.cashDiff))}</span>` : ''}
+                </td>
+                <td>${esc(c.barista)}${c.secondBarista ? ` <span class="badge accent" title="Сдвоенная смена">+ ${esc(c.secondBarista)}</span>` : ''}</td>
               </tr>`;
             }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">Нет смен за период (${esc(rng.label)})</td></tr>`}
           </tbody></table></div>
@@ -1598,6 +1957,7 @@ function initTheme(btnId) {
           <div class="stack">${sortedFinExp.length ? sortedFinExp.map(e=>`<div class="row-item"><div class="row-main"><div class="row-title">${esc(e.category)} · ${fmtRub(e.amount)}</div><div class="row-sub">${e.date} ${e.comment?'· '+esc(e.comment):''}</div></div><button class="chip-btn bad" data-de="${esc(e.id)}">✕</button></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет расходов за выбранный период</div>`}</div>
         </div>`;
       bindSortHeaders(root);
+      root.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => openMediaViewer(b.dataset.mv, b.dataset.mvt));
       const repBtn = document.getElementById('btn-gen-report');
       if (repBtn) repBtn.onclick = () => openReportModal(fCash, fExpenses, fChecklists, fIncidents, rng.label);
       const csvIn = document.getElementById('csv-imp-in');
@@ -1873,7 +2233,74 @@ function initTheme(btnId) {
     }
 
     if (tab === 'team') {
+      const payrollRates = state.payrollRates || {};
+      const payrollRows = (state.staff || []).filter(s => s.active !== false).map(s => {
+        const sKey = String(s.name || '').trim();
+        const sLower = sKey.toLowerCase();
+        const sCash = fCash.filter(c => {
+          const b1 = String(c.barista || c.who || '').trim().toLowerCase();
+          const b2 = String(c.secondBarista || '').trim().toLowerCase();
+          return b1 === sLower || (b2 && b2 === sLower);
+        });
+        const shifts = sCash.length;
+        const doubleShifts = sCash.filter(c => {
+          const b1 = String(c.barista || c.who || '').trim().toLowerCase();
+          const b2 = String(c.secondBarista || '').trim().toLowerCase();
+          return b2 && b2 !== b1;
+        }).length;
+        const rev = Math.round(sCash.reduce((a, c) => {
+          const b1 = String(c.barista || c.who || '').trim().toLowerCase();
+          const b2 = String(c.secondBarista || '').trim().toLowerCase();
+          const share = (b2 && b2 !== b1) ? 0.5 : 1;
+          return a + (Number(c.revenue) || 0) * share;
+        }, 0));
+        const planHits = sCash.filter(c => {
+          const dp = getDayPlan(c.date);
+          return dp && dp.rev > 0 && (Number(c.revenue) || 0) >= dp.rev;
+        }).length;
+        const lateChks = fChecklists.filter(c => {
+          if (String(c.who || '').trim().toLowerCase() !== sLower) return false;
+          const st = String(c.status || '').toLowerCase();
+          return st.includes('опозд') || st.includes('просроч') || st.includes('пропущ');
+        }).length;
+        const r = payrollRates[sKey] || { shiftRate: 0, revenuePct: 0, planBonus: 0, latePenalty: 0 };
+        const shiftRate = Number(r.shiftRate) || 0;
+        const revenuePct = Number(r.revenuePct) || 0;
+        const planBonus = Number(r.planBonus) || 0;
+        const latePenalty = Number(r.latePenalty) || 0;
+        const rawTotal = shifts * shiftRate + rev * (revenuePct / 100) + planHits * planBonus - lateChks * latePenalty;
+        const total = Math.max(0, Math.round(rawTotal));
+        return { staff: s, name: sKey, shifts, doubleShifts, rev, planHits, lateChks, shiftRate, revenuePct, planBonus, latePenalty, total };
+      });
+      const totalFot = payrollRows.reduce((a, r) => a + r.total, 0);
+      const totalPayrollShifts = payrollRows.reduce((a, r) => a + r.shifts, 0);
+      const totalPayrollRev = payrollRows.reduce((a, r) => a + r.rev, 0);
+
       root.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">💸 Табель и расчёт зарплаты (${esc(rng.label)})</h2>
+              <div class="card-sub">Итого ФОТ за период: <b>${fmtRub(totalFot)}</b> · смен: <b>${totalPayrollShifts}</b> · выручка: <b>${fmtRub(totalPayrollRev)}</b></div>
+            </div>
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th>Сотрудник</th><th>Смен</th><th>Выручка</th><th>План ✓</th><th>Опозд.</th><th>Ставка</th><th>К выплате</th><th></th></tr></thead><tbody>
+            ${payrollRows.length ? payrollRows.map(r => `<tr>
+              <td><b>${esc(r.name)}</b> <span class="badge">${esc(r.staff.role)}</span></td>
+              <td><b>${r.shifts}</b>${r.doubleShifts ? ` <span class="badge" title="Из них сдвоенных смен (выручка 50/50)">сдв. ${r.doubleShifts}</span>` : ''}</td>
+              <td>${fmtRub(r.rev)}</td>
+              <td><span class="badge ${r.planHits>0?'good':''}">${r.planHits}</span></td>
+              <td><span class="badge ${r.lateChks>0?'bad':''}">${r.lateChks}</span></td>
+              <td style="font-size:12px;color:var(--muted);white-space:nowrap;">${r.shiftRate?fmtRub(r.shiftRate)+'/см':''}${r.revenuePct?(r.shiftRate?' + ':'')+r.revenuePct+'%':''}${r.planBonus?' + '+fmtRub(r.planBonus)+' пл.':''}${r.latePenalty?' − '+fmtRub(r.latePenalty)+' штр.':''}${(!r.shiftRate&&!r.revenuePct&&!r.planBonus&&!r.latePenalty)?'Не задана':''}</td>
+              <td><b>${fmtRub(r.total)}</b></td>
+              <td style="white-space:nowrap;">
+                <button type="button" class="chip-btn" data-pr-edit="${esc(r.name)}" style="padding:4px 8px;" title="Настроить ставку, % и премии">⚙️ Ставка</button>
+                <button type="button" class="chip-btn good" data-pr-pay="${esc(r.name)}" data-pr-amt="${r.total}" style="padding:4px 8px;margin-left:4px;" ${r.total<=0?'disabled':''} title="Записать выплату в расходы (Зарплата)">💸 Выплатить</button>
+              </td>
+            </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px;">Нет активных сотрудников</td></tr>'}
+            <tr style="background:var(--surface-2);font-weight:700;"><td>Итого ФОТ</td><td>${totalPayrollShifts}</td><td>${fmtRub(totalPayrollRev)}</td><td></td><td></td><td></td><td>${fmtRub(totalFot)}</td><td></td></tr>
+          </tbody></table></div>
+        </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head"><div><h2 class="card-title">Сотрудники, личные PIN и Telegram ID</h2></div><button class="chip-btn accent" id="s-add">+ Сотрудник</button></div>
           <div class="stack">${state.staff.map(s => {
@@ -1892,6 +2319,62 @@ function initTheme(btnId) {
             ${state.ttk.map(k=>`<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td style="color:var(--muted)">${k.avgPrice!=null?k.avgPrice:k.price} ₽</td><td>${k.cost} ₽</td><td><span class="badge good">${k.price?Math.round(((k.price-k.cost)/k.price)*100):0}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
           </tbody></table></div>
         </div>`;
+      root.querySelectorAll('[data-pr-edit]').forEach(b => b.onclick = () => guard('Ставка сотрудника', () => {
+        const empName = b.dataset.prEdit;
+        const cur = (state.payrollRates || {})[empName] || { shiftRate: 0, revenuePct: 0, planBonus: 0, latePenalty: 0 };
+        openModal('⚙️ Ставка зарплаты: ' + empName, `
+          <div class="grid2">
+            <div class="field"><label>Ставка за смену (₽)</label><input id="pr-shift" type="number" min="0" value="${Number(cur.shiftRate)||0}"></div>
+            <div class="field"><label>% от выручки смены</label><input id="pr-pct" type="number" min="0" max="50" step="0.5" value="${Number(cur.revenuePct)||0}"></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label>Премия за выполненный план (₽)</label><input id="pr-bonus" type="number" min="0" value="${Number(cur.planBonus)||0}"></div>
+            <div class="field"><label>Штраф за опоздание чек-листа (₽)</label><input id="pr-pen" type="number" min="0" value="${Number(cur.latePenalty)||0}"></div>
+          </div>
+          <button type="button" class="btn-lg primary" id="pr-save">✓ Сохранить ставку</button>
+        `);
+        document.getElementById('pr-save').onclick = async () => {
+          const btn = document.getElementById('pr-save');
+          btn.disabled = true;
+          const payload = {
+            staffName: empName,
+            shiftRate: Math.max(0, Number(document.getElementById('pr-shift').value) || 0),
+            revenuePct: Math.max(0, Number(document.getElementById('pr-pct').value) || 0),
+            planBonus: Math.max(0, Number(document.getElementById('pr-bonus').value) || 0),
+            latePenalty: Math.max(0, Number(document.getElementById('pr-pen').value) || 0)
+          };
+          try {
+            if (window.CoffeeCloudV93 && window.CoffeeCloudV93.savePayrollRate) {
+              await window.CoffeeCloudV93.savePayrollRate(payload);
+            }
+            state.payrollRates = state.payrollRates || {};
+            state.payrollRates[empName] = { shiftRate: payload.shiftRate, revenuePct: payload.revenuePct, planBonus: payload.planBonus, latePenalty: payload.latePenalty };
+            saveSharedState(state, 'Администратор', 'Обновлена ставка: ' + empName);
+            closeModal();
+            render();
+            showToast('✓ Ставка зарплаты для ' + empName + ' сохранена');
+          } catch (err) {
+            showToast('Ошибка сохранения ставки: ' + ((err && err.message) || 'повторите'));
+            btn.disabled = false;
+          }
+        };
+      }));
+      root.querySelectorAll('[data-pr-pay]').forEach(b => b.onclick = () => guard('Выплата зарплаты', () => {
+        const empName = b.dataset.prPay;
+        const amt = Math.round(Number(b.dataset.prAmt) || 0);
+        if (amt <= 0) return;
+        const exp = {
+          id: 'EXP' + Date.now(),
+          date: todayISO(),
+          category: 'Зарплата',
+          amount: amt,
+          comment: 'Зарплата: ' + empName + ' (' + rng.label + ')'
+        };
+        state.expenses.unshift(exp);
+        saveSharedState(state, 'Администратор', 'Выплата зарплаты ' + empName + ': ' + fmtRub(amt));
+        render();
+        showToast('💸 Выплата ' + fmtRub(amt) + ' (' + empName + ') записана в Расходы');
+      }));
       document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
       root.querySelectorAll('[data-es]').forEach(b => b.onclick = () => guard('Изменить сотрудника', () => openStaffModal(b.dataset.es)));
       root.querySelectorAll('[data-tg-staff]').forEach(b => b.onclick = () => guard('Сообщение в Telegram', () => {
@@ -2257,6 +2740,117 @@ function initTheme(btnId) {
     });
   }
 
+  function bindDragSort(container, itemSelector, dataKey, onDropIds) {
+    if (!container) return;
+    let dragId = null;
+    const clearMarks = () => container.querySelectorAll('.drag-over,.is-dragging').forEach(el => el.classList.remove('drag-over', 'is-dragging'));
+    const items = Array.from(container.querySelectorAll(itemSelector));
+    items.forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        if (e.target && e.target.closest('button,input,select,textarea,a')) { e.preventDefault(); return; }
+        dragId = item.dataset[dataKey];
+        item.classList.add('is-dragging');
+        try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(dragId || '')); } catch (_) {}
+      });
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!dragId || item.dataset[dataKey] === dragId) return;
+        container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        item.classList.add('drag-over');
+      });
+      item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const toId = item.dataset[dataKey];
+        const fromId = dragId;
+        clearMarks();
+        dragId = null;
+        if (fromId && toId && fromId !== toId) onDropIds(fromId, toId);
+      });
+      item.addEventListener('dragend', () => { clearMarks(); dragId = null; });
+
+      // Touch drag support via .drag-handle (keeps normal page scrolling outside handle)
+      const handle = item.querySelector('.drag-handle');
+      if (handle) {
+        let touchOverId = null;
+        handle.addEventListener('touchstart', (e) => {
+          if (!e.touches || e.touches.length !== 1) return;
+          dragId = item.dataset[dataKey];
+          touchOverId = null;
+          item.classList.add('is-dragging');
+        }, { passive: true });
+        handle.addEventListener('touchmove', (e) => {
+          if (!dragId || !e.touches || !e.touches.length) return;
+          e.preventDefault();
+          const t = e.touches[0];
+          const elUnder = document.elementFromPoint(t.clientX, t.clientY);
+          const targetRow = elUnder && elUnder.closest ? elUnder.closest(itemSelector) : null;
+          container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          if (targetRow && container.contains(targetRow) && targetRow.dataset[dataKey] !== dragId) {
+            targetRow.classList.add('drag-over');
+            touchOverId = targetRow.dataset[dataKey];
+          } else {
+            touchOverId = null;
+          }
+        }, { passive: false });
+        handle.addEventListener('touchend', () => {
+          const fromId = dragId;
+          const toId = touchOverId;
+          clearMarks();
+          dragId = null;
+          touchOverId = null;
+          if (fromId && toId && fromId !== toId) onDropIds(fromId, toId);
+        });
+        handle.addEventListener('touchcancel', () => { clearMarks(); dragId = null; touchOverId = null; });
+      }
+    });
+  }
+
+  function reorderBlocksById(fromId, toId) {
+    const fromIdx = state.blocks.findIndex(b => String(b.id) === String(fromId));
+    const toIdx = state.blocks.findIndex(b => String(b.id) === String(toId));
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return false;
+    const [moved] = state.blocks.splice(fromIdx, 1);
+    state.blocks.splice(toIdx, 0, moved);
+    saveSharedState(state, 'Администратор', '');
+    if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.saveChecklistBlocks === 'function') {
+      window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+      window.CoffeeCloudV93.saveChecklistBlocks(state.blocks).then(res => {
+        if (res && res.ok) showToast('✓ Порядок чек-листов сохранён и отправлен в терминал');
+        else showToast('Ошибка сохранения порядка чек-листов: ' + ((res && res.error) || 'проверьте вход'));
+      });
+    } else {
+      showToast('✓ Порядок чек-листов обновлён');
+    }
+    return true;
+  }
+
+  function reorderTaskById(blk, fromId, toId) {
+    const idxs = [];
+    for (let i = 0; i < state.tasks.length; i++) {
+      if (state.tasks[i] && state.tasks[i].block === blk) idxs.push(i);
+    }
+    const blkTasks = idxs.map(i => state.tasks[i]);
+    const fromPos = blkTasks.findIndex(t => String(t.id) === String(fromId));
+    const toPos = blkTasks.findIndex(t => String(t.id) === String(toId));
+    if (fromPos < 0 || toPos < 0 || fromPos === toPos) return false;
+    const [moved] = blkTasks.splice(fromPos, 1);
+    blkTasks.splice(toPos, 0, moved);
+    for (let k = 0; k < idxs.length; k++) {
+      state.tasks[idxs[k]] = blkTasks[k];
+    }
+    const orderedIds = blkTasks.map(t => String(t.id));
+    saveSharedState(state, 'Администратор', '');
+    if (window.CoffeeCloudV93 && typeof window.CoffeeCloudV93.reorderTasks === 'function') {
+      window.CoffeeCloudV93.markLocalMutation && window.CoffeeCloudV93.markLocalMutation();
+      window.CoffeeCloudV93.reorderTasks(blk, orderedIds).then(res => {
+        if (res && res.ok) showToast('✓ Порядок задач сохранён и отправлен в терминал');
+        else showToast('Ошибка сохранения порядка: ' + ((res && res.error) || 'проверьте вход'));
+      });
+    }
+    return true;
+  }
+
   function moveTaskInBlock(blk, taskId, delta) {
     const idxs = [];
     for (let i = 0; i < state.tasks.length; i++) {
@@ -2283,12 +2877,19 @@ function initTheme(btnId) {
   function openTasksModal(blk) {
     const list = blockTasks(blk);
     openModal('Задачи «' + blk + '» (' + list.length + ')', `
-      <div class="stack" style="margin-bottom:12px;max-height:300px;overflow-y:auto;">${list.length ? list.map((t,i)=>`<div class="card-soft" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><div style="min-width:0;flex:1;"><b>${i+1}. ${esc(t.title)}</b> ${t.photo?'<span class="badge accent">📷</span>':''}<div style="font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.instruction || 'По стандарту Coffee Illy.')}</div></div><div style="display:flex;gap:4px;flex-shrink:0;"><button class="chip-btn" data-mv-up="${esc(t.id)}" style="padding:4px 7px;" title="Выше" ${i===0?'disabled':''}>⬆️</button><button class="chip-btn" data-mv-dn="${esc(t.id)}" style="padding:4px 7px;" title="Ниже" ${i===list.length-1?'disabled':''}>⬇️</button><button class="chip-btn" data-et="${esc(t.id)}" style="padding:4px 8px;" title="Изменить">✏️</button><button class="chip-btn bad" data-dt="${esc(t.id)}" style="padding:4px 8px;" title="Удалить">✕</button></div></div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:8px 0;">В этом блоке пока нет задач — добавьте первую ниже.</div>'}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Перетащите задачу за ⠿ (или используйте ⬆️/⬇️), чтобы поменять порядок</div>
+      <div class="stack" id="task-drag-list" style="margin-bottom:12px;max-height:300px;overflow-y:auto;">${list.length ? list.map((t,i)=>`<div class="card-soft" draggable="true" data-task-id="${esc(t.id)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span class="drag-handle" title="Перетащите задачу">⠿</span><div style="min-width:0;flex:1;"><b>${i+1}. ${esc(t.title)}</b> ${t.photo?'<span class="badge accent">📷</span>':''}<div style="font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.instruction || 'По стандарту Coffee Illy.')}</div></div><div style="display:flex;gap:4px;flex-shrink:0;"><button class="chip-btn" data-mv-up="${esc(t.id)}" style="padding:4px 7px;" title="Выше" ${i===0?'disabled':''}>⬆️</button><button class="chip-btn" data-mv-dn="${esc(t.id)}" style="padding:4px 7px;" title="Ниже" ${i===list.length-1?'disabled':''}>⬇️</button><button class="chip-btn" data-et="${esc(t.id)}" style="padding:4px 8px;" title="Изменить">✏️</button><button class="chip-btn bad" data-dt="${esc(t.id)}" style="padding:4px 8px;" title="Удалить">✕</button></div></div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:8px 0;">В этом блоке пока нет задач — добавьте первую ниже.</div>'}</div>
       <div class="field"><label>Новая задача</label><input id="nt-t" placeholder="Название шага"></div>
       <div class="field"><label>Инструкция / стандарт</label><input id="nt-i" placeholder="Что именно нужно проверить или сфотографировать"></div>
       <div class="grid-2"><div class="field"><label>Ответственный</label><select id="nt-o">${optList(OWNERS,'Бариста')}</select></div><div class="field"><label>Фото / видео</label><select id="nt-p"><option value="1">Да</option><option value="0">Нет</option></select></div></div>
       <button class="btn-lg primary" id="nt-s">+ Добавить и синхронизировать</button>
     `);
+    const taskListEl = document.getElementById('task-drag-list');
+    if (taskListEl) bindDragSort(taskListEl, '[data-task-id]', 'taskId', (fromId, toId) => {
+      guard('Порядок задач', () => {
+        if (reorderTaskById(blk, fromId, toId)) { openTasksModal(blk); render(); }
+      });
+    });
     document.querySelectorAll('[data-mv-up]').forEach(b => b.onclick = () => guard('Порядок задач', () => { if (moveTaskInBlock(blk, b.dataset.mvUp, -1)) { openTasksModal(blk); render(); } }));
     document.querySelectorAll('[data-mv-dn]').forEach(b => b.onclick = () => guard('Порядок задач', () => { if (moveTaskInBlock(blk, b.dataset.mvDn, 1)) { openTasksModal(blk); render(); } }));
     document.querySelectorAll('[data-et]').forEach(b=>b.onclick=()=>openEditTaskModal(b.dataset.et, blk));
@@ -2595,7 +3196,7 @@ function initTheme(btnId) {
   })();
 })();
 </script>
-  <script src="./js/time-picker.js?v=97.25.0"></script>
+  <script src="./js/time-picker.js?v=98.3.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -2603,7 +3204,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=97.25.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=98.3.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

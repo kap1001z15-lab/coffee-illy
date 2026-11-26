@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v97.25.0';
+var SERVER_VERSION_V97 = 'v98.3.0';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -590,6 +590,8 @@ function doPost(e) {
     if (action === 'run_checklist_notifications_now') return idempotentJsonOut_(ss, body, checkAndNotifyChecklistWindows_(ss, body), actorSess);
     if (action === 'grant_photo_reader_access') return idempotentJsonOut_(ss, body, grantPhotoFolderReaderAccess_(ss), actorSess);
     if (action === 'submit_adjustment') return idempotentJsonOut_(ss, body, submitAdjustment_(ss, body, actorSess), actorSess);
+    if (action === 'save_payroll_rate') return idempotentJsonOut_(ss, body, savePayrollRate_(ss, body), actorSess);
+    if (action === 'review_checklist_photo') return idempotentJsonOut_(ss, body, reviewChecklistPhoto_(ss, body), actorSess);
 
     return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action }, actorSess);
   } catch (err) {
@@ -1596,7 +1598,7 @@ function sanitizePublicChecklists_(res, ss, sinceTs) {
     ok: true,
     v: res.v || 55,
     serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97,
-    location: res.location || 'Кофейня №1',
+    location: res.location || 'ILLY',
     staff: safeStaff,
     serverTime: res.serverTime,
     serverDate: res.serverDate,
@@ -1614,8 +1616,8 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
       id: s.id,
       name: s.name,
       role: s.role,
-      shop: s.shop || s.location || 'Кофейня №1',
-      location: s.shop || s.location || 'Кофейня №1',
+      shop: s.shop || s.location || 'ILLY',
+      location: s.shop || s.location || 'ILLY',
       active: s.active,
       tgId: isAdmin ? (s.tgId || '') : (s.name === staffName ? (s.tgId || '') : '')
     };
@@ -1674,8 +1676,8 @@ function buildStaffBootstrapDto_(ss, sess, sinceTs) {
     v: full.v || 55,
     rev: getDataRev_(),
     serverVersion: SERVER_VERSION_V97, specVersion: SPEC_VERSION_V97,
-    profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'Кофейня №1' },
-    location: full.location || 'Кофейня №1',
+    profile: { displayName: staffName, role: sess ? sess.role : 'staff', location: full.location || 'ILLY' },
+    location: full.location || 'ILLY',
     photoAll: full.photoAll || 'нет',
     openStart: full.openStart,
     deadline: full.deadline,
@@ -2307,7 +2309,7 @@ function МИГРАЦИЯ_БЕЗ_ПОТЕРИ_ДАННЫХ() {
 function seedDefaultSheetRows_(ss, sh, name) {
   if (name === 'Настройки') {
     var defSettings = [
-      ['LOCATION', 'Кофейня №1', 'Название точки (отображается в шапке и на фото)'],
+      ['LOCATION', 'ILLY', 'Название точки (отображается в шапке и на фото)'],
       ['PLAN', '2200', 'Базовый план выручки на день, руб.'],
       ['OPEN_START', '07:30', 'Начало окна «Открытие» (ЧЧ:ММ)'],
       ['DEADLINE', '08:30', 'Дедлайн закрытия «Открытие» (ЧЧ:ММ)'],
@@ -2355,11 +2357,11 @@ function seedDefaultSheetRows_(ss, sh, name) {
     defPlans.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Сотрудники') {
     var defStaff = [
-      ['st1', 'Соня', 'Бариста', 'Кофейня №1', 'да', '••'],
-      ['st2', 'Алина', 'Бариста', 'Кофейня №1', 'да', '••'],
-      ['st3', 'Настя', 'Бариста', 'Кофейня №1', 'да', '••'],
-      ['st4', 'Максим', 'Шеф-бариста', 'Кофейня №1', 'да', '••'],
-      ['st5', 'Администратор', 'Администратор', 'Кофейня №1', 'да', '••']
+      ['st1', 'Соня', 'Бариста', 'ILLY', 'да', '••'],
+      ['st2', 'Алина', 'Бариста', 'ILLY', 'да', '••'],
+      ['st3', 'Настя', 'Бариста', 'ILLY', 'да', '••'],
+      ['st4', 'Максим', 'Шеф-бариста', 'ILLY', 'да', '••'],
+      ['st5', 'Администратор', 'Администратор', 'ILLY', 'да', '••']
     ];
     defStaff.forEach(function(r) { sh.appendRow(safeRow_(r)); });
   } else if (name === 'Карта добрых дел') {
@@ -2422,7 +2424,7 @@ function getSettingsMap_(ss) {
   var sh = ss.getSheetByName('Настройки');
   var rows = sh ? sh.getDataRange().getValues() : [];
   var map = {
-    LOCATION: 'Кофейня №1',
+    LOCATION: 'ILLY',
     PLAN: '2200',
     OPEN_START: '07:30',
     DEADLINE: '08:30',
@@ -2680,7 +2682,7 @@ function getStaffList_(ss) {
       id: String(r[0] || ('st_' + i)),
       name: sName,
       role: String(r[2] || 'Бариста'),
-      shop: String(r[3] || 'Кофейня №1'),
+      shop: String(r[3] || 'ILLY'),
       active: String(r[4] || 'да').toLowerCase(),
       tgId: tgVal
     };
@@ -2780,7 +2782,7 @@ function getChecklists_(ss) {
     personalTasksDone: personalTasksMap,
     rows: tasks.length,
     sheet: 'Задачи',
-    location: map.LOCATION || 'Кофейня №1',
+    location: (!map.LOCATION || map.LOCATION === 'Кофейня №1') ? 'ILLY' : map.LOCATION,
     plan: Number(map.PLAN) || 2200,
     woNorm: Number(map.WO_NORM) || 15,
     minAvgCheck: Number(map.MIN_AVG_CHECK) || 35,
@@ -3188,6 +3190,9 @@ function getAdmin_(ss) {
     shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
     staffPresence: getStaffPresenceToday_(ss),
     staffNotifPrefs: getStaffNotifPrefsMap_(),
+    payrollRates: getPayrollRatesMap_(),
+    cashMeta: getCashMetaMap_(),
+    photoReviews: getPhotoReviewsMap_(),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
     webappUrl: map.WEBAPP_URL || '',
     autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
@@ -3916,7 +3921,7 @@ function saveStaff_(ss, b) {
   setJsonProp_('COFFEE_TG_USER_BINDINGS_JSON', tgBinds);
 
   var roleVal = String((b && b.role) || 'Бариста').trim();
-  var shopVal = String((b && b.shop) || 'Кофейня №1').trim();
+  var shopVal = String((b && b.shop) || 'ILLY').trim();
   var activeVal = (b && (b.active === false || String(b.active || 'да').toLowerCase() === 'нет')) ? 'нет' : 'да';
 
   if (matchRowIdx >= 1) {
@@ -4240,7 +4245,7 @@ function syncAllToSheet_(ss, b) {
     if (lastS > 1) shS.deleteRows(2, lastS - 1);
     b.staff.forEach(function(s) {
       if (!s) return;
-      shS.appendRow(safeRow_([s.id || '', s.name || '', s.role || 'Бариста', s.shop || 'Кофейня №1', s.active || 'да', '••']));
+      shS.appendRow(safeRow_([s.id || '', s.name || '', s.role || 'Бариста', s.shop || 'ILLY', s.active || 'да', '••']));
     });
   }
   appendAudit_(ss, 'Администратор', 'Полная выгрузка конфигурации в Google Таблицу', 'Настройки, Таймлайн, Планы, Задачи, Карта добрых дел, Техкарты и Штат синхронизированы');
@@ -4454,6 +4459,7 @@ function submitCash_(ss, b) {
         ]]);
         if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
   bumpDataRev_();
+        saveCashMetaAndAlert_(ss, dt, baristaName, b);
         return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
       }
 
@@ -4466,6 +4472,7 @@ function submitCash_(ss, b) {
       ]]);
       if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
       bumpDataRev_();
+      saveCashMetaAndAlert_(ss, dt, baristaName, b);
       return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
     }
   }
@@ -4479,9 +4486,9 @@ function submitCash_(ss, b) {
   ]));
   if (!duplicateCsvSkipped && Array.isArray(b.products) && b.products.length) { try { var _dk = incomingHashes.length ? (dt + '|' + incomingHashes.slice().sort().join(',')) : (b.operationId || ''); autoDeductInventoryFromSalesV97_(ss, b.products, _dk); } catch (invErr) { logError_(ss, 'autoDeductInventory', invErr); } }
   bumpDataRev_();
+  saveCashMetaAndAlert_(ss, dt, baristaName, b);
   return { ok: true, duplicateCsvSkipped: duplicateCsvSkipped, txAdded: txAdded, txSkipped: txSkipped };
 }
-
 function batchSubmitCash_(ss, b) {
   var sess = requireAdminOrStaffSession_(ss, b);
   var isAdmin = (sess && sess.role === 'admin');
@@ -5029,7 +5036,7 @@ function addExpiryItem_(ss, b) {
     openedAtStr: Utilities.formatDate(new Date(nowMs), tz, 'dd.MM HH:mm'),
     expiresAtStr: Utilities.formatDate(new Date(expMs), tz, 'dd.MM HH:mm'),
     who: String((b && (b.userName || b.who)) || 'Бариста'),
-    location: String((b && b.location) || 'Кофейня №1'),
+    location: String((b && b.location) || 'ILLY'),
     disposed: false,
     updatedAt: nowMs
   };
@@ -5111,7 +5118,7 @@ function sendDailyDigestNow_(ss, b) {
   ss = ss || getTargetSpreadsheet_();
   var day = (b && b.date) || isoDate_();
   var map = getSettingsMap_(ss);
-  var loc = map.LOCATION || 'Кофейня №1';
+  var loc = map.LOCATION || 'ILLY';
   var prDig = getDailyPlansAndRosterFromSheet_(ss, map);
   var digWeekday = getWeekdayRuV93_(new Date(day + 'T12:00:00Z'), Session.getScriptTimeZone() || 'GMT+2');
   var dayPlanObj = (prDig && prDig.dailyPlans && prDig.dailyPlans[digWeekday]) || {};
@@ -5324,7 +5331,7 @@ function cronCheckDeadlinesAndDigest(opts) {
     var props = PropertiesService.getScriptProperties();
     cleanupOldNotifProps_(today);
     var map = getSettingsMap_(ss);
-    var loc = map.LOCATION || 'Кофейня №1';
+    var loc = map.LOCATION || 'ILLY';
     var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
     var rawBlocks = getChecklistBlocksFromSheet_(ss, map) || [];
     var extMap = {};
@@ -6033,7 +6040,7 @@ function resolveTargetBaristasForDay_(ss, weekday, pr) {
 function testTelegramAlertV93_(ss, body) {
   body = body || {};
   var map = getSettingsMap_(ss);
-  var loc = map.LOCATION || 'Кофейня №1';
+  var loc = map.LOCATION || 'ILLY';
   var targetStaffName = String(body.targetStaffName || body.staffName || '').trim();
   if (targetStaffName) {
     var empText = String(body.text || '').trim() || (
@@ -6127,7 +6134,7 @@ function checkAndNotifyChecklistWindows_(ss, opts) {
     return { ok: true, date: today, time: hm, weekday: weekday, quietHours: true, sent: [], skipped: [{ reason: 'quiet_hours', quietEnd: nPrefs.quietEnd, quietStart: nPrefs.quietStart }] };
   }
 
-  var loc = map.LOCATION || 'Кофейня №1';
+  var loc = map.LOCATION || 'ILLY';
   var blocks = getChecklistBlocksFromSheet_(ss, map) || [];
   var chksToday = getChecklistsLogFromSheet_(ss).filter(function(c) { return String(c.date || '').slice(0, 10) === today; });
   var pr = getDailyPlansAndRosterFromSheet_(ss, map) || { dailyPlans: {}, shiftRoster: {} };
@@ -6591,4 +6598,145 @@ function runSelfTests() {
   assertEq('maskSensitiveLogText_ redacts token', maskSensitiveLogText_('?sessionToken=abc123&x=1').indexOf('abc123') === -1, true);
   Logger.log('ALL ' + results.length + ' SELF-TESTS PASSED');
   return { ok: true, passed: results.length, results: results };
+}
+
+// === v98.0: Зарплата и табель (Payroll), Сверка кассы/Z-отчёты и Контроль качества фото (QC/Rework) ===
+function getPayrollRatesMap_() {
+  var raw = getJsonProp_('COFFEE_PAYROLL_RATES_JSON', {}) || {};
+  return (raw && typeof raw === 'object') ? raw : {};
+}
+
+function savePayrollRate_(ss, body) {
+  body = body || {};
+  var staffName = String(body.staffName || body.name || '').trim();
+  if (!staffName) return { ok: false, error: 'VALIDATION_FAILED: Не указано имя сотрудника' };
+  var key = staffName.toLowerCase();
+  var all = getPayrollRatesMap_();
+  var rec = {
+    staffName: staffName,
+    shiftRate: Math.max(0, Number(body.shiftRate) || 0),
+    revenuePct: Math.max(0, Math.min(50, Number(body.revenuePct) || 0)),
+    planBonus: Math.max(0, Number(body.planBonus) || 0),
+    latePenalty: Math.max(0, Number(body.latePenalty) || 0),
+    updatedAt: Date.now()
+  };
+  all[key] = rec;
+  setJsonProp_('COFFEE_PAYROLL_RATES_JSON', all);
+  bumpDataRev_();
+  appendAudit_(ss, 'Администратор', 'Обновлена ставка зарплаты: ' + staffName, 'Смена: ' + rec.shiftRate + ' ₽, %: ' + rec.revenuePct + '%, бонус: ' + rec.planBonus + ' ₽, штраф: ' + rec.latePenalty + ' ₽');
+  return { ok: true, staffName: staffName, rate: rec, payrollRates: all };
+}
+
+function getCashMetaMap_() {
+  var raw = getJsonProp_('COFFEE_CASH_META_JSON', {}) || {};
+  return (raw && typeof raw === 'object') ? raw : {};
+}
+
+function getPhotoReviewsMap_() {
+  var raw = getJsonProp_('COFFEE_PHOTO_REVIEWS_JSON', {}) || {};
+  return (raw && typeof raw === 'object') ? raw : {};
+}
+
+function extractPhotoReviewKey_(url) {
+  var u = String(url || '').trim();
+  if (!u) return '';
+  var m = u.match(/(?:\/d\/|[?&]id=)([a-zA-Z0-9_-]{12,})/);
+  return m ? m[1] : u.slice(-64);
+}
+
+function reviewChecklistPhoto_(ss, body) {
+  body = body || {};
+  var photoUrl = String(body.photoUrl || '').trim();
+  var key = extractPhotoReviewKey_(photoUrl);
+  if (!key) return { ok: false, error: 'VALIDATION_FAILED: Не указана ссылка на фото' };
+  var verdict = String(body.verdict || '').toLowerCase() === 'rework' ? 'rework' : 'approved';
+  var block = String(body.block || 'Чек-лист').trim();
+  var dateStr = String(body.date || isoDate_()).slice(0, 10);
+  var staffName = String(body.staffName || '').trim();
+  var comment = String(body.comment || '').trim();
+
+  var all = getPhotoReviewsMap_();
+  var rec = {
+    key: key,
+    verdict: verdict,
+    block: block,
+    date: dateStr,
+    staffName: staffName,
+    comment: comment,
+    reviewedAt: Date.now()
+  };
+  all[key] = rec;
+  var rKeys = Object.keys(all);
+  if (rKeys.length > 250) {
+    rKeys.sort(function(a, b) { return (Number(all[a].reviewedAt) || 0) - (Number(all[b].reviewedAt) || 0); });
+    while (rKeys.length > 250) { delete all[rKeys.shift()]; }
+  }
+  setJsonProp_('COFFEE_PHOTO_REVIEWS_JSON', all);
+  bumpDataRev_();
+
+  var tgSent = false;
+  if (verdict === 'rework' && staffName) {
+    var chatId = resolveStaffTelegramChatId_(ss, staffName);
+    if (chatId) {
+      var map = getSettingsMap_(ss);
+      var loc = map.LOCATION || 'ILLY';
+      var resTg = sendTelegramServerAlert_(ss, {
+        chatIds: [chatId],
+        type: 'photo_rework',
+        block: block,
+        buttonText: '🔄 Переделать «' + block + '»',
+        buttonType: 'web_app',
+        skipDedup: true,
+        force: true,
+        text: '↩️ <b>Замечание по фото чек-листа «' + escapeTgHtml_(block) + '»</b>\n' +
+          '👋 ' + escapeTgHtml_(staffName) + ', владелец просит переснять фото (' + escapeTgHtml_(dateStr) + ').\n' +
+          (comment ? ('💬 Комментарий: <b>' + escapeTgHtml_(comment) + '</b>\n') : '') +
+          '📍 ' + escapeTgHtml_(loc)
+      });
+      tgSent = !!(resTg && resTg.ok);
+    }
+  }
+  appendAudit_(ss, 'Администратор', (verdict === 'rework' ? 'Возврат фото на переделку' : 'Принято фото чек-листа') + ' «' + block + '»', (staffName || '—') + (comment ? (' · ' + comment) : ''));
+  return { ok: true, review: rec, tgSent: tgSent, photoReviews: all };
+}
+
+function saveCashMetaAndAlert_(ss, dt, baristaName, b) {
+  // v98.0: Сохраняем фото Z-отчёта и сверку наличных (COFFEE_CASH_META_JSON) + алерт при расхождении >= 50 ₽
+  try {
+    var hasZMeta = !!(b.zPhotoUrl || b.secondBarista || b.cashFact !== undefined && b.cashFact !== '' && b.cashFact !== null || b.cashOpening !== undefined && b.cashOpening !== '' || b.cashEncashment !== undefined && b.cashEncashment !== '');
+    if (hasZMeta) {
+      var cMetaMap = getCashMetaMap_();
+      var prevM = cMetaMap[dt] || {};
+      var zUrl = String(b.zPhotoUrl || prevM.zPhotoUrl || '').trim();
+      var cOpen = (b.cashOpening !== undefined && b.cashOpening !== '') ? (Number(b.cashOpening) || 0) : (Number(prevM.cashOpening) || 0);
+      var cEnc = (b.cashEncashment !== undefined && b.cashEncashment !== '') ? (Number(b.cashEncashment) || 0) : (Number(prevM.cashEncashment) || 0);
+      var hasFact = (b.cashFact !== undefined && b.cashFact !== '' && b.cashFact !== null);
+      var cFact = hasFact ? (Number(b.cashFact) || 0) : (prevM.cashFact !== undefined ? Number(prevM.cashFact) : null);
+      var expectedCash = cOpen + (Number(b.cash) || 0) - cEnc;
+      var cDiff = (cFact !== null && !isNaN(cFact)) ? Math.round((cFact - expectedCash) * 100) / 100 : (prevM.cashDiff !== undefined ? Number(prevM.cashDiff) : null);
+      var secBar = String((b.secondBarista !== undefined ? b.secondBarista : (prevM.secondBarista || '')) || '').trim();
+      if (secBar.toLowerCase() === String(baristaName || '').trim().toLowerCase()) secBar = '';
+      cMetaMap[dt] = { zPhotoUrl: zUrl, cashOpening: cOpen, cashEncashment: cEnc, cashFact: cFact, cashDiff: cDiff, secondBarista: secBar, updatedBy: baristaName, updatedAt: Date.now() };
+      var mKeys = Object.keys(cMetaMap).sort();
+      while (mKeys.length > 120) { delete cMetaMap[mKeys.shift()]; }
+      setJsonProp_('COFFEE_CASH_META_JSON', cMetaMap);
+      if (hasFact && cDiff !== null && Math.abs(cDiff) >= 50) {
+        try {
+          var signStr = cDiff > 0 ? ('+' + cDiff) : String(cDiff);
+          sendTelegramServerAlert_(ss, {
+            type: 'cash_discrepancy',
+            targetPage: 'dashboard.html',
+            buttonText: '💰 Проверить кассу',
+            skipDedup: true,
+            force: true,
+            text: '⚠️ <b>РАСХОЖДЕНИЕ КАССЫ (' + escapeTgHtml_(dt) + ')</b>\n' +
+              '👤 Бариста: ' + escapeTgHtml_(baristaName) + '\n' +
+              '💵 Ожидалось в ящике: <b>' + expectedCash + ' ₽</b> (размен ' + cOpen + ' + нал ' + (Number(b.cash) || 0) + ' − инкасс. ' + cEnc + ')\n' +
+              '🧾 Факт в ящике: <b>' + cFact + ' ₽</b> (разница: <b>' + signStr + ' ₽</b>)' +
+              (zUrl ? '\n📷 Фото Z-отчёта прикреплено в дашборде.' : '')
+          });
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
 }
