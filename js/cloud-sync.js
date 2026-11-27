@@ -434,10 +434,10 @@
       const res = await gasPost('auth_login', payloadAuth);
       if (res && res.ok === true && res.sessionToken) {
         const srvRole = String(res.role || role || '').toLowerCase();
-        if (role === 'admin' && srvRole !== 'admin') {
-          return { ok: false, error: 'FORBIDDEN: Требуются права владельца' };
+        if (role === 'admin' && srvRole !== 'admin' && srvRole !== 'manager') {
+          return { ok: false, error: 'FORBIDDEN: Требуются права владельца или управляющего' };
         }
-        if (role === 'admin') setSession({ adminToken: res.sessionToken });
+        if (role === 'admin') setSession({ adminToken: res.sessionToken, adminRole: srvRole, adminName: res.staffName || '' });
         else setSession({ staffToken: res.sessionToken, staffName: res.staffName || (opts && opts.name) || '' });
         if (_syncCallbacks && _syncCallbacks.pullNow) _syncCallbacks.pullNow(true);
       }
@@ -745,6 +745,30 @@
     }
     if (data.photoReviews && typeof data.photoReviews === 'object') {
       state.photoReviews = Object.assign({}, data.photoReviews);
+      changed = true;
+    }
+    if (data.foodCostMeta && typeof data.foodCostMeta === 'object') {
+      state.foodCostMeta = {
+        itemPrices: Object.assign({}, data.foodCostMeta.itemPrices || {}),
+        ttkRecipes: Object.assign({}, data.foodCostMeta.ttkRecipes || {})
+      };
+      changed = true;
+    }
+    if (Array.isArray(data.inventoryAudits)) {
+      state.inventoryAudits = data.inventoryAudits.slice();
+      changed = true;
+    }
+    if (Array.isArray(data.shops) && data.shops.length) {
+      state.shops = data.shops.slice();
+      changed = true;
+    }
+    if (data.lastBackup !== undefined) {
+      state.lastBackup = data.lastBackup;
+      changed = true;
+    }
+    if (data.sessionRole) {
+      state.sessionRole = String(data.sessionRole);
+      if (data.sessionName) state.sessionName = String(data.sessionName);
       changed = true;
     }
     if (data.cashMeta && typeof data.cashMeta === 'object') {
@@ -1443,6 +1467,31 @@
   async function reviewChecklistPhoto(opts) {
     return gasPost('review_checklist_photo', opts || {});
   }
+  async function saveFoodCostMeta(opts) {
+    bumpLocalMutation();
+    return safeMutateWithOutbox('save_foodcost_meta', opts || {});
+  }
+  async function submitInventoryAudit(opts) {
+    bumpLocalMutation();
+    const res = await gasPost('submit_inventory_audit', opts || {});
+    if (res && res.ok) { _lastServerRev = ''; notifyOtherTabs(res.rev || ''); }
+    return res;
+  }
+  async function saveShops(shops) {
+    bumpLocalMutation();
+    return safeMutateWithOutbox('save_shops', { shops: Array.isArray(shops) ? shops : [] });
+  }
+  async function archiveOldLogs(olderThanDays) {
+    bumpLocalMutation();
+    const res = await gasPost('archive_old_logs', { olderThanDays: Number(olderThanDays) || 180 });
+    if (res && res.ok) { _lastServerRev = ''; notifyOtherTabs(res.rev || ''); }
+    return res;
+  }
+  async function createSpreadsheetBackup() {
+    const res = await gasPost('create_spreadsheet_backup', {});
+    if (res && res.ok) { _lastServerRev = ''; notifyOtherTabs(res.rev || ''); }
+    return res;
+  }
   async function testTelegramAlert(opts) {
     return gasPost('test_telegram_alert', opts || {});
   }
@@ -1669,6 +1718,11 @@
     saveStaffNotifPrefs: saveStaffNotifPrefs,
     savePayrollRate: savePayrollRate,
     reviewChecklistPhoto: reviewChecklistPhoto,
+    saveFoodCostMeta: saveFoodCostMeta,
+    submitInventoryAudit: submitInventoryAudit,
+    saveShops: saveShops,
+    archiveOldLogs: archiveOldLogs,
+    createSpreadsheetBackup: createSpreadsheetBackup,
     testTelegramAlert: testTelegramAlert,
     sendTelegramAlert: sendTelegramAlert,
     saveDailyPlans: saveDailyPlans,

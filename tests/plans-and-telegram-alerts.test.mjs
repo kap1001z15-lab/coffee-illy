@@ -360,7 +360,7 @@ test('Dashboard UI & CloudSync integrity: weekly plan 2-barista modal, direct TG
   assert.match(cs, /sendTelegramAlert:\s*sendTelegramAlert/, 'cloud-sync.js must export sendTelegramAlert');
 });
 
-test('v98.7.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
+test('v99.0.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, simultaneous blocks group into 1 message, completed drafts never trigger overdue', () => {
   const { sandbox, ss, token, tgMessages: tgCalls } = createGasEnvWithTelegram();
   // Seed 3 blocks all opening at 06:00-11:00
   sandbox.saveChecklistBlocks_(ss, {
@@ -392,7 +392,7 @@ test('v98.7.0 Anti-Spam & Zero False Overdue: quiet hours block 05:47 alerts, si
   assert.equal(ov.overdueSent.some((x) => x.block === 'Открытие' || x.block === 'Лайн Чек 1'), false, 'Completed blocks must NEVER trigger false overdue');
 });
 
-test('v98.7.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
+test('v99.0.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Grouped Overdue & Completed Checklist Marking', () => {
   const { sandbox, ss, token, tgMessages } = createGasEnvWithTelegram();
 
   // 1. Seed 2 blocks opening at 08:00-11:00 and 1 block opening at 08:10-12:00
@@ -463,7 +463,7 @@ test('v98.7.0 Terminal & Dashboard Notification Controls, Anti-Spam Cooldown, Gr
   assert.match(csJs, /_pendingSync:\s*true/, 'CloudSync must preserve pending submit_checklist ops on merge');
 });
 
-test('v98.7.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
+test('v99.0.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes period totals across all calendar days, and provides bulk week editor', () => {
   const { sandbox, token } = createGasEnvWithTelegram();
   const saveRes = JSON.parse(sandbox.doPost({
     postData: {
@@ -499,7 +499,7 @@ test('v98.7.0 Weekly Plans: preserves 0 (Day Off) in GAS & CloudSync, computes p
   assert.match(dashHtml, /id="ph-custom"/, 'Dashboard must allow custom shift hours');
 });
 
-test('75) v98.7.0: Зарплата и табель, сверка наличных + фото Z-отчёта и QC фото чек-листов (Принято / Переделать)', () => {
+test('75) v99.0.0: Зарплата и табель, сверка наличных + фото Z-отчёта и QC фото чек-листов (Принято / Переделать)', () => {
   const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
   const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
@@ -537,7 +537,7 @@ test('75) v98.7.0: Зарплата и табель, сверка наличны
   assert.ok(dashHtml.includes('🧾 Z'), 'dashboard.html missing Z-report photo button');
 });
 
-test('76) v98.7.0: Переименование в ILLY, эмодзи-фавикон ☕, сдвоенные смены в табеле и автозаявка поставщикам со склада', () => {
+test('76) v99.0.0: Переименование в ILLY, эмодзи-фавикон ☕, сдвоенные смены в табеле и автозаявка поставщикам со склада', () => {
   const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
   const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
@@ -570,7 +570,7 @@ test('76) v98.7.0: Переименование в ILLY, эмодзи-фавик
   assert.ok(dashHtml.includes('id="ord-copy"') && dashHtml.includes('id="ord-tg"'), 'dashboard.html missing copy/TG order buttons');
 });
 
-test('77) v98.7.0: Интерактивное погружение по клику на столбик графика (день / неделя / месяц)', () => {
+test('77) v99.0.0: Интерактивное погружение по клику на столбик графика (день / неделя / месяц)', () => {
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   assert.ok(dashHtml.includes('data-bar-idx='), 'dashboard.html missing clickable data-bar-idx on bars');
   assert.ok(dashHtml.includes('const openChartBucketModal = (pt) =>'), 'dashboard.html missing openChartBucketModal');
@@ -579,7 +579,7 @@ test('77) v98.7.0: Интерактивное погружение по клик
   assert.ok(dashHtml.includes('monthNamesRuFull'), 'dashboard.html missing full month titles for drill-down');
 });
 
-test('78) v98.7.0: Перетаскивание (Drag-and-Drop + touch) для порядка самих чек-листов и задач внутри них', () => {
+test('78) v99.0.0: Перетаскивание (Drag-and-Drop + touch) для порядка самих чек-листов и задач внутри них', () => {
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   assert.ok(dashHtml.includes('function bindDragSort('), 'dashboard.html missing bindDragSort helper');
   assert.ok(dashHtml.includes('function reorderBlocksById('), 'dashboard.html missing reorderBlocksById');
@@ -589,7 +589,7 @@ test('78) v98.7.0: Перетаскивание (Drag-and-Drop + touch) для �
   assert.ok(dashHtml.includes('touchstart') && dashHtml.includes('touchmove') && dashHtml.includes('elementFromPoint'), 'dashboard.html missing mobile touch drag support');
 });
 
-test('79) v98.7.0: Галерея-карусель фото, разгрузка шапок, поиск по складу, tabular-nums, Esc и нормализация Дашборд · ILLY', () => {
+test('79) v99.0.0: Галерея-карусель фото, разгрузка шапок, поиск по складу, tabular-nums, Esc и нормализация Дашборд · ILLY', () => {
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
@@ -603,10 +603,10 @@ test('79) v98.7.0: Галерея-карусель фото, разгрузка 
   assert.ok(dashHtml.includes('font-variant-numeric: tabular-nums'), 'dashboard.html missing tabular-nums');
   assert.ok(dashHtml.includes("e.key === 'Escape'"), 'dashboard.html missing Esc modal close');
   assert.ok(dashHtml.includes('id="e-add-empty"'), 'dashboard.html missing actionable empty expense state');
-  assert.ok(idxHtml.includes('id="prof-theme"') && idxHtml.includes("e.key === 'Escape'"), 'index.html missing profile theme & Esc close');
+  assert.ok(idxHtml.includes('id="btn-theme"') && idxHtml.includes("e.key === 'Escape'"), 'index.html missing profile theme & Esc close');
 });
 
-test('80) v98.7.0: Минималистичная камера в стиле iPhone (сетка, tap-to-focus, чипы объективов, переключатель ФОТО/ВИДЕО 15С)', () => {
+test('80) v99.0.0: Минималистичная камера в стиле iPhone (сетка, tap-to-focus, чипы объективов, переключатель ФОТО/ВИДЕО 15С)', () => {
   const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
   const cssCode = fs.readFileSync(path.resolve(process.cwd(), 'css/m3-soft.css'), 'utf8');
   assert.ok(camCode.includes('lg-cam-overlay ios-cam'), 'camera.js missing ios-cam overlay');
@@ -616,21 +616,113 @@ test('80) v98.7.0: Минималистичная камера в стиле iPh
   assert.ok(cssCode.includes('.lg-cam-shutter.is-recording > span'), 'm3-soft.css missing iOS crimson recording morph');
 });
 
-test('81) v98.7.0: Дедупликация объективов камеры (без дублей 1× и Фронт) + отдельная 1-тап кнопка темы Светлая/Тёмная на верхней панели', () => {
+test('81) v99.0.0: Дедупликация объективов камеры (без дублей 1× и Фронт) + отдельная 1-тап кнопка темы Светлая/Тёмная на верхней панели', () => {
   const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
   const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
   const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
   assert.ok(camCode.includes("state.facingMode === 'user'") && camCode.includes('applyLensZoom'), 'camera.js missing lens deduplication');
   assert.ok(idxHtml.includes('id="btn-theme"') && !idxHtml.includes('id="btn-theme" style="display:none;"'), 'index.html btn-theme must be visible in topbar');
-  assert.ok(idxHtml.includes("mode = effTheme() === 'dark' ? 'light' : 'dark'"), 'index.html missing 1-tap dark<->light toggle');
-  assert.ok(dashHtml.includes("mode = effTheme() === 'dark' ? 'light' : 'dark'"), 'dashboard.html missing 1-tap dark<->light toggle');
+  assert.ok(idxHtml.includes("mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto')"), 'index.html missing 3-state Auto/Light/Dark toggle');
+  assert.ok(dashHtml.includes("mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto')"), 'dashboard.html missing 3-state Auto/Light/Dark toggle');
 });
 
-test('82) v98.7.0: Переключение объектива/зума камеры работает на текущем потоке без повторного getUserMedia и запроса доступа Telegram', () => {
+test('82) v99.0.0: Переключение объектива/зума камеры работает на текущем потоке без повторного getUserMedia и запроса доступа Telegram', () => {
   const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
   assert.ok(camCode.includes('function getZoomCaps()'), 'camera.js missing getZoomCaps');
   assert.ok(camCode.includes('async function applyLensZoom('), 'camera.js missing applyLensZoom');
   assert.ok(camCode.includes('t0.applyConstraints({ advanced: [{ zoom: clamped }] })'), 'camera.js missing hardware zoom applyConstraints');
   assert.ok(camCode.includes('data-zoom="'), 'camera.js missing zero-reprompt data-zoom pills');
   assert.ok(camCode.includes('state.digitalZoom'), 'camera.js missing digital zoom fallback for canvas capture');
+});
+
+test('83) v99.0.0: Авто-тема (OS + Telegram), фикс ключей payrollRates и status/verdict QC фото, LockService, зеркало фронталки и защита выплат', () => {
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  const idxHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  const camCode = fs.readFileSync(path.resolve(process.cwd(), 'js/camera.js'), 'utf8');
+  const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
+  const manText = fs.readFileSync(path.resolve(process.cwd(), 'manifest.webmanifest'), 'utf8');
+
+  assert.ok(idxHtml.includes('Telegram.WebApp.colorScheme') && idxHtml.includes("onEvent('themeChanged'"), 'index.html missing TG colorScheme sync');
+  assert.ok(dashHtml.includes('Telegram.WebApp.colorScheme') && dashHtml.includes("onEvent('themeChanged'"), 'dashboard.html missing TG colorScheme sync');
+  assert.ok(!idxHtml.includes('id="prof-theme"'), 'index.html redundant prof-theme should be removed');
+  assert.ok(camCode.includes("ev.key === 'Escape'") && camCode.includes('BackButton'), 'camera.js missing Esc/BackButton close');
+  assert.ok(camCode.includes('scaleX(-1)'), 'camera.js missing front camera mirror');
+  assert.ok(dashHtml.includes('_lastDragEndAt'), 'dashboard.html missing drag-vs-click guard');
+  assert.ok(dashHtml.includes('Записать выплату зарплаты'), 'dashboard.html missing payout confirmation');
+  assert.ok(dashHtml.includes('payrollRates[sKey] || payrollRates[sLower]'), 'dashboard.html missing case-insensitive payrollRates lookup');
+  assert.ok(gasCode.includes('body.verdict || body.status') && gasCode.includes('status: verdict'), 'GAS reviewChecklistPhoto_ missing status/verdict parity');
+  assert.ok(gasCode.indexOf('LockService.getScriptLock()', gasCode.indexOf('function savePayrollRate_')) > 0, 'GAS savePayrollRate_ missing LockService');
+  assert.ok(manText.includes('"short_name": "ILLY"'), 'manifest.webmanifest short_name should be ILLY');
+});
+
+test('84) v99.0.0: Food Cost, Инвентаризация склада, Мультиточка, Роль Управляющего (strip financials) и Архив/Бэкап', () => {
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
+  const gasCode = fs.readFileSync(path.resolve(process.cwd(), 'gas/Code.gs'), 'utf8');
+
+  // Static UI & Sync contract checks
+  assert.ok(dashHtml.includes('function computeTtkFoodCost('), 'dashboard.html missing computeTtkFoodCost');
+  assert.ok(dashHtml.includes('id="wh-audit-btn"') && dashHtml.includes('function openInventoryAuditModal()'), 'dashboard.html missing Inventory Audit UI');
+  assert.ok(dashHtml.includes('id="shop-switcher-bar"') && dashHtml.includes('id="btn-add-shop"'), 'dashboard.html missing Multi-location UI');
+  assert.ok(dashHtml.includes('isManagerRole') && dashHtml.includes('Шеф-бариста') && dashHtml.includes('Управляющий'), 'dashboard.html missing Manager role UI');
+  assert.ok(dashHtml.includes('id="btn-create-backup"') && dashHtml.includes('id="btn-archive-logs"'), 'dashboard.html missing Backup & Archive UI');
+  assert.ok(syncCode.includes('saveFoodCostMeta') && syncCode.includes('submitInventoryAudit') && syncCode.includes('saveShops') && syncCode.includes('archiveOldLogs') && syncCode.includes('createSpreadsheetBackup'), 'cloud-sync.js missing v99.0.0 API methods');
+
+  // End-to-end GAS runtime checks in VM sandbox
+  const { sandbox: ctx } = createGasEnvWithTelegram();
+  ctx.УСТАНОВИТЬ_ПАРОЛЬ_1234_И_ЗАПУСТИТЬ();
+  const loginRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '1234' }) } }).getContent());
+  assert.equal(loginRes.ok, true);
+  const adminTok = loginRes.sessionToken;
+
+  // 1. Food Cost meta
+  const fcRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'save_foodcost_meta', sessionToken: adminTok, foodCostMeta: { prices: { inv_bean: 2.4 }, recipes: { ttk_1: [{ itemId: 'inv_bean', qty: 18 }] } } }) } }).getContent());
+  assert.equal(fcRes.ok, true);
+  assert.equal(fcRes.foodCostMeta.itemPrices.inv_bean, 2.4);
+
+  // 2. Multi-location shops
+  const shRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'save_shops', sessionToken: adminTok, shops: [{ id: 'illy_main', name: 'ILLY', active: true }, { id: 'illy_2', name: 'ILLY Центр', address: 'ул. Ленина 10', active: true }] }) } }).getContent());
+  assert.equal(shRes.ok, true);
+  assert.equal(shRes.shops.length, 2);
+
+  // 3. Inventory audit with shortage alignment
+  const invRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'save_inventory', sessionToken: adminTok, id: 'inv_bean', name: 'Зерно Illy', category: 'Кофе', unit: 'г', stock: 1000, minStock: 200 }) } }).getContent());
+  assert.equal(invRes.ok, true);
+  const audRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'submit_inventory_audit', sessionToken: adminTok, items: [{ itemId: 'inv_bean', name: 'Зерно Illy', unit: 'г', fact: 850, unitPrice: 2.4 }], note: 'Сверка v99', actor: 'Администратор' }) } }).getContent());
+  assert.equal(audRes.ok, true);
+  assert.equal(audRes.audit.discrepanciesCount, 1);
+  assert.ok(audRes.audit.totalDiffRub < 0, 'Shortage should yield negative totalDiffRub');
+  assert.equal((audRes.inventory || []).find(x => x.id === 'inv_bean').stock, 850);
+
+  // 4. Manager role login + server-side financial stripping
+  const stRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'save_staff', sessionToken: adminTok, id: 'st_mgr99', name: 'Мария Упр', role: 'Управляющий', shop: 'ILLY', active: 'да', pin: '7391' }) } }).getContent());
+  assert.equal(stRes.ok, true);
+  const mgrLogin = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'auth_login', role: 'admin', pin: '7391' }) } }).getContent());
+  assert.equal(mgrLogin.ok, true);
+  assert.equal(mgrLogin.role, 'manager');
+  const mgrAdm = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'admin', sessionToken: mgrLogin.sessionToken }) } }).getContent());
+  assert.equal(mgrAdm.ok, true);
+  assert.equal(mgrAdm.sessionRole, 'manager');
+  assert.equal(mgrAdm.cash.length, 0, 'Manager must not receive cash');
+  assert.equal(mgrAdm.expenses.length, 0, 'Manager must not receive expenses');
+  assert.equal(Object.keys(mgrAdm.payrollRates || {}).length, 0, 'Manager must not receive payrollRates');
+  assert.equal(mgrAdm.tgChat, '', 'Manager must not receive tgChat');
+
+  // 5. Archive old logs route
+  const archRes = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ action: 'archive_old_logs', sessionToken: adminTok, days: 180 }) } }).getContent());
+  assert.equal(archRes.ok, true);
+  assert.equal(typeof archRes.totalArchived, 'number');
+});
+
+test('85) v99.0.0 Commercial Audit: Manager authLogin in cloud-sync, anti-race/outbox v99 mutations, Manager Operational Overview & SW precache', () => {
+  const syncCode = fs.readFileSync(path.resolve(process.cwd(), 'js/cloud-sync.js'), 'utf8');
+  const dashHtml = fs.readFileSync(path.resolve(process.cwd(), 'dashboard.html'), 'utf8');
+  const swCode = fs.readFileSync(path.resolve(process.cwd(), 'sw.js'), 'utf8');
+
+  assert.ok(syncCode.includes("srvRole !== 'admin' && srvRole !== 'manager'"), 'cloud-sync authLogin must accept manager role');
+  assert.ok(syncCode.includes("safeMutateWithOutbox('save_foodcost_meta'"), 'saveFoodCostMeta must use outbox + anti-race');
+  assert.ok(syncCode.includes("safeMutateWithOutbox('save_shops'"), 'saveShops must use outbox + anti-race');
+  assert.ok(dashHtml.includes('Операционный режим:') && dashHtml.includes('id="mgr-go-audit"'), 'dashboard.html must render clean Manager Operational Overview');
+  assert.ok(!dashHtml.includes('Инициализирован релиз v93.1'), 'dashboard.html must not contain legacy v93.1 dev text');
+  assert.ok(swCode.includes("'./js/time-picker.js'"), 'sw.js must precache time-picker.js for offline resilience');
 });

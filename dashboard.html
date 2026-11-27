@@ -244,7 +244,7 @@ body { overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right:
   .sort-ind { font-size:10px; opacity:.65; margin-left:3px; }
   th.sortable.active .sort-ind { opacity:1; }
 
-/* === Modern Typography & Cross-Platform Surface Polish (v98.7.0) === */
+/* === Modern Typography & Cross-Platform Surface Polish (v99.0.0) === */
 body { line-height: 1.5; letter-spacing: -0.005em; min-height: 100dvh; }
 .brand-title, .card-title, .kpi-val, .btn-lg, h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.018em; }
 .topbar { background: var(--topbar-bg); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%); }
@@ -263,11 +263,11 @@ tbody tr { transition: background .14s ease; }
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest" />
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="config.js?v=98.7.0"></script>
-  <script src="js/cloud-sync.js?v=98.7.0"></script>
-<script src="js/pos-csv-parser.js?v=98.7.0"></script>
-  <script src="js/custom-select.js?v=98.7.0" defer></script>
-  <link rel="stylesheet" href="css/m3-soft.css?v=98.7.0">
+  <script src="config.js?v=99.0.0"></script>
+  <script src="js/cloud-sync.js?v=99.0.0"></script>
+<script src="js/pos-csv-parser.js?v=99.0.0"></script>
+  <script src="js/custom-select.js?v=99.0.0" defer></script>
+  <link rel="stylesheet" href="css/m3-soft.css?v=99.0.0">
 </head>
 <body>
 <header class="topbar dash-topbar">
@@ -299,6 +299,7 @@ tbody tr { transition: background .14s ease; }
     <button data-tab="team"><svg class="ui-ico" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Команда и ТТК</button>
     <button data-tab="settings"><svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg> Управление</button>
   </nav>
+  <div id="shop-switcher-bar" class="date-pills" style="display:none;margin:0 0 8px;"></div>
   <div id="date-filter-bar" class="date-bar"></div>
   </div>
   <div id="content"></div>
@@ -339,7 +340,8 @@ function freshState() {
     tgId: ''
   }));
   s.liveProgress = {}; s.staffPresence = {}; s.tgChat = ''; s.webappUrl = ''; s.tgConfiguredOnServer = false; s.autopilotEnabled = false; s.lastSyncAt = ''; s.lastRttMs = 0;
-  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Инициализирован релиз v93.1 на реальных данных Coffee_illy.' }];
+  s.foodCostMeta = { itemPrices: {}, ttkRecipes: {} }; s.inventoryAudits = []; s.shops = [{ id: 'illy_main', name: 'ILLY', address: '', active: true }]; s.lastBackup = null; s.sessionRole = 'admin'; s.sessionName = 'Администратор';
+  s.auditLog = [{ time: '13:20', actor: 'Система', rev: 1, text: 'Система ILLY ERP v99.0.0 готова к работе.' }];
   return s;
 }
 function loadSharedState() {
@@ -392,25 +394,41 @@ function initTheme(btnId) {
   const mql = window.matchMedia('(prefers-color-scheme: dark)');
   let mode = 'auto';
   try { mode = localStorage.getItem(THEME_KEY) || 'auto'; } catch(_) {}
-  function effTheme() { return mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode; }
+  function sysTheme() {
+    try {
+      const tgScheme = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.colorScheme;
+      if (tgScheme === 'dark' || tgScheme === 'light') return tgScheme;
+    } catch (_) {}
+    return mql.matches ? 'dark' : 'light';
+  }
+  function effTheme() { return mode === 'auto' ? sysTheme() : mode; }
   function apply() {
     const eff = effTheme();
     document.documentElement.setAttribute('data-theme', eff);
     const b = document.getElementById(btnId);
     if (b) {
-      b.innerHTML = eff === 'dark'
-        ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>'
-        : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
-      b.title = eff === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему';
+      b.innerHTML = mode === 'auto'
+        ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/></svg>'
+        : (mode === 'light'
+          ? '<svg class="ui-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>'
+          : '<svg class="ui-ico" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>');
+      b.title = mode === 'auto' ? ('Тема: Авто (' + (eff === 'dark' ? 'тёмная' : 'светлая') + ' как на устройстве)') : (mode === 'light' ? 'Тема: Светлая' : 'Тема: Тёмная');
     }
   }
-  mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
+  if (mql && typeof mql.addEventListener === 'function') mql.addEventListener('change', () => { if (mode === 'auto') apply(); });
+  try {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg && typeof tg.onEvent === 'function') tg.onEvent('themeChanged', () => { if (mode === 'auto') apply(); });
+  } catch (_) {}
   window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) { mode = e.newValue || 'auto'; apply(); } });
   const b = document.getElementById(btnId);
   if (b) b.onclick = () => {
-    mode = effTheme() === 'dark' ? 'light' : 'dark';
+    mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto');
     try { localStorage.setItem(THEME_KEY, mode); } catch(_) {}
     apply();
+    if (typeof showToast === 'function') {
+      showToast(mode === 'auto' ? '🌓 Тема: Авто (как на устройстве)' : (mode === 'light' ? '☀️ Тема: Светлая' : '🌙 Тема: Тёмная'));
+    }
   };
   apply();
 }
@@ -593,7 +611,10 @@ function initTheme(btnId) {
     if (!raw) return null;
     const fid = extractDriveFileId(raw);
     const map = state.photoReviews || {};
-    return (fid && map[fid]) || map[raw] || null;
+    const rec = (fid && map[fid]) || map[raw] || null;
+    if (!rec) return null;
+    if (!rec.status && rec.verdict) rec.status = rec.verdict;
+    return rec;
   }
 
   function openMediaViewer(url, title, meta) {
@@ -928,6 +949,42 @@ function initTheme(btnId) {
     return { code:'open', label:'Открыт до ' + b.deadline, cls:'accent', open:true };
   }
 
+  let activeShopFilter = localStorage.getItem('coffee_illy_shop_filter') || 'all';
+  function getInvUnitPrice(itemId) {
+    const prices = (state.foodCostMeta && (state.foodCostMeta.itemPrices || state.foodCostMeta.prices)) || {};
+    const v = Number(prices[itemId]);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+  function getTtkRecipeItems(ttkId) {
+    const recipes = (state.foodCostMeta && (state.foodCostMeta.ttkRecipes || state.foodCostMeta.recipes)) || {};
+    return Array.isArray(recipes[ttkId]) ? recipes[ttkId] : [];
+  }
+  function computeTtkFoodCost(k) {
+    if (!k) return 0;
+    const ing = getTtkRecipeItems(k.id);
+    if (ing.length) {
+      const sum = ing.reduce((a, r) => a + (Number(r.qty) || 0) * getInvUnitPrice(r.itemId), 0);
+      if (sum > 0) return Math.round(sum * 100) / 100;
+    }
+    return Number(k.cost) || 0;
+  }
+  function renderShopSwitcher() {
+    const bar = document.getElementById('shop-switcher-bar');
+    if (!bar) return;
+    const activeShops = (state.shops || []).filter(s => s && s.active !== false);
+    if (activeShops.length <= 1) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    bar.style.display = 'flex';
+    const btns = [{ id: 'all', name: 'Все точки (' + activeShops.length + ')' }].concat(activeShops);
+    bar.innerHTML = btns.map(s => `<button type="button" class="date-pill ${activeShopFilter===s.id?'active':''}" data-shop-sw="${esc(s.id)}">🏪 ${esc(s.name)}</button>`).join('');
+    bar.querySelectorAll('[data-shop-sw]').forEach(b => b.onclick = () => {
+      activeShopFilter = b.dataset.shopSw;
+      try { localStorage.setItem('coffee_illy_shop_filter', activeShopFilter); } catch (_) {}
+      const sel = activeShops.find(x => x.id === activeShopFilter);
+      if (sel) state.location = sel.name;
+      render();
+    });
+  }
+
   function render() {
     if (!state.location || state.location === 'Кофейня №1') state.location = 'ILLY';
     document.getElementById('hdr-loc').textContent = state.location;
@@ -966,7 +1023,18 @@ function initTheme(btnId) {
     document.getElementById('cnt-inc').textContent = openIncs;
     const csEl = document.getElementById('cnt-sales'); if (csEl) csEl.textContent = salesQtyTotal || fSales.length;
     const cwEl = document.getElementById('cnt-wh'); if (cwEl) { cwEl.textContent = lowStockCount ? ('!' + lowStockCount) : invAll.length; cwEl.className = 'badge ' + (lowStockCount ? 'bad' : ''); }
-    document.querySelectorAll('#admin-nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    const isManagerRole = state.sessionRole === 'manager';
+    const managerHiddenTabs = ['sales', 'finances', 'settings'];
+    if (isManagerRole && managerHiddenTabs.includes(tab)) tab = 'overview';
+    renderShopSwitcher();
+    document.querySelectorAll('#admin-nav button').forEach(b => {
+      const hidden = isManagerRole && managerHiddenTabs.includes(b.dataset.tab);
+      b.style.display = hidden ? 'none' : '';
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    if (isManagerRole && adminUnlocked) {
+      lb.innerHTML = '<svg class="ui-ico" viewBox="0 0 24 24"><rect width="14" height="10" x="5" y="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.6"/></svg><span class="pill-lbl"> ' + esc(state.sessionName || 'Управляющий') + '</span>';
+    }
 
     const root = document.getElementById('content');
     if (tab === 'overview') {
@@ -975,6 +1043,30 @@ function initTheme(btnId) {
         : (adminAuthNeeded
           ? `<div class="card-soft" style="margin-bottom:14px;border:1px solid var(--warn);display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>🔒 Войдите по PIN владельца, чтобы подтянуть живую кассу, расходы и поломки из Google Таблицы.</span><button class="chip-btn accent" id="ov-unlock">Войти по PIN</button></div>`
           : '');
+      if (isManagerRole) {
+        const onShiftNow = Object.values(state.staffPresence || {}).filter(p => p && p.status === 'on_shift').length;
+        const lateChks = fChecklists.filter(c => c.isLate).length;
+        root.innerHTML = `${syncBanner}
+          <div class="card-soft" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span>👤 Операционный режим: <b>${esc(state.sessionName || 'Управляющий')}</b> · Финансовые разделы скрыты по уровню доступа</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="chip-btn accent" id="mgr-go-audit">📋 Инвентаризация</button>
+              <button type="button" class="chip-btn" id="mgr-go-chk">✅ Чек-листы</button>
+              <button type="button" class="chip-btn" id="mgr-go-inc">🔧 Поломки</button>
+            </div>
+          </div>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-lbl">Чек-листы (${esc(rng.label)})</div><div class="kpi-val">${fChecklists.length}</div><div class="kpi-meta">Опозданий: <b>${lateChks}</b></div></div>
+            <div class="kpi"><div class="kpi-lbl">Склад ILLY</div><div class="kpi-val" style="color:${lowStockCount?'var(--bad)':'var(--good)'}">${invAll.length}</div><div class="kpi-meta">Ниже минимума: <b>${lowStockCount}</b></div></div>
+            <div class="kpi"><div class="kpi-lbl">Открытые поломки</div><div class="kpi-val" style="color:${openIncs?'var(--warn)':'var(--good)'}">${openIncs}</div><div class="kpi-meta">Всего за период: <b>${fIncidents.length}</b></div></div>
+            <div class="kpi"><div class="kpi-lbl">Команда на смене</div><div class="kpi-val" style="color:var(--accent)">${onShiftNow}</div><div class="kpi-meta">Активных сотрудников: <b>${state.staff.filter(s=>s.active!==false).length}</b></div></div>
+          </div>`;
+        const b1 = document.getElementById('mgr-go-audit'); if (b1) b1.onclick = () => { tab = 'warehouse'; render(); openInventoryAuditModal(); };
+        const b2 = document.getElementById('mgr-go-chk'); if (b2) b2.onclick = () => { tab = 'checklists'; render(); };
+        const b3 = document.getElementById('mgr-go-inc'); if (b3) b3.onclick = () => { tab = 'incidents'; render(); };
+        const uBtn = document.getElementById('ov-unlock'); if (uBtn) uBtn.onclick = () => guard('Вход', () => {});
+        return;
+      }
       const todayPlan = getDayPlan(getTodayISO());
       const pp = computePeriodPlan(rng, fCash);
       const totalPlanRev = pp.periodRev;
@@ -1540,7 +1632,7 @@ function initTheme(btnId) {
           closeModal(); showToast('✓ Блок «' + blk.name + '» удалён'); render();
         };
       }));
-      root.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => openTasksModal(b.dataset.vt));
+      root.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => { if (Date.now() - (window._lastDragEndAt || 0) < 260) return; openTasksModal(b.dataset.vt); });
       document.getElementById('b-add').onclick = () => guard('Новый блок', () => {
         const staffNames = (state.staff || []).filter(s => s && s.active !== false && s.name).map(s => s.name);
         const ALL_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
@@ -1766,6 +1858,7 @@ function initTheme(btnId) {
           <div class="card-head">
             <div><h2 class="card-title">Товары и остатки на складе (${invShown.length})</h2></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button type="button" class="chip-btn" id="wh-audit-btn" title="Сверить фактические остатки склада с учётными">📋 Инвентаризация</button>
               <button type="button" class="chip-btn ${lowStockCount?'warn':'good'}" id="wh-order-btn" title="Сформировать заявку поставщикам по позициям ниже минимума">🛒 Заявка поставщикам${lowStockCount?' ('+lowStockCount+')':''}</button>
               <button class="chip-btn accent" id="wh-add">+ Товар на склад</button>
             </div>
@@ -1817,6 +1910,16 @@ function initTheme(btnId) {
               }).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет записей сроков годности за выбранный период</div>`}
             </div>
           </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-head">
+            <div><h2 class="card-title">📋 История инвентаризаций (${(state.inventoryAudits||[]).length})</h2><div class="card-sub">Последние сверки фактических и учётных остатков</div></div>
+          </div>
+          <div class="stack">${(state.inventoryAudits||[]).length ? (state.inventoryAudits||[]).slice(0, 8).map(a => {
+            const diffRub = Number(a.totalDiffRub || 0);
+            const cls = diffRub < 0 ? 'bad' : (diffRub > 0 ? 'good' : '');
+            return `<div class="row-item"><div class="row-main"><div class="row-title">${esc(a.date||'')} ${esc(a.time||'')} · ${esc(a.actor||'Администратор')} <span class="badge ${cls}">${diffRub>=0?'+':''}${Math.round(diffRub)} ₽</span></div><div class="row-sub">Позиций: <b>${a.itemsCount||0}</b> · Расхождений: <b>${a.discrepanciesCount||0}</b>${a.note ? ' · ' + esc(a.note) : ''}</div></div></div>`;
+          }).join('') : '<div style="color:var(--muted);font-size:13px;padding:6px 0;">Инвентаризации ещё не проводились. Нажмите «📋 Инвентаризация» выше для первой сверки.</div>'}</div>
         </div>`;
       const whS = document.getElementById('wh-search');
       if (whS) whS.oninput = (e) => { whSearchQuery = e.target.value || ''; const pos = e.target.selectionStart || whSearchQuery.length; render(); const el = document.getElementById('wh-search'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} } };
@@ -1906,6 +2009,7 @@ function initTheme(btnId) {
         };
         renderOrderModal(false);
       };
+      const whAudBtn = document.getElementById('wh-audit-btn'); if (whAudBtn) whAudBtn.onclick = () => guard('Инвентаризация склада', () => openInventoryAuditModal());
       document.getElementById('wh-add').onclick = () => guard('Добавить товар на склад', () => openWarehouseModal(null));
       root.querySelectorAll('[data-wh-ed]').forEach(b => b.onclick = () => guard('Редактировать товар', () => openWarehouseModal(b.dataset.whEd)));
       root.querySelectorAll('[data-wh-in]').forEach(b => b.onclick = () => guard('Приход на склад', () => openWarehouseMoveModal(b.dataset.whIn, 'restock')));
@@ -1948,12 +2052,25 @@ function initTheme(btnId) {
         if (stPl.key === 'roster') return String(x.p.roster || '');
         return x.idx;
       });
+      const ttkCostMap = {};
+      (state.ttk || []).forEach(k => { ttkCostMap[String(k.name || '').trim().toLowerCase()] = computeTtkFoodCost(k); });
+      let periodFoodCost = 0;
+      let matchedSalesQty = 0;
+      fSales.forEach(s => {
+        const nm = String(s.item || s.name || '').trim().toLowerCase();
+        const c = ttkCostMap[nm] || 0;
+        if (c > 0) { periodFoodCost += c * (Number(s.qty) || 1); matchedSalesQty += (Number(s.qty) || 1); }
+      });
+      periodFoodCost = Math.round(periodFoodCost);
+      const foodCostPct = totalRev > 0 ? Math.round((periodFoodCost / totalRev) * 1000) / 10 : 0;
+      const grossProfit = Math.max(0, totalRev - periodFoodCost);
       root.innerHTML = `
         <div class="kpi-grid">
           <div class="kpi"><div class="kpi-lbl">Выручка (${esc(rng.label)})</div><div class="kpi-val">${fmtRub(totalRev)}</div><div class="kpi-meta">Нал: ${fmtRub(finCashSum)} · Безнал: ${fmtRub(finCardSum)}</div></div>
           <div class="kpi"><div class="kpi-lbl">Расходы за период</div><div class="kpi-val" style="color:var(--bad)">${fmtRub(totalExp)}</div><div class="kpi-meta">Операций: ${fExpenses.length}</div></div>
           <div class="kpi"><div class="kpi-lbl">Остаток после расходов</div><div class="kpi-val" style="color:var(--good)">${fmtRub(totalRev - totalExp)}</div><div class="kpi-meta">План (${esc(rng.label)}): <b>${fmtRub(finPlan.periodRev)}</b> (${finPlanPct}%) · Смен: ${fCash.length}</div></div>
           <div class="kpi"><div class="kpi-lbl">Средний чек</div><div class="kpi-val" style="color:${finAvg>=finPlan.periodAvg?'var(--good)':'var(--accent)'}">${finAvg} ₽</div><div class="kpi-meta">Чеков: <b>${finChecks}</b> / ${finPlan.periodChecks} · План ср. чека: ${finPlan.periodAvg} ₽</div></div>
+          <div class="kpi"><div class="kpi-lbl">Food Cost и маржа</div><div class="kpi-val" style="color:${foodCostPct<=35?'var(--good)':'var(--warn)'}">${periodFoodCost ? fmtRub(periodFoodCost) : '—'}</div><div class="kpi-meta">${periodFoodCost ? ('FC: <b>'+foodCostPct+'%</b> · Валовая: <b>'+fmtRub(grossProfit)+'</b>') : 'Укажите цены сырья на Складе и рецепты в ТТК'}</div></div>
         </div>
         <div class="card" style="margin-bottom:16px;">
           <div class="card-head">
@@ -2343,7 +2460,7 @@ function initTheme(btnId) {
           const st = String(c.status || '').toLowerCase();
           return st.includes('опозд') || st.includes('просроч') || st.includes('пропущ');
         }).length;
-        const r = payrollRates[sKey] || { shiftRate: 0, revenuePct: 0, planBonus: 0, latePenalty: 0 };
+        const r = payrollRates[sKey] || payrollRates[sLower] || { shiftRate: 0, revenuePct: 0, planBonus: 0, latePenalty: 0 };
         const shiftRate = Number(r.shiftRate) || 0;
         const revenuePct = Number(r.revenuePct) || 0;
         const planBonus = Number(r.planBonus) || 0;
@@ -2357,7 +2474,7 @@ function initTheme(btnId) {
       const totalPayrollRev = payrollRows.reduce((a, r) => a + r.rev, 0);
 
       root.innerHTML = `
-        <div class="card" style="margin-bottom:16px;">
+        ${isManagerRole ? '' : `<div class="card" style="margin-bottom:16px;">
           <div class="card-head">
             <div>
               <h2 class="card-title">💸 Табель и расчёт зарплаты (${esc(rng.label)})</h2>
@@ -2380,9 +2497,9 @@ function initTheme(btnId) {
             </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px;">Нет активных сотрудников</td></tr>'}
             <tr style="background:var(--surface-2);font-weight:700;"><td>Итого ФОТ</td><td>${totalPayrollShifts}</td><td>${fmtRub(totalPayrollRev)}</td><td></td><td></td><td></td><td>${fmtRub(totalFot)}</td><td></td></tr>
           </tbody></table></div>
-        </div>
+        </div>`}
         <div class="card" style="margin-bottom:16px;">
-          <div class="card-head"><div><h2 class="card-title">Сотрудники, личные PIN и Telegram ID</h2></div><button class="chip-btn accent" id="s-add">+ Сотрудник</button></div>
+          <div class="card-head"><div><h2 class="card-title">Сотрудники, личные PIN и Telegram ID</h2></div>${isManagerRole ? "" : `<button class="chip-btn accent" id="s-add">+ Сотрудник</button>`}</div>
           <div class="stack">${state.staff.map(s => {
             const sCash = fCash.filter(c => String(c.barista || c.who || '').toLowerCase() === String(s.name || '').toLowerCase());
             const sRev = sCash.reduce((a, c) => a + (Number(c.revenue) || 0), 0);
@@ -2390,18 +2507,18 @@ function initTheme(btnId) {
             const sInc = fIncidents.filter(i => String(i.who || '').toLowerCase() === String(s.name || '').toLowerCase()).length;
             const pr = (state.staffPresence || {})[s.name];
             const isOn = !!(pr && pr.status === 'on_shift');
-            return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${s.tgId ? `<button class="chip-btn good" data-tg-staff="${esc(s.name)}" title="Отправить личное сообщение в Telegram">📨 TG</button>` : ''}<button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button></div></div>`;
+            return `<div class="row-item" style="${s.active===false?'opacity:.55;':''}"><div class="row-main"><div class="row-title">${esc(s.name)} <span class="badge">${esc(s.role)}</span> ${isOn?`<span class="badge good">🟢 На работе с ${esc(pr.checkedInAt||'')}</span>`:''} ${s.tgId?`<span class="badge accent">${esc(s.tgId)}</span>`:'<span class="badge warn">TG не привязан</span>'}</div><div class="row-sub">За период (${esc(rng.label)}): смен <b>${sCash.length}</b> · выручка <b>${fmtRub(sRev)}</b> · чек-листов <b>${sChk}</b> · поломок <b>${sInc}</b></div></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${s.tgId ? `<button class="chip-btn good" data-tg-staff="${esc(s.name)}" title="Отправить личное сообщение в Telegram">📨 TG</button>` : ''}${isManagerRole ? "" : `<button class="chip-btn" data-es="${esc(s.id)}">✏️ PIN / TG</button>`}</div></div>`;
           }).join('')}</div>
         </div>
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Техкарты ILLY (${state.ttk.length})</h2></div><button class="chip-btn accent" id="k-add">+ Техкарта</button></div>
           <div class="tbl-wrap"><table><thead><tr><th>Напиток</th><th>Объём</th><th>Цена</th><th>Ср. цена</th><th>Себест.</th><th>Маржа</th><th></th></tr></thead><tbody>
-            ${state.ttk.map(k=>`<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td style="color:var(--muted)">${k.avgPrice!=null?k.avgPrice:k.price} ₽</td><td>${k.cost} ₽</td><td><span class="badge good">${k.price?Math.round(((k.price-k.cost)/k.price)*100):0}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">✏️</button></td></tr>`).join('')}
+            ${state.ttk.map(k=>{ const fc = computeTtkFoodCost(k); const hasIng = getTtkRecipeItems(k.id).length > 0; const mg = k.price ? Math.round(((k.price - fc) / k.price) * 100) : 0; return `<tr><td><b>${esc(k.name)}</b></td><td style="color:var(--muted)">${esc(k.vol)}</td><td>${k.price} ₽</td><td style="color:var(--muted)">${k.avgPrice!=null?k.avgPrice:k.price} ₽</td><td>${fc} ₽${hasIng?' <span title="Рассчитано по ценам склада">🧮</span>':''}</td><td><span class="badge ${mg>=65?'good':(mg>=45?'warn':'bad')}">${mg}%</span></td><td><button class="chip-btn" data-ek="${esc(k.id)}" style="padding:4px 8px;">✏️</button></td></tr>`; }).join('')}
           </tbody></table></div>
         </div>`;
       root.querySelectorAll('[data-pr-edit]').forEach(b => b.onclick = () => guard('Ставка сотрудника', () => {
         const empName = b.dataset.prEdit;
-        const cur = (state.payrollRates || {})[empName] || { shiftRate: 0, revenuePct: 0, planBonus: 0, latePenalty: 0 };
+        const cur = (state.payrollRates || {})[empName] || (state.payrollRates || {})[String(empName||'').toLowerCase()] || { shiftRate: 0, revenuePct: 0, planBonus: 0, latePenalty: 0 };
         openModal('⚙️ Ставка зарплаты: ' + empName, `
           <div class="grid2">
             <div class="field"><label>Ставка за смену (₽)</label><input id="pr-shift" type="number" min="0" value="${Number(cur.shiftRate)||0}"></div>
@@ -2428,7 +2545,9 @@ function initTheme(btnId) {
               await window.CoffeeCloudV93.savePayrollRate(payload);
             }
             state.payrollRates = state.payrollRates || {};
-            state.payrollRates[empName] = { shiftRate: payload.shiftRate, revenuePct: payload.revenuePct, planBonus: payload.planBonus, latePenalty: payload.latePenalty };
+            const _rObj = { shiftRate: payload.shiftRate, revenuePct: payload.revenuePct, planBonus: payload.planBonus, latePenalty: payload.latePenalty };
+            state.payrollRates[empName] = _rObj;
+            state.payrollRates[String(empName||'').toLowerCase()] = _rObj;
             saveSharedState(state, 'Администратор', 'Обновлена ставка: ' + empName);
             closeModal();
             render();
@@ -2442,7 +2561,9 @@ function initTheme(btnId) {
       root.querySelectorAll('[data-pr-pay]').forEach(b => b.onclick = () => guard('Выплата зарплаты', () => {
         const empName = b.dataset.prPay;
         const amt = Math.round(Number(b.dataset.prAmt) || 0);
-        if (amt <= 0) return;
+        if (amt <= 0 || b.disabled) return;
+        if (typeof confirm === 'function' && !confirm('Записать выплату зарплаты ' + empName + ' (' + fmtRub(amt) + ') в Расходы?')) return;
+        b.disabled = true;
         const exp = {
           id: 'EXP' + Date.now(),
           date: todayISO(),
@@ -2455,7 +2576,7 @@ function initTheme(btnId) {
         render();
         showToast('💸 Выплата ' + fmtRub(amt) + ' (' + empName + ') записана в Расходы');
       }));
-      document.getElementById('s-add').onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
+      const _sAddBtn = document.getElementById('s-add'); if (_sAddBtn) _sAddBtn.onclick = () => guard('Новый сотрудник', () => openStaffModal(null));
       root.querySelectorAll('[data-es]').forEach(b => b.onclick = () => guard('Изменить сотрудника', () => openStaffModal(b.dataset.es)));
       root.querySelectorAll('[data-tg-staff]').forEach(b => b.onclick = () => guard('Сообщение в Telegram', () => {
         const empName = b.dataset.tgStaff;
@@ -2559,11 +2680,97 @@ function initTheme(btnId) {
             <button class="chip-btn accent" id="tg-direct-send">📨 Отправить выбранному получателю</button>
           </div>
         </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-head">
+            <div><h2 class="card-title">🏪 Точки сети (Мультиточка · ${(state.shops||[]).length})</h2><div class="card-sub">При 2+ активных точках в шапке дашборда автоматически появляется переключатель</div></div>
+            <button type="button" class="chip-btn accent" id="btn-add-shop">+ Добавить точку</button>
+          </div>
+          <div class="stack" id="shops-list">${(state.shops && state.shops.length ? state.shops : [{ id:'illy_main', name: state.location || 'ILLY', address:'', active:true }]).map((sh, i) => `
+            <div class="row-item">
+              <div class="row-main">
+                <div class="row-title">${esc(sh.name)} ${sh.active===false?'<span class="badge">Скрыта</span>':'<span class="badge good">Активна</span>'}</div>
+                <div class="row-sub">${sh.address ? esc(sh.address) : 'Адрес не указан'} · ID: ${esc(sh.id)}</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="chip-btn" data-shop-toggle="${i}">${sh.active===false?'Включить':'Скрыть'}</button>
+              </div>
+            </div>`).join('')}</div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-head">
+            <div><h2 class="card-title">🗄️ Архивация логов и бэкап Google Таблицы</h2><div class="card-sub">${state.lastBackup && state.lastBackup.at ? ('Последний бэкап: <b>' + esc(state.lastBackup.at) + '</b>' + (state.lastBackup.url ? (' · <a href="' + esc(state.lastBackup.url) + '" target="_blank" rel="noopener" style="color:var(--accent);">Открыть в Drive</a>') : '')) : 'Автоматическое резервное копирование в папку ILLY_Backups (хранит 10 последних копий)'}</div></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="chip-btn good" id="btn-create-backup">💾 Создать бэкап в Drive</button>
+            <button type="button" class="chip-btn" id="btn-archive-logs">🗄️ Архивировать логи (&gt;180 дн.)</button>
+          </div>
+        </div>
         <div class="card">
           <div class="card-head"><div><h2 class="card-title">Журнал аудита и управления (${fAudit.length})</h2></div></div>
           <div class="stack" style="max-height:300px;overflow-y:auto;">${fAudit.length ? fAudit.map(a=>`<div class="card-soft" style="padding:8px 12px;"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);"><b>${esc(a.actor)} · ${a.date ? esc(a.date) + ' ' : ''}${esc(a.time || '')}</b><span class="badge accent">rev #${a.rev || state.rev}</span></div><div style="font-size:12.5px;margin-top:2px;">${esc(a.text)}</div></div>`).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Нет записей управления за выбранный период (${esc(rng.label)})</div>`}</div>
         </div>`;
       const sop = document.getElementById('s-open-plans'); if (sop) sop.onclick = () => { tab = 'finances'; render(); };
+      const addShopBtn = document.getElementById('btn-add-shop');
+      if (addShopBtn) addShopBtn.onclick = () => guard('Добавить точку сети', () => {
+        openModal('🏪 Новая кофейня сети', `
+          <div class="field"><label>Название точки</label><input id="sh-name" placeholder="Например: ILLY Центр"></div>
+          <div class="field"><label>Адрес (необязательно)</label><input id="sh-addr" placeholder="ул. Ленина, 15"></div>
+          <button class="btn-lg primary" id="sh-save">Добавить точку</button>
+        `);
+        document.getElementById('sh-save').onclick = async () => {
+          const btn = document.getElementById('sh-save');
+          const nm = (document.getElementById('sh-name')?.value || '').trim();
+          const addr = (document.getElementById('sh-addr')?.value || '').trim();
+          if (!nm) { showToast('Укажите название точки'); return; }
+          if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+          try {
+            const next = (state.shops && state.shops.length ? state.shops.slice() : [{ id: 'illy_main', name: state.location || 'ILLY', address: '', active: true }]);
+            next.push({ id: 'shop_' + Date.now().toString(36), name: nm, address: addr, active: true });
+            const res = window.CoffeeCloudV93 && window.CoffeeCloudV93.saveShops ? await window.CoffeeCloudV93.saveShops(next) : { ok: true, shops: next };
+            if (!res || res.ok === false) { showToast('Ошибка: ' + ((res && res.error) || 'не удалось сохранить')); return; }
+            state.shops = Array.isArray(res.shops) ? res.shops : next;
+            saveSharedState(state, 'Администратор', 'Добавлена точка: ' + nm);
+            closeModal(); showToast(res && res.queued ? '⏳ Точка в очереди синхронизации' : '✓ Точка добавлена'); render();
+          } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Добавить точку'; }
+          }
+        };
+      });
+      root.querySelectorAll('[data-shop-toggle]').forEach(b => b.onclick = () => guard('Изменить статус точки', async () => {
+        const idx = Number(b.dataset.shopToggle);
+        const next = (state.shops || []).map(x => Object.assign({}, x));
+        if (!next[idx]) return;
+        next[idx].active = next[idx].active === false ? true : false;
+        const res = window.CoffeeCloudV93 && window.CoffeeCloudV93.saveShops ? await window.CoffeeCloudV93.saveShops(next) : { ok: true, shops: next };
+        if (res && res.ok !== false) { state.shops = Array.isArray(res.shops) ? res.shops : next; showToast('✓ Список точек обновлён'); render(); }
+      }));
+      const bkpBtn = document.getElementById('btn-create-backup');
+      if (bkpBtn) bkpBtn.onclick = () => guard('Бэкап Google Таблицы', async () => {
+        bkpBtn.disabled = true; bkpBtn.textContent = '💾 Создание бэкапа...';
+        try {
+          const res = window.CoffeeCloudV93 && window.CoffeeCloudV93.createSpreadsheetBackup ? await window.CoffeeCloudV93.createSpreadsheetBackup() : { ok: false, error: 'Нет подключения' };
+          if (res && res.ok) {
+            state.lastBackup = res.backup || state.lastBackup;
+            showToast('✓ Бэкап создан в Google Drive (ILLY_Backups)');
+            render();
+          } else {
+            showToast('Ошибка бэкапа: ' + ((res && res.error) || 'повторите'));
+          }
+        } finally { bkpBtn.disabled = false; bkpBtn.textContent = '💾 Создать бэкап в Drive'; }
+      });
+      const archBtn = document.getElementById('btn-archive-logs');
+      if (archBtn) archBtn.onclick = () => guard('Архивация старых логов', async () => {
+        if (!confirm('Перенести записи старше 180 дней из Чеклисты_лог, Продажи_POS и Движения_склада в листы Архив_*? Данные не удаляются.')) return;
+        archBtn.disabled = true; archBtn.textContent = '🗄️ Архивация...';
+        try {
+          const res = window.CoffeeCloudV93 && window.CoffeeCloudV93.archiveOldLogs ? await window.CoffeeCloudV93.archiveOldLogs(180) : { ok: false, error: 'Нет подключения' };
+          if (res && res.ok) {
+            showToast('✓ Перенесено в архив: ' + (res.totalArchived || 0) + ' строк');
+          } else {
+            showToast('Ошибка архивации: ' + ((res && res.error) || 'повторите'));
+          }
+        } finally { archBtn.disabled = false; archBtn.textContent = '🗄️ Архивировать логи (>180 дн.)'; }
+      });
       document.getElementById('s-save').onclick = () => guard('Сохранить настройки', () => {
         state.location = document.getElementById('sl').value.trim() || state.location;
         state.woNorm = Number(document.getElementById('sw').value);
@@ -2694,6 +2901,7 @@ function initTheme(btnId) {
         <div class="field"><label>Текущий остаток</label><input id="wh-st" type="number" min="0" value="${it ? Number(it.stock || 0) : 0}"></div>
         <div class="field"><label>Мин. порог (алерт)</label><input id="wh-min" type="number" min="0" value="${it ? Number(it.minStock || 5) : 5}"></div>
       </div>
+      <div class="field"><label>Цена закупки за 1 ед. (₽, для расчёта Food Cost)</label><input id="wh-price" type="number" min="0" step="0.01" value="${it ? getInvUnitPrice(it.id) : 0}" placeholder="Например: 1.85 за 1 г или 95 за 1 л"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-lg primary" id="wh-sv" style="flex:1;">Сохранить на склад</button>${it ? `<button class="chip-btn bad" id="wh-del" style="padding:10px 14px;">🗑️ Удалить</button>` : ''}</div>
     `);
     document.getElementById('wh-sv').onclick = async () => {
@@ -2723,6 +2931,13 @@ function initTheme(btnId) {
         const ex = state.inventory.find(x => x.id === payload.id);
         if (ex) Object.assign(ex, payload, { updatedAt: getTodayISO() });
         else state.inventory.push(Object.assign({}, payload, { updatedAt: getTodayISO() }));
+        const unitPriceVal = Math.max(0, Number(document.getElementById('wh-price')?.value) || 0);
+        if (!state.foodCostMeta) state.foodCostMeta = { itemPrices: {}, ttkRecipes: {} };
+        if (!state.foodCostMeta.itemPrices) state.foodCostMeta.itemPrices = {};
+        state.foodCostMeta.itemPrices[payload.id] = unitPriceVal;
+        if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveFoodCostMeta) {
+          window.CoffeeCloudV93.saveFoodCostMeta(state.foodCostMeta).catch(() => {});
+        }
         saveSharedState(state, 'Администратор', 'Обновлён склад: ' + payload.name + ' (' + payload.stock + ' ' + payload.unit + ')');
         closeModal(); showToast(res && res.queued ? '⏳ В очереди синхронизации (офлайн)' : '✓ Остаток сохранён в Google Таблице'); render();
       } catch (err) {
@@ -2847,7 +3062,7 @@ function initTheme(btnId) {
         dragId = null;
         if (fromId && toId && fromId !== toId) onDropIds(fromId, toId);
       });
-      item.addEventListener('dragend', () => { clearMarks(); dragId = null; });
+      item.addEventListener('dragend', () => { window._lastDragEndAt = Date.now(); clearMarks(); dragId = null; });
 
       // Touch drag support via .drag-handle (keeps normal page scrolling outside handle)
       const handle = item.querySelector('.drag-handle');
@@ -2985,7 +3200,7 @@ function initTheme(btnId) {
     const s = id ? state.staff.find(x=>x.id===id) : null;
     openModal(s ? 'Сотрудник: ' + s.name : 'Новый сотрудник', `
       <div class="field"><label>Имя</label><input id="m-staff-name" value="${s?esc(s.name):''}" enterkeyhint="next"></div>
-      <div class="grid-2"><div class="field"><label>Роль</label><select id="m-staff-role"><option ${s&&s.role==='Бариста'?'selected':''}>Бариста</option><option ${s&&s.role==='Администратор'?'selected':''}>Администратор</option></select></div><div class="field"><label>Статус</label><select id="m-staff-active"><option value="1" ${!s||s.active!==false?'selected':''}>Активен</option><option value="0" ${s&&s.active===false?'selected':''}>Отключён</option></select></div></div>
+      <div class="grid-2"><div class="field"><label>Роль</label><select id="m-staff-role"><option ${s&&s.role==='Бариста'?'selected':''}>Бариста</option><option ${s&&s.role==='Шеф-бариста'?'selected':''}>Шеф-бариста</option><option ${s&&s.role==='Управляющий'?'selected':''}>Управляющий</option><option ${s&&s.role==='Администратор'?'selected':''}>Администратор</option></select></div><div class="field"><label>Статус</label><select id="m-staff-active"><option value="1" ${!s||s.active!==false?'selected':''}>Активен</option><option value="0" ${s&&s.active===false?'selected':''}>Отключён</option></select></div></div>
       <div class="grid-2"><div class="field"><label>${s ? 'Новый PIN (пусто — не менять)' : 'Начальный PIN (4–12 цифр)'}</label><input id="m-staff-pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="${s ? 'Без изменений' : 'Например 4829'}"></div><div class="field"><label>Telegram ID</label><input id="m-staff-tg" value="${s?esc(s.tgId||''):''}" placeholder="TG-..."></div></div>
       <button class="btn-lg primary" id="m-staff-save">Сохранить</button>
     `);
@@ -3035,23 +3250,145 @@ function initTheme(btnId) {
       }
     };
   }
+  function openInventoryAuditModal() {
+    const items = (state.inventory || []).slice();
+    if (!items.length) { showToast('Сначала добавьте товары на склад'); return; }
+    openModal('📋 Инвентаризация склада', `
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Укажите фактический остаток по позициям. При сохранении остатки выровняются в Google Таблице, а недостача &gt;100 ₽ уйдёт в Telegram.</div>
+      <div class="tbl-wrap" style="max-height:320px;overflow-y:auto;margin-bottom:10px;">
+        <table><thead><tr><th>Товар</th><th>Учёт</th><th>Факт</th><th>Разница</th></tr></thead><tbody>
+          ${items.map(it => {
+            const pr = getInvUnitPrice(it.id);
+            return `<tr>
+              <td><b>${esc(it.name)}</b><div style="font-size:11px;color:var(--muted);">${esc(it.unit||'шт')}${pr?(' · '+pr+' ₽'):''}</div></td>
+              <td class="num">${Number(it.stock||0)}</td>
+              <td><input type="number" min="0" step="any" data-aud-id="${esc(it.id)}" data-aud-book="${Number(it.stock||0)}" data-aud-price="${pr}" value="${Number(it.stock||0)}" style="width:76px;padding:4px 6px;"></td>
+              <td data-aud-diff="${esc(it.id)}" class="num" style="font-size:12px;color:var(--muted);">0</td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+      <div class="card-soft" id="aud-summary" style="padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+        <span>Итого отклонение:</span><b id="aud-total-rub">0 ₽</b>
+      </div>
+      <div class="field"><label>Комментарий к инвентаризации</label><input id="aud-note" placeholder="Например: плановая сверка конца месяца"></div>
+      <button class="btn-lg primary" id="aud-submit">✅ Провести инвентаризацию</button>
+    `);
+    const recalcAudit = () => {
+      let totalRub = 0; let disc = 0;
+      document.querySelectorAll('[data-aud-id]').forEach(inp => {
+        const id = inp.dataset.audId;
+        const book = Number(inp.dataset.audBook) || 0;
+        const price = Number(inp.dataset.audPrice) || 0;
+        const fact = Math.max(0, Number(inp.value) || 0);
+        const diff = Math.round((fact - book) * 100) / 100;
+        const rub = Math.round(diff * price * 100) / 100;
+        if (diff !== 0) disc++;
+        totalRub += rub;
+        const cell = document.querySelector('[data-aud-diff="' + id + '"]');
+        if (cell) {
+          cell.textContent = (diff > 0 ? '+' : '') + diff + (price ? (' (' + (rub > 0 ? '+' : '') + Math.round(rub) + ' ₽)') : '');
+          cell.style.color = diff < 0 ? 'var(--bad)' : (diff > 0 ? 'var(--good)' : 'var(--muted)');
+        }
+      });
+      const totEl = document.getElementById('aud-total-rub');
+      if (totEl) {
+        totEl.textContent = (totalRub > 0 ? '+' : '') + Math.round(totalRub) + ' ₽ (расхождений: ' + disc + ')';
+        totEl.style.color = totalRub < 0 ? 'var(--bad)' : (totalRub > 0 ? 'var(--good)' : 'var(--ink)');
+      }
+    };
+    document.querySelectorAll('[data-aud-id]').forEach(inp => inp.oninput = recalcAudit);
+    document.getElementById('aud-submit').onclick = async () => {
+      const btn = document.getElementById('aud-submit');
+      const payloadItems = [];
+      document.querySelectorAll('[data-aud-id]').forEach(inp => {
+        const it = items.find(x => x.id === inp.dataset.audId);
+        if (!it) return;
+        payloadItems.push({ id: it.id, itemId: it.id, name: it.name, unit: it.unit || 'шт', expected: Number(inp.dataset.audBook) || 0, actual: Math.max(0, Number(inp.value) || 0), unitPrice: Number(inp.dataset.audPrice) || 0 });
+      });
+      const note = (document.getElementById('aud-note')?.value || '').trim();
+      if (btn) { btn.disabled = true; btn.textContent = 'Проведение...'; }
+      try {
+        let res = { ok: true };
+        if (window.CoffeeCloudV93 && window.CoffeeCloudV93.submitInventoryAudit) {
+          res = await window.CoffeeCloudV93.submitInventoryAudit({ items: payloadItems, note, actor: state.sessionName || 'Администратор' });
+          if (!res || res.ok === false) { showToast('Ошибка инвентаризации: ' + ((res && res.error) || 'повторите')); return; }
+          if (Array.isArray(res.inventory)) state.inventory = res.inventory;
+          if (Array.isArray(res.inventoryMoves)) state.inventoryMoves = res.inventoryMoves;
+          if (Array.isArray(res.inventoryAudits)) state.inventoryAudits = res.inventoryAudits;
+        }
+        saveSharedState(state, state.sessionName || 'Администратор', 'Проведена инвентаризация склада');
+        closeModal();
+        showToast('✓ Инвентаризация проведена, остатки выровнены');
+        render();
+      } catch (err) {
+        showToast('Ошибка: ' + ((err && err.message) || 'повторите'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Провести инвентаризацию'; }
+      }
+    };
+  }
+
   function openTtkModal(id) {
     const k = id ? state.ttk.find(x=>x.id===id) : null;
     openModal(k ? 'ТТК: ' + k.name : 'Новая ТТК', `
       <div class="field"><label>Название</label><input id="kn" value="${k?esc(k.name):''}"></div>
       <div class="grid-2"><div class="field"><label>Объём</label><select id="kv">${optList(VOL_OPTS, k?k.vol:VOL_OPTS[3])}</select></div><div class="field"><label>Категория</label><select id="kc">${optList(CAT_OPTS, k?k.cat:CAT_OPTS[0])}</select></div></div>
       <div class="grid-2"><div class="field"><label>Цена продажи (₽)</label><input id="kp" type="number" min="1" value="${k?k.price:20}"></div><div class="field"><label>Средняя цена (₽)</label><input id="ka" type="number" min="0" step="0.5" value="${k?(k.avgPrice!=null?k.avgPrice:k.price):20}"></div></div>
-      <div class="field"><label>Себестоимость (₽, по умолчанию 0)</label><input id="ks" type="number" min="0" step="0.1" value="${k?(Number(k.cost)||0):0}"></div>
+      <div class="field"><label>Себестоимость (₽, авторасчёт из ингредиентов или вручную)</label><input id="ks" type="number" min="0" step="0.1" value="${k?computeTtkFoodCost(k):0}"></div>
+      <div class="card-soft" style="padding:10px 12px;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;">🧮 Ингредиенты со склада (Food Cost)</div>
+        <div id="ttk-ing-list" class="stack" style="gap:6px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <select id="ttk-ing-sel" style="flex:1;min-width:140px;">${(state.inventory||[]).map(it => `<option value="${esc(it.id)}">${esc(it.name)} (${esc(it.unit||'шт')} · ${getInvUnitPrice(it.id)} ₽)</option>`).join('') || '<option value="">Нет товаров на складе</option>'}</select>
+          <input id="ttk-ing-qty" type="number" min="0.01" step="any" placeholder="Кол-во" style="width:82px;">
+          <button type="button" class="chip-btn accent" id="ttk-ing-add">+ Добавить</button>
+        </div>
+      </div>
       <div class="field"><label>Подробная рецептура (шаги, граммовки, °C)</label><textarea id="kr" rows="3">${k?esc(k.recipe):''}</textarea></div>
       <div class="field"><label>Подача и рекомендации</label><input id="kserve" value="${k?esc(k.serve||k.serving||''):''}" placeholder="Стакан, крышка, допродажа"></div>
       <button class="btn-lg primary" id="ksv">Сохранить ТТК</button>
     `);
+    const draftIng = k ? getTtkRecipeItems(k.id).map(x => Object.assign({}, x)) : [];
+    const renderTtkIngs = () => {
+      const box = document.getElementById('ttk-ing-list');
+      if (!box) return;
+      if (!draftIng.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Ингредиенты не привязаны</div>'; return; }
+      let total = 0;
+      box.innerHTML = draftIng.map((r, i) => {
+        const it = (state.inventory || []).find(x => x.id === r.itemId);
+        const pr = getInvUnitPrice(r.itemId);
+        const sub = Math.round((Number(r.qty) || 0) * pr * 100) / 100;
+        total += sub;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:6px;"><span>${esc(it ? it.name : r.itemId)} × <b>${r.qty}</b> ${esc(it ? it.unit : '')} = <b>${sub} ₽</b></span><button type="button" class="chip-btn bad" data-rm-ing="${i}" style="padding:2px 6px;">✕</button></div>`;
+      }).join('');
+      const ksEl = document.getElementById('ks');
+      if (ksEl && total > 0) ksEl.value = Math.round(total * 100) / 100;
+      box.querySelectorAll('[data-rm-ing]').forEach(b => b.onclick = () => { draftIng.splice(Number(b.dataset.rmIng), 1); renderTtkIngs(); });
+    };
+    renderTtkIngs();
+    const ingAddBtn = document.getElementById('ttk-ing-add');
+    if (ingAddBtn) ingAddBtn.onclick = () => {
+      const selId = document.getElementById('ttk-ing-sel')?.value;
+      const qty = Number(document.getElementById('ttk-ing-qty')?.value) || 0;
+      if (!selId || qty <= 0) { showToast('Выберите товар и количество'); return; }
+      draftIng.push({ itemId: selId, qty });
+      document.getElementById('ttk-ing-qty').value = '';
+      renderTtkIngs();
+    };
     document.getElementById('ksv').onclick = () => {
       const nm = document.getElementById('kn').value.trim(), pr = Number(document.getElementById('kp').value)||0, avgP = Number(document.getElementById('ka').value)||pr, cs = Number(document.getElementById('ks').value)||0, sv = document.getElementById('kserve').value.trim();
       if (!nm || pr<=0) { showToast('Укажите название и цену продажи'); return; }
+      const ttkId = k ? k.id : ('ttk_' + Date.now());
       if (k) { k.name=nm; k.vol=document.getElementById('kv').value; k.cat=document.getElementById('kc').value; k.price=pr; k.avgPrice=avgP; k.cost=cs; k.recipe=document.getElementById('kr').value.trim(); k.serve=sv; k.serving=sv; }
-      else state.ttk.push({ id:'ttk_'+Date.now(), name:nm, vol:document.getElementById('kv').value, cat:document.getElementById('kc').value, price:pr, avgPrice:avgP, cost:cs, recipe:document.getElementById('kr').value.trim(), serve:sv, serving:sv });
-      saveSharedState(state, 'Администратор', 'Обновлена ТТК ' + nm); closeModal(); showToast('✓ ТТК сохранена и отправлена в терминал'); render();
+      else state.ttk.push({ id:ttkId, name:nm, vol:document.getElementById('kv').value, cat:document.getElementById('kc').value, price:pr, avgPrice:avgP, cost:cs, recipe:document.getElementById('kr').value.trim(), serve:sv, serving:sv });
+      if (!state.foodCostMeta) state.foodCostMeta = { itemPrices: {}, ttkRecipes: {} };
+      if (!state.foodCostMeta.ttkRecipes) state.foodCostMeta.ttkRecipes = {};
+      state.foodCostMeta.ttkRecipes[ttkId] = draftIng;
+      if (window.CoffeeCloudV93 && window.CoffeeCloudV93.saveFoodCostMeta) {
+        window.CoffeeCloudV93.saveFoodCostMeta(state.foodCostMeta).catch(() => {});
+      }
+      saveSharedState(state, 'Администратор', 'Обновлена ТТК ' + nm); closeModal(); showToast('✓ ТТК и Food Cost сохранены'); render();
     };
   }
 
@@ -3276,7 +3613,7 @@ function initTheme(btnId) {
   })();
 })();
 </script>
-  <script src="./js/time-picker.js?v=98.7.0"></script>
+  <script src="./js/time-picker.js?v=99.0.0"></script>
 
   <div id="kb-dismiss-bar" class="kb-dismiss-bar" aria-hidden="true">
     <button type="button" class="kb-dismiss-btn" onclick="if(document.activeElement)document.activeElement.blur();">Готово ⌄</button>
@@ -3284,7 +3621,7 @@ function initTheme(btnId) {
   <script>
     (function () {
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-        navigator.serviceWorker.register('./sw.js?v=98.7.0').catch(function () {});
+        navigator.serviceWorker.register('./sw.js?v=99.0.0').catch(function () {});
       }
       var kbBar = document.getElementById('kb-dismiss-bar');
       var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);

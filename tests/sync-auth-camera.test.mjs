@@ -440,7 +440,7 @@ test('Camera keepAlive prewarm requests OS permission ONCE and reuses standby st
   assert.equal(stopped, true, 'Explicit stopStream() on logout releases hardware cleanly');
 });
 
-test('v98.7.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offline Photo->Checklist URL Chaining', async () => {
+test('v99.0.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offline Photo->Checklist URL Chaining', async () => {
   const prevNav = globalThis.navigator;
   const prevFetch = globalThis.fetch;
   const prevLS = globalThis.localStorage;
@@ -525,7 +525,7 @@ test('v98.7.0 Online/Offline Green-Yellow Pill, Unsynced Files Counter & Offline
   }
 });
 
-test('v98.7.0 Fast Sync: coalesces duplicate drafts, isolates foreign staff outbox items, and runs parallel photo uploads', async () => {
+test('v99.0.0 Fast Sync: coalesces duplicate drafts, isolates foreign staff outbox items, and runs parallel photo uploads', async () => {
   const prevNav = globalThis.navigator;
   const prevFetch = globalThis.fetch;
   const prevLS = globalThis.localStorage;

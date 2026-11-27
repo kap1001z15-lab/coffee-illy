@@ -1,5 +1,5 @@
 /**
- * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v98.7.0)
+ * Coffee Illy — Cross-Platform Apple Liquid Glass Camera Module (v99.0.0)
  * Единый модуль камеры с однократным запросом разрешения при входе в терминал:
  * - prewarm({ keepAlive: true }) запрашивает доступ 1 раз при входе и держит поток
  *   в энергосберегающей паузе (track.enabled = false) без повторных запросов getUserMedia
@@ -280,8 +280,23 @@
         resolve(out);
       }
 
+      function onKeyDown(ev) {
+        if (ev && ev.key === 'Escape') finish([], true);
+      }
+      function onTgBack() { finish([], true); }
+      document.addEventListener('keydown', onKeyDown);
+      try {
+        var tgB = global && global.Telegram && global.Telegram.WebApp && global.Telegram.WebApp.BackButton;
+        if (tgB && typeof tgB.onClick === 'function') { tgB.onClick(onTgBack); tgB.show(); }
+      } catch (_) {}
+
       function cleanupUi() {
         document.removeEventListener('visibilitychange', onVisibility);
+        document.removeEventListener('keydown', onKeyDown);
+        try {
+          var tgB2 = global && global.Telegram && global.Telegram.WebApp && global.Telegram.WebApp.BackButton;
+          if (tgB2 && typeof tgB2.offClick === 'function') tgB2.offClick(onTgBack);
+        } catch (_) {}
         var vEl = state.overlay && state.overlay.querySelector ? state.overlay.querySelector('video') : null;
         if (vEl) { try { vEl.srcObject = null; } catch (_) {} }
         if (state.keepAliveSession) {
@@ -429,8 +444,9 @@
           state.digitalZoom = Math.max(1, z);
         }
         if (videoEl && videoEl.style) {
+          var mir = state.facingMode === 'user' ? 'scaleX(-1) ' : '';
           videoEl.style.transition = 'transform 160ms ease';
-          videoEl.style.transform = state.digitalZoom > 1.01 ? ('scale(' + state.digitalZoom + ')') : '';
+          videoEl.style.transform = mir + (state.digitalZoom > 1.01 ? ('scale(' + state.digitalZoom + ')') : '');
         }
         renderLensPills();
       }
@@ -557,12 +573,8 @@
           var s = await acquireStream(withAudio, forceNew);
           videoEl.srcObject = s;
           await videoEl.play();
-          if (state.devices.length > 1) {
-            devSel.innerHTML = state.devices.map(function (d, idx) {
-              var lbl = d.label || ('Камера ' + (idx + 1));
-              var sel = d.deviceId === state.selectedDeviceId ? ' selected' : '';
-              return '<option value="' + d.deviceId + '"' + sel + '>' + lbl + '</option>';
-            }).join('');
+          if (videoEl && videoEl.style) {
+            videoEl.style.transform = (state.facingMode === 'user' ? 'scaleX(-1) ' : '') + (state.digitalZoom > 1.01 ? ('scale(' + state.digitalZoom + ')') : '');
           }
           renderLensPills();
         } catch (err) {
@@ -620,7 +632,7 @@
   }
 
   var api = {
-    version: 'v98.7.0',
+    version: 'v99.0.0',
     MAX_VIDEO_SEC: MAX_VIDEO_SEC,
     prewarm: prewarm,
     open: open,

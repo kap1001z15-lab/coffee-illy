@@ -8,7 +8,7 @@
  * - TG_BOT_TOKEN_SECRET, TG_CHAT_ID_SECRET, WEBAPP_URL
  * - DRIVE_MEDIA_FOLDER_ID, ALLOW_PUBLIC_PHOTO_LINKS
  */
-var SERVER_VERSION_V97 = 'v98.7.0';
+var SERVER_VERSION_V97 = 'v99.0.0';
 var SPEC_VERSION_V97 = '5.0';
 
 /**
@@ -395,7 +395,19 @@ function doPost(e) {
         actorSess = requireVerifiedStaffSession_(ss, body);
       }
     } else {
-      actorSess = requireAuth_(ss, body, 'admin');
+      var managerAllowed = {
+        admin: 1, dashboard: 1, save_task: 1, delete_task: 1, reorder_tasks: 1,
+        save_checklist_blocks: 1, extend_deadline: 1, clear_deadline_extension: 1,
+        update_incident: 1, save_inventory: 1, restock_inventory: 1,
+        writeoff_inventory: 1, delete_inventory: 1, submit_inventory_audit: 1,
+        save_foodcost_meta: 1, review_checklist_photo: 1, save_ttk: 1, delete_ttk: 1,
+        grant_photo_reader_access: 1
+      };
+      if (managerAllowed[action]) {
+        actorSess = requireAdminOrManagerSession_(ss, body);
+      } else {
+        actorSess = requireAuth_(ss, body, 'admin');
+      }
     }
 
     ensureSheets_(ss);
@@ -533,7 +545,13 @@ function doPost(e) {
       return jsonOut_(maskSensitiveSettingsInResponse_(getReport_(ss, body.from, body.to), ss));
     }
     if (action === 'admin') {
-      return jsonOut_(maskSensitiveSettingsInResponse_(getAdmin_(ss), ss));
+      var admPayload = maskSensitiveSettingsInResponse_(getAdmin_(ss), ss);
+      if (actorSess && actorSess.role === 'manager') {
+        admPayload = stripFinancialsForManager_(admPayload, actorSess);
+      } else {
+        admPayload.sessionRole = 'admin';
+      }
+      return jsonOut_(admPayload);
     }
 
     // Произвольная отправка сообщений в Telegram доступна только владельцу/администратору.
@@ -592,6 +610,11 @@ function doPost(e) {
     if (action === 'submit_adjustment') return idempotentJsonOut_(ss, body, submitAdjustment_(ss, body, actorSess), actorSess);
     if (action === 'save_payroll_rate') return idempotentJsonOut_(ss, body, savePayrollRate_(ss, body), actorSess);
     if (action === 'review_checklist_photo') return idempotentJsonOut_(ss, body, reviewChecklistPhoto_(ss, body), actorSess);
+    if (action === 'save_foodcost_meta') return idempotentJsonOut_(ss, body, saveFoodCostMeta_(ss, body), actorSess);
+    if (action === 'submit_inventory_audit') return idempotentJsonOut_(ss, body, submitInventoryAudit_(ss, body, actorSess), actorSess);
+    if (action === 'save_shops') return idempotentJsonOut_(ss, body, saveShops_(ss, body), actorSess);
+    if (action === 'archive_old_logs') return idempotentJsonOut_(ss, body, archiveOldLogs_(ss, body), actorSess);
+    if (action === 'create_spreadsheet_backup') return idempotentJsonOut_(ss, body, createSpreadsheetBackup_(ss), actorSess);
 
     return idempotentJsonOut_(ss, body, { ok: false, error: 'UNKNOWN_ACTION: Неизвестное действие API: ' + action }, actorSess);
   } catch (err) {
@@ -1232,7 +1255,19 @@ function handleAuthLogin_(ss, body) {
   try {
     if (role === 'admin') {
       var adminKey = 'admin';
-      verifyOwnerPinServer_(ss, body.pin || '', adminKey);
+      try {
+        verifyOwnerPinServer_(ss, body.pin || '', adminKey);
+      } catch (adminErr) {
+        var errStr = String((adminErr && adminErr.message) || adminErr);
+        var mgrMatch = ((errStr.indexOf('PIN_REQUIRED') >= 0 || errStr.indexOf('AUTH_INVALID_PIN') >= 0) && body.pin) ? findManagerByPin_(ss, String(body.pin)) : null;
+        if (mgrMatch) {
+          clearFailedAttempts_(adminKey);
+          role = 'manager';
+          staffName = mgrMatch.name;
+        } else {
+          throw adminErr;
+        }
+      }
     } else {
       // P0-1: Автоматический вход сотрудника по Telegram требует криптографической проверки HMAC initData
       if ((body.autoLogin || (!body.pin && !body.pinHash)) && tgCand) {
@@ -3187,12 +3222,15 @@ function getAdmin_(ss) {
       }
       return outA;
     })(),
-    shops: getJsonProp_('COFFEE_SHOPS_JSON', []),
+    shops: getShopsList_(map),
     staffPresence: getStaffPresenceToday_(ss),
     staffNotifPrefs: getStaffNotifPrefsMap_(),
     payrollRates: getPayrollRatesMap_(),
     cashMeta: getCashMetaMap_(),
     photoReviews: getPhotoReviewsMap_(),
+    foodCostMeta: getFoodCostMetaMap_(),
+    inventoryAudits: getInventoryAuditsList_(),
+    lastBackup: getJsonProp_('COFFEE_BACKUP_META_JSON', null),
     tgChat: PropertiesService.getScriptProperties().getProperty('TG_CHAT_ID_SECRET') || map.TG_CHAT || '',
     webappUrl: map.WEBAPP_URL || '',
     autopilotEnabled: PropertiesService.getScriptProperties().getProperty('AUTOPILOT_ENABLED') === '1',
@@ -6610,21 +6648,27 @@ function savePayrollRate_(ss, body) {
   body = body || {};
   var staffName = String(body.staffName || body.name || '').trim();
   if (!staffName) return { ok: false, error: 'VALIDATION_FAILED: Не указано имя сотрудника' };
-  var key = staffName.toLowerCase();
-  var all = getPayrollRatesMap_();
-  var rec = {
-    staffName: staffName,
-    shiftRate: Math.max(0, Number(body.shiftRate) || 0),
-    revenuePct: Math.max(0, Math.min(50, Number(body.revenuePct) || 0)),
-    planBonus: Math.max(0, Number(body.planBonus) || 0),
-    latePenalty: Math.max(0, Number(body.latePenalty) || 0),
-    updatedAt: Date.now()
-  };
-  all[key] = rec;
-  setJsonProp_('COFFEE_PAYROLL_RATES_JSON', all);
-  bumpDataRev_();
-  appendAudit_(ss, 'Администратор', 'Обновлена ставка зарплаты: ' + staffName, 'Смена: ' + rec.shiftRate + ' ₽, %: ' + rec.revenuePct + '%, бонус: ' + rec.planBonus + ' ₽, штраф: ' + rec.latePenalty + ' ₽');
-  return { ok: true, staffName: staffName, rate: rec, payrollRates: all };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { ok: false, error: 'LOCK_TIMEOUT' };
+  try {
+    var key = staffName.toLowerCase();
+    var all = getPayrollRatesMap_();
+    var rec = {
+      staffName: staffName,
+      shiftRate: Math.max(0, Number(body.shiftRate) || 0),
+      revenuePct: Math.max(0, Math.min(50, Number(body.revenuePct) || 0)),
+      planBonus: Math.max(0, Number(body.planBonus) || 0),
+      latePenalty: Math.max(0, Number(body.latePenalty) || 0),
+      updatedAt: Date.now()
+    };
+    all[key] = rec;
+    setJsonProp_('COFFEE_PAYROLL_RATES_JSON', all);
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Обновлена ставка зарплаты: ' + staffName, 'Смена: ' + rec.shiftRate + ' ₽, %: ' + rec.revenuePct + '%, бонус: ' + rec.planBonus + ' ₽, штраф: ' + rec.latePenalty + ' ₽');
+    return { ok: true, staffName: staffName, rate: rec, payrollRates: all };
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
 }
 
 function getCashMetaMap_() {
@@ -6646,33 +6690,44 @@ function extractPhotoReviewKey_(url) {
 
 function reviewChecklistPhoto_(ss, body) {
   body = body || {};
-  var photoUrl = String(body.photoUrl || '').trim();
+  var photoUrl = String(body.photoUrl || body.url || '').trim();
   var key = extractPhotoReviewKey_(photoUrl);
   if (!key) return { ok: false, error: 'VALIDATION_FAILED: Не указана ссылка на фото' };
-  var verdict = String(body.verdict || '').toLowerCase() === 'rework' ? 'rework' : 'approved';
+  var rawVerdict = String(body.verdict || body.status || '').toLowerCase();
+  var verdict = rawVerdict === 'rework' ? 'rework' : 'approved';
   var block = String(body.block || 'Чек-лист').trim();
   var dateStr = String(body.date || isoDate_()).slice(0, 10);
-  var staffName = String(body.staffName || '').trim();
-  var comment = String(body.comment || '').trim();
+  var staffName = String(body.staffName || body.barista || body.who || '').trim();
+  var comment = String(body.comment || '').trim().slice(0, 300);
 
-  var all = getPhotoReviewsMap_();
-  var rec = {
-    key: key,
-    verdict: verdict,
-    block: block,
-    date: dateStr,
-    staffName: staffName,
-    comment: comment,
-    reviewedAt: Date.now()
-  };
-  all[key] = rec;
-  var rKeys = Object.keys(all);
-  if (rKeys.length > 250) {
-    rKeys.sort(function(a, b) { return (Number(all[a].reviewedAt) || 0) - (Number(all[b].reviewedAt) || 0); });
-    while (rKeys.length > 250) { delete all[rKeys.shift()]; }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { ok: false, error: 'LOCK_TIMEOUT' };
+  var all, rec;
+  try {
+    all = getPhotoReviewsMap_();
+    rec = {
+      key: key,
+      verdict: verdict,
+      status: verdict,
+      block: block,
+      date: dateStr,
+      staffName: staffName,
+      barista: staffName,
+      comment: comment,
+      reviewedAt: Utilities.formatDate(new Date(), 'Europe/Chisinau', 'HH:mm'),
+      updatedAt: Date.now()
+    };
+    all[key] = rec;
+    var rKeys = Object.keys(all);
+    if (rKeys.length > 250) {
+      rKeys.sort(function(a, b) { return (Number(all[a].updatedAt || all[a].reviewedAt) || 0) - (Number(all[b].updatedAt || all[b].reviewedAt) || 0); });
+      while (rKeys.length > 250) { delete all[rKeys.shift()]; }
+    }
+    setJsonProp_('COFFEE_PHOTO_REVIEWS_JSON', all);
+    bumpDataRev_();
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
   }
-  setJsonProp_('COFFEE_PHOTO_REVIEWS_JSON', all);
-  bumpDataRev_();
 
   var tgSent = false;
   if (verdict === 'rework' && staffName) {
@@ -6739,4 +6794,383 @@ function saveCashMetaAndAlert_(ss, dt, baristaName, b) {
       }
     }
   } catch (_) {}
+}
+
+
+// ============================================================================
+// v99.0.0: РОЛИ ДОСТУПА (УПРАВЛЯЮЩИЙ), FOOD COST, ИНВЕНТАРИЗАЦИЯ, МУЛЬТИТОЧКА,
+//          АВТОАРХИВ ЛОГОВ И РЕЗЕРВНОЕ КОПИРОВАНИЕ GOOGLE ТАБЛИЦЫ
+// ============================================================================
+
+function findManagerByPin_(ss, rawPin) {
+  var pinStr = String(rawPin || '').trim();
+  if (!pinStr) return null;
+  var staff = getStaffList_(ss) || [];
+  for (var i = 0; i < staff.length; i++) {
+    var s = staff[i];
+    if (!s || s.active === false) continue;
+    var r = String(s.role || '').toLowerCase();
+    if (r.indexOf('управля') < 0 && r.indexOf('шеф') < 0) continue;
+    try {
+      var expectedHash = getStaffPinHash_(ss, s.name);
+      if (expectedHash && verifyPinStored_(expectedHash, pinStr)) {
+        return { name: s.name, role: s.role, id: s.id };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function requireAdminOrManagerSession_(ss, body) {
+  var token = String((body && (body.sessionToken || body.token)) || '').trim();
+  if (token) {
+    var sess = getServerSession_(token);
+    if (sess && (sess.role === 'admin' || sess.role === 'manager')) {
+      return sess;
+    }
+  }
+  return requireAuth_(ss, body, 'admin');
+}
+
+function stripFinancialsForManager_(adm, actorSess) {
+  var out = Object.assign({}, adm);
+  out.sessionRole = 'manager';
+  out.sessionName = (actorSess && actorSess.staffName) || 'Управляющий';
+  out.cash = [];
+  out.expenses = [];
+  out.salesLog = [];
+  out.payrollRates = {};
+  out.cashMeta = {};
+  out.tgChat = '';
+  return out;
+}
+
+function getFoodCostMetaMap_() {
+  var raw = getJsonProp_('COFFEE_FOODCOST_META_JSON', null);
+  if (!raw || typeof raw !== 'object') return { itemPrices: {}, ttkRecipes: {} };
+  return {
+    itemPrices: (raw.itemPrices && typeof raw.itemPrices === 'object') ? raw.itemPrices : {},
+    ttkRecipes: (raw.ttkRecipes && typeof raw.ttkRecipes === 'object') ? raw.ttkRecipes : {}
+  };
+}
+
+function saveFoodCostMeta_(ss, body) {
+  body = body || {};
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { ok: false, error: 'LOCK_TIMEOUT' };
+  try {
+    var meta = getFoodCostMetaMap_();
+    if (body.itemId !== undefined && body.unitPrice !== undefined) {
+      var iid = String(body.itemId || '').trim();
+      if (iid) meta.itemPrices[iid] = Math.max(0, Number(body.unitPrice) || 0);
+    }
+    var incomingPrices = body.itemPrices || body.prices || (body.foodCostMeta && (body.foodCostMeta.itemPrices || body.foodCostMeta.prices));
+    if (incomingPrices && typeof incomingPrices === 'object') {
+      Object.keys(incomingPrices).forEach(function (k) {
+        meta.itemPrices[String(k)] = Math.max(0, Number(incomingPrices[k]) || 0);
+      });
+    }
+    var incomingRecipes = body.ttkRecipes || body.recipes || (body.foodCostMeta && (body.foodCostMeta.ttkRecipes || body.foodCostMeta.recipes));
+    if (incomingRecipes && typeof incomingRecipes === 'object') {
+      Object.keys(incomingRecipes).forEach(function (tidKey) {
+        if (Array.isArray(incomingRecipes[tidKey])) {
+          meta.ttkRecipes[String(tidKey)] = incomingRecipes[tidKey].map(function (ing) {
+            return { itemId: String((ing && ing.itemId) || '').trim(), qty: Math.max(0, Number(ing && ing.qty) || 0) };
+          }).filter(function (ing) { return ing.itemId && ing.qty > 0; });
+        }
+      });
+    }
+    var updatedCost = null;
+    if (body.ttkId && Array.isArray(body.ingredients)) {
+      var tid = String(body.ttkId).trim();
+      var cleanIngs = body.ingredients.map(function (ing) {
+        return {
+          itemId: String((ing && ing.itemId) || '').trim(),
+          qty: Math.max(0, Number(ing && ing.qty) || 0)
+        };
+      }).filter(function (ing) { return ing.itemId && ing.qty > 0; });
+      meta.ttkRecipes[tid] = cleanIngs;
+      var calcCost = 0;
+      cleanIngs.forEach(function (ing) {
+        var price = Number(meta.itemPrices[ing.itemId]) || 0;
+        calcCost += price * ing.qty;
+      });
+      updatedCost = Math.round(calcCost * 100) / 100;
+      try {
+        var shT = ss.getSheetByName('Техкарты');
+        if (shT && shT.getLastRow() > 1) {
+          var rows = shT.getDataRange().getValues();
+          for (var r = 1; r < rows.length; r++) {
+            if (String(rows[r][0] || '').trim() === tid || String(rows[r][1] || '').trim() === String(body.ttkName || '').trim()) {
+              shT.getRange(r + 1, 6).setValue(updatedCost);
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    setJsonProp_('COFFEE_FOODCOST_META_JSON', meta);
+    bumpDataRev_();
+    return { ok: true, foodCostMeta: meta, updatedCost: updatedCost };
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
+}
+
+function getInventoryAuditsList_() {
+  var raw = getJsonProp_('COFFEE_INV_AUDITS_JSON', []);
+  return Array.isArray(raw) ? raw : [];
+}
+
+function submitInventoryAudit_(ss, body, actorSess) {
+  body = body || {};
+  var items = Array.isArray(body.items) ? body.items : [];
+  if (!items.length) return { ok: false, error: 'VALIDATION_FAILED: Пустой список позиций ревизии' };
+  var actor = String((actorSess && actorSess.staffName) || body.actor || 'Администратор').trim();
+  var note = String(body.note || '').trim().slice(0, 240);
+  var shop = String(body.shop || '').trim();
+  var dt = isoDate_();
+  var tm = Utilities.formatDate(new Date(), 'Europe/Chisinau', 'HH:mm');
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { ok: false, error: 'LOCK_TIMEOUT' };
+  var auditRec = null;
+  var invList = [];
+  var invMoves = [];
+  try {
+    invList = getJsonProp_('COFFEE_INVENTORY_JSON', []);
+    if (!Array.isArray(invList)) invList = [];
+    invMoves = getJsonProp_('COFFEE_INVENTORY_MOVES_JSON', []);
+    if (!Array.isArray(invMoves)) invMoves = [];
+    var invById = {};
+    for (var j = 0; j < invList.length; j++) {
+      if (invList[j] && invList[j].id) invById[String(invList[j].id).trim()] = invList[j];
+    }
+
+    var shW = ss.getSheetByName('Склад');
+    var shM = ss.getSheetByName('Движения_склада');
+    var rows = (shW && shW.getLastRow() > 1) ? shW.getDataRange().getValues() : [];
+    var rowById = {};
+    for (var i = 1; i < rows.length; i++) {
+      rowById[String(rows[i][0] || '').trim()] = i + 1;
+    }
+
+    var changedCount = 0;
+    var shortageRub = 0;
+    var surplusRub = 0;
+    var diffs = [];
+    for (var k = 0; k < items.length; k++) {
+      var it = items[k] || {};
+      var id = String(it.id || it.itemId || '').trim();
+      var invObj = invById[id] || null;
+      var rowNumLookup = rowById[id];
+      var sheetStock = (rowNumLookup && rows[rowNumLookup - 1]) ? (Number(rows[rowNumLookup - 1][3]) || 0) : 0;
+      var bookStock = invObj ? (Number(invObj.stock) || 0) : sheetStock;
+      var expected = (it.expected !== undefined) ? (Number(it.expected) || 0) : ((it.book !== undefined) ? (Number(it.book) || 0) : bookStock);
+      var actual = Math.max(0, Number(it.actual !== undefined ? it.actual : it.fact) || 0);
+      var delta = Math.round((actual - expected) * 100) / 100;
+      var uPrice = Math.max(0, Number(it.unitPrice) || 0);
+      var diffRub = Math.round(delta * uPrice);
+      if (Math.abs(delta) > 0.001) {
+        changedCount++;
+        if (diffRub < 0) shortageRub += diffRub;
+        if (diffRub > 0) surplusRub += diffRub;
+        var itemName = String(it.name || (invObj && invObj.name) || id);
+        var itemUnit = String(it.unit || (invObj && invObj.unit) || 'шт');
+        diffs.push({ id: id, name: itemName, unit: itemUnit, expected: expected, actual: actual, delta: delta, diffRub: diffRub });
+        if (invObj) {
+          invObj.stock = actual;
+          invObj.updatedAt = dt;
+        }
+        invMoves.unshift({
+          id: 'AUD_' + Date.now() + '_' + k,
+          date: dt,
+          time: tm,
+          itemId: id,
+          itemName: itemName,
+          type: 'audit',
+          delta: delta,
+          stockAfter: actual,
+          unit: itemUnit,
+          actor: actor,
+          note: 'Ревизия' + (note ? ': ' + note : '')
+        });
+        var rowNum = rowById[id];
+        if (shW && rowNum) {
+          var minSt = Number((rows[rowNum - 1] && rows[rowNum - 1][4]) || 0);
+          var badgeAud = actual <= 0 ? '🚨 Нет в наличии' : (minSt > 0 && actual <= minSt ? '⚠️ Заканчивается' : '✓ Норма');
+          shW.getRange(rowNum, 4).setValue(actual);
+          shW.getRange(rowNum, 7).setValue(badgeAud);
+          shW.getRange(rowNum, 8).setValue(dt + ' ' + tm);
+        }
+        if (shM) {
+          shM.appendRow(safeRow_(['AUD_' + Date.now() + '_' + k, dt, tm, id, itemName, 'audit', delta, actual, itemUnit, actor, 'Ревизия' + (note ? ': ' + note : '')]));
+        }
+      }
+    }
+    while (invMoves.length > 300) invMoves.pop();
+    if (invList.length) {
+      setJsonProp_('COFFEE_INVENTORY_JSON', invList);
+      try { if (typeof syncInventorySheet_ === 'function') syncInventorySheet_(ss, invList); } catch (_) {}
+    }
+    setJsonProp_('COFFEE_INVENTORY_MOVES_JSON', invMoves);
+
+    auditRec = {
+      id: 'AUD_' + Date.now(),
+      date: dt,
+      time: tm,
+      actor: actor,
+      shop: shop,
+      checkedCount: items.length,
+      changedCount: changedCount,
+      discrepanciesCount: changedCount,
+      itemsCount: items.length,
+      totalDiffRub: Math.round(shortageRub + surplusRub),
+      shortageRub: Math.round(shortageRub),
+      surplusRub: Math.round(surplusRub),
+      netDiffRub: Math.round(shortageRub + surplusRub),
+      note: note,
+      diffs: diffs.slice(0, 20)
+    };
+    var audits = getInventoryAuditsList_();
+    audits.unshift(auditRec);
+    while (audits.length > 30) audits.pop();
+    setJsonProp_('COFFEE_INV_AUDITS_JSON', audits);
+    bumpDataRev_();
+    appendAudit_(ss, actor, 'Инвентаризация склада', 'Проверено: ' + items.length + ', расхождений: ' + changedCount + ', итог: ' + auditRec.netDiffRub + ' ₽');
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
+
+  if (auditRec && auditRec.shortageRub <= -100) {
+    try {
+      sendTelegramServerAlert_(ss, {
+        type: 'inventory_audit',
+        targetPage: 'dashboard.html',
+        buttonText: '📦 Открыть склад',
+        skipDedup: true,
+        force: true,
+        text: '📋 <b>РЕВИЗИЯ СКЛАДА (' + escapeTgHtml_(dt) + ')</b>\n' +
+          '👤 Провёл: ' + escapeTgHtml_(actor) + '\n' +
+          '⚠️ Недостача: <b>' + auditRec.shortageRub + ' ₽</b> (излишек: +' + auditRec.surplusRub + ' ₽)\n' +
+          '📦 Позиций с расхождением: <b>' + auditRec.changedCount + '</b> из ' + auditRec.checkedCount
+      });
+    } catch (_) {}
+  }
+  return { ok: true, audit: auditRec, inventory: invList, inventoryMoves: invMoves, inventoryAudits: getInventoryAuditsList_() };
+}
+
+function getShopsList_(cfgMap) {
+  var list = getJsonProp_('COFFEE_SHOPS_JSON', null);
+  if (Array.isArray(list) && list.length) return list;
+  var defName = String((cfgMap && cfgMap['Кофейня']) || 'ILLY').trim() || 'ILLY';
+  if (defName === 'Кофейня №1') defName = 'ILLY';
+  return [{ id: 'illy_main', name: defName, address: '', active: true }];
+}
+
+function saveShops_(ss, body) {
+  body = body || {};
+  var raw = Array.isArray(body.shops) ? body.shops : [];
+  if (!raw.length) return { ok: false, error: 'VALIDATION_FAILED: Нужна минимум 1 точка' };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { ok: false, error: 'LOCK_TIMEOUT' };
+  try {
+    var clean = raw.slice(0, 10).map(function (s, idx) {
+      return {
+        id: String((s && s.id) || ('shop_' + (idx + 1))).trim(),
+        name: String((s && s.name) || ('ILLY ' + (idx + 1))).trim().slice(0, 48),
+        address: String((s && s.address) || '').trim().slice(0, 120),
+        active: !(s && s.active === false)
+      };
+    }).filter(function (s) { return !!s.name; });
+    if (!clean.length) return { ok: false, error: 'VALIDATION_FAILED: Укажите название точки' };
+    setJsonProp_('COFFEE_SHOPS_JSON', clean);
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Обновлён список точек сети', clean.map(function (s) { return s.name; }).join(', '));
+    return { ok: true, shops: clean };
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
+}
+
+function archiveOldLogs_(ss, body) {
+  body = body || {};
+  var days = Math.max(30, Math.min(730, Number(body.olderThanDays) || 180));
+  var cutoffMs = Date.now() - days * 86400000;
+  var cutoffIso = Utilities.formatDate(new Date(cutoffMs), 'Europe/Chisinau', 'yyyy-MM-dd');
+  var targets = [
+    { src: 'Чеклисты_лог', dst: 'Архив_Чеклисты', dateCol: 0, key: 'checklists' },
+    { src: 'Продажи_POS', dst: 'Архив_Продажи', dateCol: 0, key: 'sales' },
+    { src: 'Движения_склада', dst: 'Архив_Склад', dateCol: 1, key: 'warehouse' }
+  ];
+  var moved = { checklists: 0, sales: 0, warehouse: 0, total: 0 };
+  targets.forEach(function (t) {
+    var shSrc = ss.getSheetByName(t.src);
+    if (!shSrc || shSrc.getLastRow() <= 1) return;
+    var vals = shSrc.getDataRange().getValues();
+    var header = vals[0];
+    var keep = [header];
+    var toMove = [];
+    for (var i = 1; i < vals.length; i++) {
+      var rawDt = vals[i][t.dateCol];
+      var dtStr = (rawDt instanceof Date)
+        ? Utilities.formatDate(rawDt, 'Europe/Chisinau', 'yyyy-MM-dd')
+        : String(rawDt || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dtStr) && dtStr < cutoffIso) {
+        toMove.push(vals[i]);
+      } else {
+        keep.push(vals[i]);
+      }
+    }
+    if (!toMove.length) return;
+    var shDst = ss.getSheetByName(t.dst);
+    if (!shDst) {
+      shDst = ss.insertSheet(t.dst);
+      shDst.appendRow(header);
+    }
+    var dstLast = shDst.getLastRow();
+    shDst.getRange(dstLast + 1, 1, toMove.length, header.length).setValues(toMove);
+    shSrc.clearContents();
+    shSrc.getRange(1, 1, keep.length, header.length).setValues(keep);
+    moved[t.key] = toMove.length;
+    moved.total += toMove.length;
+  });
+  if (moved.total > 0) {
+    bumpDataRev_();
+    appendAudit_(ss, 'Администратор', 'Архивация старых логов', 'Перенесено строк: ' + moved.total + ' (старше ' + cutoffIso + ')');
+  }
+  var totalArch = Object.keys(moved).reduce(function(a, k){ return a + (Number(moved[k]) || 0); }, 0);
+  return { ok: true, totalArchived: totalArch, cutoffDate: cutoffIso, olderThanDays: days, moved: moved };
+}
+
+function createSpreadsheetBackup_(ss) {
+  var ts = Utilities.formatDate(new Date(), 'Europe/Chisinau', 'yyyy-MM-dd_HH-mm');
+  var bName = 'ILLY_Backup_' + ts;
+  if (typeof DriveApp === 'undefined') {
+    var metaStub = { name: bName, url: '', createdAt: ts, note: 'DriveApp unavailable in local test env' };
+    setJsonProp_('COFFEE_BACKUP_META_JSON', metaStub);
+    return { ok: true, backup: metaStub };
+  }
+  try {
+    var srcFile = DriveApp.getFileById(ss.getId());
+    var it = DriveApp.getFoldersByName('ILLY_Backups');
+    var folder = it.hasNext() ? it.next() : DriveApp.createFolder('ILLY_Backups');
+    var copy = srcFile.makeCopy(bName, folder);
+    var files = [];
+    var fit = folder.getFiles();
+    while (fit.hasNext()) {
+      var f = fit.next();
+      files.push({ file: f, ts: f.getDateCreated().getTime() });
+    }
+    files.sort(function (a, b) { return b.ts - a.ts; });
+    while (files.length > 10) {
+      try { files.pop().file.setTrashed(true); } catch (_) { break; }
+    }
+    var meta = { name: bName, url: copy.getUrl(), createdAt: ts };
+    setJsonProp_('COFFEE_BACKUP_META_JSON', meta);
+    appendAudit_(ss, 'Администратор', 'Создан бэкап таблицы', bName);
+    return { ok: true, backup: meta };
+  } catch (err) {
+    return { ok: false, error: 'BACKUP_FAILED: ' + String((err && err.message) || err) };
+  }
 }

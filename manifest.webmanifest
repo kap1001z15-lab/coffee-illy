@@ -1,6 +1,6 @@
 {
-  "name": "Coffee Illy ERP & Чек-листы",
-  "short_name": "Coffee Illy",
+  "name": "ILLY — ERP и Чек-листы",
+  "short_name": "ILLY",
   "description": "Кроссплатформенный терминал бариста и дашборд владельца кофейни Coffee Illy",
   "start_url": "./index.html",
   "scope": "./",
